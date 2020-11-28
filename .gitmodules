@@ -156,3 +156,6 @@
 [submodule "extensions/Loops"]
 	path = extensions/Loops
 	url = git@github.com:wikimedia/mediawiki-extensions-Loops.git
+[submodule "extensions/MobileFrontend"]
+	path = extensions/MobileFrontend
+	url = git@github.com:wikimedia/mediawiki-extensions-MobileFrontend.git
