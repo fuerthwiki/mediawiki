@@ -132,3 +132,6 @@
 [submodule "extensions/PageForms"]
 	path = extensions/PageForms
 	url = https://gerrit.wikimedia.org/r/mediawiki/extensions/PageForms.git
+[submodule "extensions/Maps"]
+	path = extensions/Maps
+	url = git@github.com:JeroenDeDauw/Maps.git
