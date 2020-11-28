@@ -138,3 +138,6 @@
 [submodule "extensions/AdminLinks"]
 	path = extensions/AdminLinks
 	url = git@github.com:wikimedia/mediawiki-extensions-AdminLinks.git
+[submodule "extensions/AuthorProtect"]
+	path = extensions/AuthorProtect
+	url = git@github.com:wikimedia/mediawiki-extensions-AuthorProtect.git
