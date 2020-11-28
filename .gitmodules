@@ -141,3 +141,6 @@
 [submodule "extensions/AuthorProtect"]
 	path = extensions/AuthorProtect
 	url = git@github.com:wikimedia/mediawiki-extensions-AuthorProtect.git
+[submodule "extensions/Arrays"]
+	path = extensions/Arrays
+	url = git@github.com:wikimedia/mediawiki-extensions-Arrays.git
