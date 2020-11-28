@@ -183,3 +183,6 @@
 [submodule "extensions/RottenLinks"]
 	path = extensions/RottenLinks
 	url = git@github.com:miraheze/RottenLinks.git
+[submodule "extensions/SemanticResultFormats"]
+	path = extensions/SemanticResultFormats
+	url = git@github.com:SemanticMediaWiki/SemanticResultFormats.git
