@@ -126,3 +126,6 @@
 	path = vendor
 	url = https://gerrit.wikimedia.org/r/mediawiki/vendor
 	branch = REL1_35
+[submodule "extensions/SemanticMediaWiki"]
+	path = extensions/SemanticMediaWiki
+	url = git@github.com:SemanticMediaWiki/SemanticMediaWiki.git
