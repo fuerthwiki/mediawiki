@@ -177,3 +177,6 @@
 [submodule "extensions/ProgressiveWebApp"]
 	path = extensions/ProgressiveWebApp
 	url = git@github.com:fuerthwiki/ProgressiveWebApp.git
+[submodule "extensions/ProofreadPage"]
+	path = extensions/ProofreadPage
+	url = git@github.com:wikimedia/mediawiki-extensions-ProofreadPage.git
