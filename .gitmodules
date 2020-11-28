@@ -186,3 +186,6 @@
 [submodule "extensions/SemanticResultFormats"]
 	path = extensions/SemanticResultFormats
 	url = git@github.com:SemanticMediaWiki/SemanticResultFormats.git
+[submodule "extensions/Variables"]
+	path = extensions/Variables
+	url = git@github.com:wikimedia/mediawiki-extensions-Variables.git
