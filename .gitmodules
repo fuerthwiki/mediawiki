@@ -144,3 +144,6 @@
 [submodule "extensions/Arrays"]
 	path = extensions/Arrays
 	url = git@github.com:wikimedia/mediawiki-extensions-Arrays.git
+[submodule "extensions/CollapsibleVector"]
+	path = extensions/CollapsibleVector
+	url = git@github.com:wikimedia/mediawiki-extensions-CollapsibleVector.git
