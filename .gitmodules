@@ -168,3 +168,6 @@
 [submodule "extensions/Tabs"]
 	path = extensions/Tabs
 	url = git@github.com:wikimedia/mediawiki-extensions-Tabs.git
+[submodule "extensions/MobileTabsPlugin"]
+	path = extensions/MobileTabsPlugin
+	url = git@github.com:fuerthwiki/MobileTabsPlugin.git
