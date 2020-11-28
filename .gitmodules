@@ -192,3 +192,6 @@
 [submodule "extensions/WhatsNearby"]
 	path = extensions/WhatsNearby
 	url = git@github.com:SemanticMediaWiki/WhatsNearby.git
+[submodule "extensions/Widgets"]
+	path = extensions/Widgets
+	url = git@github.com:wikimedia/mediawiki-extensions-Widgets.git
