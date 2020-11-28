@@ -150,3 +150,6 @@
 [submodule "extensions/Collection"]
 	path = extensions/Collection
 	url = git@github.com:wikimedia/mediawiki-extensions-Collection.git
+[submodule "extensions/Echo"]
+	path = extensions/Echo
+	url = git@github.com:wikimedia/mediawiki-extensions-Echo.git
