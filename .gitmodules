@@ -162,3 +162,6 @@
 [submodule "extensions/MobileShareButton"]
 	path = extensions/MobileShareButton
 	url = git@github.com:fuerthwiki/MobileShareButton.git
+[submodule "extensions/MobileSpecialPages"]
+	path = extensions/MobileSpecialPages
+	url = git@github.com:fuerthwiki/MobileSpecialPages.git
