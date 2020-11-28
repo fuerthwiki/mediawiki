@@ -135,3 +135,6 @@
 [submodule "extensions/Maps"]
 	path = extensions/Maps
 	url = git@github.com:JeroenDeDauw/Maps.git
+[submodule "extensions/AdminLinks"]
+	path = extensions/AdminLinks
+	url = git@github.com:wikimedia/mediawiki-extensions-AdminLinks.git
