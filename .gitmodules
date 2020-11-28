@@ -189,3 +189,6 @@
 [submodule "extensions/Variables"]
 	path = extensions/Variables
 	url = git@github.com:wikimedia/mediawiki-extensions-Variables.git
+[submodule "extensions/WhatsNearby"]
+	path = extensions/WhatsNearby
+	url = git@github.com:SemanticMediaWiki/WhatsNearby.git
