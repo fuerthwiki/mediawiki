@@ -174,3 +174,6 @@
 [submodule "extensions/Popups"]
 	path = extensions/Popups
 	url = git@github.com:wikimedia/mediawiki-extensions-Popups.git
+[submodule "extensions/ProgressiveWebApp"]
+	path = extensions/ProgressiveWebApp
+	url = git@github.com:fuerthwiki/ProgressiveWebApp.git
