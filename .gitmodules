@@ -153,3 +153,6 @@
 [submodule "extensions/Echo"]
 	path = extensions/Echo
 	url = git@github.com:wikimedia/mediawiki-extensions-Echo.git
+[submodule "extensions/Loops"]
+	path = extensions/Loops
+	url = git@github.com:wikimedia/mediawiki-extensions-Loops.git
