@@ -171,3 +171,6 @@
 [submodule "extensions/MobileTabsPlugin"]
 	path = extensions/MobileTabsPlugin
 	url = git@github.com:fuerthwiki/MobileTabsPlugin.git
+[submodule "extensions/Popups"]
+	path = extensions/Popups
+	url = git@github.com:wikimedia/mediawiki-extensions-Popups.git
