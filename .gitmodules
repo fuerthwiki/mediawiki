@@ -159,3 +159,6 @@
 [submodule "extensions/MobileFrontend"]
 	path = extensions/MobileFrontend
 	url = git@github.com:wikimedia/mediawiki-extensions-MobileFrontend.git
+[submodule "extensions/MobileShareButton"]
+	path = extensions/MobileShareButton
+	url = git@github.com:fuerthwiki/MobileShareButton.git
