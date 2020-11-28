@@ -165,3 +165,6 @@
 [submodule "extensions/MobileSpecialPages"]
 	path = extensions/MobileSpecialPages
 	url = git@github.com:fuerthwiki/MobileSpecialPages.git
+[submodule "extensions/Tabs"]
+	path = extensions/Tabs
+	url = git@github.com:wikimedia/mediawiki-extensions-Tabs.git
