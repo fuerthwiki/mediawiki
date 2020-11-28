@@ -180,3 +180,6 @@
 [submodule "extensions/ProofreadPage"]
 	path = extensions/ProofreadPage
 	url = git@github.com:wikimedia/mediawiki-extensions-ProofreadPage.git
+[submodule "extensions/RottenLinks"]
+	path = extensions/RottenLinks
+	url = git@github.com:miraheze/RottenLinks.git
