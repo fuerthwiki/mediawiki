@@ -195,3 +195,6 @@
 [submodule "extensions/Widgets"]
 	path = extensions/Widgets
 	url = git@github.com:wikimedia/mediawiki-extensions-Widgets.git
+[submodule "skins/MinervaNeue"]
+	path = skins/MinervaNeue
+	url = https://github.com/wikimedia/mediawiki-skins-MinervaNeue.git
