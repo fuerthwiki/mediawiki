@@ -234,6 +234,7 @@ wfLoadExtension( 'Popups' );
 wfLoadExtension( 'TextExtracts' );
 wfLoadExtension( 'AuthorProtect' );
 wfLoadExtension( 'AdminLinks' );
+wfLoadExtension( 'RottenLinks' );
 wfLoadExtension( 'ProofreadPage' );
 wfLoadExtension( 'SemanticResultFormats' );
 wfLoadExtension( 'CollapsibleVector' );
@@ -242,6 +243,11 @@ wfLoadExtension( 'Collection' );
 wfLoadExtension( 'Widgets' );
 wfLoadExtension( 'Loops' );
 wfLoadExtension( 'Maps' );
+wfLoadExtension( 'TemplateData' );
+wfLoadExtension( 'Scribunto' );
+wfLoadExtension( 'SecureLinkFixer' );
+wfLoadExtension( 'VisualEditor' );
+wfLoadExtension( 'TextExtracts' );
 
 require_once __DIR__ . '/extensions/Maps/DefaultSettings.php';
 
