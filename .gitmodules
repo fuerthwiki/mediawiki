@@ -198,3 +198,6 @@
 [submodule "skins/MinervaNeue"]
 	path = skins/MinervaNeue
 	url = https://github.com/wikimedia/mediawiki-skins-MinervaNeue.git
+[submodule "extensions/Validator"]
+	path = extensions/Validator
+	url = https://github.com/JeroenDeDauw/Validator.git
