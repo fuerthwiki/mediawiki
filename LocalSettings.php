@@ -219,7 +219,7 @@ wfLoadExtension( 'WikiEditor' );
 # End of automatically generated settings.
 # Add more configuration options below.
 
-enableSemantics( 'test.fuerthwiki.de' );
+enableSemantics( '$SECRET_wgDBserver' );
 $smwgParserFeatures = SMW_PARSER_STRICT | SMW_PARSER_INL_ERROR | SMW_PARSER_HID_CATS | SMW_PARSER_LINV;
 
 # Sorting does not remove entries that doesnt hold the search attribute
@@ -233,21 +233,18 @@ wfLoadExtension( 'PageImages' );
 wfLoadExtension( 'Popups' );
 wfLoadExtension( 'TextExtracts' );
 wfLoadExtension( 'AuthorProtect' );
-#wfLoadExtension( 'AdminLinks' );
+wfLoadExtension( 'AdminLinks' );
 wfLoadExtension( 'ProofreadPage' );
 wfLoadExtension( 'SemanticResultFormats' );
 wfLoadExtension( 'CollapsibleVector' );
 #wfLoadExtension( 'SemanticExtraSpecialProperties' );
-
-require_once "$IP/extensions/AdminLinks/AdminLinks.php";
-require_once "$IP/extensions/Collection/Collection.php";
-#require_once "$IP/extensions/FancyBoxThumbs/FancyBoxThumbs.php";
-
+wfLoadExtension( 'Collection' );
+wfLoadExtension( 'Widgets' );
+wfLoadExtension( 'Loops' );
 wfLoadExtension( 'Maps' );
+
 require_once __DIR__ . '/extensions/Maps/DefaultSettings.php';
 
-require_once "$IP/extensions/Widgets/Widgets.php";
-require_once( "$IP/extensions/Loops/Loops.php" );
 $wgPFEnableStringFunctions = true;
 
 wfLoadSkin( 'MinervaNeue' );
@@ -255,8 +252,7 @@ wfLoadExtension( 'MobileFrontend' );
 $wgMFAutodetectMobileView = true;
 $wgShowExceptionDetails = true; 
 
-//require_once( "$IP/extensions/ConfirmEdit/ConfirmEdit.php" );
-require_once( "$IP/extensions/ConfirmEdit/QuestyCaptcha.php");
+wfLoadExtensions([ 'ConfirmEdit', 'ConfirmEdit/QuestyCaptcha' ]);
 $wgCaptchaClass = 'QuestyCaptcha';
 
 foreach ( $SECRET_questions as $key => $value ) {
@@ -267,7 +263,7 @@ foreach ( $SECRET_questions as $key => $value ) {
 $wgAllowSiteCSSOnRestrictedPages = true;
 
 # PageImages (add Images to "Nearby")
-require_once "$IP/extensions/PageImages/PageImages.php";
+wfLoadExtension( 'PageImages' );
 
 # Shut off WhatsNearbys non working geoip service
 $wnbyExternalGeoipService = false;
