@@ -45,7 +45,6 @@ sftp-config.json
 /maintenance/.mweval_history
 /maintenance/.mwsql_history
 /maintenance/dev/data
-/LocalSettings.php
 /includes/PlatformSettings.php
 
 # Building & testing
@@ -62,7 +61,6 @@ phpunit.xml
 
 # Composer
 /composer.lock
-/composer.local.json
 /composer.phar
 
 # Operating systems
@@ -88,4 +86,6 @@ Thumbs.db
 # Docker
 docker-compose.override.yml
 .env
+
+# fuerthwiki stuff
 /SECRETS.php
