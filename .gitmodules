@@ -204,3 +204,6 @@
 [submodule "extensions/SemanticCite"]
 	path = extensions/SemanticCite
 	url = https://github.com/SemanticMediaWiki/SemanticCite.git
+[submodule "extensions/SemanticExtraSpecialProperties"]
+	path = extensions/SemanticExtraSpecialProperties
+	url = https://github.com/SemanticMediaWiki/SemanticExtraSpecialProperties.git

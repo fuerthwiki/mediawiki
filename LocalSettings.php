@@ -238,7 +238,7 @@ wfLoadExtension( 'RottenLinks' );
 wfLoadExtension( 'ProofreadPage' );
 wfLoadExtension( 'SemanticResultFormats' );
 wfLoadExtension( 'CollapsibleVector' );
-#wfLoadExtension( 'SemanticExtraSpecialProperties' );
+wfLoadExtension( 'SemanticExtraSpecialProperties' );
 wfLoadExtension( 'Collection' );
 wfLoadExtension( 'Widgets' );
 wfLoadExtension( 'Loops' );
@@ -248,8 +248,7 @@ wfLoadExtension( 'Scribunto' );
 wfLoadExtension( 'SecureLinkFixer' );
 wfLoadExtension( 'VisualEditor' );
 wfLoadExtension( 'TextExtracts' );
-
-require_once __DIR__ . '/extensions/Maps/DefaultSettings.php';
+wfLoadExtension( 'SemanticCite' );
 
 $wgPFEnableStringFunctions = true;
 
