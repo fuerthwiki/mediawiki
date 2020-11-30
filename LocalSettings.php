@@ -249,6 +249,7 @@ wfLoadExtension( 'SecureLinkFixer' );
 wfLoadExtension( 'VisualEditor' );
 wfLoadExtension( 'TextExtracts' );
 wfLoadExtension( 'SemanticCite' );
+wfLoadExtension( 'SemanticScribunto' );
 
 $wgPFEnableStringFunctions = true;
 

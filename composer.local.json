@@ -4,6 +4,7 @@
 		"mediawiki/semantic-result-formats": "~3.2",
 		"mediawiki/maps": "~7.20",
 		"mediawiki/semantic-extra-special-properties": "~2.1",
-		"mediawiki/semantic-cite": "~2.1"
+		"mediawiki/semantic-cite": "~2.1",
+		"mediawiki/semantic-scribunto": "~2.1"
 	}
 }

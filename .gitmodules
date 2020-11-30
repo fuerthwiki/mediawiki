@@ -207,3 +207,6 @@
 [submodule "extensions/SemanticExtraSpecialProperties"]
 	path = extensions/SemanticExtraSpecialProperties
 	url = https://github.com/SemanticMediaWiki/SemanticExtraSpecialProperties.git
+[submodule "extensions/SemanticScribunto"]
+	path = extensions/SemanticScribunto
+	url = https://github.com/SemanticMediaWiki/SemanticScribunto.git
