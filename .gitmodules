@@ -122,10 +122,6 @@
 	path = skins/Vector
 	url = https://gerrit.wikimedia.org/r/mediawiki/skins/Vector
 	branch = REL1_35
-[submodule "vendor"]
-	path = vendor
-	url = https://gerrit.wikimedia.org/r/mediawiki/vendor
-	branch = REL1_35
 [submodule "extensions/SemanticMediaWiki"]
 	path = extensions/SemanticMediaWiki
 	url = git@github.com:SemanticMediaWiki/SemanticMediaWiki.git
@@ -213,3 +209,6 @@
 [submodule "cronjobs"]
 	path = cronjobs
 	url = git@github.com:fuerthwiki/cronjobs.git
+[submodule "vendor"]
+	path = vendor
+	url = git@github.com:fuerthwiki/vendor.git
