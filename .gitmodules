@@ -210,3 +210,6 @@
 [submodule "extensions/SemanticScribunto"]
 	path = extensions/SemanticScribunto
 	url = https://github.com/SemanticMediaWiki/SemanticScribunto.git
+[submodule "cronjobs"]
+	path = cronjobs
+	url = git@github.com:fuerthwiki/cronjobs.git
