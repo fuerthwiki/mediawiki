@@ -201,3 +201,6 @@
 [submodule "extensions/Validator"]
 	path = extensions/Validator
 	url = https://github.com/JeroenDeDauw/Validator.git
+[submodule "extensions/SemanticCite"]
+	path = extensions/SemanticCite
+	url = https://github.com/SemanticMediaWiki/SemanticCite.git
