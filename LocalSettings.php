@@ -119,6 +119,9 @@ $wgMaxShellMemory  = 0;
 ## fixes https://bitbucket.org/FuerthWiki/wiki/issues/6
 $wgSecureLogin = true;
 
+# That makes the login problem a little better
+$wgDefaultUserOptions['rememberpassword'] = 1;
+
 # InstantCommons allows wiki to use images from https://commons.wikimedia.org
 $wgUseInstantCommons = false;
 
