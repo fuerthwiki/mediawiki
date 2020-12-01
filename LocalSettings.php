@@ -225,6 +225,9 @@ $smwgParserFeatures = SMW_PARSER_STRICT | SMW_PARSER_INL_ERROR | SMW_PARSER_HID_
 # Sorting does not remove entries that doesnt hold the search attribute
 $smwgQSortFeatures = SMW_QSORT | SMW_QSORT_RANDOM | SMW_QSORT_UNCONDITIONAL; 
 
+wfLoadExtension( 'Scribunto' );
+$wgScribuntoDefaultEngine = 'luastandalone';
+
 wfLoadExtension( 'PageForms' );
 wfLoadExtension( 'Variables' );
 wfLoadExtension( 'Tabs' );
@@ -244,12 +247,14 @@ wfLoadExtension( 'Widgets' );
 wfLoadExtension( 'Loops' );
 wfLoadExtension( 'Maps' );
 wfLoadExtension( 'TemplateData' );
-wfLoadExtension( 'Scribunto' );
 wfLoadExtension( 'SecureLinkFixer' );
-wfLoadExtension( 'VisualEditor' );
 wfLoadExtension( 'TextExtracts' );
 wfLoadExtension( 'SemanticCite' );
 wfLoadExtension( 'SemanticScribunto' );
+
+# Enable VisualEditor but don't make it default
+wfLoadExtension( 'VisualEditor' );
+$wgDefaultUserOptions['visualeditor-enable'] = 0;
 
 $wgPFEnableStringFunctions = true;
 
