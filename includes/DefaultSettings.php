@@ -287,6 +287,14 @@ $wgUploadPath = false;
 $wgImgAuthPath = false;
 
 /**
+ * The base path for thumb_handler.php. This is used to interpret the request URL
+ * for requests to thumb_handler.php that do not match the base upload path.
+ *
+ * @since 1.35.1
+ */
+$wgThumbPath = false;
+
+/**
  * The filesystem path of the images directory. Defaults to "{$IP}/images".
  */
 $wgUploadDirectory = false;
@@ -9556,10 +9564,6 @@ $wgMainPageIsDomainRoot = false;
 /**
  * Whether to enable the watchlist expiry feature.
  *
- * DISCLAIMER: Enabling in production is discouraged for the time being.
- * A future MW 1.35 release will advertise this feature once it is stable.
- *
- * @warning EXPERIMENTAL
  * @since 1.35
  * @var bool
  */
