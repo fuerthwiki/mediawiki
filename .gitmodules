@@ -212,3 +212,6 @@
 [submodule "vendor"]
 	path = vendor
 	url = git@github.com:fuerthwiki/vendor.git
+[submodule "extensions/Mermaid"]
+	path = extensions/Mermaid
+	url = git@github.com:SemanticMediaWiki/Mermaid.git
