@@ -6,6 +6,7 @@
 		"mediawiki/semantic-extra-special-properties": "~2.1",
 		"mediawiki/semantic-cite": "~2.1",
 		"mediawiki/semantic-scribunto": "~2.1",
-		"mediawiki/mermaid": "~3.0"
+		"mediawiki/mermaid": "~3.0",
+		"mediawiki/semantic-compound-queries": "~2.1"
 	}
 }

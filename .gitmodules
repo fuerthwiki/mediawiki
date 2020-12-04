@@ -215,3 +215,6 @@
 [submodule "extensions/Mermaid"]
 	path = extensions/Mermaid
 	url = git@github.com:SemanticMediaWiki/Mermaid.git
+[submodule "extensions/SemanticCompoundQueries"]
+	path = extensions/SemanticCompoundQueries
+	url = git@github.com:SemanticMediaWiki/SemanticCompoundQueries.git

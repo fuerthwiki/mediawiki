@@ -255,6 +255,7 @@ wfLoadExtension( 'TextExtracts' );
 wfLoadExtension( 'SemanticCite' );
 wfLoadExtension( 'SemanticScribunto' );
 wfLoadExtension( 'Mermaid' );
+wfLoadExtension( 'SemanticCompoundQueries' );
 
 # Enable VisualEditor but don't make it default
 wfLoadExtension( 'VisualEditor' );
