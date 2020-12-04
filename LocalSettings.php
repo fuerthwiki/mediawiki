@@ -254,7 +254,7 @@ wfLoadExtension( 'SecureLinkFixer' );
 wfLoadExtension( 'TextExtracts' );
 wfLoadExtension( 'SemanticCite' );
 wfLoadExtension( 'SemanticScribunto' );
-wfLoadExtension( 'Mermaid' );
+#wfLoadExtension( 'Mermaid' ); Does not work @fuerthwiki.de
 wfLoadExtension( 'SemanticCompoundQueries' );
 
 # Enable VisualEditor but don't make it default
