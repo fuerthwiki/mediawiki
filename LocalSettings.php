@@ -254,6 +254,7 @@ wfLoadExtension( 'SecureLinkFixer' );
 wfLoadExtension( 'TextExtracts' );
 wfLoadExtension( 'SemanticCite' );
 wfLoadExtension( 'SemanticScribunto' );
+wfLoadExtension( 'Mermaid' );
 
 # Enable VisualEditor but don't make it default
 wfLoadExtension( 'VisualEditor' );
