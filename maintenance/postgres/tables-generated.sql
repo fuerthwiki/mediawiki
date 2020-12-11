@@ -360,7 +360,7 @@ CREATE TABLE watchlist (
 
 CREATE UNIQUE INDEX wl_user ON watchlist (wl_user, wl_namespace, wl_title);
 
-CREATE INDEX namespace_title ON watchlist (wl_namespace, wl_title);
+CREATE INDEX wl_namespace_title ON watchlist (wl_namespace, wl_title);
 
 CREATE INDEX wl_user_notificationtimestamp ON watchlist (
   wl_user, wl_notificationtimestamp
@@ -406,7 +406,7 @@ CREATE TABLE user_newtalk (
 
 CREATE INDEX un_user_id ON user_newtalk (user_id);
 
-CREATE INDEX un_user_ip ON user_newtalk (user_id);
+CREATE INDEX un_user_ip ON user_newtalk (user_ip);
 
 
 CREATE TABLE interwiki (
@@ -493,4 +493,87 @@ CREATE INDEX actor_timestamp ON revision_actor_temp (
 
 CREATE INDEX page_actor_timestamp ON revision_actor_temp (
   revactor_page, revactor_actor, revactor_timestamp
+);
+
+
+CREATE TABLE page_props (
+  pp_page INT NOT NULL,
+  pp_propname TEXT NOT NULL,
+  pp_value TEXT NOT NULL,
+  pp_sortkey FLOAT DEFAULT NULL,
+  PRIMARY KEY(pp_page, pp_propname)
+);
+
+CREATE UNIQUE INDEX pp_propname_page ON page_props (pp_propname, pp_page);
+
+CREATE UNIQUE INDEX pp_propname_sortkey_page ON page_props (pp_propname, pp_sortkey, pp_page)
+WHERE (pp_sortkey IS NOT NULL);
+
+
+CREATE TABLE job (
+  job_id SERIAL NOT NULL,
+  job_cmd TEXT DEFAULT '' NOT NULL,
+  job_namespace INT NOT NULL,
+  job_title TEXT NOT NULL,
+  job_timestamp TIMESTAMPTZ DEFAULT NULL,
+  job_params TEXT NOT NULL,
+  job_random INT DEFAULT 0 NOT NULL,
+  job_attempts INT DEFAULT 0 NOT NULL,
+  job_token TEXT DEFAULT '' NOT NULL,
+  job_token_timestamp TIMESTAMPTZ DEFAULT NULL,
+  job_sha1 TEXT DEFAULT '' NOT NULL,
+  PRIMARY KEY(job_id)
+);
+
+CREATE INDEX job_sha1 ON job (job_sha1);
+
+CREATE INDEX job_cmd_token ON job (job_cmd, job_token, job_random);
+
+CREATE INDEX job_cmd_token_id ON job (job_cmd, job_token, job_id);
+
+CREATE INDEX job_cmd ON job (
+  job_cmd, job_namespace, job_title,
+  job_params
+);
+
+CREATE INDEX job_timestamp ON job (job_timestamp);
+
+
+CREATE TABLE slot_roles (
+  role_id SERIAL NOT NULL,
+  role_name TEXT NOT NULL,
+  PRIMARY KEY(role_id)
+);
+
+CREATE UNIQUE INDEX role_name ON slot_roles (role_name);
+
+
+CREATE TABLE content_models (
+  model_id SERIAL NOT NULL,
+  model_name TEXT NOT NULL,
+  PRIMARY KEY(model_id)
+);
+
+CREATE UNIQUE INDEX model_name ON content_models (model_name);
+
+
+CREATE TABLE categorylinks (
+  cl_from INT DEFAULT 0 NOT NULL,
+  cl_to TEXT DEFAULT '' NOT NULL,
+  cl_sortkey TEXT DEFAULT '' NOT NULL,
+  cl_sortkey_prefix TEXT DEFAULT '' NOT NULL,
+  cl_timestamp TIMESTAMPTZ NOT NULL,
+  cl_collation TEXT DEFAULT '' NOT NULL,
+  cl_type TEXT DEFAULT 'page' NOT NULL,
+  PRIMARY KEY(cl_from, cl_to)
+);
+
+CREATE INDEX cl_sortkey ON categorylinks (
+  cl_to, cl_type, cl_sortkey, cl_from
+);
+
+CREATE INDEX cl_timestamp ON categorylinks (cl_to, cl_timestamp);
+
+CREATE INDEX cl_collation_ext ON categorylinks (
+  cl_collation, cl_to, cl_type, cl_from
 );

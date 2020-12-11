@@ -2653,6 +2653,12 @@ $wgMainStash = 'db-replicated';
 $wgParserCacheExpireTime = 86400;
 
 /**
+ * The expiry time for the parser cache for old revisions, in seconds.
+ * The default is 3600 (cache disabled).
+ */
+$wgOldRevisionParserCacheExpireTime = 60 * 60;
+
+/**
  * The expiry time to use for session storage, in seconds.
  */
 $wgObjectCacheSessionExpiry = 3600;
@@ -7468,21 +7474,20 @@ $wgDisableAnonTalk = false;
 $wgUseTagFilter = true;
 
 /**
- * List of core tags to enable. Available tags are:
- * - 'mw-contentmodelchange': Edit changes content model of a page
- * - 'mw-new-redirect': Edit makes new redirect page (new page or by changing content page)
- * - 'mw-removed-redirect': Edit changes an existing redirect into a non-redirect
- * - 'mw-changed-redirect-target': Edit changes redirect target
- * - 'mw-blank': Edit completely blanks the page
- * - 'mw-replace': Edit removes more than 90% of the content
- * - 'mw-rollback': Edit is a rollback, made through the rollback link or rollback API
- * - 'mw-undo': Edit made through an undo link
- * - 'mw-manual-revert': Edit that restored the page to an exact previous state
- * - 'mw-reverted': Edit that was later reverted by another edit
- *
+ * List of core tags to enable.
  * @var array
  * @since 1.31
  * @since 1.36 Added 'mw-manual-revert' and 'mw-reverted'
+ * @see ChangeTags::TAG_CONTENT_MODEL_CHANGE
+ * @see ChangeTags::TAG_NEW_REDIRECT
+ * @see ChangeTags::TAG_REMOVED_REDIRECT
+ * @see ChangeTags::TAG_CHANGED_REDIRECT_TARGET
+ * @see ChangeTags::TAG_BLANK
+ * @see ChangeTags::TAG_REPLACE
+ * @see ChangeTags::TAG_ROLLBACK
+ * @see ChangeTags::TAG_UNDO
+ * @see ChangeTags::TAG_MANUAL_REVERT
+ * @see ChangeTags::TAG_REVERTED
  */
 $wgSoftwareTags = [
 	'mw-contentmodelchange' => true,
@@ -7586,7 +7591,7 @@ $wgRightsUrl = null;
  * If either $wgRightsUrl or $wgRightsPage is specified then this variable gives the text for the
  * link. Otherwise, it will be treated as raw HTML.
  * If using $wgRightsUrl then this value must be specified. If using $wgRightsPage then the name
- * of the page will also be used as the link if this variable is not set.
+ * of the page will also be used as the link text if this variable is not set.
  */
 $wgRightsText = null;
 
@@ -8578,7 +8583,7 @@ $wgDebugAPI = false;
  * @endcode
  *
  * Extension modules may override the core modules.
- * See ApiMain::$Modules for a list of the core modules.
+ * See ApiMain::MODULES for a list of the core modules.
  */
 $wgAPIModules = [];
 
@@ -8587,7 +8592,7 @@ $wgAPIModules = [];
  * Associative array mapping format module name to module specs (see $wgAPIModules).
  * Extension modules may override the core modules.
  *
- * See ApiMain::$Formats for a list of the core format modules.
+ * See ApiMain::FORMATS for a list of the core format modules.
  */
 $wgAPIFormatModules = [];
 
@@ -8596,7 +8601,7 @@ $wgAPIFormatModules = [];
  * Associative array mapping meta module name to module specs (see $wgAPIModules).
  * Extension modules may override the core modules.
  *
- * See ApiQuery::$QueryMetaModules for a list of the core meta modules.
+ * See ApiQuery::QUERY_META_MODULES for a list of the core meta modules.
  */
 $wgAPIMetaModules = [];
 
@@ -8605,7 +8610,7 @@ $wgAPIMetaModules = [];
  * Associative array mapping prop module name to module specs (see $wgAPIModules).
  * Extension modules may override the core modules.
  *
- * See ApiQuery::$QueryPropModules for a list of the core prop modules.
+ * See ApiQuery::QUERY_PROP_MODULES for a list of the core prop modules.
  */
 $wgAPIPropModules = [];
 
@@ -8614,7 +8619,7 @@ $wgAPIPropModules = [];
  * Associative array mapping list module name to module specs (see $wgAPIModules).
  * Extension modules may override the core modules.
  *
- * See ApiQuery::$QueryListModules for a list of the core list modules.
+ * See ApiQuery::QUERY_LIST_MODULES for a list of the core list modules.
  */
 $wgAPIListModules = [];
 
@@ -9669,12 +9674,20 @@ $wgRevertedTagMaxDepth = 15;
 $wgRestAllowCrossOriginCookieAuth = false;
 
 /**
- * Temporary feature flag for selectively enabling JSON serialization in th e parser cache.
- * @see T263579
- * @internal
- * @todo remove before 1.36 is released. JSON should have become the default by then.
+ * Enable JSON serialization for ParserCache.
+ *
+ * In 1.36 the default serialization format for ParserCache has been changed from PHP serialization
+ * to JSON serialization. The cache is still compatible with old PHP-serialized entries, so for the
+ * most part the change should be unnoticed. However in case some extensions are installed which write
+ * non-JSON-serializable data to ParserOutput::setExtensionData, the cache will break for some pages.
+ * Setting this to 'false' makes ParserCache use PHP serialization format for writing new cache entries,
+ * and all the cache entries already written in JSON are discarded.
+ *
+ * @since 1.36
+ * @deprecated since 1.36
+ * @see https://phabricator.wikimedia.org/T263579
  */
-$wgParserCacheUseJson = false;
+$wgParserCacheUseJson = true;
 
 /**
  * For really cool vim folding this needs to be at the end:

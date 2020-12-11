@@ -44,7 +44,7 @@ use MediaWiki\HookContainer\HookContainer;
 use MediaWiki\HookContainer\HookRunner;
 use MediaWiki\Http\HttpRequestFactory;
 use MediaWiki\Interwiki\InterwikiLookup;
-use MediaWiki\Json\JsonUnserializer;
+use MediaWiki\Json\JsonCodec;
 use MediaWiki\Languages\LanguageConverterFactory;
 use MediaWiki\Languages\LanguageFactory;
 use MediaWiki\Languages\LanguageFallback;
@@ -291,7 +291,7 @@ class MediaWikiServices extends ServiceContainer {
 		self::$instance = self::newInstance( $bootstrapConfig, 'load' );
 
 		// Provides a traditional hook point to allow extensions to configure services.
-		$runner = new HookRunner( self::$instance->getHookContainer() );
+		$runner = new HookRunner( $oldInstance->getHookContainer() );
 		$runner->onMediaWikiServices( self::$instance );
 
 		self::$instance->importWiring( $oldInstance, [ 'BootstrapConfig' ] );
@@ -815,10 +815,10 @@ class MediaWikiServices extends ServiceContainer {
 
 	/**
 	 * @since 1.36
-	 * @return JsonUnserializer
+	 * @return JsonCodec
 	 */
-	public function getJsonUnserializer() : JsonUnserializer {
-		return $this->getService( 'JsonUnserializer' );
+	public function getJsonCodec() : JsonCodec {
+		return $this->getService( 'JsonCodec' );
 	}
 
 	/**
@@ -849,7 +849,7 @@ class MediaWikiServices extends ServiceContainer {
 	 * @since 1.34
 	 * @return LanguageNameUtils
 	 */
-	public function getLanguageNameUtils() {
+	public function getLanguageNameUtils() : LanguageNameUtils {
 		return $this->getService( 'LanguageNameUtils' );
 	}
 
@@ -1095,7 +1095,7 @@ class MediaWikiServices extends ServiceContainer {
 	 * @return ParserOutputAccess
 	 * @since 1.36
 	 */
-	public function getParserOutputAccess() {
+	public function getParserOutputAccess() : ParserOutputAccess {
 		return $this->getService( 'ParserOutputAccess' );
 	}
 

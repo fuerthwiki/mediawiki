@@ -36,7 +36,7 @@ trait JsonUnserializableTrait {
 	 * @return array
 	 */
 	private function annotateJsonForDeserialization( array $json ) : array {
-		$json[JsonUnserializer::TYPE_ANNOTATION] = get_class( $this );
+		$json[JsonConstants::TYPE_ANNOTATION] = get_class( $this );
 		return $json;
 	}
 

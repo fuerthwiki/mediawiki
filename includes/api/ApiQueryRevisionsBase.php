@@ -232,7 +232,7 @@ abstract class ApiQueryRevisionsBase extends ApiQueryGeneratorBase {
 	 *
 	 * @since 1.32, takes a RevisionRecord instead of a Revision
 	 * @param RevisionRecord $revision
-	 * @param object $row Should have a field 'ts_tags' if $this->fld_tags is set
+	 * @param stdClass $row Should have a field 'ts_tags' if $this->fld_tags is set
 	 * @return array
 	 */
 	protected function extractRevisionInfo( RevisionRecord $revision, $row ) {
@@ -296,7 +296,7 @@ abstract class ApiQueryRevisionsBase extends ApiQueryGeneratorBase {
 				try {
 					$vals['sha1'] = Wikimedia\base_convert( $revision->getSha1(), 36, 16, 40 );
 				} catch ( RevisionAccessException $e ) {
-					// Back compat: If there's no sha1, return emtpy string.
+					// Back compat: If there's no sha1, return empty string.
 					// @todo: Gergő says to mention T198099 as a "todo" here.
 					$vals['sha1'] = '';
 				}

@@ -484,7 +484,8 @@ class NamespaceInfo {
 	}
 
 	/**
-	 * Does the namespace allow subpages?
+	 * Does the namespace allow subpages? Note that this refers to structured
+	 * handling of subpages, and does not include SpecialPage subpage parameters.
 	 *
 	 * @param int $index Index to check
 	 * @return bool
@@ -610,6 +611,7 @@ class NamespaceInfo {
 		// PermissionManager is not injected because adding an explicit dependency
 		// breaks MW installer by adding a dependency chain on the database before
 		// it was set up. Also, the method is deprecated and will be soon removed.
+		wfDeprecated( __METHOD__, '1.34' );
 		return MediaWikiServices::getInstance()
 			->getPermissionManager()
 			->getNamespaceRestrictionLevels( $index, $user );

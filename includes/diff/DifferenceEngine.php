@@ -173,6 +173,7 @@ class DifferenceEngine extends ContextSource {
 	 * Set this to true to add debug info to the HTML output.
 	 * Warning: this may cause RSS readers to spuriously mark articles as "new"
 	 * (T22601)
+	 * @var bool
 	 */
 	public $enableDebugComment = false;
 
@@ -356,6 +357,7 @@ class DifferenceEngine extends ContextSource {
 		return $slots;
 	}
 
+	/** @inheritDoc */
 	public function getTitle() {
 		// T202454 avoid errors when there is no title
 		return parent::getTitle() ?: Title::makeTitle( NS_SPECIAL, 'BadTitle/DifferenceEngine' );
@@ -606,6 +608,9 @@ class DifferenceEngine extends ContextSource {
 			!$this->isUserAllowedToSeeRevisions( $user ) );
 	}
 
+	/**
+	 * @param bool $diffOnly
+	 */
 	public function showDiffPage( $diffOnly = false ) {
 		# Allow frames except in certain special cases
 		$out = $this->getOutput();
@@ -857,16 +862,22 @@ class DifferenceEngine extends ContextSource {
 			if ( !$allowed ) {
 				$msg = $suppressed ? 'rev-suppressed-no-diff' : 'rev-deleted-no-diff';
 				# Give explanation for why revision is not visible
-				$out->wrapWikiMsg( "<div id='mw-$msg' class='mw-warning plainlinks'>\n$1\n</div>\n",
-					[ $msg ] );
+				$out->addHtml(
+					Html::warningBox(
+						$this->msg( $msg )->parse(),
+						'plainlinks'
+					)
+				);
 			} else {
 				# Give explanation and add a link to view the diff...
 				$query = $this->getRequest()->appendQueryValue( 'unhide', '1' );
 				$link = $this->getTitle()->getFullURL( $query );
 				$msg = $suppressed ? 'rev-suppressed-unhide-diff' : 'rev-deleted-unhide-diff';
-				$out->wrapWikiMsg(
-					"<div id='mw-$msg' class='mw-warning plainlinks'>\n$1\n</div>\n",
-					[ $msg, $link ]
+				$out->addHtml(
+					Html::warningBox(
+						$this->msg( $msg, $link )->parse(),
+						'plainlinks'
+					)
 				);
 			}
 		# Otherwise, output a regular diff...
@@ -875,9 +886,10 @@ class DifferenceEngine extends ContextSource {
 			$notice = '';
 			if ( $deleted ) {
 				$msg = $suppressed ? 'rev-suppressed-diff-view' : 'rev-deleted-diff-view';
-				$notice = "<div id='mw-$msg' class='mw-warning plainlinks'>\n" .
-					$this->msg( $msg )->parse() .
-					"</div>\n";
+				$notice = Html::warningBox(
+					$this->msg( $msg )->parse(),
+					'plainlinks'
+				);
 			}
 			$this->showDiff( $oldHeader, $newHeader, $notice );
 			if ( !$diffOnly ) {
@@ -1085,7 +1097,7 @@ class DifferenceEngine extends ContextSource {
 	 * @param WikiPage $page
 	 * @param RevisionRecord $revRecord
 	 *
-	 * @return ParserOutput|bool False if the revision was not found
+	 * @return ParserOutput|false False if the revision was not found
 	 */
 	protected function getParserOutput( WikiPage $page, RevisionRecord $revRecord ) {
 		if ( !$revRecord->getId() ) {
@@ -1105,8 +1117,8 @@ class DifferenceEngine extends ContextSource {
 	 * Get the diff text, send it to the OutputPage object
 	 * Returns false if the diff could not be generated, otherwise returns true
 	 *
-	 * @param string|bool $otitle Header for old text or false
-	 * @param string|bool $ntitle Header for new text or false
+	 * @param string|false $otitle Header for old text or false
+	 * @param string|false $ntitle Header for new text or false
 	 * @param string $notice HTML between diff header and body
 	 *
 	 * @return bool
@@ -1146,8 +1158,8 @@ class DifferenceEngine extends ContextSource {
 	/**
 	 * Get complete diff table, including header
 	 *
-	 * @param string|bool $otitle Header for old text or false
-	 * @param string|bool $ntitle Header for new text or false
+	 * @param string|false $otitle Header for old text or false
+	 * @param string|false $ntitle Header for new text or false
 	 * @param string $notice HTML between diff header and body
 	 *
 	 * @return mixed
@@ -1172,7 +1184,7 @@ class DifferenceEngine extends ContextSource {
 	/**
 	 * Get the diff table body, without header
 	 *
-	 * @return mixed (string/false)
+	 * @return string|false
 	 */
 	public function getDiffBody() {
 		$this->mCacheHit = true;
@@ -1338,7 +1350,7 @@ class DifferenceEngine extends ContextSource {
 	 *
 	 * @since 1.31
 	 *
-	 * @return array
+	 * @return string[]
 	 * @throws MWException
 	 */
 	protected function getDiffBodyCacheKeyParams() {
@@ -1371,7 +1383,7 @@ class DifferenceEngine extends ContextSource {
 	/**
 	 * Implements DifferenceEngineSlotDiffRenderer::getExtraCacheKeys(). Only used when
 	 * DifferenceEngine is wrapped in DifferenceEngineSlotDiffRenderer.
-	 * @return array
+	 * @return string[]
 	 * @internal for use by DifferenceEngineSlotDiffRenderer only
 	 * @deprecated
 	 */
@@ -1570,6 +1582,9 @@ class DifferenceEngine extends ContextSource {
 			" -->\n";
 	}
 
+	/**
+	 * @return string
+	 */
 	private function getDebugString() {
 		$engine = self::getEngine();
 		if ( $engine === 'wikidiff2' ) {
@@ -1602,7 +1617,7 @@ class DifferenceEngine extends ContextSource {
 	 *
 	 * @param string $text
 	 *
-	 * @return mixed
+	 * @return string
 	 */
 	public function localiseLineNumbers( $text ) {
 		return preg_replace_callback(
@@ -1612,6 +1627,10 @@ class DifferenceEngine extends ContextSource {
 		);
 	}
 
+	/**
+	 * @param array $matches
+	 * @return string
+	 */
 	public function localiseLineNumbersCb( $matches ) {
 		if ( $matches[1] === '1' && $this->mReducedLineNumbers ) {
 			return '';
@@ -1953,14 +1972,13 @@ class DifferenceEngine extends ContextSource {
 	 * @phan-return (int|false)[]
 	 */
 	public function mapDiffPrevNext( $old, $new ) {
-		$rl = MediaWikiServices::getInstance()->getRevisionLookup();
 		if ( $new === 'prev' ) {
 			// Show diff between revision $old and the previous one. Get previous one from DB.
 			$newid = intval( $old );
 			$oldid = false;
-			$newRev = $rl->getRevisionById( $newid );
+			$newRev = $this->revisionStore->getRevisionById( $newid );
 			if ( $newRev ) {
-				$oldRev = $rl->getPreviousRevision( $newRev );
+				$oldRev = $this->revisionStore->getPreviousRevision( $newRev );
 				if ( $oldRev ) {
 					$oldid = $oldRev->getId();
 				}
@@ -1969,9 +1987,9 @@ class DifferenceEngine extends ContextSource {
 			// Show diff between revision $old and the next one. Get next one from DB.
 			$oldid = intval( $old );
 			$newid = false;
-			$oldRev = $rl->getRevisionById( $oldid );
+			$oldRev = $this->revisionStore->getRevisionById( $oldid );
 			if ( $oldRev ) {
-				$newRev = $rl->getNextRevision( $oldRev );
+				$newRev = $this->revisionStore->getNextRevision( $oldRev );
 				if ( $newRev ) {
 					$newid = $newRev->getId();
 				}

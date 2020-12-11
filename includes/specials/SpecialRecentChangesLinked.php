@@ -21,6 +21,10 @@
  * @ingroup SpecialPage
  */
 
+use MediaWiki\Permissions\PermissionManager;
+use MediaWiki\User\UserOptionsLookup;
+use Wikimedia\Rdbms\ILoadBalancer;
+
 /**
  * This is to display changes made to all articles linked in an article.
  *
@@ -30,8 +34,38 @@ class SpecialRecentChangesLinked extends SpecialRecentChanges {
 	/** @var bool|Title */
 	protected $rclTargetTitle;
 
-	public function __construct() {
-		parent::__construct( 'Recentchangeslinked' );
+	/** @var ILoadBalancer */
+	private $loadBalancer;
+
+	/** @var SearchEngineFactory */
+	private $searchEngineFactory;
+
+	/**
+	 * @param PermissionManager $permissionManager
+	 * @param WatchedItemStoreInterface $watchedItemStore
+	 * @param MessageCache $messageCache
+	 * @param ILoadBalancer $loadBalancer
+	 * @param UserOptionsLookup $userOptionsLookup
+	 * @param SearchEngineFactory $searchEngineFactory
+	 */
+	public function __construct(
+		PermissionManager $permissionManager,
+		WatchedItemStoreInterface $watchedItemStore,
+		MessageCache $messageCache,
+		ILoadBalancer $loadBalancer,
+		UserOptionsLookup $userOptionsLookup,
+		SearchEngineFactory $searchEngineFactory
+	) {
+		parent::__construct(
+			$permissionManager,
+			$watchedItemStore,
+			$messageCache,
+			$loadBalancer,
+			$userOptionsLookup
+		);
+		$this->mName = 'Recentchangeslinked';
+		$this->loadBalancer = $loadBalancer;
+		$this->searchEngineFactory = $searchEngineFactory;
 	}
 
 	public function getDefaultOptions() {
@@ -79,7 +113,7 @@ class SpecialRecentChangesLinked extends SpecialRecentChanges {
 		 * expects only one result set so we use UNION instead.
 		 */
 
-		$dbr = wfGetDB( DB_REPLICA, 'recentchangeslinked' );
+		$dbr = $this->loadBalancer->getConnectionRef( ILoadBalancer::DB_REPLICA, 'recentchangeslinked' );
 		$id = $title->getArticleID();
 		$ns = $title->getNamespace();
 		$dbkey = $title->getDBkey();
@@ -276,7 +310,7 @@ class SpecialRecentChangesLinked extends SpecialRecentChanges {
 	 * @return string[] Matching subpages
 	 */
 	public function prefixSearchSubpages( $search, $limit, $offset ) {
-		return $this->prefixSearchString( $search, $limit, $offset );
+		return $this->prefixSearchString( $search, $limit, $offset, $this->searchEngineFactory );
 	}
 
 	protected function outputNoResults() {

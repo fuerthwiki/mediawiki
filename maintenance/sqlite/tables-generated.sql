@@ -344,7 +344,7 @@ CREATE TABLE /*_*/watchlist (
 
 CREATE UNIQUE INDEX wl_user ON /*_*/watchlist (wl_user, wl_namespace, wl_title);
 
-CREATE INDEX namespace_title ON /*_*/watchlist (wl_namespace, wl_title);
+CREATE INDEX wl_namespace_title ON /*_*/watchlist (wl_namespace, wl_title);
 
 CREATE INDEX wl_user_notificationtimestamp ON /*_*/watchlist (
   wl_user, wl_notificationtimestamp
@@ -389,7 +389,7 @@ CREATE TABLE /*_*/user_newtalk (
 
 CREATE INDEX un_user_id ON /*_*/user_newtalk (user_id);
 
-CREATE INDEX un_user_ip ON /*_*/user_newtalk (user_id);
+CREATE INDEX un_user_ip ON /*_*/user_newtalk (user_ip);
 
 
 CREATE TABLE /*_*/interwiki (
@@ -474,4 +474,80 @@ CREATE INDEX actor_timestamp ON /*_*/revision_actor_temp (
 
 CREATE INDEX page_actor_timestamp ON /*_*/revision_actor_temp (
   revactor_page, revactor_actor, revactor_timestamp
+);
+
+
+CREATE TABLE /*_*/page_props (
+  pp_page INTEGER NOT NULL,
+  pp_propname BLOB NOT NULL,
+  pp_value BLOB NOT NULL,
+  pp_sortkey DOUBLE PRECISION DEFAULT NULL,
+  PRIMARY KEY(pp_page, pp_propname)
+);
+
+CREATE UNIQUE INDEX pp_propname_page ON /*_*/page_props (pp_propname, pp_page);
+
+CREATE UNIQUE INDEX pp_propname_sortkey_page ON /*_*/page_props (pp_propname, pp_sortkey, pp_page);
+
+
+CREATE TABLE /*_*/job (
+  job_id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+  job_cmd BLOB DEFAULT '' NOT NULL, job_namespace INTEGER NOT NULL,
+  job_title BLOB NOT NULL, job_timestamp BLOB DEFAULT NULL,
+  job_params BLOB NOT NULL, job_random INTEGER UNSIGNED DEFAULT 0 NOT NULL,
+  job_attempts INTEGER UNSIGNED DEFAULT 0 NOT NULL,
+  job_token BLOB DEFAULT '' NOT NULL,
+  job_token_timestamp BLOB DEFAULT NULL,
+  job_sha1 BLOB DEFAULT '' NOT NULL
+);
+
+CREATE INDEX job_sha1 ON /*_*/job (job_sha1);
+
+CREATE INDEX job_cmd_token ON /*_*/job (job_cmd, job_token, job_random);
+
+CREATE INDEX job_cmd_token_id ON /*_*/job (job_cmd, job_token, job_id);
+
+CREATE INDEX job_cmd ON /*_*/job (
+  job_cmd, job_namespace, job_title,
+  job_params
+);
+
+CREATE INDEX job_timestamp ON /*_*/job (job_timestamp);
+
+
+CREATE TABLE /*_*/slot_roles (
+  role_id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+  role_name BLOB NOT NULL
+);
+
+CREATE UNIQUE INDEX role_name ON /*_*/slot_roles (role_name);
+
+
+CREATE TABLE /*_*/content_models (
+  model_id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+  model_name BLOB NOT NULL
+);
+
+CREATE UNIQUE INDEX model_name ON /*_*/content_models (model_name);
+
+
+CREATE TABLE /*_*/categorylinks (
+  cl_from INTEGER UNSIGNED DEFAULT 0 NOT NULL,
+  cl_to BLOB DEFAULT '' NOT NULL,
+  cl_sortkey BLOB DEFAULT '' NOT NULL,
+  cl_sortkey_prefix BLOB DEFAULT '' NOT NULL,
+  cl_timestamp BLOB NOT NULL,
+  cl_collation BLOB DEFAULT '' NOT NULL,
+  cl_type TEXT DEFAULT 'page' NOT NULL,
+  PRIMARY KEY(cl_from, cl_to)
+);
+
+CREATE INDEX cl_sortkey ON /*_*/categorylinks (
+  cl_to, cl_type, cl_sortkey, cl_from
+);
+
+CREATE INDEX cl_timestamp ON /*_*/categorylinks (cl_to, cl_timestamp);
+
+CREATE INDEX cl_collation_ext ON /*_*/categorylinks (
+  cl_collation, cl_to, cl_type, cl_from
 );

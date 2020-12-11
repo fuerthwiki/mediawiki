@@ -72,7 +72,7 @@ use MediaWiki\HookContainer\HookRunner;
 use MediaWiki\Http\HttpRequestFactory;
 use MediaWiki\Interwiki\ClassicInterwikiLookup;
 use MediaWiki\Interwiki\InterwikiLookup;
-use MediaWiki\Json\JsonUnserializer;
+use MediaWiki\Json\JsonCodec;
 use MediaWiki\Languages\LanguageConverterFactory;
 use MediaWiki\Languages\LanguageFactory;
 use MediaWiki\Languages\LanguageFallback;
@@ -290,7 +290,16 @@ return [
 	},
 
 	'ContributionsLookup' => function ( MediaWikiServices $services ) : ContributionsLookup {
-		return new ContributionsLookup( $services->getRevisionStore() );
+		return new ContributionsLookup(
+			$services->getRevisionStore(),
+			$services->getLinkRenderer(),
+			$services->getLinkBatchFactory(),
+			$services->getHookContainer(),
+			$services->getPermissionManager(),
+			$services->getDBLoadBalancer(),
+			$services->getActorMigration(),
+			$services->getNamespaceInfo()
+		);
 	},
 
 	'CryptHKDF' => function ( MediaWikiServices $services ) : CryptHKDF {
@@ -529,15 +538,22 @@ return [
 		);
 	},
 
-	'JsonUnserializer' => function ( MediaWikiServices $services ) : JsonUnserializer {
-		return new JsonUnserializer();
+	'JsonCodec' => function ( MediaWikiServices $services ) : JsonCodec {
+		return new JsonCodec();
 	},
 
 	'LanguageConverterFactory' => function ( MediaWikiServices $services ) : LanguageConverterFactory {
 		$usePigLatinVariant = $services->getMainConfig()->get( 'UsePigLatinVariant' );
-		return new LanguageConverterFactory( $usePigLatinVariant, function () use ( $services ) {
-			return $services->getContentLanguage();
-		} );
+		$isConversionDisabled = $services->getMainConfig()->get( 'DisableLangConversion' );
+		$isTitleConversionDisabled = $services->getMainConfig()->get( 'DisableTitleConversion' );
+		return new LanguageConverterFactory(
+			$usePigLatinVariant,
+			$isConversionDisabled,
+			$isTitleConversionDisabled,
+			function () use ( $services ) {
+				return $services->getContentLanguage();
+			}
+		);
 	},
 
 	'LanguageFactory' => function ( MediaWikiServices $services ) : LanguageFactory {
@@ -865,7 +881,8 @@ return [
 			LoggerFactory::getInstance( 'OldRevisionImporter' ),
 			$services->getDBLoadBalancer(),
 			$services->getRevisionStore(),
-			$services->getSlotRoleRegistry()
+			$services->getSlotRoleRegistry(),
+			$services->getWikiPageFactory()
 		);
 	},
 
@@ -907,7 +924,7 @@ return [
 			$cache,
 			$config->get( 'CacheEpoch' ),
 			$services->getHookContainer(),
-			$services->getJsonUnserializer(),
+			$services->getJsonCodec(),
 			$services->getStatsdDataFactory(),
 			LoggerFactory::getInstance( 'ParserCache' ),
 			$config->get( 'ParserCacheUseJson' )
@@ -946,7 +963,13 @@ return [
 	'ParserOutputAccess' => function ( MediaWikiServices $services ) : ParserOutputAccess {
 		return new ParserOutputAccess(
 			$services->getParserCache(),
-			$services->getStatsdDataFactory()
+			$services->getMainWANObjectCache(),
+			$services->getMainConfig()->get( 'OldRevisionParserCacheExpireTime' ),
+			$services->getRevisionRenderer(),
+			$services->getStatsdDataFactory(),
+			$services->getDBLoadBalancerFactory(),
+			$services->getJsonCodec(),
+			LoggerFactory::getProvider()
 		);
 	},
 
@@ -1526,7 +1549,8 @@ return [
 			LoggerFactory::getInstance( 'OldRevisionImporter' ),
 			$services->getDBLoadBalancer(),
 			$services->getRevisionStore(),
-			$services->getSlotRoleRegistry()
+			$services->getSlotRoleRegistry(),
+			$services->getWikiPageFactory()
 		);
 	},
 

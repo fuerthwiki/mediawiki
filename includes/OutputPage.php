@@ -2993,6 +2993,7 @@ class OutputPage extends ContextSource {
 				'noscript',
 				'user.styles',
 			] );
+			$this->getSkin()->doSetupSkinUserCss( $this );
 
 			// Prepare exempt modules for buildExemptModules()
 			$exemptGroups = [ 'site' => [], 'noscript' => [], 'private' => [], 'user' => [] ];
@@ -3604,7 +3605,10 @@ class OutputPage extends ContextSource {
 		] );
 
 		# Language variants
-		if ( !$config->get( 'DisableLangConversion' ) ) {
+		$services = MediaWikiServices::getInstance();
+		$disableLangConversion =
+			$services->getLanguageConverterFactory()->isConversionDisabled();
+		if ( !$disableLangConversion ) {
 			$lang = $this->getTitle()->getPageLanguage();
 			if ( $lang->hasVariants() ) {
 				$variants = $lang->getVariants();

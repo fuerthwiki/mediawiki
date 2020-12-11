@@ -48,7 +48,10 @@ class LoadBalancer implements ILoadBalancer {
 	private $srvCache;
 	/** @var WANObjectCache */
 	private $wanCache;
-	/** @var mixed Class name or object With profileIn/profileOut methods */
+	/**
+	 * @var callable|null An optional callback that returns a ScopedCallback instance,
+	 * meant to profile the actual query execution in {@see Database::doQuery}
+	 */
 	private $profiler;
 	/** @var TransactionProfiler */
 	private $trxProfiler;
@@ -2264,7 +2267,8 @@ class LoadBalancer implements ILoadBalancer {
 		}
 
 		if ( !$pos ) {
-			// Get the current master position, opening a connection if needed
+			// Get the current master position, opening a connection only if needed
+			$this->replLogger->debug( __METHOD__ . ': no position passed; using current' );
 			$index = $this->getWriterIndex();
 			$flags = self::CONN_SILENCE_ERRORS;
 			$masterConn = $this->getAnyOpenConnection( $index, $flags );
@@ -2284,24 +2288,13 @@ class LoadBalancer implements ILoadBalancer {
 		}
 
 		if ( $pos instanceof DBMasterPos ) {
-			$start = microtime( true );
+			$this->replLogger->debug( __METHOD__ . ': waiting' );
 			$result = $conn->masterPosWait( $pos, $timeout );
-			$seconds = max( microtime( true ) - $start, 0 );
-
 			$ok = ( $result !== null && $result != -1 );
 			if ( $ok ) {
-				$this->replLogger->warning(
-					__METHOD__ . ': timed out waiting on {dbserver} pos {pos} [{seconds}s]',
-					[
-						'dbserver' => $conn->getServer(),
-						'db_domain' => $conn->getDomainID(),
-						'pos' => $pos,
-						'seconds' => round( $seconds, 6 ),
-						'exception' => new RuntimeException(),
-					]
-				);
+				$this->replLogger->debug( __METHOD__ . ': done waiting (success)' );
 			} else {
-				$this->replLogger->debug( __METHOD__ . ': done waiting' );
+				$this->replLogger->debug( __METHOD__ . ': done waiting (failure)' );
 			}
 		} else {
 			$ok = false; // something is misconfigured

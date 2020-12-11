@@ -44,7 +44,7 @@ class ChangeTagsConstraint implements IEditConstraint {
 
 	/**
 	 * @param User $user
-	 * @param array $tags
+	 * @param string[] $tags
 	 */
 	public function __construct(
 		User $user,
@@ -55,6 +55,11 @@ class ChangeTagsConstraint implements IEditConstraint {
 	}
 
 	public function checkConstraint() : string {
+		if ( !$this->tags ) {
+			$this->result = self::CONSTRAINT_PASSED;
+			return self::CONSTRAINT_PASSED;
+		}
+
 		// TODO inject a service once canAddTagsAccompanyingChange is moved to a
 		// service as part of T245964
 		$changeTagStatus = ChangeTags::canAddTagsAccompanyingChange(

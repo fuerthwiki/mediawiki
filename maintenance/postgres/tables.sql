@@ -52,15 +52,16 @@ CREATE TABLE page (
   page_lang          TEXT                     DEFAULT NULL
 );
 ALTER SEQUENCE page_page_id_seq OWNED BY page.page_id;
-CREATE UNIQUE INDEX page_unique_name ON page (page_namespace, page_title);
+CREATE UNIQUE INDEX name_title       ON page (page_namespace, page_title);
 CREATE INDEX page_main_title         ON page (page_title text_pattern_ops) WHERE page_namespace = 0;
 CREATE INDEX page_talk_title         ON page (page_title text_pattern_ops) WHERE page_namespace = 1;
 CREATE INDEX page_user_title         ON page (page_title text_pattern_ops) WHERE page_namespace = 2;
 CREATE INDEX page_utalk_title        ON page (page_title text_pattern_ops) WHERE page_namespace = 3;
 CREATE INDEX page_project_title      ON page (page_title text_pattern_ops) WHERE page_namespace = 4;
 CREATE INDEX page_mediawiki_title    ON page (page_title text_pattern_ops) WHERE page_namespace = 8;
-CREATE INDEX page_random_idx         ON page (page_random);
-CREATE INDEX page_len_idx            ON page (page_len);
+CREATE INDEX page_random             ON page (page_random);
+CREATE INDEX page_len                ON page (page_len);
+CREATE INDEX page_redirect_namespace_len ON page (page_is_redirect, page_namespace, page_len);
 
 CREATE FUNCTION page_deleted() RETURNS TRIGGER LANGUAGE plpgsql AS
 $mw$
@@ -100,15 +101,6 @@ CREATE TABLE pagecontent ( -- replaces reserved word 'text'
 );
 ALTER SEQUENCE text_old_id_seq OWNED BY pagecontent.old_id;
 
-CREATE TABLE page_props (
-  pp_page      INTEGER  NOT NULL  REFERENCES page (page_id) ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED,
-  pp_propname  TEXT     NOT NULL,
-  pp_value     TEXT     NOT NULL,
-  pp_sortkey   FLOAT
-);
-ALTER TABLE page_props ADD CONSTRAINT page_props_pk PRIMARY KEY (pp_page,pp_propname);
-CREATE UNIQUE INDEX pp_propname_page ON page_props (pp_propname,pp_page);
-CREATE INDEX pp_propname_sortkey_page ON page_props (pp_propname, pp_sortkey, pp_page) WHERE (pp_sortkey IS NOT NULL);
 
 CREATE SEQUENCE archive_ar_id_seq;
 CREATE TABLE archive (
@@ -130,38 +122,6 @@ ALTER SEQUENCE archive_ar_id_seq OWNED BY archive.ar_id;
 CREATE INDEX archive_name_title_timestamp ON archive (ar_namespace,ar_title,ar_timestamp);
 CREATE INDEX archive_actor                ON archive (ar_actor);
 CREATE UNIQUE INDEX ar_revid_uniq ON archive (ar_rev_id);
-
-CREATE SEQUENCE slot_roles_role_id_seq;
-CREATE TABLE slot_roles (
-  role_id    SMALLINT  NOT NULL PRIMARY KEY DEFAULT nextval('slot_roles_role_id_seq'),
-  role_name  TEXT      NOT NULL
-);
-ALTER SEQUENCE slot_roles_role_id_seq OWNED BY slot_roles.role_id;
-
-CREATE UNIQUE INDEX role_name ON slot_roles (role_name);
-
-
-CREATE SEQUENCE content_models_model_id_seq;
-CREATE TABLE content_models (
-  model_id    SMALLINT  NOT NULL PRIMARY KEY DEFAULT nextval('content_models_model_id_seq'),
-  model_name  TEXT      NOT NULL
-);
-ALTER SEQUENCE content_models_model_id_seq OWNED BY content_models.model_id;
-
-CREATE UNIQUE INDEX model_name ON content_models (model_name);
-
-
-CREATE TABLE categorylinks (
-  cl_from           INTEGER      NOT NULL  REFERENCES page(page_id) ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED,
-  cl_to             TEXT         NOT NULL,
-  cl_sortkey        TEXT             NULL,
-  cl_timestamp      TIMESTAMPTZ  NOT NULL,
-  cl_sortkey_prefix TEXT         NOT NULL  DEFAULT '',
-  cl_collation      TEXT         NOT NULL  DEFAULT 0,
-  cl_type           TEXT         NOT NULL  DEFAULT 'page'
-);
-CREATE UNIQUE INDEX cl_from ON categorylinks (cl_from, cl_to);
-CREATE INDEX cl_sortkey     ON categorylinks (cl_to, cl_sortkey, cl_from);
 
 
 CREATE SEQUENCE ipblocks_ipb_id_seq;
@@ -352,36 +312,15 @@ CREATE TABLE logging (
   log_page        INTEGER
 );
 ALTER SEQUENCE logging_log_id_seq OWNED BY logging.log_id;
-CREATE INDEX logging_type_name ON logging (log_type, log_timestamp);
-CREATE INDEX logging_actor_time_backwards ON logging (log_timestamp, log_actor);
-CREATE INDEX logging_page_time ON logging (log_namespace, log_title, log_timestamp);
-CREATE INDEX logging_times ON logging (log_timestamp);
-CREATE INDEX logging_actor_type_time ON logging (log_actor, log_type, log_timestamp);
-CREATE INDEX logging_page_id_time ON logging (log_page, log_timestamp);
+CREATE INDEX type_time ON logging (log_type, log_timestamp);
+CREATE INDEX actor_time ON logging (log_actor, log_timestamp);
+CREATE INDEX page_time ON logging (log_namespace, log_title, log_timestamp);
+CREATE INDEX times ON logging (log_timestamp);
+CREATE INDEX log_actor_type_time ON logging (log_actor, log_type, log_timestamp);
+CREATE INDEX log_page_id_time ON logging (log_page, log_timestamp);
+CREATE INDEX log_type_action ON logging (log_type, log_action, log_timestamp);
+
 CREATE INDEX logging_actor_time ON logging (log_actor, log_timestamp);
-CREATE INDEX logging_type_action ON logging (log_type, log_action, log_timestamp);
-
-
-CREATE SEQUENCE job_job_id_seq;
-CREATE TABLE job (
-  job_id              INTEGER   NOT NULL  PRIMARY KEY DEFAULT nextval('job_job_id_seq'),
-  job_cmd             TEXT      NOT NULL,
-  job_namespace       SMALLINT  NOT NULL,
-  job_title           TEXT      NOT NULL,
-  job_timestamp       TIMESTAMPTZ,
-  job_params          TEXT      NOT NULL,
-  job_random          INTEGER   NOT NULL DEFAULT 0,
-  job_attempts        INTEGER   NOT NULL DEFAULT 0,
-  job_token           TEXT      NOT NULL DEFAULT '',
-  job_token_timestamp TIMESTAMPTZ,
-  job_sha1            TEXT NOT NULL DEFAULT ''
-);
-ALTER SEQUENCE job_job_id_seq OWNED BY job.job_id;
-CREATE INDEX job_sha1 ON job (job_sha1);
-CREATE INDEX job_cmd_token ON job (job_cmd, job_token, job_random);
-CREATE INDEX job_cmd_token_id ON job (job_cmd, job_token, job_id);
-CREATE INDEX job_cmd_namespace_title ON job (job_cmd, job_namespace, job_title);
-CREATE INDEX job_timestamp_idx ON job (job_timestamp);
 
 -- Tsearch2 2 stuff. Will fail if we don't have proper access to the tsearch2 tables
 -- Make sure you also change patch-tsearch2funcs.sql if the funcs below change.

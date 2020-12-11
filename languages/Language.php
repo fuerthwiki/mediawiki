@@ -3270,7 +3270,7 @@ class Language {
 	 * Internal implementation function, shared between commafy, formatNum,
 	 * and formatNumNoSeparators.
 	 *
-	 * @param string $number
+	 * @param string $number The stringification of a valid PHP number
 	 * @param bool $noTranslate Whether to translate digits and separators
 	 * @param bool $noSeparators Whether to add separators
 	 * @return string
@@ -3283,6 +3283,15 @@ class Language {
 		if ( $number === '' ) {
 			return $number;
 		}
+		if ( $number === (string)NAN ) {
+			return $this->msg( 'formatnum-nan' )->text();
+		}
+		if ( $number === (string)INF ) {
+			return "∞";
+		}
+		if ( $number === (string)-INF ) {
+			return "\u{2212}∞";
+		}
 		if ( !is_numeric( $number ) ) {
 			# T267587: downgrade this to level:warn while we chase down the long
 			# trail of callers.
@@ -3291,9 +3300,11 @@ class Language {
 				'Language::formatNum with non-numeric string',
 				[ 'number' => $number ]
 			);
-			$validNumberRe = '(-(?=[\d\.]))?(\d+|(?=\.\d))(\.\d*)?';
+			$validNumberRe = '(-(?=[\d\.]))?(\d+|(?=\.\d))(\.\d*)?([Ee][-+]?\d+)?';
 			// For backwards-compat, apply formatNum piecewise on the valid
-			// numbers in the string.
+			// numbers in the string. Don't split on NAN/INF in this legacy
+			// case as they are likely to be found embedded inside non-numeric
+			// text.
 			return preg_replace_callback( "/{$validNumberRe}/", function ( $m )  use ( $noTranslate, $noSeparators ) {
 				return $this->formatNumInternal( $m[0], $noTranslate, $noSeparators );
 			}, $number );
@@ -3302,7 +3313,10 @@ class Language {
 		if ( !$noSeparators ) {
 			$separatorTransformTable = $this->separatorTransformTable();
 			$digitGroupingPattern = $this->digitGroupingPattern();
-			$code = $wgTranslateNumerals ? $this->getCode() : 'C';
+			$code = $this->getCode();
+			if ( !( $wgTranslateNumerals && $this->langNameUtils->isValidCode( $code ) ) ) {
+				$code = 'C'; // POSIX system default locale
+			}
 
 			if ( $digitGroupingPattern ) {
 				$fmt = new NumberFormatter(
@@ -3374,13 +3388,18 @@ class Language {
 			}
 		}
 
-		if ( $wgTranslateNumerals && !$noTranslate ) {
-			// This is often unnecessary: PHP's NumberFormatter will often
-			// do the digit transform itself (T267614)
-			$s = $this->digitTransformTable();
-			if ( $s ) {
-				$number = strtr( $number, $s );
+		if ( !$noTranslate ) {
+			if ( $wgTranslateNumerals ) {
+				// This is often unnecessary: PHP's NumberFormatter will often
+				// do the digit transform itself (T267614)
+				$s = $this->digitTransformTable();
+				if ( $s ) {
+					$number = strtr( $number, $s );
+				}
 			}
+			# T10327: Make our formatted numbers prettier by using a
+			# proper Unicode 'minus' character.
+			$number = strtr( $number, [ '-' => "\u{2212}" ] );
 		}
 
 		// Remove any LRM or RLM characters generated from NumberFormatter,
@@ -3414,6 +3433,18 @@ class Language {
 	 * @return string
 	 */
 	public function parseFormattedNumber( $number ) {
+		if ( $number === $this->msg( 'formatnum-nan' )->text() ) {
+			return (string)NAN;
+		}
+		if ( $number === "∞" ) {
+			return (string)INF;
+		}
+		// Accept either ASCII hyphen-minus or the unicode minus emitted by
+		// ::formatNum()
+		$number = strtr( $number, [ "\u{2212}" => '-' ] );
+		if ( $number === "-∞" ) {
+			return (string)-INF;
+		}
 		$s = $this->digitTransformTable();
 		if ( $s ) {
 			// eliminate empty array values such as ''. (T66347)
@@ -3863,7 +3894,6 @@ class Language {
 			if ( $tagType == 0 && $lastCh != '/' ) {
 				$openTags[] = $tag; // tag opened (didn't close itself)
 			} elseif ( $tagType == 1 ) {
-				// @phan-suppress-next-line PhanRedundantCondition
 				if ( $openTags && $tag == $openTags[count( $openTags ) - 1] ) {
 					array_pop( $openTags ); // tag closed
 				}
@@ -4119,14 +4149,14 @@ class Language {
 		$duration = SpecialBlock::getSuggestedDurations( $this );
 		foreach ( $duration as $show => $value ) {
 			if ( strcmp( $str, $value ) == 0 ) {
-				return htmlspecialchars( trim( $show ) );
+				return trim( $show );
 			}
 		}
 
 		if ( wfIsInfinity( $str ) ) {
 			foreach ( $duration as $show => $value ) {
 				if ( wfIsInfinity( $value ) ) {
-					return htmlspecialchars( trim( $show ) );
+					return trim( $show );
 				}
 			}
 		}

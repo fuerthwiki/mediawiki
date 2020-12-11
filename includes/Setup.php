@@ -773,7 +773,7 @@ if ( !defined( 'MW_NO_SESSION' ) && !$wgCommandLineMode ) {
 $wgUser = RequestContext::getMain()->getUser(); // BackCompat
 
 /**
- * @var Language $wgLang
+ * @var Language|StubUserLang $wgLang
  */
 $wgLang = new StubUserLang;
 
@@ -791,7 +791,7 @@ $wgParser = new DeprecatedGlobal( 'wgParser', function () {
 }, '1.32' );
 
 /**
- * @var Title $wgTitle
+ * @var Title|null $wgTitle
  */
 $wgTitle = null;
 
@@ -808,7 +808,9 @@ unset( $func ); // no global pollution; destroy reference
 // autocreate it.
 if ( !defined( 'MW_NO_SESSION' ) && !$wgCommandLineMode ) {
 	$sessionUser = MediaWiki\Session\SessionManager::getGlobalSession()->getUser();
-	if ( $sessionUser->getId() === 0 && User::isValidUserName( $sessionUser->getName() ) ) {
+	if ( $sessionUser->getId() === 0 &&
+		MediaWikiServices::getInstance()->getUserNameUtils()->isValid( $sessionUser->getName() )
+	) {
 		$res = MediaWikiServices::getInstance()->getAuthManager()->autoCreateUser(
 			$sessionUser,
 			MediaWiki\Auth\AuthManager::AUTOCREATE_SOURCE_SESSION,

@@ -313,6 +313,12 @@ class SqliteUpdater extends DatabaseUpdater {
 			[ 'modifyField', 'protected_titles', 'pt_expiry', 'patch-protected_titles-pt_expiry-drop-default.sql' ],
 			[ 'modifyField', 'ip_changes', 'ipc_rev_timestamp',  'patch-ip_changes-pc_rev_timestamp-drop-default.sql' ],
 			[ 'modifyField', 'revision_actor_temp', 'revactor_timestamp', 'patch-revactor_timestamp-drop-default.sql' ],
+			[ 'renameIndex', 'watchlist', 'namespace_title', 'wl_namespace_title', false,
+				'patch-watchlist-namespace_title-rename-index.sql' ],
+			[ 'modifyField', 'job', 'job_title', 'patch-job-job_title-varbinary.sql' ],
+			[ 'modifyField', 'slot_roles', 'role_id', 'patch-slot_roles-role_id-fix_not_null.sql' ],
+			[ 'modifyField', 'content_models', 'model_id', 'patch-content_models-model_id-fix_not_null.sql' ],
+			[ 'modifyField', 'categorylinks', 'cl_to', 'patch-categorylinks-cl_to-varbinary.sql' ],
 		];
 	}
 

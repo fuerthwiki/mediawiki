@@ -57,6 +57,9 @@ class ApiQueryWatchlist extends ApiQueryGeneratorBase {
 		$fld_notificationtimestamp = false, $fld_userid = false,
 		$fld_loginfo = false, $fld_tags;
 
+	/** @var bool */
+	private $fld_expiry = false;
+
 	/**
 	 * @param ApiPageSet|null $resultPageSet
 	 * @return void
@@ -85,6 +88,7 @@ class ApiQueryWatchlist extends ApiQueryGeneratorBase {
 			$this->fld_notificationtimestamp = isset( $prop['notificationtimestamp'] );
 			$this->fld_loginfo = isset( $prop['loginfo'] );
 			$this->fld_tags = isset( $prop['tags'] );
+			$this->fld_expiry = isset( $prop['expiry'] );
 
 			if ( $this->fld_patrol && !$user->useRCPatrol() && !$user->useNPPatrol() ) {
 				$this->dieWithError( 'apierror-permissiondenied-patrolflag', 'patrol' );
@@ -241,10 +245,10 @@ class ApiQueryWatchlist extends ApiQueryGeneratorBase {
 		if ( $this->fld_flags ) {
 			$includeFields[] = WatchedItemQueryService::INCLUDE_FLAGS;
 		}
-		if ( $this->fld_user || $this->fld_userid ) {
+		if ( $this->fld_user || $this->fld_userid || $this->fld_loginfo ) {
 			$includeFields[] = WatchedItemQueryService::INCLUDE_USER_ID;
 		}
-		if ( $this->fld_user ) {
+		if ( $this->fld_user || $this->fld_loginfo ) {
 			$includeFields[] = WatchedItemQueryService::INCLUDE_USER;
 		}
 		if ( $this->fld_comment || $this->fld_parsedcomment ) {
@@ -410,7 +414,10 @@ class ApiQueryWatchlist extends ApiQueryGeneratorBase {
 				$vals['logid'] = (int)$recentChangeInfo['rc_logid'];
 				$vals['logtype'] = $recentChangeInfo['rc_log_type'];
 				$vals['logaction'] = $recentChangeInfo['rc_log_action'];
-				$vals['logparams'] = LogFormatter::newFromRow( $recentChangeInfo )->formatParametersForApi();
+
+				$logFormatter = LogFormatter::newFromRow( $recentChangeInfo );
+				$vals['logparams'] = $logFormatter->formatParametersForApi();
+				$vals['logdisplay'] = $logFormatter->getActionText();
 			}
 		}
 
@@ -422,6 +429,12 @@ class ApiQueryWatchlist extends ApiQueryGeneratorBase {
 			} else {
 				$vals['tags'] = [];
 			}
+		}
+
+		if ( $this->fld_expiry ) {
+			// Add expiration, T263796
+			$expiry = $watchedItem->getExpiry( TS_ISO_8601 );
+			$vals['expiry'] = ( $expiry === null ? false : $expiry );
 		}
 
 		if ( $anyHidden && ( $recentChangeInfo['rc_deleted'] & RevisionRecord::DELETED_RESTRICTED ) ) {
@@ -488,6 +501,7 @@ class ApiQueryWatchlist extends ApiQueryGeneratorBase {
 					'notificationtimestamp',
 					'loginfo',
 					'tags',
+					'expiry',
 				]
 			],
 			'show' => [
@@ -533,6 +547,8 @@ class ApiQueryWatchlist extends ApiQueryGeneratorBase {
 				=> 'apihelp-query+watchlist-example-simple',
 			'action=query&list=watchlist&wlprop=ids|title|timestamp|user|comment'
 				=> 'apihelp-query+watchlist-example-props',
+			'action=query&list=watchlist&wlprop=ids|title|timestamp|user|comment|expiry'
+				=> 'apihelp-query+watchlist-example-expiry',
 			'action=query&list=watchlist&wlallrev=&wlprop=ids|title|timestamp|user|comment'
 				=> 'apihelp-query+watchlist-example-allrev',
 			'action=query&generator=watchlist&prop=info'

@@ -23,12 +23,19 @@ namespace MediaWiki\Page;
 
 use IBufferingStatsdDataFactory;
 use InvalidArgumentException;
+use MediaWiki\Json\JsonCodec;
+use MediaWiki\Logger\Spi as LoggerSpi;
 use MediaWiki\Revision\RevisionRecord;
+use MediaWiki\Revision\RevisionRenderer;
 use ParserCache;
 use ParserOptions;
 use ParserOutput;
 use PoolWorkArticleView;
+use PoolWorkArticleViewCurrent;
+use PoolWorkArticleViewOld;
 use Status;
+use WANObjectCache;
+use Wikimedia\Rdbms\ILBFactory;
 use WikiPage;
 
 /**
@@ -59,6 +66,7 @@ class ParserOutputAccess {
 	/**
 	 * @var int Bypass audience check for deleted/suppressed revisions.
 	 *      The caller is responsible for ensuring that unauthorized access is prevented.
+	 *      If not set, output generation will fail if the revision is not public.
 	 */
 	public const OPT_NO_AUDIENCE_CHECK = 4;
 
@@ -68,22 +76,69 @@ class ParserOutputAccess {
 	 */
 	public const OPT_NO_CACHE = self::OPT_NO_UPDATE_CACHE | self::OPT_NO_CHECK_CACHE;
 
+	/** @var string Do not read or write any cache */
+	private const CACHE_NONE = 'none';
+
+	/** @var string Use primary cache */
+	private const CACHE_PRIMARY = 'primary';
+
+	/** @var string Use secondary cache */
+	private const CACHE_SECONDARY = 'secondary';
+
 	/** @var ParserCache */
 	private $primaryCache;
+
+	/**
+	 * @var WANObjectCache
+	 */
+	private $secondaryCache;
+
+	/** @var int */
+	private $secondaryCacheExpiry;
+
+	/** @var RevisionRenderer */
+	private $revisionRenderer;
 
 	/** @var IBufferingStatsdDataFactory */
 	private $statsDataFactory;
 
+	/** @var ILBFactory */
+	private $lbFactory;
+
+	/** @var JsonCodec */
+	private $jsonCodec;
+
+	/** @var LoggerSpi */
+	private $loggerSpi;
+
 	/**
 	 * @param ParserCache $primaryCache
+	 * @param WANObjectCache $secondaryCache
+	 * @param int $secondaryCacheExpiry
+	 * @param RevisionRenderer $revisionRenderer
 	 * @param IBufferingStatsdDataFactory $statsDataFactory
+	 * @param ILBFactory $lbFactory
+	 * @param JsonCodec $jsonCodec
+	 * @param LoggerSpi $loggerSpi
 	 */
 	public function __construct(
 		ParserCache $primaryCache,
-		IBufferingStatsdDataFactory $statsDataFactory
+		WANObjectCache $secondaryCache,
+		int $secondaryCacheExpiry,
+		RevisionRenderer $revisionRenderer,
+		IBufferingStatsdDataFactory $statsDataFactory,
+		ILBFactory $lbFactory,
+		JsonCodec $jsonCodec,
+		LoggerSpi $loggerSpi
 	) {
 		$this->primaryCache = $primaryCache;
+		$this->secondaryCache = $secondaryCache;
+		$this->secondaryCacheExpiry = $secondaryCacheExpiry;
+		$this->revisionRenderer = $revisionRenderer;
 		$this->statsDataFactory = $statsDataFactory;
+		$this->lbFactory = $lbFactory;
+		$this->jsonCodec = $jsonCodec;
+		$this->loggerSpi = $loggerSpi;
 	}
 
 	/**
@@ -93,7 +148,7 @@ class ParserOutputAccess {
 	 * @param ParserOptions $parserOptions ParserOptions to check
 	 * @param RevisionRecord|null $rev
 	 *
-	 * @return bool
+	 * @return string One of the CACHE_XXX constants.
 	 */
 	private function shouldUseCache(
 		WikiPage $page,
@@ -102,15 +157,34 @@ class ParserOutputAccess {
 	) {
 		if ( $rev && !$rev->getId() ) {
 			// The revision isn't from the database, so the output can't safely be cached.
-			return false;
+			return self::CACHE_NONE;
 		}
 
 		// NOTE: Keep in sync with ParserWikiPage::shouldCheckParserCache().
-		$oldId = $rev ? $rev->getId() : 0;
-		return $parserOptions->getStubThreshold() == 0
-			&& $page->exists()
-			&& ( $oldId === null || $oldId === 0 || $oldId === $page->getLatest() )
-			&& $page->getContentHandler()->isParserCacheSupported();
+		// NOTE: when we allow caching of old revisions in the future,
+		//       we must not allow caching of deleted revisions.
+
+		if ( $parserOptions->getStubThreshold() !== 0
+			|| !$page->exists()
+			|| !$page->getContentHandler()->isParserCacheSupported()
+		) {
+			return self::CACHE_NONE;
+		}
+
+		if ( !$rev || $rev->getId() === $page->getLatest() ) {
+			// current revision
+			return self::CACHE_PRIMARY;
+		}
+
+		if ( !$rev->audienceCan( RevisionRecord::DELETED_TEXT, RevisionRecord::FOR_PUBLIC ) ) {
+			// deleted/suppressed revision
+			return self::CACHE_NONE;
+		}
+
+		if ( $this->secondaryCacheExpiry > 0 ) {
+			return self::CACHE_SECONDARY;
+		}
+		return self::CACHE_NONE;
 	}
 
 	/**
@@ -134,11 +208,20 @@ class ParserOutputAccess {
 			return null;
 		}
 
-		if ( !$this->shouldUseCache( $page, $parserOptions, $revision ) ) {
-			return null;
+		$useCache = $this->shouldUseCache( $page, $parserOptions, $revision );
+
+		if ( $useCache === self::CACHE_PRIMARY ) {
+			$output = $this->primaryCache->get( $page, $parserOptions );
+		} elseif ( $useCache === self::CACHE_SECONDARY ) {
+			$cacheKey = $this->getSecondaryCacheKey( $parserOptions, $revision );
+			$json = $this->secondaryCache->get( $cacheKey );
+			$output = $json ? $this->jsonCodec->unserialize( $json ) : null;
+		} else {
+			$output = null;
 		}
 
-		$output = $this->primaryCache->get( $page, $parserOptions );
+		$hitOrMiss = $output ? 'hit' : 'miss';
+		$this->statsDataFactory->increment( "ParserOutputAccess.Cache.$useCache.$hitOrMiss" );
 
 		return $output ?: null; // convert false to null
 	}
@@ -171,34 +254,31 @@ class ParserOutputAccess {
 		?RevisionRecord $revision = null,
 		int $options = 0
 	): Status {
-		if ( !$page->exists() ) {
-			return Status::newFatal( 'nopagetext' );
+		$error = $this->checkPreconditions( $page, $revision, $options );
+		if ( $error ) {
+			$this->statsDataFactory->increment( "ParserOutputAccess.Case.error" );
+			return $error;
 		}
 
-		if ( !( $options & self::OPT_NO_UPDATE_CACHE ) ) {
-			if ( !$parserOptions->isSafeToCache() ) {
-				throw new InvalidArgumentException(
-					'The supplied ParserOptions are not safe to cache. Use NO_CACHE.'
-				);
-			}
-
-			if ( $revision && !$revision->getId() ) {
-				throw new InvalidArgumentException(
-					'The revision does not have a known ID. Use NO_CACHE.'
-				);
-			}
-		}
-
-		if ( $revision && $revision->getPageId() !== $page->getId() ) {
-			throw new InvalidArgumentException(
-				'The revision does not belong to the given page.'
-			);
-		}
+		$currentOrOld = ( $revision && $revision->getId() !== $page->getLatest() ) ? 'old' : 'current';
+		$this->statsDataFactory->increment( "ParserOutputAccess.Case.$currentOrOld" );
 
 		if ( !( $options & self::OPT_NO_CHECK_CACHE ) ) {
 			$output = $this->getCachedParserOutput( $page, $parserOptions, $revision );
 			if ( $output ) {
 				return Status::newGood( $output );
+			}
+		}
+
+		if ( !$revision ) {
+			$revision = $page->getRevisionRecord();
+
+			if ( !$revision ) {
+				$this->statsDataFactory->increment( "ParserOutputAccess.Status.norev" );
+				return Status::newFatal(
+					'missing-revision',
+					$page->getLatest()
+				);
 			}
 		}
 
@@ -228,7 +308,72 @@ class ParserOutputAccess {
 			$status->warning( $staleReason );
 		}
 
+		if ( $status->isGood() ) {
+			$statusMsg = 'good';
+		} elseif ( $status->isOK() ) {
+			$statusMsg = 'ok';
+		} else {
+			$statusMsg = 'error';
+		}
+
+		$this->statsDataFactory->increment( "ParserOutputAccess.Status.$statusMsg" );
 		return $status;
+	}
+
+	/**
+	 * @param WikiPage $page
+	 * @param RevisionRecord|null $revision
+	 * @param int $options
+	 *
+	 * @return Status|null
+	 */
+	private function checkPreconditions(
+		WikiPage $page,
+		?RevisionRecord $revision = null,
+		int $options = 0
+	): ?Status {
+		if ( !$page->exists() ) {
+			return Status::newFatal( 'nopagetext' );
+		}
+
+		if ( !( $options & self::OPT_NO_UPDATE_CACHE ) && $revision && !$revision->getId() ) {
+			throw new InvalidArgumentException(
+				'The revision does not have a known ID. Use NO_CACHE.'
+			);
+		}
+
+		if ( $revision && $revision->getPageId() !== $page->getId() ) {
+			throw new InvalidArgumentException(
+				'The revision does not belong to the given page.'
+			);
+		}
+
+		if ( $revision && !( $options & self::OPT_NO_AUDIENCE_CHECK ) ) {
+			// NOTE: If per-user checks are desired, the caller should perform them and
+			//       then set OPT_NO_AUDIENCE_CHECK if they passed.
+			if ( !$revision->audienceCan( RevisionRecord::DELETED_TEXT, RevisionRecord::FOR_PUBLIC ) ) {
+				return Status::newFatal(
+					'missing-revision-permission',
+					$revision->getId(),
+					$revision->getTimestamp(),
+					$page->getTitle()->getPrefixedDBkey()
+				);
+			}
+		}
+
+		return null;
+	}
+
+	private function getSecondaryCacheKey(
+		ParserOptions $parserOptions,
+		?RevisionRecord $revision
+	) {
+		// NOTE: For now, split the cache on all options. Eventually, we may implement a
+		//       two-tiered system like in ParserCache, or generalize ParserCache itself
+		//       to cover old revisions.
+		$revId = $revision ? $revision->getId() : 0;
+		$hash = $parserOptions->optionsHash( ParserOptions::allCacheVaryingOptions() );
+		return $this->secondaryCache->makeKey( __CLASS__, $hash, self::CACHE_SECONDARY, $revId );
 	}
 
 	/**
@@ -242,31 +387,63 @@ class ParserOutputAccess {
 	private function newPoolWorkArticleView(
 		WikiPage $page,
 		ParserOptions $parserOptions,
-		?RevisionRecord $revision,
+		RevisionRecord $revision,
 		int $options
 	): PoolWorkArticleView {
 		if ( $options & self::OPT_NO_UPDATE_CACHE ) {
-			$useCache = false;
+			$useCache = self::CACHE_NONE;
 		} else {
 			$useCache = $this->shouldUseCache( $page, $parserOptions, $revision );
 		}
 
-		// We only support RAW and FOR_PUBLIC. If per-user permission checks are desired,
-		// the caller should perform them and then set NO_AUDIENCE_CHECK.
-		$audience = ( $options & self::OPT_NO_AUDIENCE_CHECK )
-			? RevisionRecord::RAW
-			: RevisionRecord::FOR_PUBLIC;
+		switch ( $useCache ) {
+			case self::CACHE_PRIMARY:
+				$this->statsDataFactory->increment( 'ParserOutputAccess.PoolWork.Current' );
+				$parserCacheMetadata = $this->primaryCache->getMetadata( $page );
+				$cacheKey = $this->primaryCache->makeParserOutputKey( $page, $parserOptions,
+					$parserCacheMetadata ? $parserCacheMetadata->getUsedOptions() : null
+				);
 
-		$work = new PoolWorkArticleView(
-			$page,
-			$parserOptions,
-			$revision ? $revision->getId() : $page->getLatest(),
-			$useCache,
-			$revision,
-			$audience
-		);
+				$workKey = $cacheKey . ':revid:' . $revision->getId();
 
-		return $work;
+				return new PoolWorkArticleViewCurrent(
+					$workKey,
+					$page,
+					$revision,
+					$parserOptions,
+					$this->revisionRenderer,
+					$this->primaryCache,
+					$this->lbFactory,
+					$this->loggerSpi
+				);
+
+			case $useCache == self::CACHE_SECONDARY:
+				$this->statsDataFactory->increment( 'ParserOutputAccess.PoolWork.Old' );
+				$cacheKey = $this->getSecondaryCacheKey( $parserOptions, $revision );
+				return new PoolWorkArticleViewOld(
+					$cacheKey,
+					$this->secondaryCacheExpiry,
+					$this->secondaryCache,
+					$revision,
+					$parserOptions,
+					$this->revisionRenderer,
+					$this->jsonCodec,
+					$this->loggerSpi
+				);
+
+			default:
+				$this->statsDataFactory->increment( 'ParserOutputAccess.PoolWork.Uncached' );
+				$workKey = $this->getSecondaryCacheKey( $parserOptions, $revision ) . ':uncached';
+				return new PoolWorkArticleView(
+					$workKey,
+					$revision,
+					$parserOptions,
+					$this->revisionRenderer,
+					$this->loggerSpi
+				);
+		}
+
+		// unreachable
 	}
 
 }

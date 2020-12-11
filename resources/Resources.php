@@ -103,9 +103,10 @@ return [
 	],
 
 	'mediawiki.skinning.content.externallinks' => [
-		'styles' => [
-			'resources/src/mediawiki.skinning/content.externallinks.less' => [ 'media' => 'screen' ],
-		],
+		'deprecated' => 'Your default skin ResourceLoader class should use '
+			. 'the "content-links" feature in ResourceLoaderSkinModule::class',
+		'class' => ResourceLoaderSkinModule::class,
+		'features' => [ 'content-links' ],
 	],
 
 	/* Base modules */
@@ -615,6 +616,7 @@ return [
 	'mediawiki.api' => [
 		'scripts' => [
 			'resources/src/mediawiki.api/index.js',
+			'resources/src/mediawiki.api/rest.js',
 			'resources/src/mediawiki.api/category.js',
 			'resources/src/mediawiki.api/edit.js',
 			'resources/src/mediawiki.api/login.js',
@@ -727,7 +729,11 @@ return [
 		'dependencies' => 'mediawiki.ForeignApi.core',
 	],
 	'mediawiki.ForeignApi.core' => [
-		'scripts' => 'resources/src/mediawiki.ForeignApi.core.js',
+		'packageFiles' => [
+			'resources/src/mediawiki.ForeignApi/index.js',
+			'resources/src/mediawiki.ForeignApi/mediawiki.ForeignApi.core.js',
+			'resources/src/mediawiki.ForeignApi/mediawiki.ForeignRest.core.js'
+		],
 		'dependencies' => [
 			'mediawiki.api',
 			'oojs',
@@ -1000,20 +1006,13 @@ return [
 		],
 		'dependencies' => [
 			'mediawiki.cookie',
-			'mediawiki.toc.styles',
 		],
 		'targets' => [ 'desktop', 'mobile' ],
 	],
 	'mediawiki.toc.styles' => [
-		'class' => ResourceLoaderLessVarFileModule::class,
-		'lessMessages' => [ 'hidetoc', 'showtoc' ],
-		'styles' => [
-			'resources/src/mediawiki.toc.styles/common.css',
-			'resources/src/mediawiki.toc.styles/screen.less'
-				=> [ 'media' => 'screen' ],
-			'resources/src/mediawiki.toc.styles/print.css'
-				=> [ 'media' => 'print' ],
-		],
+		'deprecated' => 'Please use the `toc` feature on ResourceLoaderSkinModule',
+		'class' => ResourceLoaderSkinModule::class,
+		'features' => [ 'toc' ],
 		'targets' => [ 'desktop', 'mobile' ],
 	],
 	'mediawiki.Uri' => [

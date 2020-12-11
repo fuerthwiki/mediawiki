@@ -259,7 +259,7 @@ class ImagePage extends Article {
 	 */
 	protected function makeMetadataTable( $metadata ) {
 		$r = $this->getContext()->msg( 'metadata-help' )->plain();
-		// Intial state is collapsed
+		// Initial state is collapsed
 		// see filepage.css and mediawiki.action.view.metadata module.
 		$r .= "<table id=\"mw_metadata\" class=\"mw_metadata collapsed\">\n";
 		foreach ( $metadata as $type => $stuff ) {
@@ -277,27 +277,6 @@ class ImagePage extends Article {
 		}
 		$r .= "</table>\n";
 		return $r;
-	}
-
-	/**
-	 * Overloading Article's getEmptyPageParserOutput method.
-	 *
-	 * Omit noarticletext if sharedupload; text will be fetched from the
-	 * shared upload server if possible.
-	 *
-	 * @param ParserOptions $options
-	 * @return ParserOutput
-	 */
-	public function getEmptyPageParserOutput( ParserOptions $options ) {
-		$this->loadFile();
-		if (
-			$this->getFile()
-			&& !$this->getFile()->isLocal()
-			&& !$this->getPage()->getId()
-		) {
-			return new ParserOutput();
-		}
-		return parent::getEmptyPageParserOutput( $options );
 	}
 
 	/**
@@ -1044,8 +1023,8 @@ EOT
 	 * Callback for usort() to do link sorts by (namespace, title)
 	 * Function copied from Title::compare()
 	 *
-	 * @param object $a Object page to compare with
-	 * @param object $b Object page to compare with
+	 * @param stdClass $a Object page to compare with
+	 * @param stdClass $b Object page to compare with
 	 * @return int Result of string comparison, or namespace comparison
 	 */
 	protected function compare( $a, $b ) {

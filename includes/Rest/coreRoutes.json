@@ -79,18 +79,18 @@
 			"RevisionLookup",
 			"TitleFormatter",
 			"TitleFactory"
-		]
+		],
+		"format": "source"
 	},
 	{
 		"path": "/v1/page/{title}/bare",
-		"class": "MediaWiki\\Rest\\Handler\\PageHTMLHandler",
+		"class": "MediaWiki\\Rest\\Handler\\PageSourceHandler",
 		"services": [
 			"MainConfig",
 			"PermissionManager",
 			"RevisionLookup",
 			"TitleFormatter",
-			"TitleFactory",
-			"VirtualRESTServiceClient"
+			"TitleFactory"
 		],
 		"format": "bare"
 	},
@@ -103,7 +103,9 @@
 			"RevisionLookup",
 			"TitleFormatter",
 			"TitleFactory",
-			"VirtualRESTServiceClient"
+			"ParserCacheFactory",
+			"WikiPageFactory",
+			"GlobalIdGenerator"
 		],
 		"format": "html"
 	},
@@ -116,7 +118,9 @@
 			"RevisionLookup",
 			"TitleFormatter",
 			"TitleFactory",
-			"VirtualRESTServiceClient"
+			"ParserCacheFactory",
+			"WikiPageFactory",
+			"GlobalIdGenerator"
 		],
 		"format": "with_html"
 	},

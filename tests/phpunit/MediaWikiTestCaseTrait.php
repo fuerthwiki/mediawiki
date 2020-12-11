@@ -34,7 +34,7 @@ trait MediaWikiTestCaseTrait {
 	 * @param string $type
 	 * @param string[] $allow methods to allow
 	 *
-	 * @return object|MockObject
+	 * @return MockObject
 	 */
 	protected function createNoOpMock( $type, $allow = [] ) {
 		$mock = $this->createMock( $type );
@@ -46,17 +46,29 @@ trait MediaWikiTestCaseTrait {
 	 * Return a PHPUnit mock that is expected to never have any methods called on it.
 	 *
 	 * @param string $type
-	 * @return object
+	 * @param string[] $allow methods to allow
+	 * @return MockObject
 	 */
-	protected function createNoOpAbstractMock( $type ) {
+	protected function createNoOpAbstractMock( $type, $allow = [] ) {
 		$mock = $this->getMockBuilder( $type )
 			->disableOriginalConstructor()
 			->disableOriginalClone()
 			->disableArgumentCloning()
 			->disallowMockingUnknownTypes()
 			->getMockForAbstractClass();
-		$mock->expects( $this->never() )->method( $this->anythingBut( '__destruct' ) );
+		$mock->expects( $this->never() )->method( $this->anythingBut( '__destruct', ...$allow ) );
 		return $mock;
+	}
+
+	/**
+	 * Create an ObjectFactory with no dependencies
+	 *
+	 * @return ObjectFactory
+	 */
+	protected function createSimpleObjectFactory() {
+		return new ObjectFactory(
+			new ServiceLocator( new \Pimple\Container(), [] )
+		);
 	}
 
 	/**
@@ -69,9 +81,7 @@ trait MediaWikiTestCaseTrait {
 	protected function createHookContainer( $hooks = [] ) {
 		$hookContainer = new HookContainer(
 			new \MediaWiki\HookContainer\StaticHookRegistry(),
-			new ObjectFactory(
-				new ServiceLocator( new \Pimple\Container(), [] )
-			)
+			$this->createSimpleObjectFactory()
 		);
 		foreach ( $hooks as $name => $callback ) {
 			$hookContainer->register( $name, $callback );

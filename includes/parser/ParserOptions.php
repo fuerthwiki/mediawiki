@@ -1168,8 +1168,8 @@ class ParserOptions {
 			$wgAllowExternalImagesFrom, $wgEnableImageWhitelist, $wgAllowSpecialInclusion,
 			$wgMaxArticleSize, $wgMaxPPNodeCount, $wgMaxTemplateDepth, $wgMaxPPExpandDepth,
 			$wgCleanSignatures, $wgExternalLinkTarget, $wgExpensiveParserFunctionLimit,
-			$wgDisableLangConversion, $wgDisableTitleConversion,
 			$wgEnableMagicLinks;
+		$languageConverterFactory = MediaWikiServices::getInstance()->getLanguageConverterFactory();
 
 		if ( self::$defaults === null ) {
 			// *UPDATE* ParserOptions::matches() if any of this changes as needed
@@ -1217,8 +1217,8 @@ class ParserOptions {
 			'expensiveParserFunctionLimit' => $wgExpensiveParserFunctionLimit,
 			'externalLinkTarget' => $wgExternalLinkTarget,
 			'cleanSignatures' => $wgCleanSignatures,
-			'disableContentConversion' => $wgDisableLangConversion,
-			'disableTitleConversion' => $wgDisableLangConversion || $wgDisableTitleConversion,
+			'disableContentConversion' => $languageConverterFactory->isConversionDisabled(),
+			'disableTitleConversion' => $languageConverterFactory->isLinkConversionDisabled(),
 			'magicISBNLinks' => $wgEnableMagicLinks['ISBN'],
 			'magicPMIDLinks' => $wgEnableMagicLinks['PMID'],
 			'magicRFCLinks' => $wgEnableMagicLinks['RFC'],
@@ -1491,11 +1491,11 @@ class ParserOptions {
 			) {
 				if ( $titleToCheck->equals( $title ) ) {
 					$revRecord = new MutableRevisionRecord( $title );
-					$revRecord->setContent( SlotRecord::MAIN, $content );
-					$revRecord->setUser( $user );
-					$revRecord->setTimestamp( MWTimestamp::now( TS_MW ) );
-					$revRecord->setPageId( $title->getArticleID() );
-					$revRecord->setParentId( $title->getLatestRevID() );
+					$revRecord->setContent( SlotRecord::MAIN, $content )
+						->setUser( $user )
+						->setTimestamp( MWTimestamp::now( TS_MW ) )
+						->setPageId( $title->getArticleID() )
+						->setParentId( $title->getLatestRevID() );
 					return $revRecord;
 				} else {
 					return call_user_func( $oldCallback, $titleToCheck, $parser );

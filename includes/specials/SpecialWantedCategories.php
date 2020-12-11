@@ -24,6 +24,7 @@
  */
 
 use MediaWiki\Cache\LinkBatchFactory;
+use MediaWiki\Languages\LanguageConverterFactory;
 use Wikimedia\Rdbms\ILoadBalancer;
 
 /**
@@ -34,17 +35,23 @@ use Wikimedia\Rdbms\ILoadBalancer;
 class SpecialWantedCategories extends WantedQueryPage {
 	private $currentCategoryCounts;
 
+	/** @var ILanguageConverter */
+	private $languageConverter;
+
 	/**
 	 * @param ILoadBalancer $loadBalancer
 	 * @param LinkBatchFactory $linkBatchFactory
+	 * @param LanguageConverterFactory $languageConverterFactory
 	 */
 	public function __construct(
 		ILoadBalancer $loadBalancer,
-		LinkBatchFactory $linkBatchFactory
+		LinkBatchFactory $linkBatchFactory,
+		LanguageConverterFactory $languageConverterFactory
 	) {
 		parent::__construct( 'Wantedcategories' );
 		$this->setDBLoadBalancer( $loadBalancer );
 		$this->setLinkBatchFactory( $linkBatchFactory );
+		$this->languageConverter = $languageConverterFactory->getLanguageConverter( $this->getContentLanguage() );
 	}
 
 	public function getQueryInfo() {
@@ -96,13 +103,13 @@ class SpecialWantedCategories extends WantedQueryPage {
 
 	/**
 	 * @param Skin $skin
-	 * @param object $result Result row
+	 * @param stdClass $result Result row
 	 * @return string
 	 */
 	public function formatResult( $skin, $result ) {
 		$nt = Title::makeTitle( $result->namespace, $result->title );
 
-		$text = new HtmlArmor( $this->getLanguageConverter()->convertHtml( $nt->getText() ) );
+		$text = new HtmlArmor( $this->languageConverter->convertHtml( $nt->getText() ) );
 
 		if ( !$this->isCached() ) {
 			// We can assume the freshest data

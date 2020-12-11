@@ -23,7 +23,7 @@
 
 use MediaWiki\HookContainer\HookContainer;
 use MediaWiki\HookContainer\HookRunner;
-use MediaWiki\Json\JsonUnserializer;
+use MediaWiki\Json\JsonCodec;
 use MediaWiki\Parser\ParserCacheMetadata;
 use Psr\Log\LoggerInterface;
 
@@ -96,8 +96,8 @@ class ParserCache {
 	/** @var HookRunner */
 	private $hookRunner;
 
-	/** @var JsonUnserializer */
-	private $jsonUnserializer;
+	/** @var JsonCodec */
+	private $jsonCodec;
 
 	/** @var IBufferingStatsdDataFactory */
 	private $stats;
@@ -127,7 +127,7 @@ class ParserCache {
 	 * @param BagOStuff $cache
 	 * @param string $cacheEpoch Anything before this timestamp is invalidated
 	 * @param HookContainer $hookContainer
-	 * @param JsonUnserializer $jsonUnserializer
+	 * @param JsonCodec $jsonCodec
 	 * @param IBufferingStatsdDataFactory $stats
 	 * @param LoggerInterface $logger
 	 * @param bool $useJson Temporary feature flag, remove before 1.36 is released.
@@ -137,7 +137,7 @@ class ParserCache {
 		BagOStuff $cache,
 		string $cacheEpoch,
 		HookContainer $hookContainer,
-		JsonUnserializer $jsonUnserializer,
+		JsonCodec $jsonCodec,
 		IBufferingStatsdDataFactory $stats,
 		LoggerInterface $logger,
 		$useJson = false
@@ -146,7 +146,7 @@ class ParserCache {
 		$this->cache = $cache;
 		$this->cacheEpoch = $cacheEpoch;
 		$this->hookRunner = new HookRunner( $hookContainer );
-		$this->jsonUnserializer = $jsonUnserializer;
+		$this->jsonCodec = $jsonCodec;
 		$this->stats = $stats;
 		$this->logger = $logger;
 		$this->readJson = $useJson;
@@ -310,18 +310,6 @@ class ParserCache {
 				return null;
 			}
 
-			// HACK: The property 'mUsedOptions' was made private in the initial
-			// deployment of mediawiki 1.36.0-wmf.11. Thus anything it stored is
-			// broken and incompatible with wmf.10. We can't use RejectParserCacheValue
-			// because that hook does not run until later.
-			// See https://phabricator.wikimedia.org/T264257
-			if ( !isset( $metadata->mUsedOptions ) ) {
-				$this->logger->debug( 'Bad ParserOutput key from wmf.11 T264257', [
-					'name' => $this->name
-				] );
-				return null;
-			}
-
 			$this->logger->debug( 'Parser cache options found', [
 				'name' => $this->name
 			] );
@@ -396,6 +384,10 @@ class ParserCache {
 		);
 		if ( !$parserOutputMetadata ) {
 			$this->incrementStats( $wikiPage, 'miss.absent' );
+			return false;
+		}
+		if ( !$popts->isSafeToCache() ) {
+			$this->incrementStats( $wikiPage, 'miss.unsafe' );
 			return false;
 		}
 
@@ -489,7 +481,19 @@ class ParserCache {
 		}
 
 		$expire = $parserOutput->getCacheExpiry();
-		if ( $expire > 0 && !$this->cache instanceof EmptyBagOStuff ) {
+		if ( !$popts->isSafeToCache() ) {
+			$this->logger->debug(
+				'Parser options are not safe to cache and has not been saved',
+				[ 'name' => $this->name ]
+			);
+			$this->incrementStats( $wikiPage, 'save.unsafe' );
+		} elseif ( $expire <= 0 ) {
+			$this->logger->debug(
+				'Parser output was marked as uncacheable and has not been saved',
+				[ 'name' => $this->name ]
+			);
+			$this->incrementStats( $wikiPage, 'save.uncacheable' );
+		} elseif ( !$this->cache instanceof EmptyBagOStuff ) {
 			$cacheTime = $cacheTime ?: wfTimestampNow();
 			if ( !$revId ) {
 				$revision = $wikiPage->getRevisionRecord();
@@ -497,7 +501,7 @@ class ParserCache {
 			}
 
 			$metadata = new CacheTime;
-			$metadata->mUsedOptions = $parserOutput->getUsedOptions();
+			$metadata->recordOptions( $parserOutput->getUsedOptions() );
 			$metadata->updateCacheExpiry( $expire );
 
 			$metadata->setCacheTime( $cacheTime );
@@ -556,12 +560,14 @@ class ParserCache {
 					'cache_time' => $cacheTime,
 					'rev_id' => $revId
 				] );
+				$this->incrementStats( $wikiPage, 'save.success' );
+			} else {
+				$this->logger->warning(
+					'Parser output failed to serialize and was not saved',
+					[ 'name' => $this->name ]
+				);
+				$this->incrementStats( $wikiPage, 'save.nonserializable' );
 			}
-		} elseif ( $expire <= 0 ) {
-			$this->logger->debug(
-				'Parser output was marked as uncacheable and has not been saved',
-				[ 'name' => $this->name ]
-			);
 		}
 	}
 
@@ -597,10 +603,11 @@ class ParserCache {
 	private function restoreFromJson( string $jsonData, string $key, string $expectedClass ) {
 		try {
 			/** @var CacheTime $obj */
-			$obj = $this->jsonUnserializer->unserialize( $jsonData, $expectedClass );
+			$obj = $this->jsonCodec->unserialize( $jsonData, $expectedClass );
 			return $obj;
 		} catch ( InvalidArgumentException $e ) {
 			$this->logger->error( "Unable to unserialize JSON", [
+				'name' => $this->name,
 				'cache_key' => $key,
 				'message' => $e->getMessage()
 			] );
@@ -611,36 +618,18 @@ class ParserCache {
 	/**
 	 * @param CacheTime $obj
 	 * @param string $key
-	 *
 	 * @return string|null
 	 */
 	private function encodeAsJson( CacheTime $obj, string $key ) {
-		$data = $obj->jsonSerialize();
-		$json = FormatJson::encode( $data, false, FormatJson::ALL_OK );
-		if ( !$json ) {
-			$this->logger->error( "JSON encoding failed", [
+		try {
+			return $this->jsonCodec->serialize( $obj );
+		} catch ( InvalidArgumentException $e ) {
+			$this->logger->error( "Unable to serialize JSON", [
 				'name' => $this->name,
 				'cache_key' => $key,
-				'json_error' => json_last_error(),
+				'message' => $e->getMessage(),
 			] );
 			return null;
 		}
-
-		// Detect if the array contained any properties non-serializable
-		// to json. We will not be able to deserialize the value correctly
-		// anyway, so return null. This is done after calling FormatJson::encode
-		// to avoid walking over circular structures.
-		$unserializablePath = FormatJson::detectNonSerializableData( $data, true );
-		if ( $unserializablePath ) {
-			$this->logger->error( 'Non-serializable {class} property set', [
-				'class' => get_class( $obj ),
-				'name' => $this->name,
-				'cache_key' => $key,
-				'path' => $unserializablePath,
-			] );
-			return null;
-		}
-
-		return $json;
 	}
 }

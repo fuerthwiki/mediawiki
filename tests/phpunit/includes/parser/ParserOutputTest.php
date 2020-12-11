@@ -6,6 +6,7 @@ use Wikimedia\Tests\SerializationTestTrait;
 
 /**
  * @covers ParserOutput
+ * @covers CacheTime
  * @group Database
  *        ^--- trigger DB shadowing because we are using Title magic
  */
@@ -30,7 +31,7 @@ class ParserOutputTest extends MediaWikiLangTestCase {
 	 * Overrides SerializationTestTrait::getClassToTest
 	 * @return string
 	 */
-	protected function getClassToTest() {
+	protected function getClassToTest(): string {
 		return ParserOutput::class;
 	}
 

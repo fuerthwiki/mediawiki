@@ -1019,7 +1019,7 @@ abstract class ChangesListSpecialPage extends SpecialPage {
 	/**
 	 * Get the database result for this special page instance. Used by ApiFeedRecentChanges.
 	 *
-	 * @return bool|IResultWrapper Result or false
+	 * @return IResultWrapper|false
 	 */
 	public function getRows() {
 		$opts = $this->getOptions();
@@ -1797,7 +1797,7 @@ abstract class ChangesListSpecialPage extends SpecialPage {
 				[ 'class' => 'mw-changeslist-legend-watchlistexpiry' ],
 				$widget
 			);
-			$legend .= Html::rawElement(
+			$legend .= Html::element(
 				'dd',
 				[ 'class' => 'mw-changeslist-legend-watchlistexpiry', 'id' => $watchlistLabelId ],
 				$context->msg( 'recentchanges-legend-watchlistexpiry' )->text()

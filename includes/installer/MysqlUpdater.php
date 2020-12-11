@@ -426,6 +426,7 @@ class MysqlUpdater extends DatabaseUpdater {
 			[ 'dropIndex', 'archive', 'usertext_timestamp', 'patch-drop-archive-usertext_timestamp.sql' ],
 			[ 'dropField', 'archive', 'ar_user', 'patch-drop-archive-user-fields.sql' ],
 			[ 'dropField', 'ipblocks', 'ip_by', 'patch-drop-ipblocks-user-fields.sql' ],
+			[ 'dropIndex', 'image', 'img_user_timestamp', 'patch-drop-image-img_user_timestamp.sql' ],
 			[ 'dropField', 'image', 'img_user', 'patch-drop-image-user-fields.sql' ],
 			[ 'dropField', 'oldimage', 'oi_user', 'patch-drop-oldimage-user-fields.sql' ],
 			[ 'dropField', 'filearchive', 'fa_user', 'patch-drop-filearchive-user-fields.sql' ],
@@ -463,6 +464,16 @@ class MysqlUpdater extends DatabaseUpdater {
 			[ 'dropDefault', 'protected_titles', 'pt_expiry' ],
 			[ 'dropDefault', 'ip_changes', 'ipc_rev_timestamp' ],
 			[ 'dropDefault', 'revision_actor_temp', 'revactor_timestamp' ],
+			[ 'modifyField', 'ipblocks_restrictions', 'ir_type', 'patch-ipblocks_restrictions-ir_type.sql' ],
+			[ 'renameIndex', 'watchlist', 'namespace_title', 'wl_namespace_title', false,
+				'patch-watchlist-namespace_title-rename-index.sql' ],
+			[ 'modifyField', 'job', 'job_title', 'patch-job-job_title-varbinary.sql' ],
+			[ 'modifyField', 'job', 'job_timestamp', 'patch-job_job_timestamp.sql' ],
+			[ 'modifyField', 'job', 'job_token_timestamp', 'patch-job_job_token_timestamp.sql' ],
+			[ 'modifyField', 'watchlist', 'wl_notificationtimestamp', 'patch-watchlist-wl_notificationtimestamp.sql' ],
+			[ 'modifyField', 'slot_roles', 'role_id', 'patch-slot_roles-role_id.sql' ],
+			[ 'modifyField', 'content_models', 'model_id', 'patch-content_models-model_id.sql' ],
+			[ 'modifyField', 'categorylinks', 'cl_to', 'patch-categorylinks-cl_to-varbinary.sql' ],
 		];
 	}
 

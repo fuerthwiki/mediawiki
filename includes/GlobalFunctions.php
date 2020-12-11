@@ -143,6 +143,7 @@ function wfArrayDiff2_cmp( $a, $b ) {
 /**
  * Appends to second array if $value differs from that in $default
  *
+ * @deprecated since 1.36
  * @param string|int $key
  * @param mixed $value
  * @param mixed $default
@@ -150,6 +151,8 @@ function wfArrayDiff2_cmp( $a, $b ) {
  * @throws MWException
  */
 function wfAppendToArrayIfNotDefault( $key, $value, $default, &$changed ) {
+	wfDeprecated( __FUNCTION__, '1.36' );
+
 	if ( $changed === null ) {
 		throw new MWException( 'GlobalFunctions::wfAppendToArrayIfNotDefault got null' );
 	}
@@ -222,6 +225,7 @@ function wfArrayInsertAfter( array $array, array $insert, $after ) {
 /**
  * Recursively converts the parameter (an object) to an array with the same data
  *
+ * @phpcs:ignore MediaWiki.Commenting.FunctionComment.ObjectTypeHintParam
  * @param object|array $objOrArray
  * @param bool $recursive
  * @return array
@@ -614,7 +618,7 @@ function wfAssembleUrl( $urlParts ) {
 		$result .= $urlParts['path'];
 	}
 
-	if ( isset( $urlParts['query'] ) ) {
+	if ( isset( $urlParts['query'] ) && $urlParts['query'] !== '' ) {
 		$result .= '?' . $urlParts['query'];
 	}
 
@@ -2395,17 +2399,6 @@ function wfGetPrecompiledData( $name ) {
 		}
 	}
 	return false;
-}
-
-/**
- * Make a cache key for the local wiki.
- *
- * @deprecated since 1.30 Call makeKey on a BagOStuff instance
- * @param string|int ...$args
- * @return string
- */
-function wfMemcKey( ...$args ) {
-	return ObjectCache::getLocalClusterInstance()->makeKey( ...$args );
 }
 
 /**

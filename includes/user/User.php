@@ -737,17 +737,42 @@ class User implements IDBAccessObject, UserIdentity {
 	 */
 	public static function newSystemUser( $name, $options = [] ) {
 		$options += [
-			'validate' => 'valid',
+			'validate' => UserNameUtils::RIGOR_VALID,
 			'create' => true,
 			'steal' => false,
 		];
 
-		$name = self::getCanonicalName( $name, $options['validate'] );
+		// Username validation
+		// Backwards compatibility with strings / false
+		$validationLevels = [
+			'valid' => UserNameUtils::RIGOR_VALID,
+			'usable' => UserNameUtils::RIGOR_USABLE,
+			'creatable' => UserNameUtils::RIGOR_CREATABLE
+		];
+		$validate = $options['validate'];
+
+		// @phan-suppress-next-line PhanSuspiciousValueComparison
+		if ( $validate === false ) {
+			$validation = UserNameUtils::RIGOR_NONE;
+		} elseif ( array_key_exists( $validate, $validationLevels ) ) {
+			$validation = $validationLevels[ $validate ];
+		} else {
+			// Not a recognized value, probably a test for unsupported validation
+			// levels, regardless, just pass it along
+			$validation = $validate;
+		}
+
+		$services = MediaWikiServices::getInstance();
+		$userNameUtils = $services->getUserNameUtils();
+
+		$name = $userNameUtils->getCanonical( (string)$name, $validation );
 		if ( $name === false ) {
 			return null;
 		}
 
-		$dbr = wfGetDB( DB_REPLICA );
+		$loadBalancer = $services->getDBLoadBalancer();
+		$dbr = $loadBalancer->getConnectionRef( DB_REPLICA );
+
 		$userQuery = self::getQueryInfo();
 		$row = $dbr->selectRow(
 			$userQuery['tables'],
@@ -759,7 +784,7 @@ class User implements IDBAccessObject, UserIdentity {
 		);
 		if ( !$row ) {
 			// Try the master database...
-			$dbw = wfGetDB( DB_MASTER );
+			$dbw = $loadBalancer->getConnectionRef( DB_MASTER );
 			$row = $dbw->selectRow(
 				$userQuery['tables'],
 				$userQuery['fields'],
@@ -780,13 +805,13 @@ class User implements IDBAccessObject, UserIdentity {
 
 			// If it's a reserved user that had an anonymous actor created for it at
 			// some point, we need special handling.
-			if ( !self::isValidUserName( $name ) || self::isUsableName( $name ) ) {
+			if ( !$userNameUtils->isValid( $name ) || $userNameUtils->isUsable( $name ) ) {
 				// Not reserved, so just create it.
 				return self::createNew( $name, [ 'token' => self::INVALID_TOKEN ] );
 			}
 
 			// It is reserved. Check for an anonymous actor row.
-			$dbw = wfGetDB( DB_MASTER );
+			$dbw = $loadBalancer->getConnectionRef( DB_MASTER );
 			return $dbw->doAtomicSection( __METHOD__, function ( IDatabase $dbw, $fname ) use ( $name ) {
 				$row = $dbw->selectRow(
 					'actor',
@@ -826,7 +851,7 @@ class User implements IDBAccessObject, UserIdentity {
 				return null;
 			}
 
-			MediaWikiServices::getInstance()->getAuthManager()->revokeAccessForUser( $name );
+			$services->getAuthManager()->revokeAccessForUser( $name );
 
 			$user->invalidateEmail();
 			$user->mToken = self::INVALID_TOKEN;
@@ -3128,18 +3153,22 @@ class User implements IDBAccessObject, UserIdentity {
 	 *     Pass User::CHECK_USER_RIGHTS or User::IGNORE_USER_RIGHTS.
 	 * @param string|null $expiry Optional expiry timestamp in any format acceptable to wfTimestamp(),
 	 *   null will not create expiries, or leave them unchanged should they already exist.
-	 * @throws MWException if the title is in a namespace that doesn't have an associated talk
-	 *  namespace
 	 */
 	public function addWatch(
 		$title,
 		$checkRights = self::CHECK_USER_RIGHTS,
 		?string $expiry = null
 	) {
+		if ( !$title->isWatchable() ) {
+			return;
+		}
+
 		if ( !$checkRights || $this->isAllowed( 'editmywatchlist' ) ) {
 			$store = MediaWikiServices::getInstance()->getWatchedItemStore();
 			$store->addWatch( $this, $title->getSubjectPage(), $expiry );
-			$store->addWatch( $this, $title->getTalkPage(), $expiry );
+			if ( $title->canHaveTalkPage() ) {
+				$store->addWatch( $this, $title->getTalkPage(), $expiry );
+			}
 		}
 		$this->invalidateCache();
 	}
@@ -3150,14 +3179,18 @@ class User implements IDBAccessObject, UserIdentity {
 	 * @param Title $title Title of the article to look at
 	 * @param bool $checkRights Whether to check 'viewmywatchlist'/'editmywatchlist' rights.
 	 *     Pass User::CHECK_USER_RIGHTS or User::IGNORE_USER_RIGHTS.
-	 * @throws MWException if the title is in a namespace that doesn't have an associated talk
-	 *  namespace
 	 */
 	public function removeWatch( $title, $checkRights = self::CHECK_USER_RIGHTS ) {
+		if ( !$title->isWatchable() ) {
+			return;
+		}
+
 		if ( !$checkRights || $this->isAllowed( 'editmywatchlist' ) ) {
 			$store = MediaWikiServices::getInstance()->getWatchedItemStore();
 			$store->removeWatch( $this, $title->getSubjectPage() );
-			$store->removeWatch( $this, $title->getTalkPage() );
+			if ( $title->canHaveTalkPage() ) {
+				$store->removeWatch( $this, $title->getTalkPage() );
+			}
 		}
 		$this->invalidateCache();
 	}

@@ -288,6 +288,10 @@ class ParserTestRunner {
 		$setup['wgLocaltimezone'] = 'UTC';
 		$setup['wgDisableLangConversion'] = false;
 		$setup['wgDisableTitleConversion'] = false;
+		$reset = function () {
+			// Reset to follow changes to $wgDisable*Conversion
+			MediaWikiServices::getInstance()->resetServiceForTesting( 'LanguageConverterFactory' );
+		};
 
 		// "extra language links"
 		// see https://gerrit.wikimedia.org/r/111390
@@ -854,11 +858,11 @@ class ParserTestRunner {
 			] );
 
 			$revRecord = new MutableRevisionRecord( $title );
-			$revRecord->setContent( SlotRecord::MAIN, $content );
-			$revRecord->setUser( $user );
-			$revRecord->setTimestamp( strval( $this->getFakeTimestamp() ) );
-			$revRecord->setPageId( $title->getArticleID() );
-			$revRecord->setId( $title->getLatestRevID() );
+			$revRecord->setContent( SlotRecord::MAIN, $content )
+				->setUser( $user )
+				->setTimestamp( strval( $this->getFakeTimestamp() ) )
+				->setPageId( $title->getArticleID() )
+				->setId( $title->getLatestRevID() );
 
 			$oldCallback = $options->getCurrentRevisionRecordCallback();
 			$options->setCurrentRevisionRecordCallback(

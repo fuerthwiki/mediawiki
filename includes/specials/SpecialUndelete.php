@@ -102,6 +102,9 @@ class SpecialUndelete extends SpecialPage {
 	/** @var WikiPageFactory */
 	private $wikiPageFactory;
 
+	/** @var SearchEngineFactory */
+	private $searchEngineFactory;
+
 	/**
 	 * @param PermissionManager $permissionManager
 	 * @param RevisionStore $revisionStore
@@ -113,6 +116,7 @@ class SpecialUndelete extends SpecialPage {
 	 * @param ILoadBalancer $loadBalancer
 	 * @param UserOptionsLookup $userOptionsLookup
 	 * @param WikiPageFactory $wikiPageFactory
+	 * @param SearchEngineFactory $searchEngineFactory
 	 */
 	public function __construct(
 		PermissionManager $permissionManager,
@@ -124,7 +128,8 @@ class SpecialUndelete extends SpecialPage {
 		RepoGroup $repoGroup,
 		ILoadBalancer $loadBalancer,
 		UserOptionsLookup $userOptionsLookup,
-		WikiPageFactory $wikiPageFactory
+		WikiPageFactory $wikiPageFactory,
+		SearchEngineFactory $searchEngineFactory
 	) {
 		parent::__construct( 'Undelete', 'deletedhistory' );
 		$this->permissionManager = $permissionManager;
@@ -137,6 +142,7 @@ class SpecialUndelete extends SpecialPage {
 		$this->loadBalancer = $loadBalancer;
 		$this->userOptionsLookup = $userOptionsLookup;
 		$this->wikiPageFactory = $wikiPageFactory;
+		$this->searchEngineFactory = $searchEngineFactory;
 	}
 
 	public function doesWrites() {
@@ -514,14 +520,24 @@ class SpecialUndelete extends SpecialPage {
 				$msg = $revRecord->isDeleted( RevisionRecord::DELETED_RESTRICTED )
 					? [ 'rev-suppressed-text-permission', $titleText ]
 					: [ 'rev-deleted-text-permission', $titleText ];
-				$out->wrapWikiMsg( "<div class='mw-warning plainlinks'>\n$1\n</div>\n", $msg );
+				$out->addHtml(
+					Html::warningBox(
+						$this->msg( $msg[0], $msg[1] )->parse(),
+						'plainlinks'
+					)
+				);
 				return;
 			}
 
 			$msg = $revRecord->isDeleted( RevisionRecord::DELETED_RESTRICTED )
 				? [ 'rev-suppressed-text-view', $titleText ]
 				: [ 'rev-deleted-text-view', $titleText ];
-			$out->wrapWikiMsg( "<div class='mw-warning plainlinks'>\n$1\n</div>\n", $msg );
+			$out->addHtml(
+				Html::warningBox(
+					$this->msg( $msg[0], $msg[1] )->parse(),
+					'plainlinks'
+				)
+			);
 			// and we are allowed to see...
 		}
 
@@ -563,7 +579,7 @@ class SpecialUndelete extends SpecialPage {
 		$isText = ( $content instanceof TextContent );
 
 		if ( $this->mPreview || $isText ) {
-			$openDiv = '<div id="mw-undelete-revision" class="mw-warning">';
+			$openDiv = '<div id="mw-undelete-revision" class="warningbox">';
 		} else {
 			$openDiv = '<div id="mw-undelete-revision">';
 		}
@@ -870,23 +886,23 @@ class SpecialUndelete extends SpecialPage {
 		$haveFiles = $files && $files->numRows() > 0;
 
 		# Batch existence check on user and talk pages
-		if ( $haveRevisions ) {
+		if ( $haveRevisions || $haveFiles ) {
 			$batch = $this->linkBatchFactory->newLinkBatch();
-			foreach ( $revisions as $row ) {
-				$batch->addObj( Title::makeTitleSafe( NS_USER, $row->ar_user_text ) );
-				$batch->addObj( Title::makeTitleSafe( NS_USER_TALK, $row->ar_user_text ) );
+			if ( $haveRevisions ) {
+				foreach ( $revisions as $row ) {
+					$batch->add( NS_USER, $row->ar_user_text );
+					$batch->add( NS_USER_TALK, $row->ar_user_text );
+				}
+				$revisions->seek( 0 );
+			}
+			if ( $haveFiles ) {
+				foreach ( $files as $row ) {
+					$batch->add( NS_USER, $row->fa_user_text );
+					$batch->add( NS_USER_TALK, $row->fa_user_text );
+				}
+				$files->seek( 0 );
 			}
 			$batch->execute();
-			$revisions->seek( 0 );
-		}
-		if ( $haveFiles ) {
-			$batch = $this->linkBatchFactory->newLinkBatch();
-			foreach ( $files as $row ) {
-				$batch->addObj( Title::makeTitleSafe( NS_USER, $row->fa_user_text ) );
-				$batch->addObj( Title::makeTitleSafe( NS_USER_TALK, $row->fa_user_text ) );
-			}
-			$batch->execute();
-			$files->seek( 0 );
 		}
 
 		if ( $this->mAllowed ) {
@@ -1381,7 +1397,7 @@ class SpecialUndelete extends SpecialPage {
 	 * @return string[] Matching subpages
 	 */
 	public function prefixSearchSubpages( $search, $limit, $offset ) {
-		return $this->prefixSearchString( $search, $limit, $offset );
+		return $this->prefixSearchString( $search, $limit, $offset, $this->searchEngineFactory );
 	}
 
 	protected function getGroupName() {

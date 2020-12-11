@@ -3,6 +3,7 @@
 use MediaWiki\Auth\AuthenticationRequest;
 use MediaWiki\Auth\AuthenticationResponse;
 use MediaWiki\Auth\AuthManager;
+use MediaWiki\Auth\PasswordAuthenticationRequest;
 use MediaWiki\Session\SessionManager;
 
 /**
@@ -18,8 +19,12 @@ class SpecialChangeCredentials extends AuthManagerSpecialPage {
 	/** Change action needs user data; remove action does not */
 	protected static $loadUserData = true;
 
-	public function __construct( $name = 'ChangeCredentials' ) {
-		parent::__construct( $name, 'editmyprivateinfo' );
+	/**
+	 * @param AuthManager $authManager
+	 */
+	public function __construct( AuthManager $authManager ) {
+		parent::__construct( 'ChangeCredentials', 'editmyprivateinfo' );
+		$this->setAuthManager( $authManager );
 	}
 
 	protected function getGroupName() {
@@ -102,6 +107,41 @@ class SpecialChangeCredentials extends AuthManagerSpecialPage {
 				throw new LogicException( 'Multiple AuthenticationRequest objects with same ID!' );
 			}
 			$this->authRequests = $foundReqs;
+		}
+	}
+
+	/** @inheritDoc */
+	public function onAuthChangeFormFields(
+		array $requests, array $fieldInfo, array &$formDescriptor, $action
+	) {
+		parent::onAuthChangeFormFields( $requests, $fieldInfo, $formDescriptor, $action );
+
+		// Add some UI flair for password changes, the most common use case for this page.
+		if ( AuthenticationRequest::getRequestByClass( $this->authRequests,
+			PasswordAuthenticationRequest::class )
+		) {
+			$formDescriptor = self::mergeDefaultFormDescriptor( $fieldInfo, $formDescriptor, [
+				'password' => [
+					'autocomplete' => 'new-password',
+					'placeholder-message' => 'createacct-yourpassword-ph',
+					'help-message' => 'createacct-useuniquepass',
+				],
+				'retype' => [
+					'autocomplete' => 'new-password',
+					'placeholder-message' => 'createacct-yourpasswordagain-ph',
+				],
+				// T263927 - the Chromium password form guide recommends always having a username field
+				'username' => [
+					'type' => 'text',
+					'baseField' => 'password',
+					'autocomplete' => 'username',
+					'nodata' => true,
+					'readonly' => true,
+					'cssclass' => 'mw-htmlform-hidden-field',
+					'label-message' => 'userlogin-yourname',
+					'placeholder-message' => 'userlogin-yourname-ph',
+				],
+			] );
 		}
 	}
 

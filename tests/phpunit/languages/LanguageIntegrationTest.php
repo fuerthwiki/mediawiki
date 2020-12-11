@@ -1,6 +1,7 @@
 <?php
 
 use MediaWiki\Config\ServiceOptions;
+use MediaWiki\HookContainer\HookContainer;
 use MediaWiki\Languages\LanguageConverterFactory;
 use MediaWiki\Languages\LanguageFallback;
 use MediaWiki\Languages\LanguageNameUtils;
@@ -1696,14 +1697,14 @@ class LanguageIntegrationTest extends LanguageClassesTestCase {
 			[ true, 'en', '106', true, '106' ],
 			[ false, 'en', '107', false, '107' ],
 			[ false, 'en', '108', true, '108' ],
-			[ true, 'en', -1, false, '-1' ],
+			[ true, 'en', -1, false, '−1' ],
 			[ true, 'en', 10, false, '10' ],
 			[ true, 'en', 100, false, '100' ],
 			[ true, 'en', 1000, false, '1,000' ],
 			[ true, 'en', 10000, false, '10,000' ],
 			[ true, 'en', 100000, false, '100,000' ],
 			[ true, 'en', 1000000, false, '1,000,000' ],
-			[ true, 'en', -1.001, false, '-1.001' ],
+			[ true, 'en', -1.001, false, '−1.001' ],
 			[ true, 'en', 1.001, false, '1.001' ],
 			[ true, 'en', 10.0001, false, '10.0001' ],
 			[ true, 'en', 100.001, false, '100.001' ],
@@ -1711,9 +1712,18 @@ class LanguageIntegrationTest extends LanguageClassesTestCase {
 			[ true, 'en', 10000.001, false, '10,000.001' ],
 			[ true, 'en', 100000.001, false, '100,000.001' ],
 			[ true, 'en', 1000000.0001, false, '1,000,000.0001' ],
-			[ true, 'en', -1.0001, false, '-1.0001' ],
+			[ true, 'en', -1.0001, false, '−1.0001' ],
 			[ true, 'en', '200000000000000000000', false, '200,000,000,000,000,000,000' ],
-			[ true, 'en', '-200000000000000000000', false, '-200,000,000,000,000,000,000' ],
+			[ true, 'en', '-200000000000000000000', false, '−200,000,000,000,000,000,000' ],
+			[ true, 'en', '1.23e10', false, '12,300,000,000' ],
+			[ true, 'en', 1.23e10, false, '12,300,000,000' ],
+			[ true, 'en', '1.23E-01', false, '0.123' ],
+			[ true, 'en', 1.23e-1, false, '0.123' ],
+			[ true, 'en', 0.0, false, '0' ],
+			[ true, 'en', -0.0, false, '−0' ],
+			[ true, 'en', INF, false, '∞' ],
+			[ true, 'en', -INF, false, '−∞' ],
+			[ true, 'en', NAN, false, 'Not a Number' ],
 			[ true, 'kn', '1050', false, '೧,೦೫೦' ],
 			[ true, 'kn', '1060', true, '೧೦೬೦' ],
 			[ false, 'kn', '1070', false, '1,070' ],
@@ -1729,7 +1739,7 @@ class LanguageIntegrationTest extends LanguageClassesTestCase {
 			/** @see https://phabricator.wikimedia.org/T237467 */
 			[ false, 'kn', "೭\u{FFFD}0", false, "೭\u{FFFD}0" ],
 			[ false, 'kn', "-೭\u{FFFD}0", false, "-೭\u{FFFD}0" ],
-			[ false, 'kn', "-1೭\u{FFFD}0", false, "-1೭\u{FFFD}0" ],
+			[ false, 'kn', "-1೭\u{FFFD}0", false, "−1೭\u{FFFD}0" ],
 
 			/** @see https://phabricator.wikimedia.org/T267614 */
 			[ false, 'ar', "1", false, "1" ],
@@ -1759,7 +1769,13 @@ class LanguageIntegrationTest extends LanguageClassesTestCase {
 			[ 'fa', 382.772 ],
 			[ 'ar', 1844 ],
 			[ 'lzh', 3731 ],
-			[ 'zh-classical', 7432 ]
+			[ 'zh-classical', 7432 ],
+			[ 'en', 1234.567 ],
+			[ 'en', 0.0 ],
+			[ 'en', -0.0 ],
+			[ 'en', INF ],
+			[ 'en', -INF ],
+			[ 'en', NAN ],
 		];
 	}
 
@@ -1999,6 +2015,10 @@ class LanguageIntegrationTest extends LanguageClassesTestCase {
 		return Language::isKnownLanguageTag( $code );
 	}
 
+	protected function setLanguageTemporaryHook( string $hookName, $handler ): void {
+		$this->setTemporaryHook( $hookName, $handler );
+	}
+
 	/**
 	 * Call getLanguageName() and getLanguageNames() using the Language static methods.
 	 *
@@ -2076,7 +2096,7 @@ class LanguageIntegrationTest extends LanguageClassesTestCase {
 			$this->createNoOpMock( LanguageNameUtils::class ),
 			$this->createNoOpMock( LanguageFallback::class ),
 			$this->createNoOpMock( LanguageConverterFactory::class ),
-			$this->createHookContainer()
+			$this->createMock( HookContainer::class )
 		);
 		$config += [
 			'wgMetaNamespace' => 'Project',

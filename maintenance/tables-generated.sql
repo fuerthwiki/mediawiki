@@ -246,7 +246,7 @@ CREATE TABLE /*_*/change_tag_def (
 
 CREATE TABLE /*_*/ipblocks_restrictions (
   ir_ipb_id INT NOT NULL,
-  ir_type TINYINT(1) NOT NULL,
+  ir_type TINYINT(4) NOT NULL,
   ir_value INT NOT NULL,
   INDEX ir_type_value (ir_type, ir_value),
   PRIMARY KEY(ir_ipb_id, ir_type, ir_value)
@@ -319,7 +319,7 @@ CREATE TABLE /*_*/watchlist (
   wl_title VARBINARY(255) DEFAULT '' NOT NULL,
   wl_notificationtimestamp BINARY(14) DEFAULT NULL,
   UNIQUE INDEX wl_user (wl_user, wl_namespace, wl_title),
-  INDEX namespace_title (wl_namespace, wl_title),
+  INDEX wl_namespace_title (wl_namespace, wl_title),
   INDEX wl_user_notificationtimestamp (
     wl_user, wl_notificationtimestamp
   ),
@@ -356,7 +356,7 @@ CREATE TABLE /*_*/user_newtalk (
   user_ip VARBINARY(40) DEFAULT '' NOT NULL,
   user_last_timestamp BINARY(14) DEFAULT NULL,
   INDEX un_user_id (user_id),
-  INDEX un_user_ip (user_id)
+  INDEX un_user_ip (user_ip)
 ) /*$wgDBTableOptions*/;
 
 
@@ -440,4 +440,76 @@ CREATE TABLE /*_*/revision_actor_temp (
     revactor_page, revactor_actor, revactor_timestamp
   ),
   PRIMARY KEY(revactor_rev, revactor_actor)
+) /*$wgDBTableOptions*/;
+
+
+CREATE TABLE /*_*/page_props (
+  pp_page INT NOT NULL,
+  pp_propname VARBINARY(60) NOT NULL,
+  pp_value BLOB NOT NULL,
+  pp_sortkey FLOAT DEFAULT NULL,
+  UNIQUE INDEX pp_propname_page (pp_propname, pp_page),
+  UNIQUE INDEX pp_propname_sortkey_page (pp_propname, pp_sortkey, pp_page),
+  PRIMARY KEY(pp_page, pp_propname)
+) /*$wgDBTableOptions*/;
+
+
+CREATE TABLE /*_*/job (
+  job_id INT UNSIGNED AUTO_INCREMENT NOT NULL,
+  job_cmd VARBINARY(60) DEFAULT '' NOT NULL,
+  job_namespace INT NOT NULL,
+  job_title VARBINARY(255) NOT NULL,
+  job_timestamp BINARY(14) DEFAULT NULL,
+  job_params MEDIUMBLOB NOT NULL,
+  job_random INT UNSIGNED DEFAULT 0 NOT NULL,
+  job_attempts INT UNSIGNED DEFAULT 0 NOT NULL,
+  job_token VARBINARY(32) DEFAULT '' NOT NULL,
+  job_token_timestamp BINARY(14) DEFAULT NULL,
+  job_sha1 VARBINARY(32) DEFAULT '' NOT NULL,
+  INDEX job_sha1 (job_sha1),
+  INDEX job_cmd_token (job_cmd, job_token, job_random),
+  INDEX job_cmd_token_id (job_cmd, job_token, job_id),
+  INDEX job_cmd (
+    job_cmd,
+    job_namespace,
+    job_title,
+    job_params(128)
+  ),
+  INDEX job_timestamp (job_timestamp),
+  PRIMARY KEY(job_id)
+) /*$wgDBTableOptions*/;
+
+
+CREATE TABLE /*_*/slot_roles (
+  role_id INT AUTO_INCREMENT NOT NULL,
+  role_name VARBINARY(64) NOT NULL,
+  UNIQUE INDEX role_name (role_name),
+  PRIMARY KEY(role_id)
+) /*$wgDBTableOptions*/;
+
+
+CREATE TABLE /*_*/content_models (
+  model_id INT AUTO_INCREMENT NOT NULL,
+  model_name VARBINARY(64) NOT NULL,
+  UNIQUE INDEX model_name (model_name),
+  PRIMARY KEY(model_id)
+) /*$wgDBTableOptions*/;
+
+
+CREATE TABLE /*_*/categorylinks (
+  cl_from INT UNSIGNED DEFAULT 0 NOT NULL,
+  cl_to VARBINARY(255) DEFAULT '' NOT NULL,
+  cl_sortkey VARBINARY(230) DEFAULT '' NOT NULL,
+  cl_sortkey_prefix VARBINARY(255) DEFAULT '' NOT NULL,
+  cl_timestamp BINARY(14) NOT NULL,
+  cl_collation VARBINARY(32) DEFAULT '' NOT NULL,
+  cl_type ENUM('page', 'subcat', 'file') DEFAULT 'page' NOT NULL,
+  INDEX cl_sortkey (
+    cl_to, cl_type, cl_sortkey, cl_from
+  ),
+  INDEX cl_timestamp (cl_to, cl_timestamp),
+  INDEX cl_collation_ext (
+    cl_collation, cl_to, cl_type, cl_from
+  ),
+  PRIMARY KEY(cl_from, cl_to)
 ) /*$wgDBTableOptions*/;

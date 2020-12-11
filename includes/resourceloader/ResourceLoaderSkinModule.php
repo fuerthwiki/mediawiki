@@ -24,7 +24,7 @@
  * @ingroup ResourceLoader
  * @internal
  */
-class ResourceLoaderSkinModule extends ResourceLoaderFileModule {
+class ResourceLoaderSkinModule extends ResourceLoaderLessVarFileModule {
 	/**
 	 * All skins are assumed to be compatible with mobile
 	 */
@@ -61,6 +61,9 @@ class ResourceLoaderSkinModule extends ResourceLoaderFileModule {
 	 *     as it is normally styled, while leaving the rest of the skin up to the skin
 	 *     implementation.
 	 *
+	 * "content-links":
+	 *     The skin will apply optional styling rules to links to provide icons for different file types.
+	 *
 	 * "interface":
 	 *     The highest level, this stylesheet contains extra common styles for classes like
 	 *     .firstHeading, #contentSub, et cetera which are not outputted by MediaWiki but are common
@@ -80,6 +83,9 @@ class ResourceLoaderSkinModule extends ResourceLoaderFileModule {
 	 *     For backwards compatibility a legacy feature is provided.
 	 *     New skins should not use this if they can avoid doing so.
 	 *     This feature also contains all `i18n-` prefixed features.
+	 *
+	 * "toc"
+	 *     Styling rules for the table of contents.
 	 */
 	private const FEATURE_FILES = [
 		'logo' => [
@@ -89,10 +95,13 @@ class ResourceLoaderSkinModule extends ResourceLoaderFileModule {
 			'print' => [ 'resources/src/mediawiki.skinning/logo-print.less' ],
 		],
 		'content' => [
-			'screen' => [ 'resources/src/mediawiki.skinning/content.css' ],
+			'screen' => [ 'resources/src/mediawiki.skinning/content.less' ],
+		],
+		'content-links' => [
+			'screen' => [ 'resources/src/mediawiki.skinning/content.externallinks.less' ]
 		],
 		'interface' => [
-			'screen' => [ 'resources/src/mediawiki.skinning/interface.css' ],
+			'screen' => [ 'resources/src/mediawiki.skinning/interface.less' ],
 		],
 		'normalize' => [
 			'screen' => [ 'resources/src/mediawiki.skinning/normalize.less' ],
@@ -114,6 +123,11 @@ class ResourceLoaderSkinModule extends ResourceLoaderFileModule {
 		'i18n-headings' => [
 			'screen' => [ 'resources/src/mediawiki.skinning/i18n-headings.less' ],
 		],
+		'toc' => [
+			'all' => [ 'resources/src/mediawiki.skinning/toc/common.css' ],
+			'screen' => [ 'resources/src/mediawiki.skinning/toc/screen.less' ],
+			'print' => [ 'resources/src/mediawiki.skinning/toc/print.css' ],
+		],
 	];
 
 	/** @var string[] */
@@ -123,12 +137,20 @@ class ResourceLoaderSkinModule extends ResourceLoaderFileModule {
 	private const DEFAULT_FEATURES = [
 		'logo' => false,
 		'content' => false,
+		'content-links' => false,
 		'interface' => false,
 		'elements' => false,
 		'legacy' => false,
 		'i18n-ordered-lists' => false,
 		'i18n-all-lists-margins' => false,
 		'i18n-headings' => false,
+		'toc' => true,
+	];
+
+	private const LESS_MESSAGES = [
+		// `toc` feature, used in screen.less
+		'hidetoc',
+		'showtoc',
 	];
 
 	public function __construct(
@@ -136,6 +158,7 @@ class ResourceLoaderSkinModule extends ResourceLoaderFileModule {
 		$localBasePath = null,
 		$remoteBasePath = null
 	) {
+		$options['lessMessages'] = self::LESS_MESSAGES;
 		parent::__construct( $options, $localBasePath, $remoteBasePath );
 		$features = $options['features'] ??
 			// For historic reasons if nothing is declared logo and legacy features are enabled.
@@ -222,6 +245,7 @@ class ResourceLoaderSkinModule extends ResourceLoaderFileModule {
 			$styles['all'][] = '.mw-wiki-logo { background-image: ' .
 				CSSMin::buildUrlValue( $default ) .
 				'; }';
+
 			if ( is_array( $logo ) ) {
 				if ( isset( $logo['svg'] ) ) {
 					$styles['all'][] = '.mw-wiki-logo { ' .
@@ -235,11 +259,11 @@ class ResourceLoaderSkinModule extends ResourceLoaderFileModule {
 						$styles[
 							'(-webkit-min-device-pixel-ratio: 1.5), ' .
 							'(min--moz-device-pixel-ratio: 1.5), ' .
-						'(min-resolution: 1.5dppx), ' .
+							'(min-resolution: 1.5dppx), ' .
 							'(min-resolution: 144dpi)'
 						][] = '.mw-wiki-logo { background-image: ' .
-						CSSMin::buildUrlValue( $logo['1.5x'] ) . ';' .
-						'background-size: 135px auto; }';
+							CSSMin::buildUrlValue( $logo['1.5x'] ) . ';' .
+							'background-size: 135px auto; }';
 					}
 					if ( isset( $logo['2x'] ) ) {
 						$styles[
@@ -248,8 +272,8 @@ class ResourceLoaderSkinModule extends ResourceLoaderFileModule {
 							'(min-resolution: 2dppx), ' .
 							'(min-resolution: 192dpi)'
 						][] = '.mw-wiki-logo { background-image: ' .
-						CSSMin::buildUrlValue( $logo['2x'] ) . ';' .
-						'background-size: 135px auto; }';
+							CSSMin::buildUrlValue( $logo['2x'] ) . ';' .
+							'background-size: 135px auto; }';
 					}
 				}
 			}
@@ -277,24 +301,18 @@ class ResourceLoaderSkinModule extends ResourceLoaderFileModule {
 
 		$logo = $this->getLogoData( $this->getConfig() );
 
-		$logosPerDppx = [];
-		$logos = [];
-
-		$preloadLinks = [];
-
 		if ( !is_array( $logo ) ) {
 			// No media queries required if we only have one variant
-			$preloadLinks[$logo] = [ 'as' => 'image' ];
-			return $preloadLinks;
+			return [ $logo => [ 'as' => 'image' ] ];
 		}
 
 		if ( isset( $logo['svg'] ) ) {
 			// No media queries required if we only have a 1x and svg variant
 			// because all preload-capable browsers support SVGs
-			$preloadLinks[$logo['svg']] = [ 'as' => 'image' ];
-			return $preloadLinks;
+			return [ $logo['svg'] => [ 'as' => 'image' ] ];
 		}
 
+		$logosPerDppx = [];
 		foreach ( $logo as $dppx => $src ) {
 			// Keys are in this format: "1.5x"
 			$dppx = substr( $dppx, 0, -1 );
@@ -309,6 +327,7 @@ class ResourceLoaderSkinModule extends ResourceLoaderFileModule {
 			return $a <=> $b;
 		} );
 
+		$logos = [];
 		foreach ( $logosPerDppx as $dppx => $src ) {
 			$logos[] = [
 				'dppx' => $dppx,
@@ -317,6 +336,7 @@ class ResourceLoaderSkinModule extends ResourceLoaderFileModule {
 		}
 
 		$logosCount = count( $logos );
+		$preloadLinks = [];
 		// Logic must match ResourceLoaderSkinModule:
 		// - 1x applies to resolution < 1.5dppx
 		// - 1.5x applies to resolution >= 1.5dppx && < 2dppx
@@ -406,7 +426,7 @@ class ResourceLoaderSkinModule extends ResourceLoaderFileModule {
 
 		// check the configuration is valid
 		if ( !isset( $logos['1x'] ) ) {
-			throw new \RuntimeException( "The key `1x` is required for wgLogos or wgLogo must be defined." );
+			throw new RuntimeException( "The key `1x` is required for wgLogos or wgLogo must be defined." );
 		}
 		// return the modified logos!
 		return $logos;

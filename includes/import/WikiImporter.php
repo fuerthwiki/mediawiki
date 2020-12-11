@@ -346,7 +346,7 @@ class WikiImporter {
 	 */
 	public function beforeImportPage( $titleAndForeignTitle ) {
 		$title = $titleAndForeignTitle[0];
-		$page = WikiPage::factory( $title );
+		$page = MediaWikiServices::getInstance()->getWikiPageFactory()->newFromTitle( $title );
 		$this->countableCache['title_' . $title->getPrefixedText()] = $page->isCountable();
 		return true;
 	}
@@ -395,7 +395,9 @@ class WikiImporter {
 	 * @return bool
 	 */
 	public function importUpload( $revision ) {
-		return $revision->importUpload();
+		$importer = MediaWikiServices::getInstance()->getWikiRevisionUploadImporter();
+		$status = $importer->import( $revision );
+		return $status->isGood();
 	}
 
 	/**
@@ -417,7 +419,7 @@ class WikiImporter {
 		// and revision count, and we implement our own custom logic for the
 		// article (content page) count.
 		if ( !$this->disableStatisticsUpdate ) {
-			$page = WikiPage::factory( $title );
+			$page = MediaWikiServices::getInstance()->getWikiPageFactory()->newFromTitle( $title );
 			$page->loadPageData( 'fromdbmaster' );
 			$content = $page->getContent();
 			if ( $content === null ) {
@@ -626,16 +628,9 @@ class WikiImporter {
 					$keepReading = $this->reader->read();
 				}
 			}
-		} catch ( Exception $ex ) {
-			$rethrow = $ex;
-		}
-
-		// finally
-		libxml_disable_entity_loader( $oldDisable );
-		$this->reader->close();
-
-		if ( $rethrow ) {
-			throw $rethrow;
+		} finally {
+			libxml_disable_entity_loader( $oldDisable );
+			$this->reader->close();
 		}
 
 		return true;
@@ -1069,12 +1064,14 @@ class WikiImporter {
 	 */
 	private function processUpload( $pageInfo, $uploadInfo ) {
 		$revision = new WikiRevision( $this->config );
-		$text = $uploadInfo['text'] ?? '';
+		$revId = $pageInfo['id'];
+		$title = $pageInfo['_title'];
+		$content = $this->makeContent( $title, $revId, $uploadInfo );
 
-		$revision->setTitle( $pageInfo['_title'] );
-		$revision->setID( $pageInfo['id'] );
+		$revision->setTitle( $title );
+		$revision->setID( $revId );
 		$revision->setTimestamp( $uploadInfo['timestamp'] );
-		$revision->setText( $text );
+		$revision->setContent( SlotRecord::MAIN, $content );
 		$revision->setFilename( $uploadInfo['filename'] );
 		if ( isset( $uploadInfo['archivename'] ) ) {
 			$revision->setArchiveName( $uploadInfo['archivename'] );

@@ -5,6 +5,7 @@ namespace MediaWiki\Tests\Parser;
 use CacheTime;
 use MediaWikiIntegrationTestCase;
 use MWTimestamp;
+use ParserOptions;
 use Wikimedia\Tests\SerializationTestTrait;
 
 /**
@@ -32,7 +33,7 @@ class CacheTimeTest extends MediaWikiIntegrationTestCase {
 	 * Overrides SerializationTestTrait::getClassToTest
 	 * @return string
 	 */
-	protected function getClassToTest() {
+	protected function getClassToTest(): string {
 		return CacheTime::class;
 	}
 
@@ -117,5 +118,12 @@ class CacheTimeTest extends MediaWikiIntegrationTestCase {
 				MWTimestamp::convert( TS_MW, MWTimestamp::now( TS_UNIX ) + 15 )
 			)
 		);
+	}
+
+	public function testGetSetOptions() {
+		$options = ParserOptions::allCacheVaryingOptions();
+		$cacheTime = new CacheTime();
+		$cacheTime->recordOptions( $options );
+		$this->assertArrayEquals( $options, $cacheTime->getUsedOptions() );
 	}
 }

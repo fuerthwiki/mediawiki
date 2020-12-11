@@ -266,19 +266,20 @@ abstract class Skin extends ContextSource {
 
 		if ( $out->isTOCEnabled() ) {
 			$modules['content'][] = 'mediawiki.toc';
-			$modules['styles']['content'][] = 'mediawiki.toc.styles';
 		}
 
-		$prefMgr = MediaWikiServices::getInstance()->getPermissionManager();
+		$services = MediaWikiServices::getInstance();
+		$permManager = $services->getPermissionManager();
 		if ( $user->isLoggedIn()
-			&& $prefMgr->userHasAllRights( $user, 'writeapi', 'viewmywatchlist', 'editmywatchlist' )
+			&& $permManager->userHasAllRights( $user, 'writeapi', 'viewmywatchlist', 'editmywatchlist' )
 			&& $this->getRelevantTitle()->canExist()
 		) {
 			$modules['watch'][] = 'mediawiki.page.watch.ajax';
 		}
 
-		if ( $user->getBoolOption( 'editsectiononrightclick' )
-			|| ( $out->isArticle() && $user->getOption( 'editondblclick' ) )
+		$userOptionsLookup = $services->getUserOptionsLookup();
+		if ( $userOptionsLookup->getBoolOption( $user, 'editsectiononrightclick' )
+			|| ( $out->isArticle() && $userOptionsLookup->getOption( $user, 'editondblclick' ) )
 		) {
 			$modules['user'][] = 'mediawiki.misc-authed-pref';
 		}
@@ -447,13 +448,34 @@ abstract class Skin extends ContextSource {
 	}
 
 	/**
+	 * Call the subclass's setupSkinUserCss and throw a deprecation warning
+	 * if required.
+	 *
+	 * @param OutputPage $out
+	 * @internal only for use in Skin or inside OutputPage and ApiParse where support for
+	 *  setupSkinUserCss is required.
+	 */
+	final public function doSetupSkinUserCss( OutputPage $out ) {
+		$stylesBefore = $out->getModuleStyles();
+		$this->setupSkinUserCss( $out );
+		$stylesAfter = $out->getModuleStyles();
+		if ( count( $stylesAfter ) !== count( $stylesBefore ) ) {
+			// Styles were added by the setupSkinUserCss method. This is no longer allowed.
+			wfDeprecatedMsg( get_class( $this ) . '::setupSkinUserCss must not modify ' .
+				'the style module list, this is deprecated since 1.32', '1.32' );
+		}
+	}
+
+	/**
 	 * Hook point for adding style modules to OutputPage.
 	 *
-	 * @deprecated since 1.32 Use getDefaultModules() instead.
+	 * @deprecated since 1.32 Use getDefaultModules() instead. If using for backwards
+	 *  compatability, the caller is required to throw deprecation warnings if this
+	 *  changes the number of style modules on OutputPage.
 	 * @param OutputPage $out Legacy parameter, identical to $this->getOutput()
 	 */
 	public function setupSkinUserCss( OutputPage $out ) {
-		wfDeprecated( __METHOD__, '1.32' );
+		// Stub.
 	}
 
 	/**
@@ -526,7 +548,8 @@ abstract class Skin extends ContextSource {
 		$out = $this->getOutput();
 		$allCats = $out->getCategoryLinks();
 		$title = $this->getTitle();
-		$linkRenderer = MediaWikiServices::getInstance()->getLinkRenderer();
+		$services = MediaWikiServices::getInstance();
+		$linkRenderer = $services->getLinkRenderer();
 
 		if ( $allCats === [] ) {
 			return '';
@@ -555,7 +578,9 @@ abstract class Skin extends ContextSource {
 
 		# Hidden categories
 		if ( isset( $allCats['hidden'] ) ) {
-			if ( $this->getUser()->getBoolOption( 'showhiddencats' ) ) {
+			$userOptionsLookup = $services->getUserOptionsLookup();
+
+			if ( $userOptionsLookup->getBoolOption( $this->getUser(), 'showhiddencats' ) ) {
 				$class = ' mw-hidden-cats-user-shown';
 			} elseif ( $title->inNamespace( NS_CATEGORY ) ) {
 				$class = ' mw-hidden-cats-ns-shown';
@@ -619,11 +644,13 @@ abstract class Skin extends ContextSource {
 	 * @return string HTML
 	 */
 	public function getCategories() {
+		$userOptionsLookup = MediaWikiServices::getInstance()->getUserOptionsLookup();
+		$showHiddenCats = $userOptionsLookup->getBoolOption( $this->getUser(), 'showhiddencats' );
+
 		$catlinks = $this->getCategoryLinks();
 		// Check what we're showing
 		$allCats = $this->getOutput()->getCategoryLinks();
-		$showHidden = $this->getUser()->getBoolOption( 'showhiddencats' ) ||
-						$this->getTitle()->inNamespace( NS_CATEGORY );
+		$showHidden = $showHiddenCats || $this->getTitle()->inNamespace( NS_CATEGORY );
 
 		$classes = [ 'catlinks' ];
 		if ( empty( $allCats['normal'] ) && !( !empty( $allCats['hidden'] ) && $showHidden ) ) {
@@ -788,12 +815,22 @@ abstract class Skin extends ContextSource {
 	}
 
 	/**
-	 * @param OutputPage|null $out Defaults to $this->getOutput() if left as null
+	 * @deprecated since 1.36 use Skin::prepareSubtitle instead
+	 * @param OutputPage|null $out Defaults to $this->getOutput() if left as null (unused)
 	 * @return string
 	 */
-	public function subPageSubtitle( $out = null ) {
-		$linkRenderer = MediaWikiServices::getInstance()->getLinkRenderer();
-		$out = $out ?? $this->getOutput();
+	public function subPageSubtitle( $out ) {
+		wfDeprecated( __METHOD__, '1.36' );
+		return $this->subPageSubtitleInternal();
+	}
+
+	/**
+	 * @return string
+	 */
+	private function subPageSubtitleInternal() {
+		$services = MediaWikiServices::getInstance();
+		$linkRenderer = $services->getLinkRenderer();
+		$out = $this->getOutput();
 		$title = $out->getTitle();
 		$subpages = '';
 
@@ -801,44 +838,42 @@ abstract class Skin extends ContextSource {
 			return $subpages;
 		}
 
-		if (
-			$out->isArticle() && MediaWikiServices::getInstance()->getNamespaceInfo()->
-				hasSubpages( $title->getNamespace() )
-		) {
-			$ptext = $title->getPrefixedText();
-			if ( strpos( $ptext, '/' ) !== false ) {
-				$links = explode( '/', $ptext );
-				array_pop( $links );
-				$c = 0;
-				$growinglink = '';
-				$display = '';
-				$lang = $this->getLanguage();
+		$hasSubpages = $services->getNamespaceInfo()->hasSubpages( $title->getNamespace() );
+		if ( !$out->isArticle() || !$hasSubpages ) {
+			return $subpages;
+		}
 
-				foreach ( $links as $link ) {
-					$growinglink .= $link;
-					$display .= $link;
-					$linkObj = Title::newFromText( $growinglink );
+		$ptext = $title->getPrefixedText();
+		if ( strpos( $ptext, '/' ) !== false ) {
+			$links = explode( '/', $ptext );
+			array_pop( $links );
+			$count = 0;
+			$growingLink = '';
+			$display = '';
+			$lang = $this->getLanguage();
 
-					if ( is_object( $linkObj ) && $linkObj->isKnown() ) {
-						$getlink = $linkRenderer->makeKnownLink(
-							$linkObj, $display
-						);
+			foreach ( $links as $link ) {
+				$growingLink .= $link;
+				$display .= $link;
+				$linkObj = Title::newFromText( $growingLink );
 
-						$c++;
+				if ( $linkObj && $linkObj->isKnown() ) {
+					$getlink = $linkRenderer->makeKnownLink( $linkObj, $display );
 
-						if ( $c > 1 ) {
-							$subpages .= $lang->getDirMarkEntity() . $this->msg( 'pipe-separator' )->escaped();
-						} else {
-							$subpages .= '&lt; ';
-						}
+					$count++;
 
-						$subpages .= $getlink;
-						$display = '';
+					if ( $count > 1 ) {
+						$subpages .= $lang->getDirMarkEntity() . $this->msg( 'pipe-separator' )->escaped();
 					} else {
-						$display .= '/';
+						$subpages .= '&lt; ';
 					}
-					$growinglink .= '/';
+
+					$subpages .= $getlink;
+					$display = '';
+				} else {
+					$display .= '/';
 				}
+				$growingLink .= '/';
 			}
 		}
 
@@ -883,7 +918,7 @@ abstract class Skin extends ContextSource {
 		if ( $config->get( 'RightsPage' ) ) {
 			$title = Title::newFromText( $config->get( 'RightsPage' ) );
 			$link = $linkRenderer->makeKnownLink(
-				$title, new HtmlArmor( $config->get( 'RightsText' ) )
+				$title, new HtmlArmor( $config->get( 'RightsText' ) ?: $title->getText() )
 			);
 		} elseif ( $config->get( 'RightsUrl' ) ) {
 			$link = Linker::makeExternalLink( $config->get( 'RightsUrl' ), $config->get( 'RightsText' ) );
@@ -2077,7 +2112,7 @@ abstract class Skin extends ContextSource {
 			$toolbox['recentchangeslinked']['id'] = 't-recentchangeslinked';
 			$toolbox['recentchangeslinked']['rel'] = 'nofollow';
 		}
-		if ( $feedUrls ?? null ) {
+		if ( $feedUrls ) {
 			$toolbox['feeds']['id'] = 'feedlinks';
 			$toolbox['feeds']['links'] = [];
 			foreach ( $feedUrls as $key => $feed ) {
@@ -2249,6 +2284,9 @@ abstract class Skin extends ContextSource {
 	 * will render as element properties:
 	 *     data-foo='1' data-bar='baz'
 	 *
+	 * The "class" key currently accepts both a string and an array of classes, but this will be
+	 * changed to only accept an array in the future.
+	 *
 	 * @param array $options Can be used to affect the output of a link.
 	 * Possible options are:
 	 *   - 'text-wrapper' key to specify a list of elements to wrap the text of
@@ -2328,7 +2366,12 @@ abstract class Skin extends ContextSource {
 			}
 			if ( isset( $options['link-class'] ) ) {
 				if ( isset( $attrs['class'] ) ) {
-					$attrs['class'] .= " {$options['link-class']}";
+					// In the future, this should accept an array of classes, not a string
+					if ( is_array( $attrs['class'] ) ) {
+						$attrs['class'][] = $options['link-class'];
+					} else {
+						$attrs['class'] .= " {$options['link-class']}";
+					}
 				} else {
 					$attrs['class'] = $options['link-class'];
 				}
@@ -2349,7 +2392,9 @@ abstract class Skin extends ContextSource {
 	 * @param array $item Array of list item data containing some of a specific set of keys.
 	 * The "id", "class" and "itemtitle" keys will be used as attributes for the list item,
 	 * if "active" contains a value of true a "active" class will also be appended to class.
-	 * @phan-param array{id?:string,class?:string,itemtitle?:string,active?:bool} $item
+	 * The "class" key currently accepts both a string and an array of classes, but this will be
+	 * changed to only accept an array in the future.
+	 * @phan-param array{id?:string,class?:string|string[],itemtitle?:string,active?:bool} $item
 	 *
 	 * @param array $options
 	 * @phan-param array{tag?:string} $options
@@ -2415,8 +2460,14 @@ abstract class Skin extends ContextSource {
 			if ( !isset( $attrs['class'] ) ) {
 				$attrs['class'] = '';
 			}
-			$attrs['class'] .= ' active';
-			$attrs['class'] = trim( $attrs['class'] );
+
+			// In the future, this should accept an array of classes, not a string
+			if ( is_array( $attrs['class'] ) ) {
+				$attrs['class'][] = 'active';
+			} else {
+				$attrs['class'] .= ' active';
+				$attrs['class'] = trim( $attrs['class'] );
+			}
 		}
 		if ( isset( $item['itemtitle'] ) ) {
 			$attrs['title'] = $item['itemtitle'];
@@ -2518,7 +2569,7 @@ abstract class Skin extends ContextSource {
 	 */
 	final public function prepareSubtitle() {
 		$out = $this->getOutput();
-		$subpagestr = $this->subPageSubtitle();
+		$subpagestr = $this->subPageSubtitleInternal();
 		if ( $subpagestr !== '' ) {
 			$subpagestr = '<span class="subpages">' . $subpagestr . '</span>';
 		}

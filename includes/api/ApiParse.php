@@ -388,6 +388,9 @@ class ApiParse extends ApiBase {
 			$context->setOutput( $outputPage );
 
 			if ( $skin ) {
+				// Based on OutputPage::headElement()
+				$skin->doSetupSkinUserCss( $outputPage );
+
 				// Based on OutputPage::output()
 				$outputPage->loadSkinModules( $skin );
 			}
@@ -615,9 +618,6 @@ class ApiParse extends ApiBase {
 		$suppressCache = false;
 		$this->getHookRunner()->onApiMakeParserOptions( $popts, $pageObj->getTitle(),
 			$params, $this, $reset, $suppressCache );
-
-		// Force cache suppression when $popts aren't cacheable.
-		$suppressCache = $suppressCache || !$popts->isSafeToCache();
 
 		return [ $popts, $reset, $suppressCache ];
 	}

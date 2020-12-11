@@ -2962,7 +2962,7 @@ class Parser {
 		$sawDeprecatedTemplateEquals = false; // T91154
 
 		# SUBST
-		// @phan-suppress-next-line PhanRedundantCondition
+		// @phan-suppress-next-line PhanImpossibleCondition
 		if ( !$found ) {
 			$substMatch = $this->mSubstWords->matchStartAndRemove( $part1 );
 
@@ -4018,7 +4018,7 @@ class Parser {
 		$this->mDoubleUnderscores = $mwa->matchAndRemove( $text );
 
 		if ( isset( $this->mDoubleUnderscores['nogallery'] ) ) {
-			$this->mOutput->mNoGallery = true;
+			$this->mOutput->setNoGallery( true );
 		}
 		if ( isset( $this->mDoubleUnderscores['notoc'] ) && !$this->mForceTocPosition ) {
 			$this->mShowToc = false;

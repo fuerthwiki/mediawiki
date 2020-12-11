@@ -86,6 +86,9 @@ class MultiWriteBagOStuff extends BagOStuff {
 					// (likely harmless) params (factory/class/calls) ending up in "args".
 					$cacheInfo['args'] = [ $cacheInfo ];
 				}
+
+				// ObjectFactory::getObjectFromSpec accepts an array, not just a callable (phan bug)
+				// @phan-suppress-next-line PhanTypeInvalidCallableArraySize
 				$this->caches[] = ObjectFactory::getObjectFromSpec( $cacheInfo );
 			}
 		}
@@ -352,8 +355,8 @@ class MultiWriteBagOStuff extends BagOStuff {
 		return $this->fieldHasFlags( $flags, self::WRITE_SYNC ) ? false : $this->asyncWrites;
 	}
 
-	public function makeKeyInternal( $keyspace, $args ) {
-		return $this->caches[0]->makeKeyInternal( $keyspace, $args );
+	public function makeKeyInternal( $keyspace, $components ) {
+		return $this->caches[0]->makeKeyInternal( $keyspace, $components );
 	}
 
 	public function makeKey( $class, ...$components ) {
