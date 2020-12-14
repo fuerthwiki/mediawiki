@@ -256,6 +256,7 @@ wfLoadExtension( 'SemanticCite' );
 wfLoadExtension( 'SemanticScribunto' );
 #wfLoadExtension( 'Mermaid' ); Does not work @fuerthwiki.de
 wfLoadExtension( 'SemanticCompoundQueries' );
+wfLoadExtension( 'ExternalData' );
 
 # Enable VisualEditor but don't make it default
 wfLoadExtension( 'VisualEditor' );
