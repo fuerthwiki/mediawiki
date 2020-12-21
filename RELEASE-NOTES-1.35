@@ -11,7 +11,7 @@ PHP 8.0 workboard: https://phabricator.wikimedia.org/tag/php_8.0_support/
 
 == MediaWiki 1.35.1 ==
 
-THIS IS NOT A RELEASE YET
+This is a maintenance release of the MediaWiki 1.35 branch.
 
 While normally running update.php isn't required for point releases,
 it is recommended to run it for 1.35.1 so that sites.site_language is
@@ -78,6 +78,28 @@ To enable it, set $wgWatchlistExpiry = true; in your LocalSettings.php.
   result rather than a bool. The length of the bot password grants and
   restriction fields are now validated, and an error will be thrown if it
   would be truncated by the database.
+* (T265778) Fix English/*nix specific error messages in FSFileBackend.
+* (T267543) Split dropping of image.img_user_timestamp.
+* [FileTest] Do not assume /tmp exists on windows.
+* Clean up temp files correctly after unit tests.
+* Skip undo related phpunit tests when diff3 is missing.
+* (T269964) rdbms: Remove outer parentheses in insert query for Postgres.
+* (T263911) In MWExceptionHandler::report(), catch all throwables.
+* (T268894, CVE-2020-35474) SECURITY: Use Html::element in
+  ChangeListSpecialPage for sanity.
+* (T268917) Use Xml::element in SpecialUserrights for sanity.
+* (T268938, CVE-2020-35478, CVE-2020-35479) SECURITY: Pass escaped html
+  to LogFormatter::makePageLink for sanity.
+* (T268938) Fixed mixed escaping in Language::translateBlockExpiry.
+* (T263911) UserOptionsManager: don't differentiate anons caches.
+* (T261260) HeaderCallback: pre-cache request ID.
+* Parsoid updated to v0.12.1.
+* (T205908, CVE-2020-35477) SECURITY: Unable to change visibility of log
+  entries when MediaWiki:Mainpage uses Special:MyLanguage.
+* (T120883, CVE-2020-35480) SECURITY: Divergent behavior for contributions
+  and user pages of hidden users and missing users.
+* (T270145) Fix condition that can lead to using APCOND_BLOCKED in
+  $wgAutopromote to cause an OOM in PHP.
 
 == MediaWiki 1.35.0 ==
 
@@ -465,7 +487,7 @@ For notes on 1.34.x and older releases, see HISTORY.
 
 ==== New external libraries ====
 * Added wikimedia/ip-utils 1.0.0.
-* Added wikimedia/parsoid 0.12.0.
+* Added wikimedia/parsoid 0.12.1.
 * Added wikimedia/services 2.0.1.
 * Added taylorhakes/promise-polyfill v8.1.3.
 * Added vuejs v2.6.11.
