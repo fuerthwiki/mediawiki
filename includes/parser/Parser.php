@@ -2151,6 +2151,7 @@ class Parser {
 			# This means that users can paste URLs directly into the text
 			# Funny characters like ö aren't valid in URLs anyway
 			# This was changed in August 2004
+			// @phan-suppress-next-line SecurityCheck-XSS using false for escape is valid here
 			$s .= Linker::makeExternalLink( $url, $text, false, $linktype,
 				$this->getExternalLinkAttribs( $url ), $this->getTitle() ) . $dtrail . $trail;
 
@@ -2345,6 +2346,7 @@ class Parser {
 				if ( strpos( $entry, '#' ) === 0 || $entry === '' ) {
 					continue;
 				}
+				// @phan-suppress-next-line SecurityCheck-ReDoS preg_quote is not wanted here
 				if ( preg_match( '/' . str_replace( '/', '\\/', $entry ) . '/i', $url ) ) {
 					# Image matches a whitelist entry
 					$text = Linker::makeExternalImage( $url );
@@ -3243,9 +3245,11 @@ class Parser {
 
 		# Replace raw HTML by a placeholder
 		if ( $isHTML ) {
+			// @phan-suppress-next-line SecurityCheck-XSS Mixed mode, here html and safe
 			$text = $this->insertStripItem( $text );
 		} elseif ( $nowiki && ( $this->ot['html'] || $this->ot['pre'] ) ) {
 			# Escape nowiki-style return values
+			// @phan-suppress-next-line SecurityCheck-DoubleEscaped Mixed mode, here html and safe
 			$text = wfEscapeWikiText( $text );
 		} elseif ( is_string( $text )
 			&& !$piece['lineStart']
@@ -3919,6 +3923,8 @@ class Parser {
 			}
 
 			if ( isset( $this->mTagHooks[$name] ) ) {
+				// Note that $content may be null here, for example if the
+				// tag is self-closed.
 				$output = call_user_func_array( $this->mTagHooks[$name],
 					[ $content, $attributes, $this, $frame ] );
 			} else {
@@ -4664,7 +4670,12 @@ class Parser {
 		if ( !$parsing ) {
 			global $wgTitle;
 			$magicScopeVariable = $this->lock();
-			$this->startParse( $wgTitle, new ParserOptions, self::OT_PREPROCESS, true );
+			$this->startParse(
+				$wgTitle,
+				ParserOptions::newFromUser( RequestContext::getMain()->getUser() ),
+				self::OT_PREPROCESS,
+				true
+			);
 		}
 
 		# Option to disable this feature
@@ -5541,7 +5552,12 @@ class Parser {
 		global $wgTitle; # not generally used but removes an ugly failure mode
 
 		$magicScopeVariable = $this->lock();
-		$this->startParse( $wgTitle, new ParserOptions, self::OT_PLAIN, true );
+		$this->startParse(
+			$wgTitle,
+			ParserOptions::newFromUser( RequestContext::getMain()->getUser() ),
+			self::OT_PLAIN,
+			true
+		);
 		$outText = '';
 		$frame = $this->getPreprocessor()->newFrame();
 
@@ -5711,7 +5727,12 @@ class Parser {
 	 */
 	public function getFlatSectionInfo( $text ) {
 		$magicScopeVariable = $this->lock();
-		$this->startParse( null, new ParserOptions, self::OT_PLAIN, true );
+		$this->startParse(
+			null,
+			ParserOptions::newFromUser( RequestContext::getMain()->getUser() ),
+			self::OT_PLAIN,
+			true
+		);
 		$frame = $this->getPreprocessor()->newFrame();
 		$root = $this->preprocessToDom( $text, 0 );
 		$node = $root->getFirstChild();

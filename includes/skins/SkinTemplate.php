@@ -39,14 +39,15 @@ use MediaWiki\MediaWikiServices;
 class SkinTemplate extends Skin {
 	/**
 	 * @var string For QuickTemplate, the name of the subclass which will
-	 *   actually fill the template.  Child classes should override the default.
+	 *   actually fill the template.
 	 */
-	public $template = QuickTemplate::class;
+	public $template;
 
 	public $thispage;
 	public $titletxt;
 	public $userpage;
 	public $thisquery;
+	// TODO: Rename this to $isRegistered (but that's a breaking change)
 	public $loggedin;
 	public $username;
 	public $userpageUrlDetails;
@@ -68,7 +69,14 @@ class SkinTemplate extends Skin {
 	 */
 	protected function setupTemplateForOutput() {
 		$this->setupTemplateContext();
-		$tpl = $this->setupTemplate( $this->template );
+		$template = $this->options['template'] ?? $this->template;
+		if ( !$template ) {
+			throw new RuntimeException(
+				'SkinTemplate skins must define a `template` either as a public'
+					. ' property of by passing in a`template` option to the constructor.'
+			);
+		}
+		$tpl = $this->setupTemplate( $template );
 		return $tpl;
 	}
 
@@ -97,7 +105,7 @@ class SkinTemplate extends Skin {
 			unset( $query['returntoquery'] );
 		}
 		$this->thisquery = wfArrayToCgi( $query );
-		$this->loggedin = $user->isLoggedIn();
+		$this->loggedin = $user->isRegistered();
 		$this->username = $user->getName();
 
 		if ( $this->loggedin ) {
@@ -220,7 +228,15 @@ class SkinTemplate extends Skin {
 							$footerIcon['height'] = 31;
 						}
 					}
-					$footericons[$footerIconsKey][] = $footerIcon;
+
+					// Only output icons which have an image.
+					// For historic reasons this mimics the `icononly` option
+					// for BaseTemplate::getFooterIcons.
+					// In some cases the icon may be an empty array.
+					// Filter these out. (See T269776)
+					if ( is_string( $footerIcon ) || isset( $footerIcon['src'] ) ) {
+						$footericons[$footerIconsKey][] = $footerIcon;
+					}
 				}
 			}
 		}
@@ -647,6 +663,7 @@ class SkinTemplate extends Skin {
 	 * @param bool $checkEdit Check if $title exists and mark with .new if one doesn't
 	 *
 	 * @return array
+	 * @param-taint $message tainted
 	 */
 	public function tabAction( $title, $message, $selected, $query = '', $checkEdit = false ) {
 		$classes = [];

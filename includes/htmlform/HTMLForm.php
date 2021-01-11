@@ -115,6 +115,13 @@ use MediaWiki\HookContainer\ProtectedHookAccessorTrait;
  *                             The expressions will be given to a JavaScript frontend
  *                             module which will continually update the field's
  *                             visibility.
+ *    'section'                -- A string name for the section of the form to which the field
+ *                             belongs. Subsections may be added using the separator '/', e.g.:
+ *                               'section' => 'section1/subsection1'
+ *                             More levels may be added, e.g.:
+ *                               'section' => 'section1/subsection2/subsubsection1'
+ *                             The message key for a section or subsection header is built from
+ *                             its name and the form's message prefix (if present).
  *
  * Since 1.20, you can chain mutators to ease the form generation:
  * @par Example:
@@ -129,8 +136,6 @@ use MediaWiki\HookContainer\ProtectedHookAccessorTrait;
  * method calls done after that would simply not be part of the form :(
  *
  * @stable to extend
- *
- * @todo Document 'section' / 'subsection' stuff
  */
 class HTMLForm extends ContextSource {
 	use ProtectedHookAccessorTrait;
@@ -583,7 +588,7 @@ class HTMLForm extends ContextSource {
 			$tokenOkay = true; // no session check needed
 		} elseif ( $this->getRequest()->wasPosted() ) {
 			$editToken = $this->getRequest()->getVal( 'wpEditToken' );
-			if ( $this->getUser()->isLoggedIn() || $editToken !== null ) {
+			if ( $this->getUser()->isRegistered() || $editToken !== null ) {
 				// Session tokens for logged-out users have no security value.
 				// However, if the user gave one, check it in order to give a nice
 				// "session expired" error instead of "permission denied" or such.

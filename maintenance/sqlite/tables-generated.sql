@@ -91,7 +91,7 @@ CREATE TABLE /*_*/user_properties (
   PRIMARY KEY(up_user, up_property)
 );
 
-CREATE INDEX user_properties_property ON /*_*/user_properties (up_property);
+CREATE INDEX up_property ON /*_*/user_properties (up_property);
 
 
 CREATE TABLE /*_*/log_search (
@@ -365,21 +365,21 @@ CREATE TABLE /*_*/sites (
   site_config BLOB NOT NULL
 );
 
-CREATE UNIQUE INDEX sites_global_key ON /*_*/sites (site_global_key);
+CREATE UNIQUE INDEX site_global_key ON /*_*/sites (site_global_key);
 
-CREATE INDEX sites_type ON /*_*/sites (site_type);
+CREATE INDEX site_type ON /*_*/sites (site_type);
 
-CREATE INDEX sites_group ON /*_*/sites (site_group);
+CREATE INDEX site_group ON /*_*/sites (site_group);
 
-CREATE INDEX sites_source ON /*_*/sites (site_source);
+CREATE INDEX site_source ON /*_*/sites (site_source);
 
-CREATE INDEX sites_language ON /*_*/sites (site_language);
+CREATE INDEX site_language ON /*_*/sites (site_language);
 
-CREATE INDEX sites_protocol ON /*_*/sites (site_protocol);
+CREATE INDEX site_protocol ON /*_*/sites (site_protocol);
 
-CREATE INDEX sites_domain ON /*_*/sites (site_domain);
+CREATE INDEX site_domain ON /*_*/sites (site_domain);
 
-CREATE INDEX sites_forward ON /*_*/sites (site_forward);
+CREATE INDEX site_forward ON /*_*/sites (site_forward);
 
 
 CREATE TABLE /*_*/user_newtalk (
@@ -536,7 +536,7 @@ CREATE TABLE /*_*/categorylinks (
   cl_to BLOB DEFAULT '' NOT NULL,
   cl_sortkey BLOB DEFAULT '' NOT NULL,
   cl_sortkey_prefix BLOB DEFAULT '' NOT NULL,
-  cl_timestamp BLOB NOT NULL,
+  cl_timestamp DATETIME NOT NULL,
   cl_collation BLOB DEFAULT '' NOT NULL,
   cl_type TEXT DEFAULT 'page' NOT NULL,
   PRIMARY KEY(cl_from, cl_to)
@@ -550,4 +550,101 @@ CREATE INDEX cl_timestamp ON /*_*/categorylinks (cl_to, cl_timestamp);
 
 CREATE INDEX cl_collation_ext ON /*_*/categorylinks (
   cl_collation, cl_to, cl_type, cl_from
+);
+
+
+CREATE TABLE /*_*/logging (
+  log_id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+  log_type BLOB DEFAULT '' NOT NULL, log_action BLOB DEFAULT '' NOT NULL,
+  log_timestamp BLOB DEFAULT '19700101000000' NOT NULL,
+  log_actor BIGINT UNSIGNED NOT NULL,
+  log_namespace INTEGER DEFAULT 0 NOT NULL,
+  log_title BLOB DEFAULT '' NOT NULL,
+  log_page INTEGER UNSIGNED DEFAULT NULL,
+  log_comment_id BIGINT UNSIGNED NOT NULL,
+  log_params BLOB NOT NULL, log_deleted SMALLINT UNSIGNED DEFAULT 0 NOT NULL
+);
+
+CREATE INDEX log_type_time ON /*_*/logging (log_type, log_timestamp);
+
+CREATE INDEX log_actor_time ON /*_*/logging (log_actor, log_timestamp);
+
+CREATE INDEX log_page_time ON /*_*/logging (
+  log_namespace, log_title, log_timestamp
+);
+
+CREATE INDEX log_times ON /*_*/logging (log_timestamp);
+
+CREATE INDEX log_actor_type_time ON /*_*/logging (
+  log_actor, log_type, log_timestamp
+);
+
+CREATE INDEX log_page_id_time ON /*_*/logging (log_page, log_timestamp);
+
+CREATE INDEX log_type_action ON /*_*/logging (
+  log_type, log_action, log_timestamp
+);
+
+
+CREATE TABLE /*_*/uploadstash (
+  us_id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+  us_user INTEGER UNSIGNED NOT NULL,
+  us_key VARCHAR(255) NOT NULL,
+  us_orig_path VARCHAR(255) NOT NULL,
+  us_path VARCHAR(255) NOT NULL,
+  us_source_type VARCHAR(50) DEFAULT NULL,
+  us_timestamp BLOB NOT NULL,
+  us_status VARCHAR(50) NOT NULL,
+  us_chunk_inx INTEGER UNSIGNED DEFAULT NULL,
+  us_props BLOB DEFAULT NULL,
+  us_size INTEGER UNSIGNED NOT NULL,
+  us_sha1 VARCHAR(31) NOT NULL,
+  us_mime VARCHAR(255) DEFAULT NULL,
+  us_media_type TEXT DEFAULT NULL,
+  us_image_width INTEGER UNSIGNED DEFAULT NULL,
+  us_image_height INTEGER UNSIGNED DEFAULT NULL,
+  us_image_bits SMALLINT UNSIGNED DEFAULT NULL
+);
+
+CREATE INDEX us_user ON /*_*/uploadstash (us_user);
+
+CREATE UNIQUE INDEX us_key ON /*_*/uploadstash (us_key);
+
+CREATE INDEX us_timestamp ON /*_*/uploadstash (us_timestamp);
+
+
+CREATE TABLE /*_*/filearchive (
+  fa_id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+  fa_name BLOB DEFAULT '' NOT NULL, fa_archive_name BLOB DEFAULT '',
+  fa_storage_group BLOB DEFAULT NULL,
+  fa_storage_key BLOB DEFAULT '', fa_deleted_user INTEGER DEFAULT NULL,
+  fa_deleted_timestamp BLOB DEFAULT NULL,
+  fa_deleted_reason_id BIGINT UNSIGNED NOT NULL,
+  fa_size INTEGER UNSIGNED DEFAULT 0,
+  fa_width INTEGER DEFAULT 0, fa_height INTEGER DEFAULT 0,
+  fa_metadata BLOB DEFAULT NULL, fa_bits INTEGER DEFAULT 0,
+  fa_media_type TEXT DEFAULT NULL, fa_major_mime TEXT DEFAULT 'unknown',
+  fa_minor_mime BLOB DEFAULT 'unknown',
+  fa_description_id BIGINT UNSIGNED NOT NULL,
+  fa_actor BIGINT UNSIGNED NOT NULL,
+  fa_timestamp BLOB DEFAULT NULL, fa_deleted SMALLINT UNSIGNED DEFAULT 0 NOT NULL,
+  fa_sha1 BLOB DEFAULT '' NOT NULL
+);
+
+CREATE INDEX fa_name ON /*_*/filearchive (fa_name, fa_timestamp);
+
+CREATE INDEX fa_storage_group ON /*_*/filearchive (
+  fa_storage_group, fa_storage_key
+);
+
+CREATE INDEX fa_deleted_timestamp ON /*_*/filearchive (fa_deleted_timestamp);
+
+CREATE INDEX fa_actor_timestamp ON /*_*/filearchive (fa_actor, fa_timestamp);
+
+CREATE INDEX fa_sha1 ON /*_*/filearchive (fa_sha1);
+
+
+CREATE TABLE /*_*/text (
+  old_id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+  old_text BLOB NOT NULL, old_flags BLOB NOT NULL
 );

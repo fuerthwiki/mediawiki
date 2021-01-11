@@ -91,6 +91,7 @@ use MediaWiki\Page\PageCommandFactory;
 use MediaWiki\Page\ParserOutputAccess;
 use MediaWiki\Page\WikiPageFactory;
 use MediaWiki\Parser\ParserCacheFactory;
+use MediaWiki\Permissions\GroupPermissionsLookup;
 use MediaWiki\Permissions\PermissionManager;
 use MediaWiki\Preferences\DefaultPreferencesFactory;
 use MediaWiki\Preferences\PreferencesFactory;
@@ -191,11 +192,13 @@ return [
 	'BlockManager' => function ( MediaWikiServices $services ) : BlockManager {
 		return new BlockManager(
 			new ServiceOptions(
-				BlockManager::CONSTRUCTOR_OPTIONS, $services->getMainConfig()
+				BlockManager::CONSTRUCTOR_OPTIONS,
+				$services->getMainConfig()
 			),
 			$services->getPermissionManager(),
 			LoggerFactory::getInstance( 'BlockManager' ),
-			$services->getHookContainer()
+			$services->getHookContainer(),
+			$services->getUserGroupManagerFactory()->getUserGroupManager()
 		);
 	},
 
@@ -371,7 +374,7 @@ return [
 
 		$srvCache = $services->getLocalServerObjectCache();
 		if ( $srvCache instanceof EmptyBagOStuff ) {
-			// Use process cache if the main stash is disabled
+			// Use process cache if no APCU or other local-server cache (e.g. on CLI)
 			$srvCache = new HashBagOStuff( [ 'maxKeys' => 100 ] );
 		}
 
@@ -477,6 +480,12 @@ return [
 			function ( $command ) {
 				return wfShellExec( $command );
 			}
+		);
+	},
+
+	'GroupPermissionsLookup' => function ( MediaWikiServices $services ) : GroupPermissionsLookup {
+		return new GroupPermissionsLookup(
+			new ServiceOptions( GroupPermissionsLookup::CONSTRUCTOR_OPTIONS, $services->getMainConfig() )
 		);
 	},
 
@@ -914,20 +923,24 @@ return [
 
 	'ParserCache' => function ( MediaWikiServices $services ) : ParserCache {
 		return $services->getParserCacheFactory()
-			->getInstance( ParserCacheFactory::DEFAULT_NAME );
+			->getParserCache( ParserCacheFactory::DEFAULT_NAME );
 	},
 
 	'ParserCacheFactory' => function ( MediaWikiServices $services ) : ParserCacheFactory {
 		$config = $services->getMainConfig();
 		$cache = ObjectCache::getInstance( $config->get( 'ParserCacheType' ) );
+		$wanCache = $services->getMainWANObjectCache();
+
+		$options = new ServiceOptions( ParserCacheFactory::CONSTRUCTOR_OPTIONS, $config );
+
 		return new ParserCacheFactory(
 			$cache,
-			$config->get( 'CacheEpoch' ),
+			$wanCache,
 			$services->getHookContainer(),
 			$services->getJsonCodec(),
 			$services->getStatsdDataFactory(),
 			LoggerFactory::getInstance( 'ParserCache' ),
-			$config->get( 'ParserCacheUseJson' )
+			$options
 		);
 	},
 
@@ -963,12 +976,10 @@ return [
 	'ParserOutputAccess' => function ( MediaWikiServices $services ) : ParserOutputAccess {
 		return new ParserOutputAccess(
 			$services->getParserCache(),
-			$services->getMainWANObjectCache(),
-			$services->getMainConfig()->get( 'OldRevisionParserCacheExpireTime' ),
+			$services->getParserCacheFactory()->getRevisionOutputCache( 'rcache' ),
 			$services->getRevisionRenderer(),
 			$services->getStatsdDataFactory(),
 			$services->getDBLoadBalancerFactory(),
-			$services->getJsonCodec(),
 			LoggerFactory::getProvider()
 		);
 	},
@@ -1014,6 +1025,8 @@ return [
 			$services->getSpecialPageFactory(),
 			$services->getRevisionLookup(),
 			$services->getNamespaceInfo(),
+			$services->getGroupPermissionsLookup(),
+			$services->getUserGroupManager(),
 			$services->getBlockErrorFormatter(),
 			$services->getHookContainer(),
 			$services->getUserCache()
@@ -1415,11 +1428,11 @@ return [
 			$services->getDBLoadBalancerFactory(),
 			$services->getHookContainer(),
 			$services->getUserEditTracker(),
+			$services->getGroupPermissionsLookup(),
 			LoggerFactory::getInstance( 'UserGroupManager' ),
 			[ function ( UserIdentity $user ) use ( $services ) {
-				// TODO Needs cirular dependency fixed - T254537
 				$services->getPermissionManager()->invalidateUsersRightsCache( $user );
-				User::newFromIdentity( $user )->invalidateCache();
+				$services->getUserFactory()->newFromUserIdentity( $user )->invalidateCache();
 			} ]
 		);
 	},

@@ -8,6 +8,7 @@ use MediaWiki\Block\DatabaseBlock;
 use MediaWiki\Block\Restriction\NamespaceRestriction;
 use MediaWiki\Block\Restriction\PageRestriction;
 use MediaWiki\Block\SystemBlock;
+use MediaWiki\Interwiki\ClassicInterwikiLookup;
 use MediaWiki\MediaWikiServices;
 use MediaWiki\User\UserIdentityValue;
 use Wikimedia\TestingAccessWrapper;
@@ -621,19 +622,15 @@ class UserTest extends MediaWikiIntegrationTestCase {
 	 */
 	public function testGetCanonicalName( $name, array $expectedArray ) {
 		// fake interwiki map for the 'Interwiki prefix' testcase
-		$this->mergeMwGlobalArrayValue( 'wgHooks', [
-			'InterwikiLoadPrefix' => [
-				function ( $prefix, &$iwdata ) {
-					if ( $prefix === 'interwiki' ) {
-						$iwdata = [
-							'iw_url' => 'http://example.com/',
-							'iw_local' => 0,
-							'iw_trans' => 0,
-						];
-						return false;
-					}
-				},
-			],
+		$this->setMwGlobals( [
+			'wgInterwikiCache' => ClassicInterwikiLookup::buildCdbHash( [
+				[
+					'iw_prefix' => 'interwiki',
+					'iw_url' => 'http://example.com/',
+					'iw_local' => 0,
+					'iw_trans' => 0,
+				],
+			] ),
 		] );
 
 		foreach ( $expectedArray as $validate => $expected ) {
@@ -731,31 +728,31 @@ class UserTest extends MediaWikiIntegrationTestCase {
 	 * @covers User::isAnon
 	 * @covers User::logOut
 	 */
-	public function testLoggedIn() {
+	public function testIsRegistered() {
 		$user = $this->getMutableTestUser()->getUser();
 		$this->assertTrue( $user->isRegistered() );
-		$this->assertTrue( $user->isLoggedIn() );
+		$this->assertTrue( $user->isLoggedIn() ); // Deprecated wrapper method
 		$this->assertFalse( $user->isAnon() );
 
 		$this->setTemporaryHook( 'UserLogout', function ( &$user ) {
 			return false;
 		} );
 		$user->logout();
-		$this->assertTrue( $user->isLoggedIn() );
+		$this->assertTrue( $user->isRegistered() );
 
 		$this->removeTemporaryHook( 'UserLogout' );
 		$user->logout();
-		$this->assertFalse( $user->isLoggedIn() );
+		$this->assertFalse( $user->isRegistered() );
 
 		// Non-existent users are perceived as anonymous
 		$user = User::newFromName( 'UTNonexistent' );
 		$this->assertFalse( $user->isRegistered() );
-		$this->assertFalse( $user->isLoggedIn() );
+		$this->assertFalse( $user->isLoggedIn() ); // Deprecated wrapper method
 		$this->assertTrue( $user->isAnon() );
 
 		$user = new User;
 		$this->assertFalse( $user->isRegistered() );
-		$this->assertFalse( $user->isLoggedIn() );
+		$this->assertFalse( $user->isLoggedIn() ); // Deprecated wrapper method
 		$this->assertTrue( $user->isAnon() );
 	}
 
@@ -792,7 +789,7 @@ class UserTest extends MediaWikiIntegrationTestCase {
 	public function testCheckAndSetTouched() {
 		$user = $this->getMutableTestUser()->getUser();
 		$user = TestingAccessWrapper::newFromObject( $user );
-		$this->assertTrue( $user->isLoggedIn() );
+		$this->assertTrue( $user->isRegistered() );
 
 		$touched = $user->getDBTouched();
 		$this->assertTrue(
@@ -930,6 +927,9 @@ class UserTest extends MediaWikiIntegrationTestCase {
 			[ 460, 33, 'learner' ],
 			[ 525, 28, 'learner' ],
 			[ 538, 33, 'experienced' ],
+			[ 9, null, 'newcomer' ],
+			[ 10, null, 'learner' ],
+			[ 501, null, 'experienced' ],
 		];
 	}
 
@@ -956,7 +956,11 @@ class UserTest extends MediaWikiIntegrationTestCase {
 			$userQuery['joins']
 		);
 		$row->user_editcount = $editCount;
-		$row->user_registration = $db->timestamp( time() - $memberSince * 86400 );
+		if ( $memberSince !== null ) {
+			$row->user_registration = $db->timestamp( time() - $memberSince * 86400 );
+		} else {
+			$row->user_registration = null;
+		}
 		$user = User::newFromRow( $row );
 
 		$this->assertSame( $expLevel, $user->getExperienceLevel() );
@@ -1224,9 +1228,7 @@ class UserTest extends MediaWikiIntegrationTestCase {
 	 */
 	public function testSessionAndRequest() {
 		$req1 = new WebRequest;
-		$this->setMwGlobals( [
-			'wgRequest' => $req1,
-		] );
+		$this->setRequest( $req1 );
 		$user = User::newFromSession();
 		$request = $user->getRequest();
 

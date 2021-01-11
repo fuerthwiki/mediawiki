@@ -67,6 +67,13 @@ abstract class MediaWikiIntegrationTestCase extends PHPUnit\Framework\TestCase {
 	protected $db;
 
 	/**
+	 * Cloned database
+	 *
+	 * @var ?CloneDatabase
+	 */
+	private static $dbClone = null;
+
+	/**
 	 * @var array
 	 * @since 1.19
 	 */
@@ -223,7 +230,7 @@ abstract class MediaWikiIntegrationTestCase extends PHPUnit\Framework\TestCase {
 	 * @return TestUser
 	 */
 	public static function getTestSysop() {
-		return self::getTestUser( [ 'sysop', 'bureaucrat' ] );
+		return static::getTestUser( [ 'sysop', 'bureaucrat' ] );
 	}
 
 	/**
@@ -249,7 +256,7 @@ abstract class MediaWikiIntegrationTestCase extends PHPUnit\Framework\TestCase {
 		$page = WikiPage::factory( $title );
 
 		if ( !$page->exists() ) {
-			$user = self::getTestSysop()->getUser();
+			$user = static::getTestSysop()->getUser();
 			$page->doEditContent(
 				ContentHandler::makeContent( 'UTContent', $title ),
 				'UTPageSummary',
@@ -285,7 +292,7 @@ abstract class MediaWikiIntegrationTestCase extends PHPUnit\Framework\TestCase {
 		$page = WikiPage::factory( $title );
 
 		if ( $page->exists() ) {
-			$page->doDeleteArticleReal( 'Testing', $this->getTestSysop()->getUser() );
+			$page->doDeleteArticleReal( 'Testing', static::getTestSysop()->getUser() );
 		}
 
 		return $page;
@@ -391,7 +398,7 @@ abstract class MediaWikiIntegrationTestCase extends PHPUnit\Framework\TestCase {
 			session_id( '' );
 		}
 
-		$wgRequest = new FauxRequest();
+		$wgRequest = RequestContext::getMain()->getRequest();
 		MediaWiki\Session\SessionManager::resetCache();
 	}
 
@@ -408,7 +415,7 @@ abstract class MediaWikiIntegrationTestCase extends PHPUnit\Framework\TestCase {
 		if ( !self::$dbSetup || $this->needsDB() ) {
 			// set up a DB connection for this test to use
 
-			self::$useTemporaryTables = !$this->getCliArg( 'use-normal-tables' );
+			$useTemporaryTables = !$this->getCliArg( 'use-normal-tables' );
 			self::$reuseDB = $this->getCliArg( 'reuse-db' );
 
 			$lb = MediaWikiServices::getInstance()->getDBLoadBalancer();
@@ -417,7 +424,9 @@ abstract class MediaWikiIntegrationTestCase extends PHPUnit\Framework\TestCase {
 			$this->checkDbIsSupported();
 
 			if ( !self::$dbSetup ) {
-				$this->setupAllTestDBs();
+				self::setupAllTestDBs(
+					$this->db, $this->dbPrefix(), $useTemporaryTables
+				);
 				$this->addCoreDBData();
 			}
 
@@ -606,15 +615,6 @@ abstract class MediaWikiIntegrationTestCase extends PHPUnit\Framework\TestCase {
 			ob_end_flush();
 		}
 
-		// Cleaning up temporary files
-		foreach ( $this->tmpFiles as $fileName ) {
-			if ( is_file( $fileName ) || ( is_link( $fileName ) ) ) {
-				unlink( $fileName );
-			} elseif ( is_dir( $fileName ) ) {
-				wfRecursiveRemoveDir( $fileName );
-			}
-		}
-
 		if ( $this->needsDB() && $this->db ) {
 			// Clean up open transactions
 			while ( $this->db->trxLevel() > 0 ) {
@@ -645,13 +645,22 @@ abstract class MediaWikiIntegrationTestCase extends PHPUnit\Framework\TestCase {
 		$this->mwGlobalsToUnset = [];
 		$this->restoreLoggers();
 
+		// Cleaning up temporary files - after logger, if temp files used there
+		foreach ( $this->tmpFiles as $fileName ) {
+			if ( is_file( $fileName ) || ( is_link( $fileName ) ) ) {
+				unlink( $fileName );
+			} elseif ( is_dir( $fileName ) ) {
+				wfRecursiveRemoveDir( $fileName );
+			}
+		}
+
 		// TODO: move global state into MediaWikiServices
 		RequestContext::resetMain();
 		if ( session_id() !== '' ) {
 			session_write_close();
 			session_id( '' );
 		}
-		$wgRequest = new FauxRequest();
+		$wgRequest = RequestContext::getMain()->getRequest();
 		MediaWiki\Session\SessionManager::resetCache();
 		MediaWiki\Auth\AuthManager::resetCache();
 
@@ -772,6 +781,19 @@ abstract class MediaWikiIntegrationTestCase extends PHPUnit\Framework\TestCase {
 		}
 
 		$this->resetServices();
+	}
+
+	/**
+	 * Set the global request in the two places it is stored.
+	 * @param WebRequest $request
+	 * @since 1.36
+	 */
+	protected function setRequest( $request ) {
+		global $wgRequest;
+		// It's not necessary to stash the value with setMwGlobals(), since
+		// it's reset on teardown anyway.
+		$wgRequest = $request;
+		RequestContext::getMain()->setRequest( $request );
 	}
 
 	/**
@@ -1437,6 +1459,11 @@ abstract class MediaWikiIntegrationTestCase extends PHPUnit\Framework\TestCase {
 			JobQueueGroup::singleton()->get( $type )->delete();
 		}
 
+		if ( self::$dbClone ) {
+			self::$dbClone->destroy( true );
+			self::$dbClone = null;
+		}
+
 		// T219673: close any connections from code that failed to call reuseConnection()
 		// or is still holding onto a DBConnRef instance (e.g. in a singleton).
 		MediaWikiServices::getInstance()->getDBLoadBalancerFactory()->closeAll();
@@ -1479,9 +1506,9 @@ abstract class MediaWikiIntegrationTestCase extends PHPUnit\Framework\TestCase {
 
 			$db->tablePrefix( $oldPrefix );
 			$tablesCloned = self::listTables( $db );
-			$dbClone = new CloneDatabase( $db, $tablesCloned, $prefix, $oldPrefix );
-			$dbClone->useTemporaryTables( self::$useTemporaryTables );
-			$dbClone->cloneTableStructure();
+			self::$dbClone = new CloneDatabase( $db, $tablesCloned, $prefix, $oldPrefix );
+			self::$dbClone->useTemporaryTables( self::$useTemporaryTables );
+			self::$dbClone->cloneTableStructure();
 
 			$db->tablePrefix( $prefix );
 			$db->_originalTablePrefix = $oldPrefix;
@@ -1493,15 +1520,16 @@ abstract class MediaWikiIntegrationTestCase extends PHPUnit\Framework\TestCase {
 		return true;
 	}
 
-	public function setupAllTestDBs() {
+	public static function setupAllTestDBs( $db, ?string $testPrefix = null, ?bool $useTemporaryTables = null ) {
 		global $wgDBprefix;
 
 		self::$oldTablePrefix = $wgDBprefix;
 
-		$testPrefix = $this->dbPrefix();
+		$testPrefix = $testPrefix ?? self::getTestPrefixFor( $db );
 
 		// switch to a temporary clone of the database
-		self::setupTestDB( $this->db, $testPrefix );
+		self::$useTemporaryTables = $useTemporaryTables ?? self::$useTemporaryTables;
+		self::setupTestDB( $db, $testPrefix );
 
 		if ( self::isUsingExternalStoreDB() ) {
 			self::setupExternalStoreTestDBs( $testPrefix );
@@ -1831,12 +1859,12 @@ abstract class MediaWikiIntegrationTestCase extends PHPUnit\Framework\TestCase {
 		$originalTables = $this->listOriginalTables( $db );
 		$tables = array_intersect( $tables, $originalTables );
 
-		$dbClone = new CloneDatabase( $db, $tables, $db->tablePrefix(), $db->_originalTablePrefix );
-		$dbClone->useTemporaryTables( self::$useTemporaryTables );
-		$dbClone->cloneTableStructure();
+		self::$dbClone = new CloneDatabase( $db, $tables, $db->tablePrefix(), $db->_originalTablePrefix );
+		self::$dbClone->useTemporaryTables( self::$useTemporaryTables );
+		self::$dbClone->cloneTableStructure();
 
 		$lb = MediaWikiServices::getInstance()->getDBLoadBalancer();
-		$lb->setTempTablesOnlyMode( self::$useTemporaryTables, $lb->getLocalDomainID() );
+		$lb->setTempTablesOnlyMode( self::$useTemporaryTables, $db->getDomainID() );
 	}
 
 	/**
@@ -1914,7 +1942,8 @@ abstract class MediaWikiIntegrationTestCase extends PHPUnit\Framework\TestCase {
 	}
 
 	private static function isNotUnittest( $table ) {
-		return strpos( $table, self::DB_PREFIX ) !== 0;
+		return strpos( $table, self::DB_PREFIX ) !== 0 &&
+			strpos( $table, ParserTestRunner::DB_PREFIX ) !== 0;
 	}
 
 	/**
@@ -2176,27 +2205,6 @@ abstract class MediaWikiIntegrationTestCase extends PHPUnit\Framework\TestCase {
 	}
 
 	/**
-	 * Asserts the type of the provided value. This can be either
-	 * in internal type such as boolean or integer, or a class or
-	 * interface the value extends or implements.
-	 *
-	 * @deprecated since 1.35 Following the PHPUnit deprecation of assertInternalType
-	 *
-	 * @param string $type
-	 * @param mixed $actual
-	 * @param string $message
-	 */
-	protected function assertType( $type, $actual, $message = '' ) {
-		wfDeprecated( __METHOD__, '1.35' );
-		if ( class_exists( $type ) || interface_exists( $type ) ) {
-			$this->assertInstanceOf( $type, $actual, $message );
-		} else {
-			// phpcs:ignore MediaWiki.Usage.PHPUnitDeprecatedMethods.AssertInternalTypeGeneric
-			$this->assertInternalType( $type, $actual, $message );
-		}
-	}
-
-	/**
 	 * Returns true if the given namespace defaults to Wikitext
 	 * according to $wgNamespaceContentModels
 	 *
@@ -2377,7 +2385,7 @@ abstract class MediaWikiIntegrationTestCase extends PHPUnit\Framework\TestCase {
 	 * @param string|Content $content the new content of the page
 	 * @param string $summary Optional summary string for the revision
 	 * @param int $defaultNs Optional namespace id
-	 * @param User|null $user If null, $this->getTestUser()->getUser() is used.
+	 * @param User|null $user If null, static::getTestUser()->getUser() is used.
 	 * @return Status Object as returned by WikiPage::doEditContent()
 	 * @throws MWException If this test cases's needsDB() method doesn't return true.
 	 *         Test cases can use "@group Database" to enable database test support,
@@ -2407,7 +2415,7 @@ abstract class MediaWikiIntegrationTestCase extends PHPUnit\Framework\TestCase {
 		}
 
 		if ( $user === null ) {
-			$user = $this->getTestUser()->getUser();
+			$user = static::getTestUser()->getUser();
 		}
 
 		if ( is_string( $content ) ) {

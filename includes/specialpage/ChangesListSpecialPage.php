@@ -191,7 +191,7 @@ abstract class ChangesListSpecialPage extends SpecialPage {
 						'cssClassSuffix' => 'user-newcomer',
 						'isRowApplicableCallable' => function ( $ctx, $rc ) {
 							$performer = $rc->getPerformer();
-							return $performer && $performer->isLoggedIn() &&
+							return $performer && $performer->isRegistered() &&
 								$performer->getExperienceLevel() === 'newcomer';
 						}
 					],
@@ -202,7 +202,7 @@ abstract class ChangesListSpecialPage extends SpecialPage {
 						'cssClassSuffix' => 'user-learner',
 						'isRowApplicableCallable' => function ( $ctx, $rc ) {
 							$performer = $rc->getPerformer();
-							return $performer && $performer->isLoggedIn() &&
+							return $performer && $performer->isRegistered() &&
 								$performer->getExperienceLevel() === 'learner';
 						},
 					],
@@ -213,7 +213,7 @@ abstract class ChangesListSpecialPage extends SpecialPage {
 						'cssClassSuffix' => 'user-experienced',
 						'isRowApplicableCallable' => function ( $ctx, $rc ) {
 							$performer = $rc->getPerformer();
-							return $performer && $performer->isLoggedIn() &&
+							return $performer && $performer->isRegistered() &&
 								$performer->getExperienceLevel() === 'experienced';
 						},
 					]
@@ -1916,7 +1916,10 @@ abstract class ChangesListSpecialPage extends SpecialPage {
 		$aboveNewcomer = $dbr->makeList(
 			[
 				'user_editcount >= ' . intval( $wgLearnerEdits ),
-				'user_registration <= ' . $dbr->addQuotes( $dbr->timestamp( $learnerCutoff ) ),
+				$dbr->makeList( [
+					'user_registration IS NULL',
+					'user_registration <= ' . $dbr->addQuotes( $dbr->timestamp( $learnerCutoff ) ),
+				], IDatabase::LIST_OR ),
 			],
 			IDatabase::LIST_AND
 		);
@@ -1924,8 +1927,11 @@ abstract class ChangesListSpecialPage extends SpecialPage {
 		$aboveLearner = $dbr->makeList(
 			[
 				'user_editcount >= ' . intval( $wgExperiencedUserEdits ),
-				'user_registration <= ' .
-					$dbr->addQuotes( $dbr->timestamp( $experiencedUserCutoff ) ),
+				$dbr->makeList( [
+					'user_registration IS NULL',
+					'user_registration <= ' .
+						$dbr->addQuotes( $dbr->timestamp( $experiencedUserCutoff ) ),
+				], IDatabase::LIST_OR ),
 			],
 			IDatabase::LIST_AND
 		);

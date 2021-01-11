@@ -14,7 +14,7 @@ See the file UPGRADE for more detailed upgrade instructions, including
 important information when upgrading from versions prior to 1.11.
 
 Some specific notes for MediaWiki 1.36 upgrades are below:
-* MediaWiki 1.36 now requires that the internationalization extension
+* MediaWiki 1.36 now requires the PHP internationalization extension
   (commonly referred to as Intl, ext-intl and php-intl).
 * …
 
@@ -71,6 +71,13 @@ For notes on 1.35.x and older releases, see HISTORY.
   unknown tags is numeric formatting; non-EXIF tags which are non-numeric
   should always use this method to specify the desired formatting.
 * The new 'title' type can be used to validate action API and REST API inputs.
+* The new ArticleParserOptions hook allows customizing the parser options
+  used to parse wikitext for an article, based on user preferences, title,
+  etc.
+* The new 'raw' type can be used to validate action API inputs. It bypasses
+  the Unicode NFC normalization done on inputs of type 'string', so it more
+  suitable when the input is binary or may contain deprecated Unicode
+  sequences or characters (such as U+2001) that should be passed unmodified.
 * …
 
 === External library changes in 1.36 ===
@@ -84,24 +91,29 @@ For notes on 1.35.x and older releases, see HISTORY.
 * …
 
 ==== Changed external libraries ====
-* pear/mail_mime was upgraded from 1.10.8 to 1.10.9.
-* wikimedia/html-formatter was upgraded from 1.0.2 to 2.0.0.
-* Updated OOUI from 0.39.3 to 0.41.0.
-* Updated jquery.client from 2.0.2 to 3.0.0.
-* Updated guzzlehttp/guzzle from 6.5.4 to 7.2.0.
-* Updated pear/net_smtp from 1.9.1 to 1.9.2.
-* Updated wikimedia/object-factory from 2.1.0 to 3.0.0.
 * Updated composer/semver from 1.5.1 to 3.2.4.
+* Updated guzzlehttp/guzzle from 6.5.4 to 7.2.0.
+* Updated jquery.client from 2.0.2 to 3.0.0.
+* Updated OOUI from 0.39.3 to 0.41.0.
+* Updated pear/mail_mime from 1.10.8 to 1.10.9.
+* Updated pear/net_smtp from 1.9.1 to 1.9.2.
+* Updated pimple/pimple from 3.3.0 to 3.3.1.
+* Updated wikimedia/html-formatter from 1.0.2 to 2.0.0.
+* Updated wikimedia/less.php from 3.0.0 to 3.1.0.
+* Updated wikimedia/object-factory from 2.1.0 to 3.0.0.
 * …
 
 ===== Changed development-only external libraries =====
 * Updated composer/spdx-licenses from 1.5.3 to 1.5.4.
-* doctrine/sql-formatter was upgraded from 1.1.0 to 1.1.1.
-* doctrine/dbal was upgraded from 2.10.2 to 2.10.4.
-* Updated nikic/php-parser from 4.4.0 to 4.10.2.
+* Updated doctrine/dbal from 2.10.2 to 3.0.0.
+* Updated doctrine/sql-formatter from 1.1.0 to 1.1.1.
+* Updated mediawiki/mediawiki-phan-config from 0.10.2 to 0.10.6.
 * Updated monolog/monolog from 1.25.3 to 2.0.2.
-* Updated wikimedia/testing-access-wrapper from 1.0.0 to 2.0.0.
+* Updated nikic/php-parser from 4.4.0 to 4.10.2.
 * Updated psy/psysh from 0.10.4 to 0.10.5.
+* Updated seld/jsonlint from 1.7.1 to 1.8.3.
+* Updated symfony/yaml from ~3.4|~4.3|~5.0.5 to ~3.4|~5.1.
+* Updated wikimedia/testing-access-wrapper from 1.0.0 to 2.0.0.
 * …
 
 ==== Removed external libraries ====
@@ -114,14 +126,20 @@ For notes on 1.35.x and older releases, see HISTORY.
   if it founds you reversed them (based on assumption that higher revision ID
   indicates a later revision). The assumption is not always true and is
   hindering proper edit undoing in some cases, hence the logic has been removed.
-  Reversing the paramaters will now lead to edit conflict or undefined behavior.
+  Reversing the parameters will now lead to edit conflict or undefined behavior.
 * (T263340) In history merging, pages with a content model that does not support
   redirects will now be recorded as deleted if no revision is being left in the
   source page (that's if all revisions of the page have been merged to another).
 * …
 
 === Action API changes in 1.36 ===
-* …
+* (T269636) `Access-Control-Max-Age` was added to the default list of headers
+  allowed for cross-origin API requests ($wgAllowedCorsHeaders).
+* (T258108) Accounts with the 'bot' right no longer have pages automatically
+  added to the watchlist when making API edits, regardless of their preferences.
+  This is to reduce the size of the watchlist data in the database. To add API
+  bot edits to the watchlist, explicitly set the 'watch' option.
+* ...
 
 === Action API internal changes in 1.36 ===
 * …
@@ -132,11 +150,13 @@ Below only new and removed languages are listed, as well as changes to languages
 because of Phabricator reports.
 
 * (T245359) Split Bali script locale from "ban" (Balinese) (ban-bali).
-* (T259330) Added language support for Mara (mhr).
-* (T263968) Added support for Nias language (nia).
+* (T259330) Added language support for Mara (mrh).
+* (T263968) Added language support for Nias (nia).
 * (T264582) Added language support for Madurese (mad).
+* (T270365) Added language support for Tyap (kcg).
 
 === Breaking changes in 1.36 ===
+* (T249459) wfIsBadImage(), deprecated in 1.34, has been removed.
 * (T176526) EditPage::getContextTitle() will now throw an exception if a context
   title was not set using setContextTitle(). Previously, this mis-use would only
   cause a deprecation warning to be emitted.
@@ -217,6 +237,8 @@ because of Phabricator reports.
   the internal object, use ObjectCache::getLocalClusterInstance instead.
 * CategoryFinder, which was deprecated in 1.31 and hard-deprecated in 1.35,
   has been removed.
+* GenderCache::singleton(), which was deprecated in 1.28 and hard-deprecated
+  in 1.35, has been removed.
 * Sanitizer::escapeId(), deprecated in 1.30, has been removed.
 * Parser::setFunctionTagHook(), deprecated in 1.35, has been removed.
 * The ParserBeforeTidy hook, deprecated in 1.35, has been removed.
@@ -325,14 +347,37 @@ because of Phabricator reports.
 * MediaWiki now also requires the php-intl extension.
 * BotPassword::save() now returns a Status object for the result rather than
   a bool.
+* The methods in CoreTagHooks have been marked @internal and type hints have
+  been added.  The methods were unused outside of MediaWiki core.
+* SquidPurgeClient and SquidPurgeClientPool, deprecated since 1.35, have been
+  removed.
+* ParserTestRunner no longer invokes the ParserTestTables hook, instead
+  cloning all database tables before running tests as MediaWikiIntegrationTest
+  does.  If an extension was misusing the hook to *exclude* tables from the
+  clone, that will no longer occur and tests may fail.
 * …
 
 === Deprecations in 1.36 ===
+* wfIncrStats() is now deprecated. Use MediaWikiServices::getInstance()
+  ->getStatsdDataFactory()->updateCount() instead.
+* WikiPage::doEditContent() is now deprecated. Use
+  WikiPage::doUserEditContent() instead. Note that doEditContent() was also
+  deprecated in 1.32 for unrelated reasons and doUserEditContent() is
+  deprecated for other reasons, however, using doUserEditContent() is
+  recommended over using doEditContent().
+* WikiPage::doUserEditContent() is now deprecated. Use
+  PageUpdater::saveRevision instead. Note that the new method expects callers
+  to take care of checking EDIT_MINOR against the minoredit right, and to apply
+  the autopatrol right as appropriate.
 * LocalFile::recordUpload2, soft deprecated in 1.35, now emits deprecation
   warnings. Use ::recordUpload3 instead.
+* Constructing a new instance of the ParserOptions class without providing
+  a User object, which falls back to the global $wgUser, is now deprecated.
 * The User class, which was marked as @newable in 1.35, is no longer newable,
   meaning that it is no longer safe to manually call the constructor via
   `new User`. Instead, use the UserFactory service.
+* The confusingly-named User->isLoggedIn() method has been deprecated in favour
+  of the method it wraps, User->isRegistered().
 * Use of the `preprocessor=Preprocessor_DOM` option in parser test files has
   been deprecated.  Preprocessor_DOM was removed in 1.35.
 * ParserOptions::setTidy() has been deprecated.  It has had no effect since
@@ -372,8 +417,8 @@ because of Phabricator reports.
   deprecated. Please use Skin::footerLink() instead.
 * Skin::getLogo() has been deprecated. Use ResourceLoaderSkinModule instead.
 * The module `mediawiki.toc.styles` has been replaced by
-ResourceLoaderSkinModule. If you are having problems styling table of contents
-ensure you have an updated skin.
+  ResourceLoaderSkinModule. If you are having problems styling table of contents
+  ensure you have an updated skin.
 * Skin::mainPageLink() has been deprecated. Use LinkRenderer service instead.
 * BaseTemplate::getToolbox() method has been hard deprecated. The toolbox data
   is now available in a sidebar data array which you can get from any class
@@ -401,6 +446,8 @@ ensure you have an updated skin.
 * The PHPUnit6And8Compat class, used to provide compatibility with PHPUnit 6,
   was removed without deprecation. This class was introduced during the
   upgrade to PHPUnit 8, but never used.
+* MediaWikiIntegrationTestCase::assertType, hard-deprecated in 1.35 due to
+  incompatibility with PHPUnit 8, was removed.
 * ParserCache::getETag has been deprecated, instead build suitable etag
   explicitly.
 * The following functions from the Language class have been hard deprecated
@@ -418,7 +465,23 @@ ensure you have an updated skin.
 * WikiRevision::importUpload, soft-deprecated since 1.31, was hard-deprecated.
 * Html::infoBox() has been deprecated. There's no replacement.
 * BagOStuff::makeKeyInternal() usage outside of BagOStuff has been deprecated.
-* The global function wfAppendToArrayIfNotDefault() has been deprecated.
+* The following global functions have been hard deprecated:
+   - wfAppendToArrayIfNotDefault
+   - wfAcceptToPrefs
+   - wfClearOutputBuffers
+   - wfConfiguredReadOnlyReason
+   - wfDebugMem
+   - wfGetPrecompiledData
+   - wfNegotiateType
+* The InterwikiLoadPrefix hook has been deprecated; it is not compatible
+  with future wikitext parsers (which need to enumerate all interwiki
+  prefixes).  In test cases please use $wgInterwikiCache instead.
+* Skin::getSkinStylePath() has been deprecated. Please replace usages with
+  the direct path to the resources.
+* The second argument of EnhancedChangesList::getDiffHistLinks, $query, has
+  been deprecated.
+* The ParserTestTables hook has been deprecated; it is no longer necessary
+  after a ParserTestRunner refactoring.
 * …
 
 === Other changes in 1.36 ===
@@ -451,6 +514,9 @@ ensure you have an updated skin.
 * ParserCache default serialization format was changed from PHP serialization
   to JSON serialization. In case some installed extension do not support JSON
   yet, $wgParserCacheUseJson can be used to revert back to PHP serialization.
+* PermissionManager::groupHasPermission, ::getGroupPermissions and
+  ::getGroupsWithPermission were deprecated, use GroupPermissionsLookup
+  service instead.
 
 == Compatibility ==
 MediaWiki 1.36 requires PHP 7.2.22 or later, and the following PHP extensions:
@@ -470,7 +536,7 @@ but support for them is somewhat less mature.
 The supported versions are:
 
 * MySQL 5.5.8 or later
-* PostgreSQL 9.2 or later
+* PostgreSQL 9.4 or later
 * SQLite 3.8.0 or later
 
 == Online documentation ==

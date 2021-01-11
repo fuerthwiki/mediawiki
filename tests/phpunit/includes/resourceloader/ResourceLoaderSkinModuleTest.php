@@ -120,17 +120,21 @@ CSS
 	public function testGetStyles( $parent, $logo, $expected ) {
 		$module = $this->getMockBuilder( ResourceLoaderSkinModule::class )
 			->setMethods( [ 'readStyleFiles', 'getConfig', 'getLogoData' ] )
+			->disableOriginalConstructor()
 			->getMock();
 		$module->expects( $this->once() )->method( 'readStyleFiles' )
 			->willReturn( $parent );
-		$module->expects( $this->once() )->method( 'getConfig' )
-			->willReturn( new HashConfig() );
+		$module->expects( $this->any() )->method( 'getConfig' )
+			->willReturn( new HashConfig( [
+				'UseNewMediaStructure' => true,
+			] ) );
 		$module->expects( $this->once() )->method( 'getLogoData' )
 			->willReturn( $logo );
 
 		$ctx = $this->getMockBuilder( ResourceLoaderContext::class )
 			->disableOriginalConstructor()->getMock();
 
+		$module->__construct();
 		$this->assertEquals(
 			$expected,
 			$module->getStyles( $ctx )
@@ -424,7 +428,26 @@ CSS
 		$ctx = $this->createMock( ResourceLoaderContext::class );
 		$module = new ResourceLoaderSkinModule(
 			[
-				'features' => [ 'normalize', 'elements' ],
+				// The ordering should be controlled by ResourceLoaderSkinModule
+				// `normalize` will be outputted before `elements` despite the ordering
+				'features' => [ 'elements', 'normalize' ],
+				'styles' => [
+					'test.styles/styles.css' => [
+						'media' => 'screen'
+					]
+				]
+			]
+		);
+
+		$moduleFeaturesObject = new ResourceLoaderSkinModule(
+			[
+				// The ordering should be controlled by ResourceLoaderSkinModule
+				// `normalize` will be outputted before `elements` despite the ordering
+				'features' => [
+					'elements' => true,
+					'normalize' => true,
+					'toc' => false,
+				],
 				'styles' => [
 					'test.styles/styles.css' => [
 						'media' => 'screen'
@@ -440,12 +463,14 @@ CSS
 			->getConstant( 'FEATURE_FILES' );
 
 		$expected = [
-			'screen' => [
+			'all' => [
 				new ResourceLoaderFilePath(
-					$featureFiles['normalize']['screen'][0],
+					$featureFiles['normalize']['all'][0],
 					$defaultLocalBasePath,
 					$defaultRemoteBasePath
 				),
+			],
+			'screen' => [
 				new ResourceLoaderFilePath(
 					$featureFiles['elements']['screen'][0],
 					$defaultLocalBasePath,
@@ -454,6 +479,11 @@ CSS
 				'test.styles/styles.css'
 			]
 		];
+
+		$this->assertEquals(
+			$expected,
+			$moduleFeaturesObject->getStyleFiles( $ctx )
+		);
 
 		$this->assertEquals(
 			$expected,

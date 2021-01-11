@@ -60,6 +60,20 @@ abstract class Skin extends ContextSource {
 	 */
 	public $stylename = null;
 
+	/** The current major version of the skin specification. */
+	protected const VERSION_MAJOR = 1;
+
+	/**
+	 * Get the current major version of Skin. This is used to manage changes
+	 * to underlying data and for providing support for older and new versions of code.
+	 *
+	 * @since 1.36
+	 * @return int
+	 */
+	public static function getVersion() {
+		return self::VERSION_MAJOR;
+	}
+
 	/**
 	 * Fetch the set of available skins.
 	 *
@@ -155,9 +169,11 @@ abstract class Skin extends ContextSource {
 			$this->skinname = $options;
 		} elseif ( $options ) {
 			$name = $options['name'] ?? null;
+
 			if ( !$name ) {
 				throw new SkinException( 'Skin name must be specified' );
 			}
+
 			$this->options = $options;
 			$this->skinname = $name;
 		}
@@ -270,7 +286,7 @@ abstract class Skin extends ContextSource {
 
 		$services = MediaWikiServices::getInstance();
 		$permManager = $services->getPermissionManager();
-		if ( $user->isLoggedIn()
+		if ( $user->isRegistered()
 			&& $permManager->userHasAllRights( $user, 'writeapi', 'viewmywatchlist', 'editmywatchlist' )
 			&& $this->getRelevantTitle()->canExist()
 		) {
@@ -299,7 +315,7 @@ abstract class Skin extends ContextSource {
 
 		// User/talk link
 		$user = $this->getUser();
-		if ( $user->isLoggedIn() ) {
+		if ( $user->isRegistered() ) {
 			$titles[] = $user->getUserPage();
 			$titles[] = $user->getTalkPage();
 		}
@@ -414,7 +430,7 @@ abstract class Skin extends ContextSource {
 				if ( $user ) {
 					$user->load( User::READ_NORMAL );
 
-					if ( $user->isLoggedIn() ) {
+					if ( $user->isRegistered() ) {
 						$this->mRelevantUser = $user;
 					}
 				}
@@ -1251,6 +1267,8 @@ abstract class Skin extends ContextSource {
 	 *
 	 * Requires $stylename to be set, otherwise throws MWException.
 	 *
+	 * @deprecated since 1.36, Replace usages with direct path of
+	 *  the resource and then remove the $stylename property.
 	 * @param string $name The name or path of a skin resource file
 	 * @return string The fully resolved style path URL
 	 * @throws MWException
@@ -1530,7 +1548,6 @@ abstract class Skin extends ContextSource {
 	 */
 	protected function buildNavUrls() {
 		$out = $this->getOutput();
-		$request = $this->getRequest();
 		$title = $this->getTitle();
 		$thispage = $title->getPrefixedDBkey();
 		$uploadNavigationUrl = $this->getConfig()->get( 'UploadNavigationUrl' );
@@ -1596,11 +1613,24 @@ abstract class Skin extends ContextSource {
 		}
 
 		$user = $this->getRelevantUser();
+		$permissionManager = MediaWikiServices::getInstance()->getPermissionManager();
+
+		// The relevant user should only be set if it exists. However, if it exists but is hidden,
+		// and the viewer cannot see hidden users, this exposes the fact that the user exists;
+		// pretend like the user does not exist in such cases, by setting $user to null, which
+		// is what getRelevantUser returns if there is no user set (though it is documented as
+		// always returning a User...) See T120883
+		if ( $user && $user->isRegistered() && $user->isHidden() &&
+			 !$permissionManager->userHasRight( $this->getUser(), 'hideuser' )
+		) {
+			$user = null;
+		}
+
 		if ( $user ) {
 			$rootUser = $user->getName();
 
 			$nav_urls['contributions'] = [
-				'text' => $this->msg( 'contributions', $rootUser )->text(),
+				'text' => $this->msg( 'tool-link-contributions', $rootUser )->text(),
 				'href' => self::makeSpecialUrlSubpage( 'Contributions', $rootUser ),
 				'tooltip-params' => [ $rootUser ],
 			];
@@ -1609,11 +1639,7 @@ abstract class Skin extends ContextSource {
 				'href' => self::makeSpecialUrlSubpage( 'Log', $rootUser )
 			];
 
-			if (
-				MediaWikiServices::getInstance()
-					->getPermissionManager()
-					->userHasRight( $this->getUser(), 'block' )
-			) {
+			if ( $permissionManager->userHasRight( $this->getUser(), 'block' ) ) {
 				$nav_urls['blockip'] = [
 					'text' => $this->msg( 'blockip', $rootUser )->text(),
 					'href' => self::makeSpecialUrlSubpage( 'Block', $rootUser )
@@ -2014,7 +2040,7 @@ abstract class Skin extends ContextSource {
 		$siteNotice = '';
 
 		if ( $this->getHookRunner()->onSiteNoticeBefore( $siteNotice, $this ) ) {
-			if ( $this->getUser()->isLoggedIn() ) {
+			if ( $this->getUser()->isRegistered() ) {
 				$siteNotice = $this->getCachedNotice( 'sitenotice' );
 			} else {
 				$anonNotice = $this->getCachedNotice( 'anonnotice' );
@@ -2036,7 +2062,6 @@ abstract class Skin extends ContextSource {
 	/**
 	 * Create a section edit link.
 	 *
-	 * @suppress SecurityCheck-XSS $links has keys of different taint types
 	 * @param Title $nt The title being linked to (may not be the same as
 	 *   the current page, if the section is included from a template)
 	 * @param string $section The designation of the section being pointed to,
@@ -2315,6 +2340,7 @@ abstract class Skin extends ContextSource {
 			}
 			while ( count( $wrapper ) > 0 ) {
 				$element = array_pop( $wrapper );
+				// @phan-suppress-next-line PhanTypeArraySuspiciousNullable
 				$html = Html::rawElement( $element['tag'], $element['attributes'] ?? null, $html );
 			}
 		}
@@ -2600,7 +2626,7 @@ abstract class Skin extends ContextSource {
 			&& $maxCredits !== 0;
 
 		/** @var CreditsAction $action */
-		if ( $titleExists ) {
+		if ( $useCredits ) {
 			$article = Article::newFromWikiPage( $this->getWikiPage(), $this );
 			$action = Action::factory( 'credits', $article, $this );
 		}

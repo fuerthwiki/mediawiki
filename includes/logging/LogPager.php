@@ -114,8 +114,8 @@ class LogPager extends ReverseChronologicalPager {
 		$this->permissionManager = $permissionManager ?? $services->getPermissionManager();
 		$this->actorMigration = $actorMigration ?? $services->getActorMigration();
 
+		$this->limitLogId( $logId ); // set before types per T269761
 		$this->limitType( $types ); // also excludes hidden types
-		$this->limitLogId( $logId );
 		$this->limitFilterTypes();
 		$this->limitPerformer( $performer );
 		$this->limitTitle( $title, $pattern );
@@ -200,7 +200,10 @@ class LogPager extends ReverseChronologicalPager {
 		$this->types = $types;
 		// Don't show private logs to unprivileged users.
 		// Also, only show them upon specific request to avoid suprises.
-		$audience = $types ? 'user' : 'public';
+		// Exception: if we are showing only a single log entry based on the log id,
+		// we don't require that "specific request" so that the links-in-logs feature
+		// works. See T269761
+		$audience = ( $types || $this->hasEqualsClause( 'log_id' ) ) ? 'user' : 'public';
 		$hideLogs = LogEventsList::getExcludeClause( $this->mDb, $audience, $user );
 		if ( $hideLogs !== false ) {
 			$this->mConds[] = $hideLogs;
@@ -286,7 +289,7 @@ class LogPager extends ReverseChronologicalPager {
 		 * is on.
 		 *
 		 * This is not a problem with simple title matches, because then we can
-		 * use the page_time index.  That should have no more than a few hundred
+		 * use the log_page_time index.  That should have no more than a few hundred
 		 * log entries for even the busiest pages, so it can be safely scanned
 		 * in full to satisfy an impossible condition on user or similar.
 		 */
@@ -384,9 +387,12 @@ class LogPager extends ReverseChronologicalPager {
 			$options[] = 'STRAIGHT_JOIN';
 		}
 		if ( $this->performer !== '' || $this->types !== [] ) {
+			// Index being renamed
+			$index = $this->mDb->indexExists( 'logging', 'times', __METHOD__ ) ? 'times' : 'log_times';
+
 			// T223151, T237026: MariaDB's optimizer, at least 10.1, likes to choose a wildly bad plan for
 			// some reason for these code paths. Tell it not to use the wrong index it wants to pick.
-			$options['IGNORE INDEX'] = [ 'logging' => [ 'times' ] ];
+			$options['IGNORE INDEX'] = [ 'logging' => [ $index ] ];
 		}
 
 		$info = [

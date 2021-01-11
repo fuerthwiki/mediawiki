@@ -162,7 +162,7 @@ class Names {
 		'ff' => 'Fulfulde', # Fulfulde, Maasina
 		'fi' => 'suomi', # Finnish
 		'fit' => 'meänkieli', # Tornedalen Finnish
-		'fiu-vro' => 'Võro', # Võro (deprecated code, 'vro' in ISO 639-3 since 2009-01-16)
+		'fiu-vro' => 'võro', # Võro (deprecated code, 'vro' in ISO 639-3 since 2009-01-16)
 		'fj' => 'Na Vosa Vakaviti', # Fijian
 		'fo' => 'føroyskt', # Faroese
 		'fr' => 'français', # French
@@ -233,6 +233,7 @@ class Names {
 		'kbd' => 'Адыгэбзэ', # Kabardian
 		'kbd-cyrl' => 'Адыгэбзэ', # Kabardian (Cyrillic)
 		'kbp' => 'Kabɩyɛ', # Kabiyè
+		'kcg' => 'Tyap', # Tyap
 		'kg' => 'Kongo', # Kongo, (FIXME!) should probaly be KiKongo or KiKoongo
 		'khw' => 'کھوار', # Khowar
 		'ki' => 'Gĩkũyũ', # Gikuyu
@@ -251,7 +252,7 @@ class Names {
 		'kn' => 'ಕನ್ನಡ', # Kannada
 		'ko' => '한국어', # Korean
 		'ko-kp' => '조선말', # Korean (DPRK), T190324
-		'koi' => 'Перем Коми', # Komi-Permyak
+		'koi' => 'перем коми', # Komi-Permyak
 		'kr' => 'Kanuri', # Kanuri, Central
 		'krc' => 'къарачай-малкъар', # Karachay-Balkar
 		'kri' => 'Krio', # Krio
@@ -341,7 +342,7 @@ class Names {
 		'ny' => 'Chi-Chewa', # Chichewa
 		'nys' => 'Nyunga', # Nyungar
 		'oc' => 'occitan', # Occitan
-		'olo' => 'Livvinkarjala', # Livvi-Karelian
+		'olo' => 'livvinkarjala', # Livvi-Karelian
 		'om' => 'Oromoo', # Oromo
 		'or' => 'ଓଡ଼ିଆ', # Oriya
 		'os' => 'Ирон', # Ossetic, T31091
@@ -396,9 +397,9 @@ class Names {
 		'sg' => 'Sängö', # Sango/Sangho
 		'sgs' => 'žemaitėška', # Samogitian
 		'sh' => 'srpskohrvatski / српскохрватски', # Serbocroatian
-		'shi' => 'Tašlḥiyt/ⵜⴰⵛⵍⵃⵉⵜ', # Tachelhit (multiple scripts - defaults to Latin)
+		'shi' => 'Taclḥit', # Tachelhit, Shilha (multiple scripts - defaults to Latin)
 		'shi-tfng' => 'ⵜⴰⵛⵍⵃⵉⵜ', # Tachelhit (Tifinagh script)
-		'shi-latn' => 'Tašlḥiyt', # Tachelhit (Latin script)
+		'shi-latn' => 'Taclḥit', # Tachelhit (Latin script)
 		'shn' => 'ၽႃႇသႃႇတႆး ', # Shan
 		'shy-latn' => 'tacawit', # Shawiya (Latin script) - T194047
 		'si' => 'සිංහල', # Sinhalese
@@ -472,7 +473,7 @@ class Names {
 		'vmf' => 'Mainfränkisch', # Upper Franconian, Main-Franconian
 		'vo' => 'Volapük', # Volapük
 		'vot' => 'Vaďďa', # Vod/Votian
-		'vro' => 'Võro', # Võro
+		'vro' => 'võro', # Võro
 		'wa' => 'walon', # Walloon
 		'war' => 'Winaray', # Waray-Waray
 		'wo' => 'Wolof', # Wolof

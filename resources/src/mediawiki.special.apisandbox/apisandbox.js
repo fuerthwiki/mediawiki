@@ -11,77 +11,9 @@
 		updatingBooklet = false,
 		pages = {},
 		moduleInfoCache = {},
-		baseRequestParams;
-
-	/**
-	 * A wrapper for a widget that provides an enable/disable button
-	 *
-	 * @class
-	 * @private
-	 * @constructor
-	 * @param {OO.ui.Widget} widget
-	 * @param {Object} [config] Configuration options
-	 */
-	function OptionalWidget( widget, config ) {
-		var k;
-
-		config = config || {};
-
-		this.widget = widget;
-		this.$cover = config.$cover ||
-			$( '<div>' ).addClass( 'mw-apisandbox-optionalWidget-cover' );
-		this.checkbox = new OO.ui.CheckboxInputWidget( config.checkbox )
-			.on( 'change', this.onCheckboxChange, [], this );
-
-		OptionalWidget.super.call( this, config );
-
-		// Forward most methods for convenience
-		for ( k in this.widget ) {
-			if ( typeof this.widget[ k ] === 'function' && !this[ k ] ) {
-				this[ k ] = this.widget[ k ].bind( this.widget );
-			}
-		}
-
-		widget.connect( this, {
-			change: [ this.emit, 'change' ]
-		} );
-
-		this.$cover.on( 'click', this.onOverlayClick.bind( this ) );
-
-		this.$element
-			.addClass( 'mw-apisandbox-optionalWidget' )
-			.append(
-				this.$cover,
-				$( '<div>' ).addClass( 'mw-apisandbox-optionalWidget-fields' ).append(
-					$( '<div>' ).addClass( 'mw-apisandbox-optionalWidget-widget' ).append(
-						widget.$element
-					),
-					$( '<div>' ).addClass( 'mw-apisandbox-optionalWidget-checkbox' ).append(
-						this.checkbox.$element
-					)
-				)
-			);
-
-		this.setDisabled( widget.isDisabled() );
-	}
-	OO.inheritClass( OptionalWidget, OO.ui.Widget );
-	OptionalWidget.prototype.onCheckboxChange = function ( checked ) {
-		this.setDisabled( !checked );
-	};
-	OptionalWidget.prototype.onOverlayClick = function () {
-		this.setDisabled( false );
-		if ( typeof this.widget.focus === 'function' ) {
-			this.widget.focus();
-		}
-	};
-	OptionalWidget.prototype.setDisabled = function ( disabled ) {
-		OptionalWidget.super.prototype.setDisabled.call( this, disabled );
-		this.widget.setDisabled( this.isDisabled() );
-		this.checkbox.setSelected( !this.isDisabled() );
-		this.$cover.toggle( this.isDisabled() );
-		this.emit( 'change' );
-		return this;
-	};
+		baseRequestParams,
+		OptionalParamWidget = require( './OptionalParamWidget.js' ),
+		UploadSelectFileParamWidget = require( './UploadSelectFileParamWidget.js' );
 
 	WidgetMethods = {
 		textInputWidget: {
@@ -94,14 +26,14 @@
 				}
 				this.setValue( v );
 			},
-			apiCheckValid: function () {
+			apiCheckValid: function ( shouldSuppressErrors ) {
 				var that = this;
 				return this.getValidity().then( function () {
 					return $.Deferred().resolve( true ).promise();
 				}, function () {
 					return $.Deferred().resolve( false ).promise();
 				} ).done( function ( ok ) {
-					ok = ok || suppressErrors;
+					ok = ok || shouldSuppressErrors;
 					that.setIcon( ok ? null : 'alert' );
 					that.setTitle( ok ? '' : mw.message( 'apisandbox-alert-field' ).plain() );
 				} );
@@ -160,6 +92,9 @@
 			setApiValue: function ( v ) {
 				this.setValue( Util.apiBool( v ) );
 			},
+			// there is a parameter `shouldSuppressErrors` available, but
+			// it is not included in the function declaration because that
+			// causes eslint to complain since it is unused
 			apiCheckValid: function () {
 				return $.Deferred().resolve( true ).promise();
 			}
@@ -182,8 +117,8 @@
 					menu.selectItemByData( String( v ) );
 				}
 			},
-			apiCheckValid: function () {
-				var ok = this.getApiValue() !== undefined || suppressErrors;
+			apiCheckValid: function ( shouldSuppressErrors ) {
+				var ok = this.getApiValue() !== undefined || shouldSuppressErrors;
 				this.setIcon( ok ? null : 'alert' );
 				this.setTitle( ok ? '' : mw.message( 'apisandbox-alert-field' ).plain() );
 				return $.Deferred().resolve( ok ).promise();
@@ -220,11 +155,11 @@
 				}
 				this.setValue( this.parseApiValue( v ) );
 			},
-			apiCheckValid: function () {
+			apiCheckValid: function ( shouldSuppressErrors ) {
 				var ok = true,
 					pi = this.paramInfo;
 
-				if ( !suppressErrors ) {
+				if ( !shouldSuppressErrors ) {
 					ok = this.getApiValue() !== undefined && !(
 						pi.allspecifier !== undefined &&
 						this.getValue().length > 1 &&
@@ -252,23 +187,6 @@
 			}
 		},
 
-		optionalWidget: {
-			getApiValue: function () {
-				return this.isDisabled() ? undefined : this.widget.getApiValue();
-			},
-			setApiValue: function ( v ) {
-				this.setDisabled( v === undefined );
-				this.widget.setApiValue( v );
-			},
-			apiCheckValid: function () {
-				if ( this.isDisabled() ) {
-					return $.Deferred().resolve( true ).promise();
-				} else {
-					return this.widget.apiCheckValid();
-				}
-			}
-		},
-
 		submoduleWidget: {
 			single: function () {
 				var v = this.isDisabled() ? this.paramInfo.default : this.getApiValue();
@@ -280,24 +198,6 @@
 				return v === undefined || v === '' ? [] : String( v ).split( '|' ).map( function ( val ) {
 					return { value: val, path: map[ val ] };
 				} );
-			}
-		},
-
-		uploadWidget: {
-			getApiValueForDisplay: function () {
-				return '...';
-			},
-			getApiValue: function () {
-				return this.getValue();
-			},
-			setApiValue: function () {
-				// Can't, sorry.
-			},
-			apiCheckValid: function () {
-				var ok = this.getValue() !== null && this.getValue() !== undefined || suppressErrors;
-				this.info.setIcon( ok ? null : 'alert' );
-				this.setTitle( ok ? '' : mw.message( 'apisandbox-alert-field' ).plain() );
-				return $.Deferred().resolve( ok ).promise();
 			}
 		}
 	};
@@ -446,6 +346,7 @@
 					}
 					break;
 
+				case 'raw':
 				case 'text':
 					widget = new OO.ui.MultilineTextInputWidget( {
 						required: Util.apiBool( pi.required )
@@ -522,9 +423,8 @@
 					break;
 
 				case 'upload':
-					widget = new OO.ui.SelectFileWidget();
+					widget = new UploadSelectFileParamWidget();
 					widget.paramInfo = pi;
-					$.extend( widget, WidgetMethods.uploadWidget );
 					break;
 
 				case 'namespace':
@@ -679,7 +579,7 @@
 
 				func = function () {
 					if ( !innerWidget.isDisabled() ) {
-						innerWidget.apiCheckValid().done( function ( ok ) {
+						innerWidget.apiCheckValid( suppressErrors ).done( function ( ok ) {
 							if ( ok ) {
 								widget.addTag( innerWidget.getApiValue() );
 								innerWidget.setApiValue( undefined );
@@ -698,9 +598,8 @@
 			if ( Util.apiBool( pi.required ) || opts.nooptional ) {
 				finalWidget = widget;
 			} else {
-				finalWidget = new OptionalWidget( widget );
+				finalWidget = new OptionalParamWidget( widget );
 				finalWidget.paramInfo = pi;
-				$.extend( finalWidget, WidgetMethods.optionalWidget );
 				if ( widget.getSubmodules ) {
 					finalWidget.getSubmodules = widget.getSubmodules.bind( widget );
 					finalWidget.on( 'disable', function () {
@@ -1069,7 +968,7 @@
 					if ( tokenWidgets.length ) {
 						// Check all token widgets' validity separately
 						deferred = $.when.apply( $, tokenWidgets.map( function ( w ) {
-							return w.apiCheckValid();
+							return w.apiCheckValid( suppressErrors );
 						} ) );
 
 						deferred.done( function () {
@@ -1508,7 +1407,7 @@
 			tmp = [];
 			if ( flag && !( widget instanceof OO.ui.TagMultiselectWidget ) &&
 				!(
-					widget instanceof OptionalWidget &&
+					widget instanceof OptionalParamWidget &&
 					widget.widget instanceof OO.ui.TagMultiselectWidget
 				)
 			) {
@@ -2034,7 +1933,7 @@
 		} else {
 			// eslint-disable-next-line no-jquery/no-map-util
 			promises = $.map( this.widgets, function ( widget ) {
-				return widget.apiCheckValid();
+				return widget.apiCheckValid( suppressErrors );
 			} );
 			$.when.apply( $, promises ).then( function () {
 				that.apiIsValid = Array.prototype.indexOf.call( arguments, false ) === -1;

@@ -157,9 +157,9 @@ abstract class Database implements IDatabase, IMaintainableDatabase, LoggerAware
 	/** @var int Number of write queries counted in trxWriteAdjDuration */
 	private $trxWriteAdjQueryCount = 0;
 	/** @var array[] List of (callable, method name, atomic section id) */
-	private $trxIdleCallbacks = [];
+	private $trxPostCommitOrIdleCallbacks = [];
 	/** @var array[] List of (callable, method name, atomic section id) */
-	private $trxPreCommitCallbacks = [];
+	private $trxPreCommitOrIdleCallbacks = [];
 	/**
 	 * @var array[] List of (callable, method name, atomic section id)
 	 * @phan-var array<array{0:callable,1:string,2:AtomicSectionIdentifier|null}>
@@ -659,15 +659,15 @@ abstract class Database implements IDatabase, IMaintainableDatabase, LoggerAware
 	public function writesOrCallbacksPending() {
 		return $this->trxLevel() && (
 			$this->trxDoneWrites ||
-			$this->trxIdleCallbacks ||
-			$this->trxPreCommitCallbacks ||
+			$this->trxPostCommitOrIdleCallbacks ||
+			$this->trxPreCommitOrIdleCallbacks ||
 			$this->trxEndCallbacks ||
 			$this->trxSectionCancelCallbacks
 		);
 	}
 
 	public function preCommitCallbacksPending() {
-		return $this->trxLevel() && $this->trxPreCommitCallbacks;
+		return $this->trxLevel() && $this->trxPreCommitOrIdleCallbacks;
 	}
 
 	/**
@@ -733,8 +733,8 @@ abstract class Database implements IDatabase, IMaintainableDatabase, LoggerAware
 	public function pendingWriteAndCallbackCallers() {
 		$fnames = $this->pendingWriteCallers();
 		foreach ( [
-			$this->trxIdleCallbacks,
-			$this->trxPreCommitCallbacks,
+			$this->trxPostCommitOrIdleCallbacks,
+			$this->trxPreCommitOrIdleCallbacks,
 			$this->trxEndCallbacks,
 			$this->trxSectionCancelCallbacks
 		] as $callbacks ) {
@@ -768,7 +768,7 @@ abstract class Database implements IDatabase, IMaintainableDatabase, LoggerAware
 		}
 
 		if ( $remember === self::REMEMBER_PRIOR ) {
-			array_push( $this->priorFlags, $this->flags );
+			$this->priorFlags[] = $this->flags;
 		}
 
 		$this->flags |= $flag;
@@ -783,7 +783,7 @@ abstract class Database implements IDatabase, IMaintainableDatabase, LoggerAware
 		}
 
 		if ( $remember === self::REMEMBER_PRIOR ) {
-			array_push( $this->priorFlags, $this->flags );
+			$this->priorFlags[] = $this->flags;
 		}
 
 		$this->flags &= ~$flag;
@@ -1570,8 +1570,8 @@ abstract class Database implements IDatabase, IMaintainableDatabase, LoggerAware
 		// Session loss implies transaction loss
 		$oldTrxShortId = $this->consumeTrxShortId();
 		$this->trxAtomicCounter = 0;
-		$this->trxIdleCallbacks = []; // T67263; transaction already lost
-		$this->trxPreCommitCallbacks = []; // T67263; transaction already lost
+		$this->trxPostCommitOrIdleCallbacks = []; // T67263; transaction already lost
+		$this->trxPreCommitOrIdleCallbacks = []; // T67263; transaction already lost
 		// Clear additional subclass fields
 		$this->doHandleSessionLossPreconnect();
 		// @note: leave trxRecurringCallbacks in place
@@ -2711,7 +2711,7 @@ abstract class Database implements IDatabase, IMaintainableDatabase, LoggerAware
 	 * Check type and bounds conditions parameters for update
 	 *
 	 * In order to prevent possible performance or replication issues,
-	 * empty condition for 'update' queries isn't allowed
+	 * empty condition for 'update' and 'delete' queries isn't allowed
 	 *
 	 * @param array|string $conds conditions to be validated on emptiness
 	 * @param string $fname caller's function name to be passed to exception
@@ -3907,7 +3907,12 @@ abstract class Database implements IDatabase, IMaintainableDatabase, LoggerAware
 			$this->trxAutomatic = true;
 		}
 
-		$this->trxIdleCallbacks[] = [ $callback, $fname, $this->currentAtomicSectionId() ];
+		$this->trxPostCommitOrIdleCallbacks[] = [
+			$callback,
+			$fname,
+			$this->currentAtomicSectionId()
+		];
+
 		if ( !$this->trxLevel() ) {
 			$this->runOnTransactionIdleCallbacks( self::TRIGGER_IDLE );
 		}
@@ -3925,7 +3930,11 @@ abstract class Database implements IDatabase, IMaintainableDatabase, LoggerAware
 		}
 
 		if ( $this->trxLevel() ) {
-			$this->trxPreCommitCallbacks[] = [ $callback, $fname, $this->currentAtomicSectionId() ];
+			$this->trxPreCommitOrIdleCallbacks[] = [
+				$callback,
+				$fname,
+				$this->currentAtomicSectionId()
+			];
 		} else {
 			// No transaction is active nor will start implicitly, so make one for this callback
 			$this->startAtomic( __METHOD__, self::ATOMIC_CANCELABLE );
@@ -3968,14 +3977,14 @@ abstract class Database implements IDatabase, IMaintainableDatabase, LoggerAware
 	private function reassignCallbacksForSection(
 		AtomicSectionIdentifier $old, AtomicSectionIdentifier $new
 	) {
-		foreach ( $this->trxPreCommitCallbacks as $key => $info ) {
+		foreach ( $this->trxPreCommitOrIdleCallbacks as $key => $info ) {
 			if ( $info[2] === $old ) {
-				$this->trxPreCommitCallbacks[$key][2] = $new;
+				$this->trxPreCommitOrIdleCallbacks[$key][2] = $new;
 			}
 		}
-		foreach ( $this->trxIdleCallbacks as $key => $info ) {
+		foreach ( $this->trxPostCommitOrIdleCallbacks as $key => $info ) {
 			if ( $info[2] === $old ) {
-				$this->trxIdleCallbacks[$key][2] = $new;
+				$this->trxPostCommitOrIdleCallbacks[$key][2] = $new;
 			}
 		}
 		foreach ( $this->trxEndCallbacks as $key => $info ) {
@@ -4013,14 +4022,14 @@ abstract class Database implements IDatabase, IMaintainableDatabase, LoggerAware
 		array $sectionIds, AtomicSectionIdentifier $newSectionId = null
 	) {
 		// Cancel the "on commit" callbacks owned by this savepoint
-		$this->trxIdleCallbacks = array_filter(
-			$this->trxIdleCallbacks,
+		$this->trxPostCommitOrIdleCallbacks = array_filter(
+			$this->trxPostCommitOrIdleCallbacks,
 			function ( $entry ) use ( $sectionIds ) {
 				return !in_array( $entry[2], $sectionIds, true );
 			}
 		);
-		$this->trxPreCommitCallbacks = array_filter(
-			$this->trxPreCommitCallbacks,
+		$this->trxPreCommitOrIdleCallbacks = array_filter(
+			$this->trxPreCommitOrIdleCallbacks,
 			function ( $entry ) use ( $sectionIds ) {
 				return !in_array( $entry[2], $sectionIds, true );
 			}
@@ -4089,10 +4098,10 @@ abstract class Database implements IDatabase, IMaintainableDatabase, LoggerAware
 		$e = null; // first exception
 		do { // callbacks may add callbacks :)
 			$callbacks = array_merge(
-				$this->trxIdleCallbacks,
+				$this->trxPostCommitOrIdleCallbacks,
 				$this->trxEndCallbacks // include "transaction resolution" callbacks
 			);
-			$this->trxIdleCallbacks = []; // consumed (and recursion guard)
+			$this->trxPostCommitOrIdleCallbacks = []; // consumed (and recursion guard)
 			$this->trxEndCallbacks = []; // consumed (recursion guard)
 
 			// Only run trxSectionCancelCallbacks on rollback, not commit.
@@ -4125,7 +4134,7 @@ abstract class Database implements IDatabase, IMaintainableDatabase, LoggerAware
 				}
 			}
 			// @phan-suppress-next-line PhanImpossibleConditionInLoop
-		} while ( count( $this->trxIdleCallbacks ) );
+		} while ( count( $this->trxPostCommitOrIdleCallbacks ) );
 
 		if ( $e instanceof Throwable ) {
 			throw $e; // re-throw any first exception
@@ -4148,8 +4157,8 @@ abstract class Database implements IDatabase, IMaintainableDatabase, LoggerAware
 
 		$e = null; // first exception
 		do { // callbacks may add callbacks :)
-			$callbacks = $this->trxPreCommitCallbacks;
-			$this->trxPreCommitCallbacks = []; // consumed (and recursion guard)
+			$callbacks = $this->trxPreCommitOrIdleCallbacks;
+			$this->trxPreCommitOrIdleCallbacks = []; // consumed (and recursion guard)
 			foreach ( $callbacks as $callback ) {
 				try {
 					++$count;
@@ -4162,7 +4171,7 @@ abstract class Database implements IDatabase, IMaintainableDatabase, LoggerAware
 				}
 			}
 			// @phan-suppress-next-line PhanImpossibleConditionInLoop
-		} while ( count( $this->trxPreCommitCallbacks ) );
+		} while ( count( $this->trxPreCommitOrIdleCallbacks ) );
 
 		if ( $e instanceof Throwable ) {
 			throw $e; // re-throw any first exception
@@ -4652,8 +4661,8 @@ abstract class Database implements IDatabase, IMaintainableDatabase, LoggerAware
 
 		// Clear any commit-dependant callbacks. They might even be present
 		// only due to transaction rounds, with no SQL transaction being active
-		$this->trxIdleCallbacks = [];
-		$this->trxPreCommitCallbacks = [];
+		$this->trxPostCommitOrIdleCallbacks = [];
+		$this->trxPreCommitOrIdleCallbacks = [];
 
 		// With FLUSHING_ALL_PEERS, callbacks will be explicitly run later
 		if ( $trxActive && $flush !== self::FLUSHING_ALL_PEERS ) {
@@ -4926,16 +4935,19 @@ abstract class Database implements IDatabase, IMaintainableDatabase, LoggerAware
 	 */
 	public static function getCacheSetOptions( IDatabase $db1, IDatabase $db2 = null ) {
 		$res = [ 'lag' => 0, 'since' => INF, 'pending' => false ];
+
 		foreach ( func_get_args() as $db ) {
-			/** @var IDatabase $db */
-			$status = $db->getSessionLagStatus();
-			if ( $status['lag'] === false ) {
-				$res['lag'] = false;
-			} elseif ( $res['lag'] !== false ) {
-				$res['lag'] = max( $res['lag'], $status['lag'] );
+			if ( $db instanceof IDatabase ) {
+				$status = $db->getSessionLagStatus();
+
+				if ( $status['lag'] === false ) {
+					$res['lag'] = false;
+				} elseif ( $res['lag'] !== false ) {
+					$res['lag'] = max( $res['lag'], $status['lag'] );
+				}
+				$res['since'] = min( $res['since'], $status['since'] );
+				$res['pending'] = $res['pending'] ?: $db->writesPending();
 			}
-			$res['since'] = min( $res['since'], $status['since'] );
-			$res['pending'] = $res['pending'] ?: $db->writesPending();
 		}
 
 		return $res;
@@ -5121,7 +5133,7 @@ abstract class Database implements IDatabase, IMaintainableDatabase, LoggerAware
 	}
 
 	/**
-	 * Database independent variable replacement. Replaces a set of variables
+	 * Database-independent variable replacement. Replaces a set of variables
 	 * in an SQL statement with their contents as given by $this->getSchemaVars().
 	 *
 	 * Supports '{$var}' `{$var}` and / *$var* / (without the spaces) style variables.

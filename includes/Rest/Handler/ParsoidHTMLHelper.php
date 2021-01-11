@@ -21,10 +21,11 @@
  */
 namespace MediaWiki\Rest\Handler;
 
-use MediaWiki\Linker\LinkTarget;
 use MediaWiki\MediaWikiServices;
 use MediaWiki\Page\WikiPageFactory;
+use MediaWiki\Parser\RevisionOutputCache;
 use MediaWiki\Rest\LocalizedHttpException;
+use MediaWiki\Revision\RevisionRecord;
 use ParserCache;
 use ParserOptions;
 use ParserOutput;
@@ -35,7 +36,6 @@ use Wikimedia\Parsoid\Core\ClientError;
 use Wikimedia\Parsoid\Core\ResourceLimitExceededException;
 use Wikimedia\Parsoid\Parsoid;
 use Wikimedia\UUID\GlobalIdGenerator;
-use WikiPage;
 
 /**
  * Helper for getting output of a given wikitext page rendered by parsoid.
@@ -52,6 +52,9 @@ class ParsoidHTMLHelper {
 	/** @var ParserCache */
 	private $parserCache;
 
+	/** @var RevisionOutputCache */
+	private $revisionOutputCache;
+
 	/** @var WikiPageFactory */
 	private $wikiPageFactory;
 
@@ -64,46 +67,49 @@ class ParsoidHTMLHelper {
 	/** @var Parsoid|null */
 	private $parsoid = null;
 
+	/** @var RevisionRecord|null */
+	private $revision = null;
+
 	/**
 	 * @param ParserCache $parserCache
+	 * @param RevisionOutputCache $revisionOutputCache
 	 * @param WikiPageFactory $wikiPageFactory
 	 * @param GlobalIdGenerator $globalIdGenerator
 	 */
 	public function __construct(
 		ParserCache $parserCache,
+		RevisionOutputCache $revisionOutputCache,
 		WikiPageFactory $wikiPageFactory,
 		GlobalIdGenerator $globalIdGenerator
 	) {
 		$this->parserCache = $parserCache;
 		$this->wikiPageFactory = $wikiPageFactory;
 		$this->globalIdGenerator = $globalIdGenerator;
+		$this->revisionOutputCache = $revisionOutputCache;
 	}
 
 	/**
 	 * @param Title $title
+	 * @param RevisionRecord|null $revision
 	 */
-	public function init( Title $title ) {
+	public function init( Title $title, ?RevisionRecord $revision = null ) {
 		$this->title = $title;
+		$this->revision = $revision;
 	}
 
 	/**
-	 * @param LinkTarget $title
 	 * @return ParserOutput
 	 * @throws LocalizedHttpException
 	 */
-	private function parse( LinkTarget $title ): ParserOutput {
+	private function parse(): ParserOutput {
 		$parsoid = $this->createParsoid();
-		$pageConfig = $this->createPageConfig( $title );
+		$pageConfig = $this->createPageConfig();
 		try {
 			$pageBundle = $parsoid->wikitext2html( $pageConfig, [
 				'discardDataParsoid' => true,
 				'pageBundle' => true,
 			] );
 			$fakeParserOutput = new ParserOutput( $pageBundle->html );
-			// TODO: when we make tighter integration with Parsoid, render ID should become
-			// a standard ParserOutput property. Nothing else needs it now, so don't generate
-			// it in ParserCache just yet.
-			$fakeParserOutput->setExtensionData( self::RENDER_ID_KEY, $this->globalIdGenerator->newUUIDv1() );
 			return $fakeParserOutput;
 		} catch ( ClientError $e ) {
 			throw new LocalizedHttpException(
@@ -163,18 +169,18 @@ class ParsoidHTMLHelper {
 	}
 
 	/**
-	 * @param LinkTarget $linkTarget
 	 * @return PageConfig
 	 * @throws LocalizedHttpException
 	 */
-	private function createPageConfig( LinkTarget $linkTarget ): PageConfig {
+	private function createPageConfig(): PageConfig {
 		$this->assertParsoidInstalled();
 		// Currently everything is parsed as anon since Parsoid
 		// can't report the used options.
 		// Already checked that title/revision exist and accessible.
+		// TODO: make ParsoidPageConfigFactory take a RevisionRecord
 		return MediaWikiServices::getInstance()
 			->get( 'ParsoidPageConfigFactory' )
-			->create( $linkTarget );
+			->create( $this->title, null, $this->revision ? $this->revision->getId() : null );
 	}
 
 	/**
@@ -184,25 +190,38 @@ class ParsoidHTMLHelper {
 	public function getHtml(): ParserOutput {
 		$wikiPage = $this->wikiPageFactory->newFromLinkTarget( $this->title );
 		$parserOptions = ParserOptions::newCanonical( 'canonical' );
-		$parserOutput = $this->parserCache->get( $wikiPage, $parserOptions );
+
+		$revId = $this->revision ? $this->revision->getId() : $wikiPage->getLatest();
+		$isOld = $revId !== $wikiPage->getLatest();
+
+		if ( $isOld ) {
+			$parserOutput = $this->revisionOutputCache->get( $this->revision, $parserOptions );
+		} else {
+			$parserOutput = $this->parserCache->get( $wikiPage, $parserOptions );
+		}
 		if ( $parserOutput ) {
 			return $parserOutput;
 		}
-		$fakeParserOutput = $this->parse( $this->title );
-		$this->parserCache->save( $fakeParserOutput, $wikiPage, $parserOptions );
-		return $fakeParserOutput;
-	}
 
-	public function getCacheMetadata( WikiPage $page ) {
-		// The cache time of the metadata belongs to the ParserOutput
-		// variant cached last. While we are not differentiating the
-		// parser options, it's fine. Once we start supporting non-anon
-		// parses, we would need to fetch the actual ParserOutput to find
-		// out it's cache time.
-		return $this->parserCache->getMetadata(
-			$page,
-			ParserCache::USE_CURRENT_ONLY
-		);
+		$fakeParserOutput = $this->parse();
+
+		// XXX: ParserOutput should just always record the revision ID and timestamp
+		$now = wfTimestampNow();
+		$fakeParserOutput->setCacheRevisionId( $revId );
+		$fakeParserOutput->setCacheTime( $now );
+
+		// TODO: when we make tighter integration with Parsoid, render ID should become
+		// a standard ParserOutput property. Nothing else needs it now, so don't generate
+		// it in ParserCache just yet.
+		$fakeParserOutput->setExtensionData( self::RENDER_ID_KEY, $this->globalIdGenerator->newUUIDv1() );
+
+		if ( $isOld ) {
+			$this->revisionOutputCache->save( $fakeParserOutput, $this->revision, $parserOptions, $now );
+		} else {
+			$this->parserCache->save( $fakeParserOutput, $wikiPage, $parserOptions, $now );
+		}
+
+		return $fakeParserOutput;
 	}
 
 	/**

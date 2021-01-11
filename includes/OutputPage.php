@@ -830,7 +830,7 @@ class OutputPage extends ContextSource {
 		// Don't output a compressed blob when using ob_gzhandler;
 		// it's technically against HTTP spec and seems to confuse
 		// Firefox when the response gets split over two packets.
-		wfClearOutputBuffers();
+		wfResetOutputBuffers( false );
 
 		return true;
 	}
@@ -2930,7 +2930,7 @@ class OutputPage extends ContextSource {
 				[], // modules; not relevant
 				$this->getLanguage()->getCode(),
 				$this->getSkin()->getSkinName(),
-				$this->getUser()->isLoggedIn() ? $this->getUser()->getName() : null,
+				$this->getUser()->isRegistered() ? $this->getUser()->getName() : null,
 				null, // version; not relevant
 				ResourceLoader::inDebugMode(),
 				null, // only; not relevant
@@ -3341,7 +3341,7 @@ class OutputPage extends ContextSource {
 			'wgRelevantPageName' => $relevantTitle->getPrefixedDBkey(),
 			'wgRelevantArticleId' => $relevantTitle->getArticleID(),
 		];
-		if ( $user->isLoggedIn() ) {
+		if ( $user->isRegistered() ) {
 			$vars['wgUserId'] = $user->getId();
 			$vars['wgUserEditCount'] = $user->getEditCount();
 			$userReg = $user->getRegistration();
@@ -3373,7 +3373,11 @@ class OutputPage extends ContextSource {
 		if ( $title->isMainPage() ) {
 			$vars['wgIsMainPage'] = true;
 		}
-		if ( $relevantUser ) {
+		if ( $relevantUser && ( !$relevantUser->isHidden() ||
+			$services->getPermissionManager()->userHasRight( $user, 'hideuser' ) )
+		) {
+			// T120883 if the user is hidden and the viewer cannot see
+			// hidden users, pretend like it does not exist at all.
 			$vars['wgRelevantUserName'] = $relevantUser->getName();
 		}
 		// End of stable config vars
@@ -3448,7 +3452,7 @@ class OutputPage extends ContextSource {
 
 		$user = $this->getUser();
 
-		if ( !$user->isLoggedIn() ) {
+		if ( !$user->isRegistered() ) {
 			// Anons have predictable edit tokens
 			return false;
 		}

@@ -85,7 +85,7 @@ CREATE TABLE /*_*/user_properties (
   up_user INT UNSIGNED NOT NULL,
   up_property VARBINARY(255) NOT NULL,
   up_value BLOB DEFAULT NULL,
-  INDEX user_properties_property (up_property),
+  INDEX up_property (up_property),
   PRIMARY KEY(up_user, up_property)
 ) /*$wgDBTableOptions*/;
 
@@ -339,14 +339,14 @@ CREATE TABLE /*_*/sites (
   site_data BLOB NOT NULL,
   site_forward TINYINT(1) NOT NULL,
   site_config BLOB NOT NULL,
-  UNIQUE INDEX sites_global_key (site_global_key),
-  INDEX sites_type (site_type),
-  INDEX sites_group (site_group),
-  INDEX sites_source (site_source),
-  INDEX sites_language (site_language),
-  INDEX sites_protocol (site_protocol),
-  INDEX sites_domain (site_domain),
-  INDEX sites_forward (site_forward),
+  UNIQUE INDEX site_global_key (site_global_key),
+  INDEX site_type (site_type),
+  INDEX site_group (site_group),
+  INDEX site_source (site_source),
+  INDEX site_language (site_language),
+  INDEX site_protocol (site_protocol),
+  INDEX site_domain (site_domain),
+  INDEX site_forward (site_forward),
   PRIMARY KEY(site_id)
 ) /*$wgDBTableOptions*/;
 
@@ -501,7 +501,7 @@ CREATE TABLE /*_*/categorylinks (
   cl_to VARBINARY(255) DEFAULT '' NOT NULL,
   cl_sortkey VARBINARY(230) DEFAULT '' NOT NULL,
   cl_sortkey_prefix VARBINARY(255) DEFAULT '' NOT NULL,
-  cl_timestamp BINARY(14) NOT NULL,
+  cl_timestamp TIMESTAMP NOT NULL,
   cl_collation VARBINARY(32) DEFAULT '' NOT NULL,
   cl_type ENUM('page', 'subcat', 'file') DEFAULT 'page' NOT NULL,
   INDEX cl_sortkey (
@@ -512,4 +512,115 @@ CREATE TABLE /*_*/categorylinks (
     cl_collation, cl_to, cl_type, cl_from
   ),
   PRIMARY KEY(cl_from, cl_to)
+) /*$wgDBTableOptions*/;
+
+
+CREATE TABLE /*_*/logging (
+  log_id INT UNSIGNED AUTO_INCREMENT NOT NULL,
+  log_type VARBINARY(32) DEFAULT '' NOT NULL,
+  log_action VARBINARY(32) DEFAULT '' NOT NULL,
+  log_timestamp BINARY(14) DEFAULT '19700101000000' NOT NULL,
+  log_actor BIGINT UNSIGNED NOT NULL,
+  log_namespace INT DEFAULT 0 NOT NULL,
+  log_title VARBINARY(255) DEFAULT '' NOT NULL,
+  log_page INT UNSIGNED DEFAULT NULL,
+  log_comment_id BIGINT UNSIGNED NOT NULL,
+  log_params BLOB NOT NULL,
+  log_deleted TINYINT UNSIGNED DEFAULT 0 NOT NULL,
+  INDEX log_type_time (log_type, log_timestamp),
+  INDEX log_actor_time (log_actor, log_timestamp),
+  INDEX log_page_time (
+    log_namespace, log_title, log_timestamp
+  ),
+  INDEX log_times (log_timestamp),
+  INDEX log_actor_type_time (
+    log_actor, log_type, log_timestamp
+  ),
+  INDEX log_page_id_time (log_page, log_timestamp),
+  INDEX log_type_action (
+    log_type, log_action, log_timestamp
+  ),
+  PRIMARY KEY(log_id)
+) /*$wgDBTableOptions*/;
+
+
+CREATE TABLE /*_*/uploadstash (
+  us_id INT UNSIGNED AUTO_INCREMENT NOT NULL,
+  us_user INT UNSIGNED NOT NULL,
+  us_key VARCHAR(255) NOT NULL,
+  us_orig_path VARCHAR(255) NOT NULL,
+  us_path VARCHAR(255) NOT NULL,
+  us_source_type VARCHAR(50) DEFAULT NULL,
+  us_timestamp BINARY(14) NOT NULL,
+  us_status VARCHAR(50) NOT NULL,
+  us_chunk_inx INT UNSIGNED DEFAULT NULL,
+  us_props BLOB DEFAULT NULL,
+  us_size INT UNSIGNED NOT NULL,
+  us_sha1 VARCHAR(31) NOT NULL,
+  us_mime VARCHAR(255) DEFAULT NULL,
+  us_media_type ENUM(
+    'UNKNOWN', 'BITMAP', 'DRAWING', 'AUDIO',
+    'VIDEO', 'MULTIMEDIA', 'OFFICE',
+    'TEXT', 'EXECUTABLE', 'ARCHIVE',
+    '3D'
+  ) DEFAULT NULL,
+  us_image_width INT UNSIGNED DEFAULT NULL,
+  us_image_height INT UNSIGNED DEFAULT NULL,
+  us_image_bits SMALLINT UNSIGNED DEFAULT NULL,
+  INDEX us_user (us_user),
+  UNIQUE INDEX us_key (us_key),
+  INDEX us_timestamp (us_timestamp),
+  PRIMARY KEY(us_id)
+) /*$wgDBTableOptions*/;
+
+
+CREATE TABLE /*_*/filearchive (
+  fa_id INT AUTO_INCREMENT NOT NULL,
+  fa_name VARBINARY(255) DEFAULT '' NOT NULL,
+  fa_archive_name VARBINARY(255) DEFAULT '',
+  fa_storage_group VARBINARY(16) DEFAULT NULL,
+  fa_storage_key VARBINARY(64) DEFAULT '',
+  fa_deleted_user INT DEFAULT NULL,
+  fa_deleted_timestamp BINARY(14) DEFAULT NULL,
+  fa_deleted_reason_id BIGINT UNSIGNED NOT NULL,
+  fa_size INT UNSIGNED DEFAULT 0,
+  fa_width INT DEFAULT 0,
+  fa_height INT DEFAULT 0,
+  fa_metadata MEDIUMBLOB DEFAULT NULL,
+  fa_bits INT DEFAULT 0,
+  fa_media_type ENUM(
+    'UNKNOWN', 'BITMAP', 'DRAWING', 'AUDIO',
+    'VIDEO', 'MULTIMEDIA', 'OFFICE',
+    'TEXT', 'EXECUTABLE', 'ARCHIVE',
+    '3D'
+  ) DEFAULT NULL,
+  fa_major_mime ENUM(
+    'unknown', 'application', 'audio',
+    'image', 'text', 'video', 'message',
+    'model', 'multipart', 'chemical'
+  ) DEFAULT 'unknown',
+  fa_minor_mime VARBINARY(100) DEFAULT 'unknown',
+  fa_description_id BIGINT UNSIGNED NOT NULL,
+  fa_actor BIGINT UNSIGNED NOT NULL,
+  fa_timestamp BINARY(14) DEFAULT NULL,
+  fa_deleted TINYINT UNSIGNED DEFAULT 0 NOT NULL,
+  fa_sha1 VARBINARY(32) DEFAULT '' NOT NULL,
+  INDEX fa_name (fa_name, fa_timestamp),
+  INDEX fa_storage_group (
+    fa_storage_group, fa_storage_key
+  ),
+  INDEX fa_deleted_timestamp (fa_deleted_timestamp),
+  INDEX fa_actor_timestamp (fa_actor, fa_timestamp),
+  INDEX fa_sha1 (
+    fa_sha1(10)
+  ),
+  PRIMARY KEY(fa_id)
+) /*$wgDBTableOptions*/;
+
+
+CREATE TABLE /*_*/text (
+  old_id INT UNSIGNED AUTO_INCREMENT NOT NULL,
+  old_text MEDIUMBLOB NOT NULL,
+  old_flags TINYBLOB NOT NULL,
+  PRIMARY KEY(old_id)
 ) /*$wgDBTableOptions*/;

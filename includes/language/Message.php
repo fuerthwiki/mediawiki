@@ -416,6 +416,7 @@ class Message implements MessageSpecifier, Serializable {
 	 * Further array elements are ignored in that case.
 	 *
 	 * @param string|array|MessageSpecifier $value
+	 * @param-taint $value tainted
 	 * @return Message
 	 * @throws InvalidArgumentException
 	 * @since 1.27
@@ -450,6 +451,7 @@ class Message implements MessageSpecifier, Serializable {
 	 *
 	 * @param string|string[] ...$keys Message keys, or first argument as an array of all the
 	 * message keys.
+	 * @param-taint $keys tainted
 	 *
 	 * @return Message
 	 */
@@ -1018,6 +1020,7 @@ class Message implements MessageSpecifier, Serializable {
 	 * @since 1.17
 	 *
 	 * @param mixed $raw
+	 * @param-taint $raw html,raw_param
 	 *
 	 * @return array Array with a single "raw" key.
 	 */
@@ -1374,6 +1377,7 @@ class Message implements MessageSpecifier, Serializable {
 		// return the concatenated values as 'after'. We handle this by turning
 		// the list into a RawMessage and processing that as a parameter.
 		$vars = $this->getLanguage()->$func( $vars );
+		// @phan-suppress-next-line SecurityCheck-DoubleEscaped RawMessage is safe here
 		return $this->extractParam( new RawMessage( $vars, $params ), $format );
 	}
 }

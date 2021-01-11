@@ -474,6 +474,15 @@ class MysqlUpdater extends DatabaseUpdater {
 			[ 'modifyField', 'slot_roles', 'role_id', 'patch-slot_roles-role_id.sql' ],
 			[ 'modifyField', 'content_models', 'model_id', 'patch-content_models-model_id.sql' ],
 			[ 'modifyField', 'categorylinks', 'cl_to', 'patch-categorylinks-cl_to-varbinary.sql' ],
+			[ 'modifyField', 'logging', 'log_title', 'patch-logging-log_title-varbinary.sql' ],
+			[ 'modifyField', 'uploadstash', 'us_timestamp', 'patch-uploadstash-us_timestamp.sql' ],
+			[ 'renameIndex', 'user_properties', 'user_properties_property', 'up_property', false,
+				'patch-user_properties-rename-index.sql' ],
+			[ 'renameIndex', 'sites', 'sites_global_key', 'site_global_key', false, 'patch-sites-rename-indexes.sql' ],
+			[ 'renameIndex', 'logging', 'type_time', 'log_type_time', false, 'patch-logging-rename-indexes.sql' ],
+			[ 'modifyField', 'filearchive', 'fa_name', 'patch-filearchive-fa_name.sql' ],
+			[ 'dropDefault', 'filearchive', 'fa_deleted_timestamp' ],
+			[ 'dropDefault', 'filearchive', 'fa_timestamp' ],
 		];
 	}
 
@@ -709,6 +718,7 @@ class MysqlUpdater extends DatabaseUpdater {
 			$sql = "SELECT cur_title, cur_namespace, cur_id, cur_timestamp FROM $cur WHERE ";
 			$dupeTitles = [];
 			foreach ( $duplicate as $ns => $titles ) {
+				$ns = (int)$ns;
 				$dupeTitles[] = "( cur_namespace = {$ns} AND cur_title in ("
 					. $this->db->makeList( $titles ) . ") ) \n";
 			}

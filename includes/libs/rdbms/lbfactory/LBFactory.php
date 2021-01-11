@@ -233,6 +233,8 @@ abstract class LBFactory implements ILBFactory {
 		$cpClientId = $chronProt->getClientId();
 
 		$this->commitMasterChanges( __METHOD__ ); // sanity
+
+		$this->replLogger->debug( 'LBFactory shutdown completed' );
 	}
 
 	/**
@@ -455,7 +457,6 @@ abstract class LBFactory implements ILBFactory {
 				!$lb->hasStreamingReplicaServers() ||
 				// No writes since the last replication wait
 				(
-					// @phan-suppress-next-line PhanImpossibleConditionInLoop
 					$opts['ifWritesSince'] &&
 					$lb->lastMasterChangeTimestamp() < $opts['ifWritesSince']
 				)

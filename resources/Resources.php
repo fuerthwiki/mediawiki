@@ -97,7 +97,10 @@ return [
 		// with the interface.css styles; skinStyles should be used if your
 		// skin over-rides common content styling.
 		'skinStyles' => [
-			'default' => 'resources/src/mediawiki.skinning/content.parsoid.less',
+			'default' => [
+				'resources/src/mediawiki.skinning/content.parsoid.less',
+				'resources/src/mediawiki.skinning/content.media.less',
+			],
 		],
 		'targets' => [ 'desktop', 'mobile' ],
 	],
@@ -679,8 +682,13 @@ return [
 		'targets' => [ 'desktop', 'mobile' ],
 	],
 	'mediawiki.feedback' => [
-		'scripts' => 'resources/src/mediawiki.feedback/feedback.js',
-		'styles' => 'resources/src/mediawiki.feedback/feedback.css',
+		'localBasePath' => "$IP/resources/src/mediawiki.feedback",
+		'remoteBasePath' => "$wgResourceBasePath/resources/src/mediawiki.feedback",
+		'packageFiles' => [
+			'feedback.js',
+			'FeedbackDialog.js',
+		],
+		'styles' => 'feedback.css',
 		'dependencies' => [
 			'mediawiki.messagePoster',
 			'mediawiki.Title',
@@ -1138,10 +1146,10 @@ return [
 	],
 	'mediawiki.action.edit' => [
 		'scripts' => [
-			'resources/src/mediawiki.action/mediawiki.action.edit.js',
-			'resources/src/mediawiki.action/mediawiki.action.edit.stash.js',
+			'resources/src/mediawiki.action.edit/edit.js',
+			'resources/src/mediawiki.action.edit/stash.js',
 		],
-		'styles' => 'resources/src/mediawiki.action/mediawiki.action.edit.css',
+		'styles' => 'resources/src/mediawiki.action.edit/edit.css',
 		'dependencies' => [
 			'mediawiki.action.edit.styles',
 			'mediawiki.editfont.styles',
@@ -1824,8 +1832,14 @@ return [
 		'targets' => [ 'desktop', 'mobile' ],
 	],
 	'mediawiki.special.apisandbox' => [
-		'styles' => 'resources/src/mediawiki.special.apisandbox/apisandbox.less',
-		'scripts' => 'resources/src/mediawiki.special.apisandbox/apisandbox.js',
+		'localBasePath' => "$IP/resources/src/mediawiki.special.apisandbox",
+		'remoteBasePath' => "$wgResourceBasePath/resources/src/mediawiki.special.apisandbox",
+		'styles' => 'apisandbox.less',
+		'packageFiles' => [
+			'apisandbox.js',
+			'OptionalParamWidget.js',
+			'UploadSelectFileParamWidget.js',
+		],
 		'targets' => [ 'desktop', 'mobile' ],
 		'dependencies' => [
 			'mediawiki.Uri',
@@ -1935,13 +1949,14 @@ return [
 			'special.movePage.js',
 			'special.mute.js',
 			'special.pageLanguage.js',
+			'special.undelete.js',
 		],
 		'dependencies' => [
-			'mediawiki.api', // Used by special.changecredentials.js
-			'mediawiki.htmlform.ooui', // Used by special.changecredentials.js
-			'mediawiki.widgets.visibleLengthLimit', // Used by special.movePage.js
-			'mediawiki.widgets', // Used by special.movePage.js
-			'oojs-ui-core', // Used by special.pageLanguage.js
+			'mediawiki.api', // special.changecredentials.js
+			'mediawiki.htmlform.ooui', // special.changecredentials.js
+			'mediawiki.widgets.visibleLengthLimit', // special.movePage.js, special.undelete.js
+			'mediawiki.widgets', // special.movePage.js, special.undelete.js
+			'oojs-ui-core', // special.pageLanguage.js
 		],
 		'targets' => [ 'desktop', 'mobile' ],
 	],
@@ -2128,11 +2143,8 @@ return [
 		'targets' => [ 'desktop', 'mobile' ],
 	],
 	'mediawiki.special.undelete' => [
-		'scripts' => 'resources/src/mediawiki.special.undelete.js',
-		'dependencies' => [
-			'mediawiki.widgets.visibleLengthLimit',
-			'mediawiki.widgets',
-		],
+		'dependencies' => 'mediawiki.misc-authed-ooui',
+		'deprecated' => 'Use mediawiki.misc-authed-ooui instead',
 	],
 	'mediawiki.special.unwatchedPages' => [
 		'scripts' => 'resources/src/mediawiki.special.unwatchedPages/unwatchedPages.js',

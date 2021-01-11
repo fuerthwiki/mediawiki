@@ -344,7 +344,6 @@ final class SessionManager implements SessionManagerInterface {
 
 	public function getVaryHeaders() {
 		// @codeCoverageIgnoreStart
-		// @phan-suppress-next-line PhanUndeclaredConstant
 		if ( defined( 'MW_NO_SESSION' ) && MW_NO_SESSION !== 'warn' ) {
 			return [];
 		}
@@ -365,7 +364,6 @@ final class SessionManager implements SessionManagerInterface {
 
 	public function getVaryCookies() {
 		// @codeCoverageIgnoreStart
-		// @phan-suppress-next-line PhanUndeclaredConstant
 		if ( defined( 'MW_NO_SESSION' ) && MW_NO_SESSION !== 'warn' ) {
 			return [];
 		}
@@ -389,10 +387,9 @@ final class SessionManager implements SessionManagerInterface {
 		return is_string( $id ) && preg_match( '/^[a-zA-Z0-9_-]{32,}$/', $id );
 	}
 
-	/**
-	 * @name Internal methods
-	 * @{
-	 */
+	/***************************************************************************/
+	// region   Internal methods
+	/** @name   Internal methods */
 
 	/**
 	 * Prevent future sessions for the user
@@ -843,7 +840,6 @@ final class SessionManager implements SessionManagerInterface {
 	public function getSessionFromInfo( SessionInfo $info, WebRequest $request ) {
 		// @codeCoverageIgnoreStart
 		if ( defined( 'MW_NO_SESSION' ) ) {
-			// @phan-suppress-next-line PhanUndeclaredConstant
 			if ( MW_NO_SESSION === 'warn' ) {
 				// Undocumented safety case for converting existing entry points
 				$this->logger->error( 'Sessions are supposed to be disabled for this entry point', [
@@ -961,7 +957,7 @@ final class SessionManager implements SessionManagerInterface {
 	 * @internal
 	 */
 	public static function resetCache() {
-		if ( !defined( 'MW_PHPUNIT_TEST' ) ) {
+		if ( !defined( 'MW_PHPUNIT_TEST' ) && !defined( 'MW_PARSER_TEST' ) ) {
 			// @codeCoverageIgnoreStart
 			throw new MWException( __METHOD__ . ' may only be called from unit tests!' );
 			// @codeCoverageIgnoreEnd
@@ -1082,6 +1078,6 @@ final class SessionManager implements SessionManagerInterface {
 		}
 	}
 
-	/** @} */
+	// endregion -- end of Internal methods
 
 }

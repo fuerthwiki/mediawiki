@@ -700,7 +700,6 @@ class MediaWiki {
 		$cpIndex = null;
 		$cpClientId = null;
 		$lbFactory->shutdown( $flags, $postCommitWork, $cpIndex, $cpClientId );
-		wfDebug( __METHOD__ . ': LBFactory shutdown completed' );
 
 		$allowHeaders = !( $output->isDisabled() || headers_sent() );
 		if ( $cpIndex > 0 ) {
@@ -1001,7 +1000,7 @@ class MediaWiki {
 			$request->getCookie( 'forceHTTPS', '' ) ||
 			// Avoid checking the user and groups unless it's enabled.
 			(
-				$this->context->getUser()->isLoggedIn()
+				$this->context->getUser()->isRegistered()
 				&& $this->context->getUser()->requiresHTTPS()
 			);
 	}
@@ -1010,7 +1009,7 @@ class MediaWiki {
 	 * If the stars are suitably aligned, do an HTTP->HTTPS redirect
 	 *
 	 * Note: Do this after $wgTitle is setup, otherwise the hooks run from
-	 * isLoggedIn() will do all sorts of weird stuff.
+	 * isRegistered() will do all sorts of weird stuff.
 	 *
 	 * @return bool True if the redirect was done. Handling of the request
 	 *   should be aborted. False if no redirect was done.

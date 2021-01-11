@@ -93,8 +93,8 @@ class RawAction extends FormlessAction {
 		// vary generated content for open sessions on private wikis
 		$privateCache = !$permissionManager->isEveryoneAllowed( 'read' ) &&
 			( $smaxage == 0 || MediaWiki\Session\SessionManager::getGlobalSession()->isPersistent() );
-		// Don't accidentally cache cookies if user is logged in (T55032)
-		$privateCache = $privateCache || $this->getUser()->isLoggedIn();
+		// Don't accidentally cache cookies if user is registered (T55032)
+		$privateCache = $privateCache || $this->getUser()->isRegistered();
 		$mode = $privateCache ? 'private' : 'public';
 		$response->header(
 			'Cache-Control: ' . $mode . ', s-maxage=' . $smaxage . ', max-age=' . $maxage
@@ -123,8 +123,7 @@ class RawAction extends FormlessAction {
 						'elevated' => $elevated
 					]
 				);
-				$msg = wfMessage( 'unregistered-user-config' );
-				throw new HttpError( 403, $msg );
+				throw new HttpError( 403, wfMessage( 'unregistered-user-config' ) );
 			}
 		}
 

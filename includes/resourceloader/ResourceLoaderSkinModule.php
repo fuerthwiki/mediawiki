@@ -61,6 +61,10 @@ class ResourceLoaderSkinModule extends ResourceLoaderLessVarFileModule {
 	 *     as it is normally styled, while leaving the rest of the skin up to the skin
 	 *     implementation.
 	 *
+	 * "content-media":
+	 *     Styles for the new media structure on wikis where $wgUseNewMediaStructure is enabled.
+	 *     See https://www.mediawiki.org/wiki/Parsing/Media_structure
+	 *
 	 * "content-links":
 	 *     The skin will apply optional styling rules to links to provide icons for different file types.
 	 *
@@ -86,8 +90,13 @@ class ResourceLoaderSkinModule extends ResourceLoaderLessVarFileModule {
 	 *
 	 * "toc"
 	 *     Styling rules for the table of contents.
+	 *
+	 * NOTE: The order of the keys defines the order in which the styles are output.
 	 */
 	private const FEATURE_FILES = [
+		'normalize' => [
+			'all' => [ 'resources/src/mediawiki.skinning/normalize.less' ],
+		],
 		'logo' => [
 			// Applies the logo and ensures it downloads prior to printing.
 			'all' => [ 'resources/src/mediawiki.skinning/logo.less' ],
@@ -97,14 +106,14 @@ class ResourceLoaderSkinModule extends ResourceLoaderLessVarFileModule {
 		'content' => [
 			'screen' => [ 'resources/src/mediawiki.skinning/content.less' ],
 		],
+		'content-media' => [
+			'screen' => [ 'resources/src/mediawiki.skinning/content.media.less' ],
+		],
 		'content-links' => [
 			'screen' => [ 'resources/src/mediawiki.skinning/content.externallinks.less' ]
 		],
 		'interface' => [
 			'screen' => [ 'resources/src/mediawiki.skinning/interface.less' ],
-		],
-		'normalize' => [
-			'screen' => [ 'resources/src/mediawiki.skinning/normalize.less' ],
 		],
 		'elements' => [
 			'screen' => [ 'resources/src/mediawiki.skinning/elements.css' ],
@@ -133,17 +142,19 @@ class ResourceLoaderSkinModule extends ResourceLoaderLessVarFileModule {
 	/** @var string[] */
 	private $features;
 
-	/** @var array */
+	/** @var array please order alphabetically */
 	private const DEFAULT_FEATURES = [
-		'logo' => false,
 		'content' => false,
 		'content-links' => false,
-		'interface' => false,
+		'content-media' => false,  // Will default to `true` when $wgUseNewMediaStructure is enabled everywhere
 		'elements' => false,
-		'legacy' => false,
-		'i18n-ordered-lists' => false,
 		'i18n-all-lists-margins' => false,
 		'i18n-headings' => false,
+		'i18n-ordered-lists' => false,
+		'interface' => false,
+		'legacy' => false,
+		'logo' => false,
+		'normalize' => false,
 		'toc' => true,
 	];
 
@@ -158,7 +169,10 @@ class ResourceLoaderSkinModule extends ResourceLoaderLessVarFileModule {
 		$localBasePath = null,
 		$remoteBasePath = null
 	) {
-		$options['lessMessages'] = self::LESS_MESSAGES;
+		$options['lessMessages'] = array_merge(
+			$options['lessMessages'] ?? [],
+			self::LESS_MESSAGES
+		);
 		parent::__construct( $options, $localBasePath, $remoteBasePath );
 		$features = $options['features'] ??
 			// For historic reasons if nothing is declared logo and legacy features are enabled.
@@ -170,11 +184,17 @@ class ResourceLoaderSkinModule extends ResourceLoaderLessVarFileModule {
 		$compatibilityMode = false;
 		foreach ( $features as $key => $enabled ) {
 			if ( is_bool( $enabled ) ) {
+				$feature = $key;
 				$enabledFeatures[$key] = $enabled;
 			} else {
+				$feature = $enabled;
 				// operating in array mode.
 				$enabledFeatures[$enabled] = true;
 				$compatibilityMode = true;
+			}
+			if ( !isset( self::FEATURE_FILES[$feature] ) || !isset( self::DEFAULT_FEATURES[$feature] ) ) {
+				// We could be an old version of MediaWiki and a new feature is being requested (T271441).
+				continue;
 			}
 		}
 		// If the module didn't specify an option use the default features values.
@@ -182,7 +202,16 @@ class ResourceLoaderSkinModule extends ResourceLoaderLessVarFileModule {
 		if ( !$compatibilityMode ) {
 			foreach ( self::DEFAULT_FEATURES as $key => $enabled ) {
 				if ( !isset( $enabledFeatures[$key] ) ) {
-					$enabledFeatures[$key] = $enabled;
+					if ( $key === 'content-media' ) {
+						// Only ship this by default if enabled, since it's going
+						// to be adding some unnecessary overhead where unused.
+						// Also, assume that if a skin is being picky about which
+						// features it wants, it'll pull this in when it's ready
+						// for it.
+						$enabledFeatures[$key] = (bool)$this->getConfig()->get( 'UseNewMediaStructure' );
+					} else {
+						$enabledFeatures[$key] = $enabled;
+					}
 				}
 			}
 		}
@@ -208,17 +237,16 @@ class ResourceLoaderSkinModule extends ResourceLoaderLessVarFileModule {
 
 		$featureFilePaths = [];
 
-		foreach ( $this->features as $feature ) {
-			if ( !isset( self::FEATURE_FILES[$feature] ) ) {
-				throw new InvalidArgumentException( "Feature `$feature` is not recognised" );
-			}
-			foreach ( self::FEATURE_FILES[$feature] as $mediaType => $files ) {
-				foreach ( $files as $filepath ) {
-					$featureFilePaths[$mediaType][] = new ResourceLoaderFilePath(
-						$filepath,
-						$defaultLocalBasePath,
-						$defaultRemoteBasePath
-					);
+		foreach ( self::FEATURE_FILES as $feature => $files ) {
+			if ( in_array( $feature, $this->features ) ) {
+				foreach ( $files as $mediaType => $files ) {
+					foreach ( $files as $filepath ) {
+						$featureFilePaths[$mediaType][] = new ResourceLoaderFilePath(
+							$filepath,
+							$defaultLocalBasePath,
+							$defaultRemoteBasePath
+						);
+					}
 				}
 			}
 		}

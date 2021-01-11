@@ -79,18 +79,15 @@ $wgVersion = MW_VERSION;
  */
 $wgSitename = 'MediaWiki';
 
-/** @} */
-
-/************************************************************************//**
- * @name   Server URLs and file paths
+/***************************************************************************/
+// region   Server URLs and file paths
+/** @name   Server URLs and file paths
  *
  * In this section, a "path" is usually a host-relative URL, i.e. a URL without
  * the host part, that starts with a slash. In most cases a full URL is also
  * acceptable. A "directory" is a local file path.
  *
  * In both paths and directories, trailing slashes should not be included.
- *
- * @{
  */
 
 /**
@@ -453,12 +450,11 @@ $wgUploadStashScalerBaseUrl = false;
  */
 $wgActionPaths = [];
 
-/** @} */
+// endregion -- end of server URLs and file paths
 
-/************************************************************************//**
- * @name   Files and file uploads
- * @{
- */
+/***************************************************************************/
+// region   Files and file uploads
+/** @name   Files and file uploads */
 
 /**
  * Allow users to upload files.
@@ -1038,7 +1034,8 @@ $wgFileBlacklist = [
 	# Other types that may be interpreted by some servers
 	'shtml', 'jhtml', 'pl', 'py', 'cgi',
 	# May contain harmful executables for Windows victims
-	'exe', 'scr', 'dll', 'msi', 'vbs', 'bat', 'com', 'pif', 'cmd', 'vxd', 'cpl' ];
+	'exe', 'scr', 'dll', 'msi', 'vbs', 'bat', 'com', 'pif', 'cmd', 'vxd', 'cpl'
+];
 
 /**
  * Files with these MIME types will never be allowed as uploads
@@ -1695,10 +1692,9 @@ $wgResponsiveImages = true;
  */
 $wgImagePreconnect = false;
 
-/**
- * @name DJVU settings
- * @{
- */
+/***************************************************************************/
+// region   DJVU settings
+/** @name   DJVU settings */
 
 /**
  * Path of the djvudump executable
@@ -1749,14 +1745,13 @@ $wgDjvuPostProcessor = 'pnmtojpeg';
  */
 $wgDjvuOutputExtension = 'jpg';
 
-/** @} */ # end of DJvu }
+// endregion -- end of DJvu
 
-/** @} */ # end of file uploads }
+// endregion -- end of file uploads
 
-/************************************************************************//**
- * @name   Email settings
- * @{
- */
+/***************************************************************************/
+// region   Email settings
+/** @name   Email settings */
 
 /**
  * Site admin email address.
@@ -1978,12 +1973,11 @@ $wgEnotifUseRealName = false;
  */
 $wgUsersNotifiedOnAllChanges = [];
 
-/** @} */ # end of email settings
+// endregion -- end of email settings
 
-/************************************************************************//**
- * @name   Database settings
- * @{
- */
+/***************************************************************************/
+// region  Database settings
+/** @name   Database settings */
 
 /**
  * Current wiki database name
@@ -2293,12 +2287,11 @@ $wgSlaveLagWarning = 10;
  */
 $wgSlaveLagCritical = 30;
 
-/** @} */ # End of DB settings }
+// endregion -- End of DB settings
 
-/************************************************************************//**
- * @name   Text storage
- * @{
- */
+/***************************************************************************/
+// region   Text storage
+/** @name   Text storage */
 
 /**
  * We can also compress text stored in the 'text' table. If this is set on, new
@@ -2363,12 +2356,11 @@ $wgDefaultExternalStore = false;
  */
 $wgRevisionCacheExpiry = 86400 * 7;
 
-/** @} */ # end text storage }
+// endregion -- end text storage
 
-/************************************************************************//**
- * @name   Performance hacks and limits
- * @{
- */
+/***************************************************************************/
+// region   Performance hacks and limits
+/** @name   Performance hacks and limits */
 
 /**
  * Disable database-intensive features
@@ -2419,12 +2411,11 @@ $wgMemoryLimit = "50M";
  */
 $wgTransactionalTimeLimit = 120;
 
-/** @} */ # end performance hacks }
+// endregion -- end performance hacks
 
-/************************************************************************//**
- * @name   Cache settings
- * @{
- */
+/***************************************************************************/
+// region   Cache settings
+/** @name   Cache settings */
 
 /**
  * Directory for caching data in the local filesystem. Should not be accessible
@@ -2876,10 +2867,11 @@ $wgInvalidateCacheOnLocalSettingsChange = true;
  */
 $wgExtensionInfoMTime = false;
 
-/** @} */ # end of cache settings
+// endregion -- end of cache settings
 
-/************************************************************************//**
- * @name   HTTP proxy (CDN) settings
+/***************************************************************************/
+// region   HTTP proxy (CDN) settings
+/** @name   HTTP proxy (CDN) settings
  *
  * Many of these settings apply to any HTTP proxy used in front of MediaWiki,
  * although they are sometimes still referred to as Squid settings for
@@ -2888,8 +2880,6 @@ $wgExtensionInfoMTime = false;
  * Achieving a high hit ratio with an HTTP proxy requires special configuration.
  * See https://www.mediawiki.org/wiki/Manual:Performance_tuning#Page_view_caching
  * for more details.
- *
- * @{
  */
 
 /**
@@ -3090,12 +3080,11 @@ $wgHTCPMulticastTTL = 1;
  */
 $wgUsePrivateIPs = false;
 
-/** @} */ # end of HTTP proxy settings
+// endregion -- end of HTTP proxy settings
 
-/************************************************************************//**
- * @name   Language, regional and character encoding settings
- * @{
- */
+/***************************************************************************/
+// region   Language, regional and character encoding settings
+/** @name   Language, regional and character encoding settings */
 
 /**
  * Site language code. See languages/data/Names.php for languages supported by
@@ -3387,12 +3376,11 @@ $wgLocalTZoffset = null;
  */
 $wgOverrideUcfirstCharacters = [];
 
-/** @} */ # End of language/charset settings
+// endregion -- End of language/charset settings
 
-/*************************************************************************//**
- * @name   Output format and skin settings
- * @{
- */
+/***************************************************************************/
+// region   Output format and skin settings
+/** @name   Output format and skin settings */
 
 /**
  * The default Content-Type header.
@@ -3702,12 +3690,11 @@ $wgEnableCanonicalServerLink = false;
  */
 $wgMangleFlashPolicy = true;
 
-/** @} */ # End of output format settings }
+// endregion -- End of output format settings
 
-/*************************************************************************//**
- * @name   ResourceLoader settings
- * @{
- */
+/***************************************************************************/
+// region   ResourceLoader settings
+/** @name   ResourceLoader settings */
 
 /**
  * Define extra client-side modules to be registered with ResourceLoader.
@@ -4249,12 +4236,11 @@ $wgAllowSiteCSSOnRestrictedPages = false;
  */
 $wgVueDevelopmentMode = false;
 
-/** @} */ # End of ResourceLoader settings }
+// endregion -- End of ResourceLoader settings
 
-/*************************************************************************//**
- * @name   Page title and interwiki link settings
- * @{
- */
+/***************************************************************************/
+// region   Page title and interwiki link settings
+/** @name   Page title and interwiki link settings */
 
 /**
  * Name of the project namespace. If left set to false, $wgSitename will be
@@ -4369,10 +4355,8 @@ $wgLocalInterwikis = [];
  */
 $wgInterwikiExpiry = 10800;
 
-/**
- * @name Interwiki caching settings.
- * @{
- */
+// region   Interwiki caching settings
+/** @name   Interwiki caching settings */
 
 /**
  * Interwiki cache, either as an associative array or a path to a constant
@@ -4407,7 +4391,7 @@ $wgInterwikiScopes = 3;
  */
 $wgInterwikiFallbackSite = 'wiki';
 
-/** @} */ # end of Interwiki caching settings.
+// endregion -- end of Interwiki caching settings.
 
 /**
  * If local interwikis are set up which allow redirects,
@@ -4531,12 +4515,12 @@ $wgMaxRedirects = 1;
  */
 $wgInvalidRedirectTargets = [ 'Filepath', 'Mypage', 'Mytalk', 'Redirect' ];
 
-/** @} */ # End of title and interwiki settings }
+// endregion -- End of title and interwiki settings
 
-/************************************************************************//**
- * @name   Parser settings
- * These settings configure the transformation from wikitext to HTML.
- * @{
+/***************************************************************************/
+// region   Parser settings
+/** @name   Parser settings
+ *  These settings configure the transformation from wikitext to HTML.
  */
 
 /**
@@ -4668,6 +4652,13 @@ $wgAllowImageTag = false;
 $wgTidyConfig = [];
 
 /**
+ * Emit using the new media structure described at,
+ * https://www.mediawiki.org/wiki/Parsing/Media_structure
+ * @since 1.36
+ */
+$wgUseNewMediaStructure = false;
+
+/**
  * Allow raw, unchecked HTML in "<html>...</html>" sections.
  * THIS IS VERY DANGEROUS on a publicly editable site, so USE $wgGroupPermissions
  * TO RESTRICT EDITING to only those that you trust
@@ -4761,12 +4752,11 @@ $wgEnableMagicLinks = [
 	'RFC' => false
 ];
 
-/** @} */ # end of parser settings }
+// endregion -- end of parser settings
 
-/************************************************************************//**
- * @name   Statistics
- * @{
- */
+/***************************************************************************/
+// region   Statistics
+/** @name   Statistics */
 
 /**
  * Method used to determine if a page in a content namespace should be counted
@@ -4795,12 +4785,11 @@ $wgArticleCountMethod = 'link';
  */
 $wgActiveUserDays = 30;
 
-/** @} */ # End of statistics }
+// endregion -- End of statistics
 
-/************************************************************************//**
- * @name   User accounts, authentication
- * @{
- */
+/***************************************************************************/
+// region   User accounts, authentication
+/** @name   User accounts, authentication */
 
 /**
  * Central ID lookup providers
@@ -5414,12 +5403,11 @@ $wgSessionProviders = [
  */
 $wgAllowRequiringEmailForResets = false;
 
-/** @} */ # end user accounts }
+// endregion -- end user accounts
 
-/************************************************************************//**
- * @name   User rights, access control and monitoring
- * @{
- */
+/***************************************************************************/
+// region   User rights, access control and monitoring
+/** @name   User rights, access control and monitoring */
 
 /**
  * Number of seconds before autoblock entries expire. Default 86400 = 1 day.
@@ -5591,7 +5579,7 @@ $wgGroupPermissions['user']['applychangetags'] = true;
 $wgGroupPermissions['user']['changetags'] = true;
 $wgGroupPermissions['user']['editcontentmodel'] = true;
 
-// Implicit group for accounts that pass $wgAutoConfirmAge
+// Implicit group for accounts that pass $wgAutoConfirmAge and $wgAutoConfirmCount
 $wgGroupPermissions['autoconfirmed']['autoconfirmed'] = true;
 $wgGroupPermissions['autoconfirmed']['editsemiprotected'] = true;
 
@@ -6423,12 +6411,11 @@ $wgBotPasswordsCluster = false;
  */
 $wgBotPasswordsDatabase = false;
 
-/** @} */ # end of user rights settings
+// endregion -- end of user rights settings
 
-/************************************************************************//**
- * @name   Proxy scanner settings
- * @{
- */
+/***************************************************************************/
+// region   Proxy scanner settings
+/** @name   Proxy scanner settings */
 
 /**
  * This should always be customised in LocalSettings.php
@@ -6445,12 +6432,11 @@ $wgSecretKey = false;
  */
 $wgProxyList = [];
 
-/** @} */ # end of proxy scanner settings
+// endregion -- end of proxy scanner settings
 
-/************************************************************************//**
- * @name   Cookie settings
- * @{
- */
+/***************************************************************************/
+// region   Cookie settings
+/** @name   Cookie settings */
 
 /**
  * Default cookie lifetime, in seconds. Setting to 0 makes all cookies session-only.
@@ -6561,15 +6547,12 @@ $wgCookieSetOnAutoblock = true;
  */
 $wgCookieSetOnIpBlock = true;
 
-/** @} */ # end of cookie settings }
+// endregion -- end of cookie settings
 
-/************************************************************************//**
- * @name   Profiling, testing and debugging
- *
- * See $wgProfiler for how to enable profiling.
- *
- * @{
- */
+/***************************************************************************/
+// region   Profiling, testing and debugging
+/** @name   Profiling, testing and debugging */
+// See $wgProfiler for how to enable profiling.
 
 /**
  * Filename for debug logging. See https://www.mediawiki.org/wiki/How_to_debug
@@ -6937,12 +6920,11 @@ $wgCachePrefix = false;
  */
 $wgDebugToolbar = false;
 
-/** @} */ # end of profiling, testing and debugging }
+// endregion -- end of profiling, testing and debugging
 
-/************************************************************************//**
- * @name   Search
- * @{
- */
+/***************************************************************************/
+// region   Search
+/** @name   Search */
 
 /**
  * Set this to true to disable the full text search feature.
@@ -7038,7 +7020,7 @@ $wgDisableInternalSearch = false;
 /**
  * Set this to a URL to forward search requests to some external location.
  * If the URL includes '$1', this will be replaced with the URL-encoded
- * search term.
+ * search term. Before using this, $wgDisableTextSearch must be set to true.
  *
  * @par Example:
  * To forward to Google you'd have something like:
@@ -7082,12 +7064,11 @@ $wgSitemapNamespacesPriorities = false;
  */
 $wgEnableSearchContributorsByIP = true;
 
-/** @} */ # end of search settings
+// endregion -- end of search settings
 
-/************************************************************************//**
- * @name   Edit user interface
- * @{
- */
+/***************************************************************************/
+// region   Edit user interface
+/** @name   Edit user interface */
 
 /**
  * Path to the GNU diff3 utility. If the file doesn't exist, edit conflicts will
@@ -7123,13 +7104,12 @@ $wgUniversalEditButton = true;
  */
 $wgUseAutomaticEditSummaries = true;
 
-/** @} */ # end edit UI }
+// endregion -- end edit UI
 
-/************************************************************************//**
- * @name   Maintenance
- * See also $wgSiteNotice
- * @{
- */
+/***************************************************************************/
+// region   Maintenance
+/** @name   Maintenance */
+// See also $wgSiteNotice
 
 /**
  * @cond file_level_code
@@ -7207,12 +7187,11 @@ $wgGitRepositoryViewers = [
 		'https://gerrit.wikimedia.org/g/%R/+/%H',
 ];
 
-/** @} */ # End of maintenance }
+// endregion -- End of maintenance
 
-/************************************************************************//**
- * @name   Recent changes, new pages, watchlist and history
- * @{
- */
+/***************************************************************************/
+// region   Recent changes, new pages, watchlist and history
+/** @name   Recent changes, new pages, watchlist and history */
 
 /**
  * Recentchanges items are periodically purged; entries older than this many
@@ -7564,12 +7543,11 @@ $wgRecentChangesFlags = [
 	],
 ];
 
-/** @} */ # end RC/watchlist }
+// endregion -- end RC/watchlist
 
-/************************************************************************//**
- * @name   Copyright and credits settings
- * @{
- */
+/***************************************************************************/
+// region   Copyright and credits settings
+/** @name   Copyright and credits settings */
 
 /**
  * Override for copyright metadata.
@@ -7620,12 +7598,11 @@ $wgMaxCredits = 0;
  */
 $wgShowCreditsIfMax = true;
 
-/** @} */ # end of copyright and credits settings }
+// endregion -- end of copyright and credits settings
 
-/************************************************************************//**
- * @name   Import / Export
- * @{
- */
+/***************************************************************************/
+// region   Import / Export
+/** @name   Import / Export */
 
 /**
  * List of interwiki prefixes for wikis we'll accept as sources for
@@ -7710,12 +7687,11 @@ $wgExportAllowAll = false;
  */
 $wgExportPagelistLimit = 5000;
 
-/** @} */ # end of import/export }
+// endregion -- end of import/export
 
-/*************************************************************************//**
- * @name   Extensions
- * @{
- */
+/***************************************************************************/
+// region   Extensions
+/** @name   Extensions */
 
 /**
  * A list of callback functions which are called once MediaWiki is fully
@@ -8082,12 +8058,11 @@ $wgPagePropLinkInvalidations = [
 	'hiddencat' => 'categorylinks',
 ];
 
-/** @} */ # End extensions }
+// endregion -- End extensions
 
-/*************************************************************************//**
- * @name   Categories
- * @{
- */
+/***************************************************************************/
+// region   Categories
+/** @name   Categories */
 
 /**
  * Use experimental, DMOZ-like category browser
@@ -8132,12 +8107,11 @@ $wgCategoryPagingLimit = 200;
  */
 $wgCategoryCollation = 'uppercase';
 
-/** @} */ # End categories }
+// endregion -- End categories
 
-/*************************************************************************//**
- * @name   Logging
- * @{
- */
+/***************************************************************************/
+// region   Logging
+/** @name   Logging */
 
 /**
  * The logging system has two levels: an event type, which describes the
@@ -8381,12 +8355,11 @@ $wgNewUserLog = true;
  */
 $wgPageCreationLog = true;
 
-/** @} */ # end logging }
+// endregion -- end logging
 
-/*************************************************************************//**
- * @name   Special pages (general and miscellaneous)
- * @{
- */
+/***************************************************************************/
+// region   Special pages (general and miscellaneous)
+/** @name   Special pages (general and miscellaneous) */
 
 /**
  * Allow special page inclusions such as {{Special:Allpages}}
@@ -8412,12 +8385,11 @@ $wgCountCategorizedImagesAsUsed = false;
  */
 $wgMaxRedirectLinksRetrieved = 500;
 
-/** @} */ # end special pages }
+// endregion -- end special pages
 
-/*************************************************************************//**
- * @name   Actions
- * @{
- */
+/***************************************************************************/
+// region   Actions
+/** @name   Actions */
 
 /**
  * Array of allowed values for the "title=foo&action=<action>" parameter. Syntax is:
@@ -8453,13 +8425,12 @@ $wgActions = [
 	'watch' => true,
 ];
 
-/** @} */ # end actions }
+// endregion -- end actions
 
-/*************************************************************************//**
- * @name   Robot (search engine crawler) policy
- * See also $wgNoFollowLinks.
- * @{
- */
+/***************************************************************************/
+// region   Robot (search engine crawler) policy
+/** @name   Robot (search engine crawler) policy */
+// See also $wgNoFollowLinks.
 
 /**
  * Default robot policy.  The default policy is to encourage indexing and fol-
@@ -8524,14 +8495,15 @@ $wgArticleRobotPolicies = [];
  */
 $wgExemptFromUserRobotsControl = null;
 
-/** @} */ # End robot policy }
+// endregion End robot policy
 
-/************************************************************************//**
- * @name   AJAX, Action API and REST API
+/***************************************************************************/
+// region   AJAX, Action API and REST API
+/** @name   AJAX, Action API and REST API
+ *
  * Note: The AJAX entry point which this section refers to is gradually being
  * replaced by the Action API entry point, api.php. They are essentially
  * equivalent. Both of them are used for dynamic client-side features, via XHR.
- * @{
  */
 
 /**
@@ -8744,6 +8716,8 @@ $wgAllowedCorsHeaders = [
 	/* MediaWiki whitelist */
 	'User-Agent',
 	'Api-User-Agent',
+	/* Allowing caching preflight requests, see T269636 */
+	'Access-Control-Max-Age',
 ];
 
 /**
@@ -8761,12 +8735,11 @@ $wgEnableRestAPI = true;
  */
 $wgRestAPIAdditionalRouteFiles = [];
 
-/** @} */ # End AJAX and API }
+// endregion -- End AJAX and API
 
-/************************************************************************//**
- * @name   Shell and process control
- * @{
- */
+/***************************************************************************/
+// region   Shell and process control
+/** @name   Shell and process control */
 
 /**
  * Maximum amount of virtual memory available to shell processes under linux, in KB.
@@ -8872,12 +8845,11 @@ $wgShellLocale = 'C.UTF-8';
  */
 $wgShellRestrictionMethod = 'autodetect';
 
-/** @} */ # End shell }
+// endregion -- end Shell and process control
 
-/************************************************************************//**
- * @name   HTTP client
- * @{
- */
+/***************************************************************************/
+// region   HTTP client
+/** @name   HTTP client */
 
 /**
  * Timeout for HTTP requests done internally, in seconds.
@@ -8953,12 +8925,11 @@ $wgLocalVirtualHosts = [];
  */
 $wgAllowExternalReqID = false;
 
-/** @} */ # End HTTP client }
+// endregion -- End HTTP client
 
-/************************************************************************//**
- * @name   Job queue
- * @{
- */
+/***************************************************************************/
+// region   Job queue
+/** @name   Job queue */
 
 /**
  * Number of jobs to perform per request. May be less than one in which case
@@ -8987,12 +8958,11 @@ $wgUpdateRowsPerJob = 300;
  */
 $wgUpdateRowsPerQuery = 100;
 
-/** @} */ # End job queue }
+// endregion -- End job queue
 
-/************************************************************************//**
- * @name   Miscellaneous
- * @{
- */
+/***************************************************************************/
+// region   Miscellaneous
+/** @name   Miscellaneous */
 
 /**
  * Specify the difference engine to use.
@@ -9251,7 +9221,7 @@ $wgVirtualRestConfig = [
  */
 $wgSearchRunSuggestedQuery = true;
 
-/*
+/**
  * Max time (in seconds) a user-generated transaction can spend in writes.
  * If exceeded, the transaction is rolled back with an error instead of being committed.
  *
@@ -9260,7 +9230,7 @@ $wgSearchRunSuggestedQuery = true;
  */
 $wgMaxUserDBWriteDuration = false;
 
-/*
+/**
  * Max time (in seconds) a job-generated transaction can spend in writes.
  * If exceeded, the transaction is rolled back with an error instead of being committed.
  *
@@ -9689,8 +9659,12 @@ $wgRestAllowCrossOriginCookieAuth = false;
  */
 $wgParserCacheUseJson = true;
 
-/**
- * For really cool vim folding this needs to be at the end:
- * vim: foldmarker=@{,@} foldmethod=marker
- * @}
+/*
+ * This file uses VisualStudio style region/endregion fold markers which are
+ * recognised by PHPStorm. If modelines are enabled, the following editor
+ * configuration will also enable folding in vim, if it is in the last 5 lines
+ * of the file. We also use "@name" which creates sections in Doxygen.
+ *
+ * vim: foldmarker=//\ region,//\ endregion foldmethod=marker
  */
+// endregion

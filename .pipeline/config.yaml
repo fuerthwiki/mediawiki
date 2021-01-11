@@ -7,3 +7,21 @@ pipelines:
         publish:
           image:
             tags: [dev]
+  wmf-publish:
+    blubberfile: blubber.yaml
+    fetch:
+      shallow: true
+      depth: 50
+      submodules: true
+    stages:
+      - name: build
+        build:
+          variant: production
+          excludes:
+            - .git
+            - node_modules
+      - name: publish
+        publish:
+          image:
+            id: "${build.imageID}"
+            tags: [ "${setup.branch}" ]

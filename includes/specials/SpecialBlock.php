@@ -351,7 +351,7 @@ class SpecialBlock extends FormSpecialPage {
 		}
 
 		# Watchlist their user page? (Only if user is logged in)
-		if ( $user->isLoggedIn() ) {
+		if ( $user->isRegistered() ) {
 			$a['Watch'] = [
 				'type' => 'check',
 				'label-message' => 'ipbwatchuser',
@@ -480,9 +480,7 @@ class SpecialBlock extends FormSpecialPage {
 				$fields['NamespaceRestrictions']['default'] = implode( "\n", $namespaceRestrictions );
 
 				if (
-					// @phan-suppress-next-line PhanImpossibleCondition
 					empty( $pageRestrictions ) &&
-					// @phan-suppress-next-line PhanImpossibleCondition
 					empty( $namespaceRestrictions )
 				) {
 					$fields['Editing']['default'] = false;

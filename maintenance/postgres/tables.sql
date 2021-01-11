@@ -93,14 +93,6 @@ CREATE INDEX rev_timestamp_idx      ON revision (rev_timestamp);
 CREATE INDEX rev_actor_timestamp    ON revision (rev_actor,rev_timestamp,rev_id);
 CREATE INDEX rev_page_actor_timestamp ON revision (rev_page,rev_actor,rev_timestamp);
 
-CREATE SEQUENCE text_old_id_seq;
-CREATE TABLE pagecontent ( -- replaces reserved word 'text'
-  old_id     INTEGER  NOT NULL  PRIMARY KEY DEFAULT nextval('text_old_id_seq'),
-  old_text   TEXT,
-  old_flags  TEXT
-);
-ALTER SEQUENCE text_old_id_seq OWNED BY pagecontent.old_id;
-
 
 CREATE SEQUENCE archive_ar_id_seq;
 CREATE TABLE archive (
@@ -148,6 +140,8 @@ CREATE TABLE ipblocks (
 ALTER SEQUENCE ipblocks_ipb_id_seq OWNED BY ipblocks.ipb_id;
 CREATE UNIQUE INDEX ipb_address_unique ON ipblocks (ipb_address,ipb_user,ipb_auto);
 CREATE INDEX ipb_user    ON ipblocks (ipb_user);
+CREATE INDEX ipb_timestamp ON ipblocks (ipb_timestamp);
+CREATE INDEX ipb_expiry ON ipblocks (ipb_expiry);
 CREATE INDEX ipb_range   ON ipblocks (ipb_range_start,ipb_range_end);
 CREATE INDEX ipb_parent_block_id   ON ipblocks (ipb_parent_block_id);
 
@@ -191,65 +185,6 @@ ALTER TABLE oldimage ADD CONSTRAINT oldimage_oi_name_fkey_cascaded FOREIGN KEY (
 CREATE INDEX oi_name_timestamp    ON oldimage (oi_name,oi_timestamp);
 CREATE INDEX oi_name_archive_name ON oldimage (oi_name,oi_archive_name);
 CREATE INDEX oi_sha1              ON oldimage (oi_sha1);
-
-
-CREATE SEQUENCE filearchive_fa_id_seq;
-CREATE TABLE filearchive (
-  fa_id                 INTEGER      NOT NULL  PRIMARY KEY DEFAULT nextval('filearchive_fa_id_seq'),
-  fa_name               TEXT         NOT NULL,
-  fa_archive_name       TEXT,
-  fa_storage_group      TEXT,
-  fa_storage_key        TEXT,
-  fa_deleted_user       INTEGER          NULL  REFERENCES mwuser(user_id) ON DELETE SET NULL DEFERRABLE INITIALLY DEFERRED,
-  fa_deleted_timestamp  TIMESTAMPTZ  NOT NULL,
-  fa_deleted_reason_id  INTEGER      NOT NULL,
-  fa_size               INTEGER      NOT NULL,
-  fa_width              INTEGER      NOT NULL,
-  fa_height             INTEGER      NOT NULL,
-  fa_metadata           BYTEA        NOT NULL  DEFAULT '',
-  fa_bits               SMALLINT,
-  fa_media_type         TEXT,
-  fa_major_mime         TEXT                   DEFAULT 'unknown',
-  fa_minor_mime         TEXT                   DEFAULT 'unknown',
-  fa_description_id     INTEGER      NOT NULL,
-  fa_actor              INTEGER      NOT NULL,
-  fa_timestamp          TIMESTAMPTZ,
-  fa_deleted            SMALLINT     NOT NULL DEFAULT 0,
-  fa_sha1               TEXT         NOT NULL DEFAULT ''
-);
-ALTER SEQUENCE filearchive_fa_id_seq OWNED BY filearchive.fa_id;
-CREATE INDEX fa_name_time ON filearchive (fa_name, fa_timestamp);
-CREATE INDEX fa_dupe      ON filearchive (fa_storage_group, fa_storage_key);
-CREATE INDEX fa_notime    ON filearchive (fa_deleted_timestamp);
-CREATE INDEX fa_nouser    ON filearchive (fa_deleted_user);
-CREATE INDEX fa_sha1      ON filearchive (fa_sha1);
-
-CREATE SEQUENCE uploadstash_us_id_seq;
-CREATE TYPE media_type AS ENUM ('UNKNOWN','BITMAP','DRAWING','AUDIO','VIDEO','MULTIMEDIA','OFFICE','TEXT','EXECUTABLE','ARCHIVE','3D');
-CREATE TABLE uploadstash (
-  us_id           INTEGER PRIMARY KEY NOT NULL DEFAULT nextval('uploadstash_us_id_seq'),
-  us_user         INTEGER,
-  us_key          TEXT,
-  us_orig_path    TEXT,
-  us_path         TEXT,
-  us_props        BYTEA,
-  us_source_type  TEXT,
-  us_timestamp    TIMESTAMPTZ,
-  us_status       TEXT,
-  us_chunk_inx    INTEGER NULL,
-  us_size         INTEGER,
-  us_sha1         TEXT,
-  us_mime         TEXT,
-  us_media_type   media_type DEFAULT NULL,
-  us_image_width  INTEGER,
-  us_image_height INTEGER,
-  us_image_bits   SMALLINT
-);
-ALTER SEQUENCE uploadstash_us_id_seq OWNED BY uploadstash.us_id;
-
-CREATE INDEX us_user_idx ON uploadstash (us_user);
-CREATE UNIQUE INDEX us_key_idx ON uploadstash (us_key);
-CREATE INDEX us_timestamp_idx ON uploadstash (us_timestamp);
 
 
 CREATE SEQUENCE recentchanges_rc_id_seq;
@@ -296,35 +231,8 @@ CREATE TABLE objectcache (
 );
 CREATE INDEX objectcacache_exptime ON objectcache (exptime);
 
-
-CREATE SEQUENCE logging_log_id_seq;
-CREATE TABLE logging (
-  log_id          INTEGER      NOT NULL  PRIMARY KEY DEFAULT nextval('logging_log_id_seq'),
-  log_type        TEXT         NOT NULL,
-  log_action      TEXT         NOT NULL,
-  log_timestamp   TIMESTAMPTZ  NOT NULL,
-  log_actor       INTEGER      NOT NULL,
-  log_namespace   SMALLINT     NOT NULL,
-  log_title       TEXT         NOT NULL,
-  log_comment_id  INTEGER      NOT NULL,
-  log_params      TEXT,
-  log_deleted     SMALLINT     NOT NULL DEFAULT 0,
-  log_page        INTEGER
-);
-ALTER SEQUENCE logging_log_id_seq OWNED BY logging.log_id;
-CREATE INDEX type_time ON logging (log_type, log_timestamp);
-CREATE INDEX actor_time ON logging (log_actor, log_timestamp);
-CREATE INDEX page_time ON logging (log_namespace, log_title, log_timestamp);
-CREATE INDEX times ON logging (log_timestamp);
-CREATE INDEX log_actor_type_time ON logging (log_actor, log_type, log_timestamp);
-CREATE INDEX log_page_id_time ON logging (log_page, log_timestamp);
-CREATE INDEX log_type_action ON logging (log_type, log_action, log_timestamp);
-
-CREATE INDEX logging_actor_time ON logging (log_actor, log_timestamp);
-
 -- Tsearch2 2 stuff. Will fail if we don't have proper access to the tsearch2 tables
 -- Make sure you also change patch-tsearch2funcs.sql if the funcs below change.
-
 ALTER TABLE page ADD titlevector tsvector;
 CREATE FUNCTION ts2_page_title() RETURNS TRIGGER LANGUAGE plpgsql AS
 $mw$
@@ -342,7 +250,7 @@ CREATE TRIGGER ts2_page_title BEFORE INSERT OR UPDATE ON page
   FOR EACH ROW EXECUTE PROCEDURE ts2_page_title();
 
 
-ALTER TABLE pagecontent ADD textvector tsvector;
+ALTER TABLE text ADD textvector tsvector;
 CREATE FUNCTION ts2_page_text() RETURNS TRIGGER LANGUAGE plpgsql AS
 $mw$
 BEGIN
@@ -355,8 +263,8 @@ RETURN NEW;
 END;
 $mw$;
 
-CREATE TRIGGER ts2_page_text BEFORE INSERT OR UPDATE ON pagecontent
+CREATE TRIGGER ts2_page_text BEFORE INSERT OR UPDATE ON text
   FOR EACH ROW EXECUTE PROCEDURE ts2_page_text();
 
 CREATE INDEX ts2_page_title ON page USING gin(titlevector);
-CREATE INDEX ts2_page_text ON pagecontent USING gin(textvector);
+CREATE INDEX ts2_page_text ON text USING gin(textvector);

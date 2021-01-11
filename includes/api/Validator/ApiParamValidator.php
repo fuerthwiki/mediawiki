@@ -61,6 +61,9 @@ class ApiParamValidator {
 			] ],
 		],
 		'password' => [ 'class' => PasswordDef::class ],
+		// Unlike 'string', the 'raw' type will not be subject to Unicode
+		// NFC normalization.
+		'raw' => [ 'class' => StringDef::class ],
 		'string' => [ 'class' => StringDef::class ],
 		'submodule' => [ 'class' => SubmoduleDef::class ],
 		'tags' => [ 'class' => TagsDef::class ],
@@ -330,7 +333,7 @@ class ApiParamValidator {
 	 * @param ValidationException $ex
 	 * @throws ApiUsageException always
 	 */
-	private function convertValidationException( ApiBase $module, ValidationException $ex ) : array {
+	private function convertValidationException( ApiBase $module, ValidationException $ex ) {
 		$mv = $ex->getFailureMessage();
 		throw ApiUsageException::newWithMessage(
 			$module,

@@ -285,7 +285,7 @@
 			}
 		],
 		"indexes": [
-			{ "name": "user_properties_property", "columns": [ "up_property" ], "unique": false }
+			{ "name": "up_property", "columns": [ "up_property" ], "unique": false }
 		],
 		"pk": [ "up_user", "up_property" ]
 	},
@@ -1148,14 +1148,14 @@
 			}
 		],
 		"indexes": [
-			{ "name": "sites_global_key", "columns": [ "site_global_key" ], "unique": true },
-			{ "name": "sites_type", "columns": [ "site_type" ], "unique": false },
-			{ "name": "sites_group", "columns": [ "site_group" ], "unique": false },
-			{ "name": "sites_source", "columns": [ "site_source" ], "unique": false },
-			{ "name": "sites_language", "columns": [ "site_language" ], "unique": false },
-			{ "name": "sites_protocol", "columns": [ "site_protocol" ], "unique": false },
-			{ "name": "sites_domain", "columns": [ "site_domain" ], "unique": false },
-			{ "name": "sites_forward", "columns": [ "site_forward" ], "unique": false }
+			{ "name": "site_global_key", "columns": [ "site_global_key" ], "unique": true },
+			{ "name": "site_type", "columns": [ "site_type" ], "unique": false },
+			{ "name": "site_group", "columns": [ "site_group" ], "unique": false },
+			{ "name": "site_source", "columns": [ "site_source" ], "unique": false },
+			{ "name": "site_language", "columns": [ "site_language" ], "unique": false },
+			{ "name": "site_protocol", "columns": [ "site_protocol" ], "unique": false },
+			{ "name": "site_domain", "columns": [ "site_domain" ], "unique": false },
+			{ "name": "site_forward", "columns": [ "site_forward" ], "unique": false }
 		],
 		"pk": [ "site_id" ]
 	},
@@ -1603,8 +1603,8 @@
 			{
 				"name": "cl_timestamp",
 				"comment": "This isn't really used at present. Provided for an optional sorting method by approximate addition time.",
-				"type": "mwtimestamp",
-				"options": { "notnull": true }
+				"type": "datetimetz",
+				"options": { "notnull": true, "PlatformOptions": {"version": true} }
 			},
 			{
 				"name": "cl_collation",
@@ -1644,6 +1644,585 @@
 			}
 		],
 		"pk": [ "cl_from", "cl_to" ]
+	},
+	{
+		"name": "logging",
+		"columns": [
+			{
+				"name": "log_id",
+				"comment": "Log ID, for referring to this specific log entry, probably for deletion and such.",
+				"type": "integer",
+				"options": { "unsigned": true, "notnull": true, "autoincrement": true }
+			},
+			{
+				"name": "log_type",
+				"comment": "Symbolic key for the general log type. The output format will be controlled by the log_action field.",
+				"type": "binary",
+				"options": { "notnull": true, "default": "", "length": 32 }
+			},
+			{
+				"name": "log_action",
+				"comment": "Symbolic key for the log action type.",
+				"type": "binary",
+				"options": { "notnull": true, "default": "", "length": 32 }
+			},
+			{
+				"name": "log_timestamp",
+				"type": "mwtimestamp",
+				"options": { "notnull": true, "default": "19700101000000" }
+			},
+			{
+				"name": "log_actor",
+				"type": "bigint",
+				"options": { "notnull": true, "unsigned": true }
+			},
+			{
+				"name": "log_namespace",
+				"comment": "Key to the namespace of the page affected",
+				"type": "integer",
+				"options": { "notnull": true, "default": 0 }
+			},
+			{
+				"name": "log_title",
+				"comment": "Key to the title of the page affected",
+				"type": "binary",
+				"options": { "notnull": true, "default": "", "length": 255 }
+			},
+			{
+				"name": "log_page",
+				"comment": "Key to the page affected",
+				"type": "integer",
+				"options": { "notnull": false, "unsigned": true }
+			},
+			{
+				"name": "log_comment_id",
+				"comment": "Key to comment_id. Comment summarizing the change.",
+				"type": "bigint",
+				"options": { "notnull": true, "unsigned": true }
+			},
+			{
+				"name": "log_params",
+				"comment": "LF separated list (old system) or serialized PHP array (new system)",
+				"type": "blob",
+				"options": { "notnull": true, "length": 65530 }
+			},
+			{
+				"name": "log_deleted",
+				"comment": "rev_deleted for logs",
+				"type": "mwtinyint",
+				"options": { "notnull": true, "unsigned": true, "default": 0 }
+			}
+		],
+		"indexes": [
+			{
+				"name": "log_type_time",
+				"comment": "Special:Log type filter",
+				"columns": [ "log_type", "log_timestamp" ],
+				"unique": false
+			},
+			{
+				"name": "log_actor_time",
+				"comment": "Special:Log performer filter",
+				"columns": [ "log_actor", "log_timestamp" ],
+				"unique": false
+			},
+			{
+				"name": "log_page_time",
+				"comment": "Special:Log title filter, log extract",
+				"columns": [ "log_namespace", "log_title", "log_timestamp" ],
+				"unique": false
+			},
+			{
+				"name": "log_times",
+				"comment": "Special:Log unfiltered",
+				"columns": [ "log_timestamp" ],
+				"unique": false
+			},
+			{
+				"name": "log_actor_type_time",
+				"comment": "Special:Log filter by performer and type",
+				"columns": [ "log_actor", "log_type", "log_timestamp" ],
+				"unique": false
+			},
+			{
+				"name": "log_page_id_time",
+				"comment": "Apparently just used for a few maintenance pages (findMissingFiles.php, Flow). Could be removed?",
+				"columns": [ "log_page", "log_timestamp" ],
+				"unique": false
+			},
+			{
+				"name": "log_type_action",
+				"comment": "Special:Log action filter",
+				"columns": [ "log_type", "log_action", "log_timestamp" ],
+				"unique": false
+			}
+		],
+		"pk": [ "log_id" ]
+	},
+	{
+		"name": "uploadstash",
+		"comment": "Store information about newly uploaded files before they're moved into the actual filestore",
+		"columns": [
+			{
+				"name": "us_id",
+				"type": "integer",
+				"options": {
+					"autoincrement": true,
+					"unsigned": true,
+					"notnull": true
+				}
+			},
+			{
+				"name": "us_user",
+				"comment": "the user who uploaded the file.",
+				"type": "integer",
+				"options": {
+					"unsigned": true,
+					"notnull": true
+				}
+			},
+			{
+				"name": "us_key",
+				"comment": "file key. this is how applications actually search for the file. this might go away, or become the primary key.",
+				"type": "string",
+				"options": {
+					"notnull": true,
+					"length": 255
+				}
+			},
+			{
+				"name": "us_orig_path",
+				"comment": "the original path",
+				"type": "string",
+				"options": {
+					"notnull": true,
+					"length": 255
+				}
+			},
+			{
+				"name": "us_path",
+				"comment": "the temporary path at which the file is actually stored",
+				"type": "string",
+				"options": {
+					"notnull": true,
+					"length": 255
+				}
+			},
+			{
+				"name": "us_source_type",
+				"comment": "which type of upload the file came from (sometimes)",
+				"type": "string",
+				"options": {
+					"notnull": false,
+					"length": 50
+				}
+			},
+			{
+				"name": "us_timestamp",
+				"comment": "the date/time on which the file was added",
+				"type": "mwtimestamp",
+				"options": {
+					"notnull": true,
+					"length": 14
+				}
+			},
+			{
+				"name": "us_status",
+				"type": "string",
+				"options": {
+					"notnull": true,
+					"length": 50
+				}
+			},
+			{
+				"name": "us_chunk_inx",
+				"comment": "chunk counter starts at 0, current offset is stored in us_size",
+				"type": "integer",
+				"options": {
+					"unsigned": true,
+					"notnull": false
+				}
+			},
+			{
+				"name": "us_props",
+				"comment": "Serialized file properties from FSFile::getProps()",
+				"type": "blob",
+				"options": {
+					"notnull": false,
+					"length": 65530
+				}
+			},
+			{
+				"name": "us_size",
+				"comment": "file size in bytes",
+				"type": "integer",
+				"options": {
+					"unsigned": true,
+					"notnull": true
+				}
+			},
+			{
+				"name": "us_sha1",
+				"comment": "this hash comes from FSFile::getSha1Base36(), and is 31 characters",
+				"type": "string",
+				"options": {
+					"notnull": true,
+					"length": 31
+				}
+			},
+			{
+				"name": "us_mime",
+				"type": "string",
+				"options": {
+					"notnull": false,
+					"length": 255
+				}
+			},
+			{
+				"name": "us_media_type",
+				"comment": "Media type as defined by the MEDIATYPE_xxx constants, should duplicate definition in the image table",
+				"type": "mwenum",
+				"options": { "notnull": false, "default": null,
+					"fixed": true,
+					"CustomSchemaOptions": {
+						"enum_values": [ "UNKNOWN", "BITMAP", "DRAWING", "AUDIO", "VIDEO", "MULTIMEDIA", "OFFICE", "TEXT", "EXECUTABLE", "ARCHIVE", "3D" ]
+					}
+				}
+			},
+			{
+				"name": "us_image_width",
+				"comment": "image-specific properties",
+				"type": "integer",
+				"options": {
+					"unsigned": true,
+					"notnull": false
+				}
+			},
+			{
+				"name": "us_image_height",
+				"type": "integer",
+				"options": {
+					"unsigned": true,
+					"notnull": false
+				}
+			},
+			{
+				"name": "us_image_bits",
+				"type": "smallint",
+				"options": {
+					"unsigned": true,
+					"notnull": false
+				}
+			}
+		],
+		"indexes": [
+			{
+				"name": "us_user",
+				"comment": "sometimes there's a delete for all of a user's stuff.",
+				"columns": [
+					"us_user"
+				],
+				"unique": false
+			},
+			{
+				"name": "us_key",
+				"comment": "pick out files by key, enforce key uniqueness",
+				"columns": [
+					"us_key"
+				],
+				"unique": true
+			},
+			{
+				"name": "us_timestamp",
+				"comment": "the abandoned upload cleanup script needs this",
+				"columns": [
+					"us_timestamp"
+				],
+				"unique": false
+			}
+		],
+		"pk": [
+			"us_id"
+		]
+	},
+	{
+		"name": "filearchive",
+		"comment": "Record of deleted file data",
+		"columns": [
+			{
+				"name": "fa_id",
+				"comment": "Unique row id",
+				"type": "integer",
+				"options": {
+					"autoincrement": true,
+					"notnull": true
+				}
+			},
+			{
+				"name": "fa_name",
+				"comment": "Original base filename; key to image.img_name, page.page_title, etc",
+				"type": "binary",
+				"options": {
+					"notnull": true,
+					"default": "",
+					"length": 255
+				}
+			},
+			{
+				"name": "fa_archive_name",
+				"comment": "Filename of archived file, if an old revision",
+				"type": "binary",
+				"options": {
+					"notnull": false,
+					"default": "",
+					"length": 255
+				}
+			},
+			{
+				"name": "fa_storage_group",
+				"comment": "Which storage bin (directory tree or object store) the file data is stored in. Should be 'deleted' for files that have been deleted; any other bin is not yet in use.",
+				"type": "binary",
+				"options": {
+					"notnull": false,
+					"length": 16
+				}
+			},
+			{
+				"name": "fa_storage_key",
+				"comment": "SHA-1 of the file contents plus extension, used as a key for storage. eg 8f8a562add37052a1848ff7771a2c515db94baa9.jpg. If NULL, the file was missing at deletion time or has been purged from the archival storage.",
+				"type": "binary",
+				"options": {
+					"notnull": false,
+					"default": "",
+					"length": 64
+				}
+			},
+			{
+				"name": "fa_deleted_user",
+				"type": "integer",
+				"options": {
+					"notnull": false
+				}
+			},
+			{
+				"name": "fa_deleted_timestamp",
+				"type": "mwtimestamp",
+				"options": {
+					"notnull": false,
+					"length": 14
+				}
+			},
+			{
+				"name": "fa_deleted_reason_id",
+				"type": "bigint",
+				"options": {
+					"unsigned": true,
+					"notnull": true
+				}
+			},
+			{
+				"name": "fa_size",
+				"type": "integer",
+				"options": {
+					"unsigned": true,
+					"notnull": false,
+					"default": 0
+				}
+			},
+			{
+				"name": "fa_width",
+				"type": "integer",
+				"options": {
+					"notnull": false,
+					"default": 0
+				}
+			},
+			{
+				"name": "fa_height",
+				"type": "integer",
+				"options": {
+					"notnull": false,
+					"default": 0
+				}
+			},
+			{
+				"name": "fa_metadata",
+				"type": "blob",
+				"options": {
+					"notnull": false,
+					"length": 16777215
+				}
+			},
+			{
+				"name": "fa_bits",
+				"type": "integer",
+				"options": {
+					"notnull": false,
+					"default": 0
+				}
+			},
+			{
+				"name": "fa_media_type",
+				"type": "mwenum",
+				"options": {
+					"notnull": false,
+					"default": null,
+					"CustomSchemaOptions": {
+						"enum_values": [ "UNKNOWN", "BITMAP", "DRAWING", "AUDIO", "VIDEO", "MULTIMEDIA", "OFFICE", "TEXT", "EXECUTABLE", "ARCHIVE", "3D" ]
+					}
+				}
+			},
+			{
+				"name": "fa_major_mime",
+				"type": "mwenum",
+				"options": {
+					"notnull": false,
+					"default": "unknown",
+					"CustomSchemaOptions": {
+						"enum_values": [ "unknown", "application", "audio", "image", "text", "video", "message", "model", "multipart", "chemical" ]
+					}
+				}
+			},
+			{
+				"name": "fa_minor_mime",
+				"type": "binary",
+				"options": {
+					"notnull": false,
+					"default": "unknown",
+					"length": 100
+				}
+			},
+			{
+				"name": "fa_description_id",
+				"type": "bigint",
+				"options": {
+					"unsigned": true,
+					"notnull": true
+				}
+			},
+			{
+				"name": "fa_actor",
+				"type": "bigint",
+				"options": {
+					"unsigned": true,
+					"notnull": true
+				}
+			},
+			{
+				"name": "fa_timestamp",
+				"type": "mwtimestamp",
+				"options": {
+					"notnull": false,
+					"length": 14
+				}
+			},
+			{
+				"name": "fa_deleted",
+				"comment": "Visibility of deleted revisions, bitfield",
+				"type": "mwtinyint",
+				"options": {
+					"unsigned": true,
+					"notnull": true,
+					"default": 0
+				}
+			},
+			{
+				"name": "fa_sha1",
+				"comment": "sha1 hash of file content",
+				"type": "binary",
+				"options": {
+					"notnull": true,
+					"default": "",
+					"length": 32
+				}
+			}
+		],
+		"indexes": [
+			{
+				"name": "fa_name",
+				"comment": "pick out by image name",
+				"columns": [
+					"fa_name",
+					"fa_timestamp"
+				],
+				"unique": false
+			},
+			{
+				"name": "fa_storage_group",
+				"comment": "pick out dupe files",
+				"columns": [
+					"fa_storage_group",
+					"fa_storage_key"
+				],
+				"unique": false
+			},
+			{
+				"name": "fa_deleted_timestamp",
+				"comment": "sort by deletion time",
+				"columns": [
+					"fa_deleted_timestamp"
+				],
+				"unique": false
+			},
+			{
+				"name": "fa_actor_timestamp",
+				"comment": "sort by uploader",
+				"columns": [
+					"fa_actor",
+					"fa_timestamp"
+				],
+				"unique": false
+			},
+			{
+				"name": "fa_sha1",
+				"comment": "find file by sha1, 10 bytes will be enough for hashes to be indexed",
+				"columns": [
+					"fa_sha1"
+				],
+				"unique": false,
+				"options": { "lengths": [ 10 ] }
+			}
+		],
+		"pk": [
+			"fa_id"
+		]
+	},
+	{
+		"name": "text",
+		"comment": "Holds text of individual page revisions. Field names are a holdover from the 'old' revisions table in MediaWiki 1.4 and earlier: an upgrade will transform that table into the 'text' table to minimize unnecessary churning and downtime. If upgrading, the other fields will be left unused.",
+		"columns": [
+			{
+				"name": "old_id",
+				"comment": "Unique text storage key number. Note that the 'oldid' parameter used in URLs does *not* refer to this number anymore, but to rev_id. content.content_address refers to this column",
+				"type": "integer",
+				"options": {
+					"autoincrement": true,
+					"unsigned": true,
+					"notnull": true
+				}
+			},
+			{
+				"name": "old_text",
+				"comment": "Depending on the contents of the old_flags field, the text may be convenient plain text, or it may be funkily encoded.",
+				"type": "blob",
+				"options": {
+					"notnull": true,
+					"length": 16777215
+				}
+			},
+			{
+				"name": "old_flags",
+				"comment": "Comma-separated list of flags:\n* gzip: text is compressed with PHP's gzdeflate() function.\n* utf-8: text was stored as UTF-8. If $wgLegacyEncoding option is on, rows *without* this flag will be converted to UTF-8 transparently at load time. Note that due to a bug in a maintenance script, this flag may have been stored as 'utf8' in some cases (T18841).\n* object: text field contained a serialized PHP object. The object either contains multiple versions compressed together to achieve a better compression ratio, or it refers to another row where the text can be found.\n* external: text was stored in an external location specified by old_text. Any additional flags apply to the data stored at that URL, not the URL itself. The 'object' flag is *not* set for URLs of the form 'DB://cluster/id/itemid', because the external storage system itself decompresses these.",
+				"type": "blob",
+				"options": {
+					"notnull": true,
+					"length": 255
+				}
+			}
+		],
+		"indexes": [],
+		"pk": [
+			"old_id"
+		]
 	}
-
 ]

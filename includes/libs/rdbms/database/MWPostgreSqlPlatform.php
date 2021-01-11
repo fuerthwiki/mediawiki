@@ -2,13 +2,15 @@
 
 namespace Wikimedia\Rdbms;
 
-use Doctrine\DBAL\Platforms\PostgreSqlPlatform;
 use Wikimedia\Timestamp\ConvertibleTimestamp;
 
-class MWPostgreSqlPlatform extends PostgreSqlPlatform {
-
+/**
+ * @suppress PhanRedefinedExtendedClass
+ */
+class MWPostgreSqlPlatform extends MWPostgreSqlPlatformCompat {
 	/**
 	 * Handles Postgres unique timestamp format
+	 * @suppress PhanRedefinedClassReference
 	 * @inheritDoc
 	 *
 	 * @param mixed[] $column The column definition array.
@@ -29,8 +31,8 @@ class MWPostgreSqlPlatform extends PostgreSqlPlatform {
 	}
 
 	/**
+	 * @suppress PhanRedefinedClassReference
 	 * @inheritDoc
-	 * @suppress PhanParamSignatureRealMismatchHasNoParamType // Parameter widened by parent
 	 * phpcs:disable PSR2.Methods.MethodDeclaration.Underscore
 	 */
 	protected function _getCreateTableSQL( $name, $columns, array $options = [] ) {
@@ -55,5 +57,12 @@ class MWPostgreSqlPlatform extends PostgreSqlPlatform {
 	 */
 	public function getFloatDeclarationSQL( array $column ) {
 		return 'FLOAT';
+	}
+
+	/**
+	 * @inheritDoc
+	 */
+	public function getDateTimeTzTypeDeclarationSQL( array $column ) {
+		return 'TIMESTAMPTZ';
 	}
 }

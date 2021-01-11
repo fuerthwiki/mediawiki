@@ -94,7 +94,7 @@ CREATE TABLE user_properties (
   PRIMARY KEY(up_user, up_property)
 );
 
-CREATE INDEX user_properties_property ON user_properties (up_property);
+CREATE INDEX up_property ON user_properties (up_property);
 
 
 CREATE TABLE log_search (
@@ -382,21 +382,21 @@ CREATE TABLE sites (
   PRIMARY KEY(site_id)
 );
 
-CREATE UNIQUE INDEX sites_global_key ON sites (site_global_key);
+CREATE UNIQUE INDEX site_global_key ON sites (site_global_key);
 
-CREATE INDEX sites_type ON sites (site_type);
+CREATE INDEX site_type ON sites (site_type);
 
-CREATE INDEX sites_group ON sites (site_group);
+CREATE INDEX site_group ON sites (site_group);
 
-CREATE INDEX sites_source ON sites (site_source);
+CREATE INDEX site_source ON sites (site_source);
 
-CREATE INDEX sites_language ON sites (site_language);
+CREATE INDEX site_language ON sites (site_language);
 
-CREATE INDEX sites_protocol ON sites (site_protocol);
+CREATE INDEX site_protocol ON sites (site_protocol);
 
-CREATE INDEX sites_domain ON sites (site_domain);
+CREATE INDEX site_domain ON sites (site_domain);
 
-CREATE INDEX sites_forward ON sites (site_forward);
+CREATE INDEX site_forward ON sites (site_forward);
 
 
 CREATE TABLE user_newtalk (
@@ -576,4 +576,121 @@ CREATE INDEX cl_timestamp ON categorylinks (cl_to, cl_timestamp);
 
 CREATE INDEX cl_collation_ext ON categorylinks (
   cl_collation, cl_to, cl_type, cl_from
+);
+
+
+CREATE TABLE logging (
+  log_id SERIAL NOT NULL,
+  log_type TEXT DEFAULT '' NOT NULL,
+  log_action TEXT DEFAULT '' NOT NULL,
+  log_timestamp TIMESTAMPTZ DEFAULT '1970-01-01 00:00:00+00' NOT NULL,
+  log_actor BIGINT NOT NULL,
+  log_namespace INT DEFAULT 0 NOT NULL,
+  log_title TEXT DEFAULT '' NOT NULL,
+  log_page INT DEFAULT NULL,
+  log_comment_id BIGINT NOT NULL,
+  log_params TEXT NOT NULL,
+  log_deleted SMALLINT DEFAULT 0 NOT NULL,
+  PRIMARY KEY(log_id)
+);
+
+CREATE INDEX log_type_time ON logging (log_type, log_timestamp);
+
+CREATE INDEX log_actor_time ON logging (log_actor, log_timestamp);
+
+CREATE INDEX log_page_time ON logging (
+  log_namespace, log_title, log_timestamp
+);
+
+CREATE INDEX log_times ON logging (log_timestamp);
+
+CREATE INDEX log_actor_type_time ON logging (
+  log_actor, log_type, log_timestamp
+);
+
+CREATE INDEX log_page_id_time ON logging (log_page, log_timestamp);
+
+CREATE INDEX log_type_action ON logging (
+  log_type, log_action, log_timestamp
+);
+
+CREATE TYPE US_MEDIA_TYPE_ENUM AS ENUM(
+  'UNKNOWN', 'BITMAP', 'DRAWING', 'AUDIO',
+  'VIDEO', 'MULTIMEDIA', 'OFFICE',
+  'TEXT', 'EXECUTABLE', 'ARCHIVE',
+  '3D'
+);
+
+
+CREATE TABLE uploadstash (
+  us_id SERIAL NOT NULL,
+  us_user INT NOT NULL,
+  us_key VARCHAR(255) NOT NULL,
+  us_orig_path VARCHAR(255) NOT NULL,
+  us_path VARCHAR(255) NOT NULL,
+  us_source_type VARCHAR(50) DEFAULT NULL,
+  us_timestamp TIMESTAMPTZ NOT NULL,
+  us_status VARCHAR(50) NOT NULL,
+  us_chunk_inx INT DEFAULT NULL,
+  us_props TEXT DEFAULT NULL,
+  us_size INT NOT NULL,
+  us_sha1 VARCHAR(31) NOT NULL,
+  us_mime VARCHAR(255) DEFAULT NULL,
+  us_media_type US_MEDIA_TYPE_ENUM DEFAULT NULL,
+  us_image_width INT DEFAULT NULL,
+  us_image_height INT DEFAULT NULL,
+  us_image_bits SMALLINT DEFAULT NULL,
+  PRIMARY KEY(us_id)
+);
+
+CREATE INDEX us_user ON uploadstash (us_user);
+
+CREATE UNIQUE INDEX us_key ON uploadstash (us_key);
+
+CREATE INDEX us_timestamp ON uploadstash (us_timestamp);
+
+
+CREATE TABLE filearchive (
+  fa_id SERIAL NOT NULL,
+  fa_name TEXT DEFAULT '' NOT NULL,
+  fa_archive_name TEXT DEFAULT '',
+  fa_storage_group TEXT DEFAULT NULL,
+  fa_storage_key TEXT DEFAULT '',
+  fa_deleted_user INT DEFAULT NULL,
+  fa_deleted_timestamp TIMESTAMPTZ DEFAULT NULL,
+  fa_deleted_reason_id BIGINT NOT NULL,
+  fa_size INT DEFAULT 0,
+  fa_width INT DEFAULT 0,
+  fa_height INT DEFAULT 0,
+  fa_metadata TEXT DEFAULT NULL,
+  fa_bits INT DEFAULT 0,
+  fa_media_type TEXT DEFAULT NULL,
+  fa_major_mime TEXT DEFAULT 'unknown',
+  fa_minor_mime TEXT DEFAULT 'unknown',
+  fa_description_id BIGINT NOT NULL,
+  fa_actor BIGINT NOT NULL,
+  fa_timestamp TIMESTAMPTZ DEFAULT NULL,
+  fa_deleted SMALLINT DEFAULT 0 NOT NULL,
+  fa_sha1 TEXT DEFAULT '' NOT NULL,
+  PRIMARY KEY(fa_id)
+);
+
+CREATE INDEX fa_name ON filearchive (fa_name, fa_timestamp);
+
+CREATE INDEX fa_storage_group ON filearchive (
+  fa_storage_group, fa_storage_key
+);
+
+CREATE INDEX fa_deleted_timestamp ON filearchive (fa_deleted_timestamp);
+
+CREATE INDEX fa_actor_timestamp ON filearchive (fa_actor, fa_timestamp);
+
+CREATE INDEX fa_sha1 ON filearchive (fa_sha1);
+
+
+CREATE TABLE text (
+  old_id SERIAL NOT NULL,
+  old_text TEXT NOT NULL,
+  old_flags TEXT NOT NULL,
+  PRIMARY KEY(old_id)
 );

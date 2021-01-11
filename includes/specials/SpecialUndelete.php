@@ -859,7 +859,7 @@ class SpecialUndelete extends SpecialPage {
 
 		$out = $this->getOutput();
 		if ( $this->mAllowed ) {
-			$out->addModules( 'mediawiki.special.undelete' );
+			$out->addModules( 'mediawiki.misc-authed-ooui' );
 		}
 		$out->wrapWikiMsg(
 			"<div class='mw-undelete-pagetitle'>\n$1\n</div>\n",
@@ -1228,7 +1228,8 @@ class SpecialUndelete extends SpecialPage {
 			RevisionRecord::DELETED_TEXT,
 			$user
 		) ) {
-			return '<span class="history-deleted">' . $time . '</span>';
+			// TODO The condition cannot be true when the function is called
+			return '<span class="history-deleted">' . htmlspecialchars( $time ) . '</span>';
 		}
 
 		$link = $this->getLinkRenderer()->makeKnownLink(

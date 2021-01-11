@@ -954,8 +954,10 @@ function wfIsDebugRawPage() {
  * Send a line giving PHP memory usage.
  *
  * @param bool $exact Print exact byte values instead of kibibytes (default: false)
+ * @deprecated since 1.36
  */
 function wfDebugMem( $exact = false ) {
+	wfDeprecated( __FUNCTION__, '1.36' );
 	$mem = memory_get_usage();
 	if ( !$exact ) {
 		$mem = floor( $mem / 1024 ) . ' KiB';
@@ -1116,6 +1118,8 @@ function wfLogProfilingData() {
  * @param string $key
  * @param int $count
  * @return void
+ *
+ * @deprecated since 1.36, use MediaWikiServices::getInstance()->getStatsdDataFactory()->updateCount() instead
  */
 function wfIncrStats( $key, $count = 1 ) {
 	$stats = MediaWikiServices::getInstance()->getStatsdDataFactory();
@@ -1150,8 +1154,10 @@ function wfReadOnlyReason() {
  *
  * @return string|bool String when in read-only mode; false otherwise
  * @since 1.27
+ * @deprecated since 1.36
  */
 function wfConfiguredReadOnlyReason() {
+	wfDeprecated( __FUNCTION__, '1.36' );
 	return MediaWikiServices::getInstance()->getConfiguredReadOnlyMode()
 		->getReason();
 }
@@ -1694,8 +1700,11 @@ function wfResetOutputBuffers( $resetGzipEncoding = true ) {
  * also need to suppress the output of ob_gzhandler to keep to spec
  * and avoid breaking Firefox in rare cases where the headers and
  * body are broken over two packets.
+ *
+ * @deprecated since 1.36
  */
 function wfClearOutputBuffers() {
+	wfDeprecated( __FUNCTION__, '1.36' );
 	wfResetOutputBuffers( false );
 }
 
@@ -1706,8 +1715,10 @@ function wfClearOutputBuffers() {
  * @param string $accept
  * @param string $def Default
  * @return float[] Associative array of string => float pairs
+ * @deprecated since 1.36
  */
 function wfAcceptToPrefs( $accept, $def = '*/*' ) {
+	wfDeprecated( __FUNCTION__, '1.36' );
 	# No arg means accept anything (per HTTP spec)
 	if ( !$accept ) {
 		return [ $def => 1.0 ];
@@ -1770,9 +1781,10 @@ function mimeTypeMatch( $type, $avail ) {
  *
  * @todo FIXME: Doesn't handle params like 'text/plain; charset=UTF-8'
  * XXX: generalize to negotiate other stuff
- * @todo The function appears unused. Is it worth to keep?
+ * @deprecated since 1.36
  */
 function wfNegotiateType( $cprefs, $sprefs ) {
+	wfDeprecated( __FUNCTION__, '1.36' );
 	$combine = [];
 
 	foreach ( array_keys( $sprefs ) as $type ) {
@@ -2377,7 +2389,7 @@ function wfRelativePath( $path, $from ) {
 		array_shift( $against );
 	}
 
-	array_push( $pieces, wfBaseName( $path ) );
+	$pieces[] = wfBaseName( $path );
 
 	return implode( DIRECTORY_SEPARATOR, $pieces );
 }
@@ -2387,8 +2399,10 @@ function wfRelativePath( $path, $from ) {
  *
  * @param string $name
  * @return mixed The variable on success, false on failure
+ * @deprecated since 1.36
  */
 function wfGetPrecompiledData( $name ) {
+	wfDeprecated( __FUNCTION__, '1.36' );
 	global $IP;
 
 	$file = "$IP/serialized/$name";
@@ -2724,27 +2738,6 @@ function wfUnpack( $format, $data, $length = false ) {
 		throw new MWException( "unpack could not unpack binary data" );
 	}
 	return $result;
-}
-
-/**
- * Determine if an image exists on the 'bad image list'.
- *
- * The format of MediaWiki:Bad_image_list is as follows:
- *    * Only list items (lines starting with "*") are considered
- *    * The first link on a line must be a link to a bad image
- *    * Any subsequent links on the same line are considered to be exceptions,
- *      i.e. articles where the image may occur inline.
- *
- * @deprecated since 1.34, use the BadFileLookup service directly instead
- *
- * @param string $name The image name to check
- * @param Title|bool $contextTitle The page on which the image occurs, if known
- * @return bool
- */
-function wfIsBadImage( $name, $contextTitle = false ) {
-	wfDeprecated( __FUNCTION__, '1.34' );
-	$services = MediaWikiServices::getInstance();
-	return $services->getBadFileLookup()->isBadFile( $name, $contextTitle ?: null );
 }
 
 /**

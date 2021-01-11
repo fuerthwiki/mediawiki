@@ -2,7 +2,10 @@
 	"name": "mediawiki/core",
 	"description": "Free software wiki application developed by the Wikimedia Foundation and others",
 	"type": "mediawiki-core",
-	"keywords": ["mediawiki", "wiki"],
+	"keywords": [
+		"mediawiki",
+		"wiki"
+	],
 	"homepage": "https://www.mediawiki.org/",
 	"authors": [
 		{
@@ -27,8 +30,10 @@
 		"ext-iconv": "*",
 		"ext-intl": "*",
 		"ext-json": "*",
+		"ext-libxml": "*",
 		"ext-mbstring": "*",
 		"ext-xml": "*",
+		"ext-xmlreader": "*",
 		"guzzlehttp/guzzle": "7.2.0",
 		"liuggio/statsd-php-client": "1.0.18",
 		"oojs/oojs-ui": "0.41.0",
@@ -50,9 +55,9 @@
 		"wikimedia/html-formatter": "2.0.0",
 		"wikimedia/ip-set": "2.1.0",
 		"wikimedia/ip-utils": "1.0.0",
-		"wikimedia/less.php": "3.0.0",
+		"wikimedia/less.php": "3.1.0",
 		"wikimedia/object-factory": "3.0.0",
-		"wikimedia/parsoid": "^0.13.0-a4@alpha",
+		"wikimedia/parsoid": "^0.13.0-a20@alpha",
 		"wikimedia/php-session-serializer": "1.0.7",
 		"wikimedia/purtle": "1.0.7",
 		"wikimedia/relpath": "2.1.1",
@@ -69,23 +74,23 @@
 	},
 	"require-dev": {
 		"composer/spdx-licenses": "1.5.4",
-		"doctrine/dbal": "2.10.4",
+		"doctrine/dbal": "2.10.4||3.0.0",
 		"doctrine/sql-formatter": "1.1.1",
 		"giorgiosironi/eris": "^0.10.0",
 		"hamcrest/hamcrest-php": "^2.0",
 		"johnkary/phpunit-speedtrap": "^3.1",
 		"justinrainbow/json-schema": "~5.2",
 		"mediawiki/mediawiki-codesniffer": "34.0.0",
-		"mediawiki/mediawiki-phan-config": "0.10.4",
+		"mediawiki/mediawiki-phan-config": "0.10.6",
 		"monolog/monolog": "~2.0.2",
 		"nikic/php-parser": "4.10.2",
 		"nmred/kafka-php": "0.1.5",
 		"php-parallel-lint/php-console-highlighter": "0.5",
 		"php-parallel-lint/php-parallel-lint": "1.2.0",
 		"phpunit/phpunit": "^8.5",
-		"pimple/pimple": "3.3.0",
+		"pimple/pimple": "3.3.1",
 		"psy/psysh": "0.10.5",
-		"seld/jsonlint": "1.7.1",
+		"seld/jsonlint": "1.8.3",
 		"symfony/yaml": "~3.4|~5.1",
 		"wikimedia/avro": "1.9.0",
 		"wikimedia/testing-access-wrapper": "~2.0",
@@ -108,7 +113,7 @@
 		"psr-0": {
 			"ComposerHookHandler": "includes/composer",
 			"ComposerVendorHtaccessCreator": "includes/composer",
-			"ComposerPhpunitXmlCoverageEdit":"includes/composer"
+			"ComposerPhpunitXmlCoverageEdit": "includes/composer"
 		}
 	},
 	"autoload-dev": {
@@ -119,8 +124,11 @@
 	},
 	"scripts": {
 		"lint": "parallel-lint --exclude vendor",
+		"phan": "phan -d . --long-progress-bar",
 		"phpcs": "phpcs -p -s",
-		"fix": "phpcbf -p",
+		"fix": [
+			"phpcbf"
+		],
 		"pre-install-cmd": "ComposerHookHandler::onPreInstall",
 		"pre-update-cmd": "ComposerHookHandler::onPreUpdate",
 		"post-install-cmd": "ComposerVendorHtaccessCreator::onEvent",

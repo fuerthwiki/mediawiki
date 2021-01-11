@@ -685,6 +685,7 @@ class Linker {
 		if ( $label == '' ) {
 			$label = $title->getPrefixedText();
 		}
+		$html = htmlspecialchars( $label );
 		$repoGroup = MediaWikiServices::getInstance()->getRepoGroup();
 		$currentExists = $time
 			&& $repoGroup->findFile( $title ) !== false;
@@ -696,23 +697,21 @@ class Linker {
 				// We already know it's a redirect, so mark it accordingly
 				return self::link(
 					$title,
-					htmlspecialchars( $label ),
+					$html,
 					[ 'class' => 'mw-redirect' ],
 					wfCgiToArray( $query ),
 					[ 'known', 'noclasses' ]
 				);
 			}
-
-			return Html::element( 'a', [
+			return Html::rawElement( 'a', [
 					'href' => self::getUploadUrl( $title, $query ),
 					'class' => 'new',
 					'title' => $title->getPrefixedText()
-				], $label );
+				], $html );
 		}
-
 		return self::link(
 			$title,
-			htmlspecialchars( $label ),
+			$html,
 			[],
 			wfCgiToArray( $query ),
 			[ 'known', 'noclasses' ]
@@ -1653,7 +1652,7 @@ class Linker {
 		} else {
 			$stxt = wfMessage( 'nbytes' )->numParams( $size )->escaped();
 		}
-		return "<span class=\"history-size mw-diff-bytes\">$stxt</span>";
+		return "<span class=\"history-size mw-diff-bytes\" data-mw-bytes=\"$size\">$stxt</span>";
 	}
 
 	/**

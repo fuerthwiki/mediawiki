@@ -22,10 +22,7 @@ use Wikimedia\UUID\GlobalIdGenerator;
  * A handler that returns Parsoid HTML for the following routes:
  * - /page/{title}/html,
  * - /page/{title}/with_html
- * Currently the HTML is fetched from RESTBase, thus in order to use the routes,
- * RESTBase must be installed and VirtualRESTService for RESTBase needs to be configured.
  *
- * Class PageHTMLHandler
  * @package MediaWiki\Rest\Handler
  */
 class PageHTMLHandler extends SimpleHandler {
@@ -54,7 +51,8 @@ class PageHTMLHandler extends SimpleHandler {
 			$titleFactory
 		);
 		$this->htmlHelper = new ParsoidHTMLHelper(
-			$parserCacheFactory->getInstance( 'parsoid' ),
+			$parserCacheFactory->getParserCache( 'parsoid' ),
+			$parserCacheFactory->getRevisionOutputCache( 'parsoid' ),
 			$wikiPageFactory,
 			$globalIdGenerator
 		);

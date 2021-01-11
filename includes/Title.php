@@ -24,6 +24,7 @@
 
 use MediaWiki\Interwiki\InterwikiLookup;
 use MediaWiki\Linker\LinkTarget;
+use MediaWiki\Logger\LoggerFactory;
 use MediaWiki\MediaWikiServices;
 use MediaWiki\User\UserIdentity;
 use Wikimedia\Assert\Assert;
@@ -65,12 +66,13 @@ class Title implements LinkTarget, IDBAccessObject {
 	 */
 	public const NEW_CLONE = 'clone';
 
-	/**
-	 * @name Private member variables
+	/***************************************************************************/
+	// region   Private member variables
+	/** @name   Private member variables
 	 * Please use the accessor functions instead.
 	 * @internal
+	 * @{
 	 */
-	// @{
 
 	/** @var string Text form (spaces not underscores) of the main part */
 	public $mTextform = '';
@@ -183,7 +185,10 @@ class Title implements LinkTarget, IDBAccessObject {
 
 	/** @var bool|null Is the title known to be valid? */
 	private $mIsValid = null;
-	// @}
+
+	// endregion -- end of private member variables
+	/** @} */
+	/***************************************************************************/
 
 	/**
 	 * Shorthand for getting a Language Converter for specific language
@@ -718,7 +723,7 @@ class Title implements LinkTarget, IDBAccessObject {
 		// Input token queue
 		$x0 = $x1 = $x2 = '';
 		// Decoded queue
-		$d0 = $d1 = $d2 = '';
+		$d0 = $d1 = '';
 		// Decoded integer codepoints
 		$ord0 = $ord1 = $ord2 = 0;
 		// Re-encoded queue
@@ -731,7 +736,6 @@ class Title implements LinkTarget, IDBAccessObject {
 			// Shift the queues down
 			$x2 = $x1;
 			$x1 = $x0;
-			$d2 = $d1;
 			$d1 = $d0;
 			$ord2 = $ord1;
 			$ord1 = $ord0;
@@ -739,7 +743,7 @@ class Title implements LinkTarget, IDBAccessObject {
 			$r1 = $r0;
 			// Load the current input token and decoded values
 			$inChar = $byteClass[$pos];
-			if ( $inChar == '\\' ) {
+			if ( $inChar === '\\' ) {
 				if ( preg_match( '/x([0-9a-fA-F]{2})/A', $byteClass, $m, 0, $pos + 1 ) ) {
 					$x0 = $inChar . $m[0];
 					$d0 = chr( hexdec( $m[1] ) );
@@ -753,7 +757,7 @@ class Title implements LinkTarget, IDBAccessObject {
 				} else {
 					$d0 = $byteClass[$pos + 1];
 					$x0 = $inChar . $d0;
-					$pos += 1;
+					$pos++;
 				}
 			} else {
 				$x0 = $d0 = $inChar;
@@ -2298,6 +2302,14 @@ class Title implements LinkTarget, IDBAccessObject {
 			// @todo FIXME: This causes breakage in various places when we
 			// actually expected a local URL and end up with dupe prefixes.
 			if ( $wgRequest->getVal( 'action' ) == 'render' ) {
+				LoggerFactory::getInstance( 'T263581' )
+					->debug(
+						"Title::getLocalURL called from render action",
+						[
+							'title' => $this->getPrefixedDBkey(),
+							'exception' => new Exception()
+						]
+					);
 				$url = $wgServer . $url;
 			}
 		}

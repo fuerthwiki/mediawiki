@@ -523,8 +523,11 @@ class User implements IDBAccessObject, UserIdentity {
 		return true;
 	}
 
-	/** @name newFrom*() static factory methods */
-	// @{
+	/***************************************************************************/
+	// region   newFrom*() static factory methods
+	/** @name   newFrom*() static factory methods
+	 * @{
+	 */
 
 	/**
 	 * @see UserFactory::newFromName
@@ -669,7 +672,7 @@ class User implements IDBAccessObject, UserIdentity {
 	 * Create a new user object using data from session. If the login
 	 * credentials are invalid, the result is an anonymous user.
 	 *
-	 * @param WebRequest|null $request Object to use; $wgRequest will be used if omitted.
+	 * @param WebRequest|null $request Object to use; the global request will be used if omitted.
 	 * @return User
 	 */
 	public static function newFromSession( WebRequest $request = null ) {
@@ -797,7 +800,6 @@ class User implements IDBAccessObject, UserIdentity {
 
 		if ( !$row ) {
 			// No user. Create it?
-			// @phan-suppress-next-line PhanImpossibleCondition
 			if ( !$options['create'] ) {
 				// No.
 				return null;
@@ -846,7 +848,6 @@ class User implements IDBAccessObject, UserIdentity {
 
 		if ( !$user->isSystemUser() ) {
 			// User exists. Steal it?
-			// @phan-suppress-next-line PhanRedundantCondition
 			if ( !$options['steal'] ) {
 				return null;
 			}
@@ -862,7 +863,8 @@ class User implements IDBAccessObject, UserIdentity {
 		return $user;
 	}
 
-	// @}
+	/** @} */
+	// endregion -- end of newFrom*() static factory methods
 
 	/**
 	 * Get the username corresponding to a given user ID
@@ -1228,7 +1230,7 @@ class User implements IDBAccessObject, UserIdentity {
 		// returned here, so just use it if applicable.
 		$session = $this->getRequest()->getSession();
 		$user = $session->getUser();
-		if ( $user->isLoggedIn() ) {
+		if ( $user->isRegistered() ) {
 			$this->loadFromUserObject( $user );
 
 			// Other code expects these to be set in the session, so set them.
@@ -2961,8 +2963,7 @@ class User implements IDBAccessObject, UserIdentity {
 	}
 
 	/**
-	 * Alias of isLoggedIn() with a name that describes its actual functionality. UserIdentity has
-	 * only this new name and not the old isLoggedIn() variant.
+	 * Get whether the user is registered.
 	 *
 	 * @return bool True if user is registered on this wiki, i.e., has a user ID. False if user is
 	 *   anonymous or has no local account (which can happen when importing). This is equivalent to
@@ -2974,7 +2975,9 @@ class User implements IDBAccessObject, UserIdentity {
 	}
 
 	/**
-	 * Get whether the user is logged in
+	 * Get whether the user is registered.
+	 *
+	 * @deprecated since 1.36; use isRegistered() directly
 	 * @return bool
 	 */
 	public function isLoggedIn() {
@@ -3107,9 +3110,7 @@ class User implements IDBAccessObject, UserIdentity {
 		if ( $this->mRequest ) {
 			return $this->mRequest;
 		}
-
-		global $wgRequest;
-		return $wgRequest;
+		return RequestContext::getMain()->getRequest();
 	}
 
 	/**
@@ -3231,7 +3232,7 @@ class User implements IDBAccessObject, UserIdentity {
 	/**
 	 * Compute experienced level based on edit count and registration date.
 	 *
-	 * @return string 'newcomer', 'learner', or 'experienced'
+	 * @return string|false 'newcomer', 'learner', or 'experienced', false for anonymous users
 	 */
 	public function getExperienceLevel() {
 		global $wgLearnerEdits,
@@ -3248,6 +3249,11 @@ class User implements IDBAccessObject, UserIdentity {
 		$now = time();
 		$learnerRegistration = wfTimestamp( TS_MW, $now - $wgLearnerMemberSince * 86400 );
 		$experiencedRegistration = wfTimestamp( TS_MW, $now - $wgExperiencedUserMemberSince * 86400 );
+		if ( $registration === null ) {
+			// for some very old accounts, this information is missing in the database
+			// treat them as old enough to be 'experienced'
+			$registration = $experiencedRegistration;
+		}
 
 		if ( $editCount < $wgLearnerEdits ||
 		$registration > $learnerRegistration ) {
@@ -3266,8 +3272,8 @@ class User implements IDBAccessObject, UserIdentity {
 	/**
 	 * Persist this user's session (e.g. set cookies)
 	 *
-	 * @param WebRequest|null $request WebRequest object to use; $wgRequest will be used if null
-	 *        is passed.
+	 * @param WebRequest|null $request WebRequest object to use; the global request
+	 *        will be used if null is passed.
 	 * @param bool|null $secure Whether to force secure/insecure cookies or use default
 	 * @param bool $rememberMe Whether to add a Token cookie for elongated sessions
 	 */
@@ -3522,7 +3528,7 @@ class User implements IDBAccessObject, UserIdentity {
 	 * in code along the lines of:
 	 *
 	 *   $user = User::newFromName( $name );
-	 *   if ( !$user->isLoggedIn() ) {
+	 *   if ( !$user->isRegistered() ) {
 	 *       $user->addToDatabase();
 	 *   }
 	 *   // do something with $user...
@@ -3532,7 +3538,7 @@ class User implements IDBAccessObject, UserIdentity {
 	 * calling sequence as far as possible.
 	 *
 	 * Note that if the user exists, this function will acquire a write lock,
-	 * so it is still advisable to make the call conditional on isLoggedIn(),
+	 * so it is still advisable to make the call conditional on isRegistered(),
 	 * and to commit the transaction after calling.
 	 *
 	 * @throws MWException
@@ -3623,7 +3629,7 @@ class User implements IDBAccessObject, UserIdentity {
 	 * @return bool A block was spread
 	 */
 	public function spreadAnyEditBlock() {
-		if ( $this->isLoggedIn() && $this->getBlock() ) {
+		if ( $this->isRegistered() && $this->getBlock() ) {
 			return $this->spreadBlock();
 		}
 
@@ -3738,7 +3744,7 @@ class User implements IDBAccessObject, UserIdentity {
 	 *
 	 * @since 1.27
 	 * @param string|string[] $salt Optional function-specific data for hashing
-	 * @param WebRequest|null $request WebRequest object to use or null to use $wgRequest
+	 * @param WebRequest|null $request WebRequest object to use, or null to use the global request
 	 * @return MediaWiki\Session\Token The new edit token
 	 */
 	public function getEditTokenObject( $salt = '', $request = null ) {
@@ -3762,7 +3768,7 @@ class User implements IDBAccessObject, UserIdentity {
 	 *
 	 * @since 1.19
 	 * @param string|string[] $salt Optional function-specific data for hashing
-	 * @param WebRequest|null $request WebRequest object to use or null to use $wgRequest
+	 * @param WebRequest|null $request WebRequest object to use, or null to use the global request
 	 * @return string The new edit token
 	 */
 	public function getEditToken( $salt = '', $request = null ) {
@@ -3777,7 +3783,7 @@ class User implements IDBAccessObject, UserIdentity {
 	 *
 	 * @param string $val Input value to compare
 	 * @param string|array $salt Optional function-specific data for hashing
-	 * @param WebRequest|null $request Object to use or null to use $wgRequest
+	 * @param WebRequest|null $request Object to use, or null to use the global request
 	 * @param int|null $maxage Fail tokens older than this, in seconds
 	 * @return bool Whether the token matches
 	 */
@@ -3791,7 +3797,7 @@ class User implements IDBAccessObject, UserIdentity {
 	 *
 	 * @param string $val Input value to compare
 	 * @param string|array $salt Optional function-specific data for hashing
-	 * @param WebRequest|null $request Object to use or null to use $wgRequest
+	 * @param WebRequest|null $request Object to use, or null to use the global request
 	 * @param int|null $maxage Fail tokens older than this, in seconds
 	 * @return bool Whether the token matches
 	 */

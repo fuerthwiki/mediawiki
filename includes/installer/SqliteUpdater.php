@@ -319,6 +319,12 @@ class SqliteUpdater extends DatabaseUpdater {
 			[ 'modifyField', 'slot_roles', 'role_id', 'patch-slot_roles-role_id-fix_not_null.sql' ],
 			[ 'modifyField', 'content_models', 'model_id', 'patch-content_models-model_id-fix_not_null.sql' ],
 			[ 'modifyField', 'categorylinks', 'cl_to', 'patch-categorylinks-cl_to-varbinary.sql' ],
+			[ 'modifyField', 'logging', 'log_title', 'patch-logging-log_title-varbinary.sql' ],
+			[ 'renameIndex', 'user_properties', 'user_properties_property', 'up_property', false,
+				'patch-user_properties-rename-index.sql' ],
+			[ 'renameIndex', 'sites', 'sites_global_key', 'site_global_key', false, 'patch-sites-rename-indexes.sql' ],
+			[ 'renameIndex', 'logging', 'type_time', 'log_type_time', false, 'patch-logging-rename-indexes.sql' ],
+			[ 'modifyField', 'filearchive', 'fa_name', 'patch-filearchive-fa_name.sql' ],
 		];
 	}
 

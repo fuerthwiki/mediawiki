@@ -143,7 +143,12 @@ class ApiMain extends ApiBase {
 				'UserCache',
 			]
 		],
-		'move' => ApiMove::class,
+		'move' => [
+			'class' => ApiMove::class,
+			'services' => [
+				'MovePageFactory',
+			]
+		],
 		'edit' => ApiEditPage::class,
 		'upload' => ApiUpload::class,
 		'filerevert' => ApiFileRevert::class,
@@ -1400,7 +1405,7 @@ class ApiMain extends ApiBase {
 			Wikimedia\suppressWarnings();
 			ini_set( 'zlib.output_compression', 0 );
 			Wikimedia\restoreWarnings();
-			wfClearOutputBuffers();
+			wfResetOutputBuffers( false );
 
 			return false;
 		}
@@ -1565,7 +1570,7 @@ class ApiMain extends ApiBase {
 			(
 				$this->getConfig()->get( 'ForceHTTPS' ) ||
 				$request->getSession()->shouldForceHTTPS() ||
-				( $this->getUser()->isLoggedIn() &&
+				( $this->getUser()->isRegistered() &&
 					$this->getUser()->requiresHTTPS() )
 			)
 		) {

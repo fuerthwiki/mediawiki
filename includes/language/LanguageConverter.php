@@ -41,6 +41,7 @@ abstract class LanguageConverter implements ILanguageConverter {
 	 * @var array
 	 */
 	public static $languagesWithVariants = [
+		'ban',
 		'en',
 		'crh',
 		'gan',
@@ -108,10 +109,8 @@ abstract class LanguageConverter implements ILanguageConverter {
 		global $wgDisabledVariants;
 
 		$this->deprecatePublicProperty( 'mURLVariant', '1.35', __CLASS__ );
-		$this->deprecatePublicProperty( 'mURLVariant', '1.35', __CLASS__ );
 		$this->deprecatePublicProperty( 'mUcfirst', '1.35', __CLASS__ );
 		$this->deprecatePublicProperty( 'mConvRuleTitle', '1.35', __CLASS__ );
-		$this->deprecatePublicProperty( 'mURLVariant', '1.35', __CLASS__ );
 		$this->deprecatePublicProperty( 'mUserVariant', '1.35', __CLASS__ );
 		$this->deprecatePublicProperty( 'mHeaderVariant', '1.35', __CLASS__ );
 		$this->deprecatePublicProperty( 'mMaxDepth = 10', '1.35', __CLASS__ );
@@ -199,7 +198,7 @@ abstract class LanguageConverter implements ILanguageConverter {
 		// NOTE: For calls from Setup.php, wgUser or the session might not be set yet (T235360)
 		// Use case: During autocreation, User::isUsableName is called which uses interface
 		// messages for reserved usernames.
-		if ( $wgUser && $wgUser->isSafeToLoad() && $wgUser->isLoggedIn() && !$req ) {
+		if ( $wgUser && $wgUser->isSafeToLoad() && $wgUser->isRegistered() && !$req ) {
 			$req = $this->getUserVariant( $wgUser );
 		} elseif ( !$req ) {
 			$req = $this->getHeaderVariant();
@@ -312,7 +311,7 @@ abstract class LanguageConverter implements ILanguageConverter {
 			return false;
 		}
 
-		if ( $user->isLoggedIn() ) {
+		if ( $user->isRegistered() ) {
 			// Get language variant preference from logged in users
 			if (
 				$this->mMainLanguageCode ==
@@ -520,6 +519,7 @@ abstract class LanguageConverter implements ILanguageConverter {
 					}
 				}
 				if ( $changed ) {
+					// @phan-suppress-next-line SecurityCheck-DoubleEscaped Explained above with decodeTagAttributes
 					$element = $elementMatches[1] . Html::expandAttributes( $attrs ) .
 						$close . $elementMatches[3];
 				}
@@ -1287,6 +1287,7 @@ abstract class LanguageConverter implements ILanguageConverter {
 	 * @return string
 	 */
 	public function convertHtml( $text ) {
+		// @phan-suppress-next-line SecurityCheck-DoubleEscaped convert() is documented to return html
 		return htmlspecialchars( $this->convert( $text ) );
 	}
 }

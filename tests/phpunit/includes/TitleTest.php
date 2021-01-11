@@ -1,5 +1,6 @@
 <?php
 
+use MediaWiki\Interwiki\ClassicInterwikiLookup;
 use MediaWiki\Interwiki\InterwikiLookup;
 use MediaWiki\Linker\LinkTarget;
 use MediaWiki\MediaWikiServices;
@@ -149,18 +150,16 @@ class TitleTest extends MediaWikiIntegrationTestCase {
 	private function secureAndSplitGlobals() {
 		$this->setMwGlobals( [
 			'wgLocalInterwikis' => [ 'localtestiw' ],
-			'wgHooks' => [
-				'InterwikiLoadPrefix' => [
-					function ( $prefix, &$data ) {
-						if ( $prefix === 'localtestiw' ) {
-							$data = [ 'iw_url' => 'localtestiw' ];
-						} elseif ( $prefix === 'remotetestiw' ) {
-							$data = [ 'iw_url' => 'remotetestiw' ];
-						}
-						return false;
-					}
-				]
-			]
+			'wgInterwikiCache' => ClassicInterwikiLookup::buildCdbHash( [
+				[
+					'iw_prefix' => 'localtestiw',
+					'iw_url' => 'localtestiw',
+				],
+				[
+					'iw_prefix' => 'remotetestiw',
+					'iw_url' => 'remotetestiw',
+				],
+			] ),
 		] );
 	}
 
@@ -185,7 +184,7 @@ class TitleTest extends MediaWikiIntegrationTestCase {
 		$this->secureAndSplitGlobals();
 		try {
 			Title::newFromTextThrow( $text ); // should throw
-			$this->assertTrue( false, "Invalid: $text" );
+			$this->fail( "Title::newFromTextThrow should have thrown with $text" );
 		} catch ( MalformedTitleException $ex ) {
 			$this->assertEquals( $expectedErrorMessage, $ex->getErrorMessage(), "Invalid: $text" );
 		}
@@ -329,7 +328,6 @@ class TitleTest extends MediaWikiIntegrationTestCase {
 		# - content language (expected in most cases)
 		# - wgLang (on some specific pages)
 		# - wgDefaultLanguageVariant
-		# - Optional message
 		return [
 			[ 'fr', 'Help:I_need_somebody', 'fr', 'fr', false ],
 			[ 'es', 'Help:I_need_somebody', 'es', 'zh-tw', false ],
@@ -365,31 +363,27 @@ class TitleTest extends MediaWikiIntegrationTestCase {
 	 * @dataProvider provideBaseTitleCases
 	 * @covers Title::getBaseText
 	 */
-	public function testGetBaseText( $title, $expected, $msg = '' ) {
+	public function testGetBaseText( $title, $expected ) {
 		$title = Title::newFromText( $title );
-		$this->assertSame( $expected,
-			$title->getBaseText(),
-			$msg
-		);
+		$this->assertSame( $expected, $title->getBaseText() );
 	}
 
 	/**
 	 * @dataProvider provideBaseTitleCases
 	 * @covers Title::getBaseTitle
 	 */
-	public function testGetBaseTitle( $title, $expected, $msg = '' ) {
+	public function testGetBaseTitle( $title, $expected ) {
 		$title = Title::newFromText( $title );
 		$base = $title->getBaseTitle();
-		$this->assertTrue( $base->isValid(), $msg );
+		$this->assertTrue( $base->isValid() );
 		$this->assertTrue(
-			$base->equals( Title::makeTitleSafe( $title->getNamespace(), $expected ) ),
-			$msg
+			$base->equals( Title::makeTitleSafe( $title->getNamespace(), $expected ) )
 		);
 	}
 
 	public static function provideBaseTitleCases() {
 		return [
-			# Title, expected base, optional message
+			# Title, expected base
 			[ 'User:John_Doe', 'John Doe' ],
 			[ 'User:John_Doe/subOne/subTwo', 'John Doe/subOne' ],
 			[ 'User:Foo / Bar / Baz', 'Foo / Bar ' ],
@@ -407,31 +401,27 @@ class TitleTest extends MediaWikiIntegrationTestCase {
 	 * @dataProvider provideRootTitleCases
 	 * @covers Title::getRootText
 	 */
-	public function testGetRootText( $title, $expected, $msg = '' ) {
+	public function testGetRootText( $title, $expected ) {
 		$title = Title::newFromText( $title );
-		$this->assertEquals( $expected,
-			$title->getRootText(),
-			$msg
-		);
+		$this->assertEquals( $expected, $title->getRootText() );
 	}
 
 	/**
 	 * @dataProvider provideRootTitleCases
 	 * @covers Title::getRootTitle
 	 */
-	public function testGetRootTitle( $title, $expected, $msg = '' ) {
+	public function testGetRootTitle( $title, $expected ) {
 		$title = Title::newFromText( $title );
 		$root = $title->getRootTitle();
-		$this->assertTrue( $root->isValid(), $msg );
+		$this->assertTrue( $root->isValid() );
 		$this->assertTrue(
-			$root->equals( Title::makeTitleSafe( $title->getNamespace(), $expected ) ),
-			$msg
+			$root->equals( Title::makeTitleSafe( $title->getNamespace(), $expected ) )
 		);
 	}
 
 	public static function provideRootTitleCases() {
 		return [
-			# Title, expected base, optional message
+			# Title, expected base
 			[ 'User:John_Doe', 'John Doe' ],
 			[ 'User:John_Doe/subOne/subTwo', 'John Doe' ],
 			[ 'User:Foo / Bar / Baz', 'Foo ' ],
@@ -454,17 +444,14 @@ class TitleTest extends MediaWikiIntegrationTestCase {
 	 * @dataProvider provideSubpageTitleCases
 	 * @covers Title::getSubpageText
 	 */
-	public function testGetSubpageText( $title, $expected, $msg = '' ) {
+	public function testGetSubpageText( $title, $expected ) {
 		$title = Title::newFromText( $title );
-		$this->assertEquals( $expected,
-			$title->getSubpageText(),
-			$msg
-		);
+		$this->assertEquals( $expected, $title->getSubpageText() );
 	}
 
 	public static function provideSubpageTitleCases() {
 		return [
-			# Title, expected base, optional message
+			# Title, expected base
 			[ 'User:John_Doe', 'John Doe' ],
 			[ 'User:John_Doe/subOne/subTwo', 'subTwo' ],
 			[ 'User:John_Doe/subOne', 'subOne' ],
@@ -764,7 +751,6 @@ class TitleTest extends MediaWikiIntegrationTestCase {
 			'exists() should rely on link cache unless READ_LATEST is used'
 		);
 		$this->assertTrue(
-
 			$title->exists( Title::READ_LATEST ),
 			'exists() should re-query database when READ_LATEST is used'
 		);
@@ -798,7 +784,7 @@ class TitleTest extends MediaWikiIntegrationTestCase {
 			'User page is watchable' => [
 				Title::makeTitle( NS_USER, 'Jane' ), true
 			],
-			'Talke page is watchable' => [
+			'Talk page is watchable' => [
 				Title::makeTitle( NS_TALK, 'Foo' ), true
 			],
 			'Special page is not watchable' => [
@@ -881,7 +867,7 @@ class TitleTest extends MediaWikiIntegrationTestCase {
 	 * @param bool $expected
 	 */
 	public function testIsWatchable( Title $title, $expected ) {
-		$actual = $title->canHaveTalkPage();
+		$actual = $title->isWatchable();
 		$this->assertSame( $expected, $actual, $title->getPrefixedDBkey() );
 	}
 
@@ -1018,19 +1004,15 @@ class TitleTest extends MediaWikiIntegrationTestCase {
 	 * @dataProvider provideCreateFragmentTitle
 	 */
 	public function testCreateFragmentTitle( Title $title, $fragment ) {
-		$this->mergeMwGlobalArrayValue( 'wgHooks', [
-			'InterwikiLoadPrefix' => [
-				function ( $prefix, &$iwdata ) {
-					if ( $prefix === 'interwiki' ) {
-						$iwdata = [
-							'iw_url' => 'http://example.com/',
-							'iw_local' => 0,
-							'iw_trans' => 0,
-						];
-						return false;
-					}
-				},
-			],
+		$this->setMwGlobals( [
+			'wgInterwikiCache' => ClassicInterwikiLookup::buildCdbHash( [
+				[
+					'iw_prefix' => 'interwiki',
+					'iw_url' => 'http://example.com/',
+					'iw_local' => 0,
+					'iw_trans' => 0,
+				],
+			] ),
 		] );
 
 		$fragmentTitle = $title->createFragmentTarget( $fragment );
@@ -1459,10 +1441,7 @@ class TitleTest extends MediaWikiIntegrationTestCase {
 	public function testGetTitleProtection() {
 		$title = $this->getNonexistingTestPage( 'UTest1' )->getTitle();
 		$title->mTitleProtection = false;
-		$this->assertFalse(
-
-			$title->getTitleProtection()
-		);
+		$this->assertFalse( $title->getTitleProtection() );
 	}
 
 	/**
@@ -1477,17 +1456,11 @@ class TitleTest extends MediaWikiIntegrationTestCase {
 			'wgSemiprotectedRestrictionLevels' => [ 'autoconfirmed' ],
 			'wgRestrictionLevels' => [ '', 'autoconfirmed', 'sysop' ]
 		] );
-		$this->assertFalse(
-
-			$title->isSemiProtected( 'edit' )
-		);
+		$this->assertFalse( $title->isSemiProtected( 'edit' ) );
 		$title->mRestrictions = [
 			'edit' => [ 'autoconfirmed' ]
 		];
-		$this->assertTrue(
-
-			$title->isSemiProtected( 'edit' )
-		);
+		$this->assertTrue( $title->isSemiProtected( 'edit' ) );
 	}
 
 	/**
@@ -1495,10 +1468,7 @@ class TitleTest extends MediaWikiIntegrationTestCase {
 	 */
 	public function testDeleteTitleProtection() {
 		$title = $this->getExistingTestPage( 'UTest1' )->getTitle();
-		$this->assertFalse(
-
-			$title->getTitleProtection()
-		);
+		$this->assertFalse( $title->getTitleProtection() );
 	}
 
 	/**
@@ -1513,17 +1483,11 @@ class TitleTest extends MediaWikiIntegrationTestCase {
 		$title->mRestrictions = [
 			'edit' => [ 'sysop' ]
 		];
-		$this->assertFalse(
-
-			$title->isProtected( 'edit' )
-		);
+		$this->assertFalse( $title->isProtected( 'edit' ) );
 		$title->mRestrictions = [
 			'edit' => [ 'test' ]
 		];
-		$this->assertFalse(
-
-			$title->isProtected( 'edit' )
-		);
+		$this->assertFalse( $title->isProtected( 'edit' ) );
 	}
 
 	/**
@@ -1535,7 +1499,6 @@ class TitleTest extends MediaWikiIntegrationTestCase {
 			'wgNamespaceProtection' => []
 		] );
 		$this->assertFalse(
-
 			$title->isNamespaceProtected( $this->getTestUser()->getUser() )
 		);
 		$this->setMwGlobals( [
@@ -1544,7 +1507,6 @@ class TitleTest extends MediaWikiIntegrationTestCase {
 			]
 		] );
 		$this->assertTrue(
-
 			$title->isNamespaceProtected( $this->getTestUser()->getUser() )
 		);
 	}

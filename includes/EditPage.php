@@ -2501,7 +2501,7 @@ class EditPage implements IEditObject {
 	 */
 	protected function updateWatchlist() {
 		$user = $this->context->getUser();
-		if ( !$user->isLoggedIn() ) {
+		if ( !$user->isRegistered() ) {
 			return;
 		}
 
@@ -2770,7 +2770,17 @@ class EditPage implements IEditObject {
 			$user = User::newFromName( $username, false /* allow IP users */ );
 			$ip = User::isIP( $username );
 			$block = DatabaseBlock::newFromTarget( $user, $user );
-			if ( !( $user && $user->isLoggedIn() ) && !$ip ) { # User does not exist
+
+			$userExists = ( $user && $user->isRegistered() );
+			if ( $userExists && $user->isHidden() &&
+				!$this->permManager->userHasRight( $this->context->getUser(), 'hideuser' )
+			) {
+				// If the user exists, but is hidden, and the viewer cannot see hidden
+				// users, pretend like they don't exist at all. See T120883
+				$userExists = false;
+			}
+
+			if ( !$userExists && !$ip ) { # User does not exist
 				$out->wrapWikiMsg( "<div class=\"mw-userpage-userdoesnotexist error\">\n$1\n</div>",
 					[ 'userpage-userdoesnotexist', wfEscapeWikiText( $username ) ] );
 			} elseif (
@@ -2802,7 +2812,7 @@ class EditPage implements IEditObject {
 			$helpLink = wfExpandUrl( Skin::makeInternalOrExternalUrl(
 				$this->context->msg( 'helppage' )->inContentLanguage()->text()
 			) );
-			if ( $this->context->getUser()->isLoggedIn() ) {
+			if ( $this->context->getUser()->isRegistered() ) {
 				$out->wrapWikiMsg(
 					// Suppress the external link icon, consider the help url an internal one
 					"<div class=\"mw-newarticletext plainlinks\">\n$1\n</div>",
@@ -3052,7 +3062,11 @@ class EditPage implements IEditObject {
 		# ####
 		# For a bit more sophisticated detection of blank summaries, hash the
 		# automatic one and pass that in the hidden field wpAutoSummary.
-		if ( $this->missingSummary || ( $this->section == 'new' && $this->nosummary ) ) {
+		if (
+			$this->missingSummary ||
+			( $this->section == 'new' && $this->nosummary ) ||
+			$this->allowBlankSummary
+		) {
 			$out->addHTML( Html::hidden( 'wpIgnoreBlankSummary', true ) );
 		}
 
@@ -4341,7 +4355,7 @@ class EditPage implements IEditObject {
 			];
 		}
 
-		if ( $user->isLoggedIn() ) {
+		if ( $user->isRegistered() ) {
 			$checkboxes = array_merge(
 				$checkboxes,
 				$this->getCheckboxesDefinitionForWatchlist( $checked['watch'] )
