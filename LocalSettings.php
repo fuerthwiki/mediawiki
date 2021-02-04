@@ -245,7 +245,7 @@ wfLoadExtension( 'ProofreadPage' );
 wfLoadExtension( 'SemanticResultFormats' );
 wfLoadExtension( 'CollapsibleVector' );
 wfLoadExtension( 'SemanticExtraSpecialProperties' );
-wfLoadExtension( 'Collection' );
+#wfLoadExtension( 'Collection' ); They have problems rendering PDFs
 wfLoadExtension( 'Widgets' );
 wfLoadExtension( 'Loops' );
 wfLoadExtension( 'Maps' );
