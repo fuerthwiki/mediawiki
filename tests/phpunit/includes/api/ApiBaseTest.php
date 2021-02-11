@@ -31,9 +31,6 @@ class ApiBaseTest extends ApiTestCase {
 	/**
 	 * This covers a variety of stub methods that return a fixed value.
 	 *
-	 * @param string|array $method Name of method, or [ name, params... ]
-	 * @param string $value Expected value
-	 *
 	 * @dataProvider provideStubMethods
 	 */
 	public function testStubMethods( $expected, $method, $args = [] ) {
@@ -276,11 +273,11 @@ class ApiBaseTest extends ApiTestCase {
 	 * @param string|null $input
 	 * @param array $paramSettings
 	 * @param mixed $expected
+	 * @param string[] $warnings
 	 * @param array $options Key-value pairs:
 	 *   'parseLimits': true|false
 	 *   'apihighlimits': true|false
 	 *   'prefix': true|false
-	 * @param string[] $warnings
 	 */
 	private function doGetParameterFromSettings(
 		$input, $paramSettings, $expected, $warnings, $options = []
@@ -345,7 +342,7 @@ class ApiBaseTest extends ApiTestCase {
 			} else {
 				$this->assertSame( $expected, $result );
 			}
-			$actualWarnings = array_map( function ( $warn ) {
+			$actualWarnings = array_map( static function ( $warn ) {
 				return $warn instanceof Message
 					? array_merge( [ $warn->getKey() ], $warn->getParams() )
 					: $warn;
@@ -735,7 +732,7 @@ class ApiBaseTest extends ApiTestCase {
 					'paramvalidator-badvalue-enumnotmulti',
 					Message::plaintextParam( 'myParam' ),
 					Message::plaintextParam( '-1' ),
-					Message::listParam( array_map( 'Message::plaintextParam', $namespaces ) ),
+					Message::listParam( array_map( [ Message::class, 'plaintextParam' ], $namespaces ) ),
 					Message::numParam( count( $namespaces ) ),
 				], 'badvalue' ),
 				[],

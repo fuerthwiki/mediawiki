@@ -68,6 +68,7 @@ abstract class Database implements IDatabase, IMaintainableDatabase, LoggerAware
 	/** @var DatabaseDomain */
 	protected $currentDomain;
 
+	// phpcs:ignore MediaWiki.Commenting.PropertyDocumentation.ObjectTypeHintVar
 	/** @var object|resource|null Database connection */
 	protected $conn;
 
@@ -480,29 +481,30 @@ abstract class Database implements IDatabase, IMaintainableDatabase, LoggerAware
 		];
 
 		$dbType = strtolower( $dbType );
+
+		if ( !isset( $builtinTypes[$dbType] ) ) {
+			// Not a built in type, assume standard naming scheme
+			return 'Database' . ucfirst( $dbType );
+		}
+
 		$class = false;
+		$possibleDrivers = $builtinTypes[$dbType];
+		if ( is_string( $possibleDrivers ) ) {
+			$class = $possibleDrivers;
+		} elseif ( (string)$driver !== '' ) {
+			if ( !isset( $possibleDrivers[$driver] ) ) {
+				throw new InvalidArgumentException( __METHOD__ .
+					" type '$dbType' does not support driver '{$driver}'" );
+			}
 
-		if ( isset( $builtinTypes[$dbType] ) ) {
-			$possibleDrivers = $builtinTypes[$dbType];
-			if ( is_string( $possibleDrivers ) ) {
-				$class = $possibleDrivers;
-			} elseif ( (string)$driver !== '' ) {
-				if ( !isset( $possibleDrivers[$driver] ) ) {
-					throw new InvalidArgumentException( __METHOD__ .
-						" type '$dbType' does not support driver '{$driver}'" );
-				}
-
-				$class = $possibleDrivers[$driver];
-			} else {
-				foreach ( $possibleDrivers as $posDriver => $possibleClass ) {
-					if ( extension_loaded( $posDriver ) ) {
-						$class = $possibleClass;
-						break;
-					}
+			$class = $possibleDrivers[$driver];
+		} else {
+			foreach ( $possibleDrivers as $posDriver => $possibleClass ) {
+				if ( extension_loaded( $posDriver ) ) {
+					$class = $possibleClass;
+					break;
 				}
 			}
-		} else {
-			$class = 'Database' . ucfirst( $dbType );
 		}
 
 		if ( $class === false ) {
@@ -703,6 +705,8 @@ abstract class Database implements IDatabase, IMaintainableDatabase, LoggerAware
 	 * @return float Time to apply writes to replicas based on trxWrite* fields
 	 */
 	private function pingAndCalculateLastTrxApplyTime() {
+		// passed by reference
+		$rtt = null;
 		$this->ping( $rtt );
 
 		$rttAdjTotal = $this->trxWriteAdjQueryCount * $rtt;
@@ -1737,7 +1741,9 @@ abstract class Database implements IDatabase, IMaintainableDatabase, LoggerAware
 		$table, $var, $cond = '', $fname = __METHOD__, $options = [], $join_conds = []
 	) {
 		if ( $var === '*' ) { // sanity
-			throw new DBUnexpectedError( $this, "Cannot use a * field: got '$var'" );
+			throw new DBUnexpectedError( $this, "Cannot use a * field" );
+		} elseif ( is_array( $var ) && count( $var ) !== 1 ) {
+			throw new DBUnexpectedError( $this, 'Cannot use more than one field' );
 		}
 
 		$options = $this->normalizeOptions( $options );
@@ -2464,7 +2470,9 @@ abstract class Database implements IDatabase, IMaintainableDatabase, LoggerAware
 		$list = '';
 
 		foreach ( $a as $field => $value ) {
-			if ( !$first ) {
+			if ( $first ) {
+				$first = false;
+			} else {
 				if ( $mode == self::LIST_AND ) {
 					$list .= ' AND ';
 				} elseif ( $mode == self::LIST_OR ) {
@@ -2472,8 +2480,6 @@ abstract class Database implements IDatabase, IMaintainableDatabase, LoggerAware
 				} else {
 					$list .= ',';
 				}
-			} else {
-				$first = false;
 			}
 
 			if ( ( $mode == self::LIST_AND || $mode == self::LIST_OR ) && is_numeric( $field ) ) {
@@ -2542,7 +2548,8 @@ abstract class Database implements IDatabase, IMaintainableDatabase, LoggerAware
 			if ( count( $sub ) ) {
 				$conds[] = $this->makeList(
 					[ $baseKey => $base, $subKey => array_map( 'strval', array_keys( $sub ) ) ],
-					self::LIST_AND );
+					self::LIST_AND
+				);
 			}
 		}
 
@@ -3009,7 +3016,10 @@ abstract class Database implements IDatabase, IMaintainableDatabase, LoggerAware
 	 * @return string
 	 */
 	protected function tableNamesWithIndexClauseOrJOIN(
-		$tables, $use_index = [], $ignore_index = [], $join_conds = []
+		$tables,
+		$use_index = [],
+		$ignore_index = [],
+		$join_conds = []
 	) {
 		$ret = [];
 		$retJOIN = [];
@@ -3155,9 +3165,11 @@ abstract class Database implements IDatabase, IMaintainableDatabase, LoggerAware
 	 * @return string
 	 */
 	protected function escapeLikeInternal( $s, $escapeChar = '`' ) {
-		return str_replace( [ $escapeChar, '%', '_' ],
+		return str_replace(
+			[ $escapeChar, '%', '_' ],
 			[ "{$escapeChar}{$escapeChar}", "{$escapeChar}%", "{$escapeChar}_" ],
-			$s );
+			$s
+		);
 	}
 
 	/**
@@ -3204,12 +3216,13 @@ abstract class Database implements IDatabase, IMaintainableDatabase, LoggerAware
 	}
 
 	/**
-	 * USE INDEX clause. Unlikely to be useful for anything but MySQL. This
-	 * is only needed because a) MySQL must be as efficient as possible due to
-	 * its use on Wikipedia, and b) MySQL 4.0 is kind of dumb sometimes about
-	 * which index to pick. Anyway, other databases might have different
-	 * indexes on a given table. So don't bother overriding this unless you're
-	 * MySQL.
+	 * USE INDEX clause.
+	 *
+	 * This can be used as optimisation in queries that affect tables with multiple
+	 * indexes if the database does not pick the most optimal one by default.
+	 * The "right" index might vary between database backends and versions thereof,
+	 * as such in practice this is biased toward specifically improving performance
+	 * of large wiki farms that use MySQL or MariaDB (like Wikipedia).
 	 *
 	 * @stable to override
 	 * @param string $index
@@ -3220,12 +3233,9 @@ abstract class Database implements IDatabase, IMaintainableDatabase, LoggerAware
 	}
 
 	/**
-	 * IGNORE INDEX clause. Unlikely to be useful for anything but MySQL. This
-	 * is only needed because a) MySQL must be as efficient as possible due to
-	 * its use on Wikipedia, and b) MySQL 4.0 is kind of dumb sometimes about
-	 * which index to pick. Anyway, other databases might have different
-	 * indexes on a given table. So don't bother overriding this unless you're
-	 * MySQL.
+	 * IGNORE INDEX clause.
+	 *
+	 * The inverse of Database::useIndexClause.
 	 *
 	 * @stable to override
 	 * @param string $index
@@ -3402,7 +3412,12 @@ abstract class Database implements IDatabase, IMaintainableDatabase, LoggerAware
 	 * @inheritDoc
 	 * @stable to override
 	 */
-	public function deleteJoin( $delTable, $joinTable, $delVar, $joinVar, $conds,
+	public function deleteJoin(
+		$delTable,
+		$joinTable,
+		$delVar,
+		$joinVar,
+		$conds,
 		$fname = __METHOD__
 	) {
 		if ( !$conds ) {
@@ -3659,8 +3674,13 @@ abstract class Database implements IDatabase, IMaintainableDatabase, LoggerAware
 	}
 
 	public function unionConditionPermutations(
-		$table, $vars, array $permute_conds, $extra_conds = '', $fname = __METHOD__,
-		$options = [], $join_conds = []
+		$table,
+		$vars,
+		array $permute_conds,
+		$extra_conds = '',
+		$fname = __METHOD__,
+		$options = [],
+		$join_conds = []
 	) {
 		// First, build the Cartesian product of $permute_conds
 		$conds = [ [] ];
@@ -3975,7 +3995,8 @@ abstract class Database implements IDatabase, IMaintainableDatabase, LoggerAware
 	 * @param AtomicSectionIdentifier $new
 	 */
 	private function reassignCallbacksForSection(
-		AtomicSectionIdentifier $old, AtomicSectionIdentifier $new
+		AtomicSectionIdentifier $old,
+		AtomicSectionIdentifier $new
 	) {
 		foreach ( $this->trxPreCommitOrIdleCallbacks as $key => $info ) {
 			if ( $info[2] === $old ) {
@@ -4019,7 +4040,8 @@ abstract class Database implements IDatabase, IMaintainableDatabase, LoggerAware
 	 * @throws UnexpectedValueException
 	 */
 	private function modifyCallbacksForCancel(
-		array $sectionIds, AtomicSectionIdentifier $newSectionId = null
+		array $sectionIds,
+		AtomicSectionIdentifier $newSectionId = null
 	) {
 		// Cancel the "on commit" callbacks owned by this savepoint
 		$this->trxPostCommitOrIdleCallbacks = array_filter(
@@ -4318,7 +4340,8 @@ abstract class Database implements IDatabase, IMaintainableDatabase, LoggerAware
 	}
 
 	final public function startAtomic(
-		$fname = __METHOD__, $cancelable = self::ATOMIC_NOT_CANCELABLE
+		$fname = __METHOD__,
+		$cancelable = self::ATOMIC_NOT_CANCELABLE
 	) {
 		$savepointId = $cancelable === self::ATOMIC_CANCELABLE ? self::$NOT_APPLICABLE : null;
 
@@ -4382,7 +4405,8 @@ abstract class Database implements IDatabase, IMaintainableDatabase, LoggerAware
 	}
 
 	final public function cancelAtomic(
-		$fname = __METHOD__, AtomicSectionIdentifier $sectionId = null
+		$fname = __METHOD__,
+		AtomicSectionIdentifier $sectionId = null
 	) {
 		if ( !$this->trxLevel() || !$this->trxAtomicLevels ) {
 			throw new DBUnexpectedError( $this, "No atomic section is open (got $fname)" );
@@ -4467,7 +4491,9 @@ abstract class Database implements IDatabase, IMaintainableDatabase, LoggerAware
 	}
 
 	final public function doAtomicSection(
-		$fname, callable $callback, $cancelable = self::ATOMIC_NOT_CANCELABLE
+		$fname,
+		callable $callback,
+		$cancelable = self::ATOMIC_NOT_CANCELABLE
 	) {
 		$sectionId = $this->startAtomic( $fname, $cancelable );
 		try {
@@ -4737,7 +4763,10 @@ abstract class Database implements IDatabase, IMaintainableDatabase, LoggerAware
 	 * @stable to override
 	 */
 	public function duplicateTableStructure(
-		$oldName, $newName, $temporary = false, $fname = __METHOD__
+		$oldName,
+		$newName,
+		$temporary = false,
+		$fname = __METHOD__
 	) {
 		throw new RuntimeException( __METHOD__ . ' is not implemented in descendant class' );
 	}
@@ -4924,8 +4953,11 @@ abstract class Database implements IDatabase, IMaintainableDatabase, LoggerAware
 	 * @see WANObjectCache::set()
 	 * @see WANObjectCache::getWithSetCallback()
 	 *
-	 * @param IDatabase $db1
-	 * @param IDatabase|null $db2 [optional]
+	 * @param IDatabase|null ...$dbs
+	 * Note: For backward compatibility, it is allowed for null values
+	 * to be passed among the parameters. This is deprecated since 1.36,
+	 * only IDatabase objects should be passed.
+	 *
 	 * @return array Map of values:
 	 *   - lag: highest lag of any of the DBs or false on error (e.g. replication stopped)
 	 *   - since: oldest UNIX timestamp of any of the DB lag estimates
@@ -4933,7 +4965,7 @@ abstract class Database implements IDatabase, IMaintainableDatabase, LoggerAware
 	 * @throws DBError
 	 * @since 1.27
 	 */
-	public static function getCacheSetOptions( IDatabase $db1, IDatabase $db2 = null ) {
+	public static function getCacheSetOptions( ?IDatabase ...$dbs ) {
 		$res = [ 'lag' => 0, 'since' => INF, 'pending' => false ];
 
 		foreach ( func_get_args() as $db ) {
@@ -5123,7 +5155,10 @@ abstract class Database implements IDatabase, IMaintainableDatabase, LoggerAware
 		if ( $this->delimiter ) {
 			$prev = $newLine;
 			$newLine = preg_replace(
-				'/' . preg_quote( $this->delimiter, '/' ) . '$/', '', $newLine );
+				'/' . preg_quote( $this->delimiter, '/' ) . '$/',
+				'',
+				$newLine
+			);
 			if ( $newLine != $prev ) {
 				return true;
 			}
@@ -5456,13 +5491,13 @@ abstract class Database implements IDatabase, IMaintainableDatabase, LoggerAware
 	}
 
 	/**
-	 * @param int $field
-	 * @param int $flags
-	 * @return bool
+	 * @param int $flags A bitfield of flags
+	 * @param int $bit Bit flag constant
+	 * @return bool Whether the bit field has the specified bit flag set
 	 * @since 1.34
 	 */
-	final protected function fieldHasBit( $field, $flags ) {
-		return ( ( $field & $flags ) === $flags );
+	final protected function fieldHasBit( int $flags, int $bit ) {
+		return ( ( $flags & $bit ) === $bit );
 	}
 
 	/**

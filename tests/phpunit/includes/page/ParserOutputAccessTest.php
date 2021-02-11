@@ -67,7 +67,7 @@ class ParserOutputAccessTest extends MediaWikiIntegrationTestCase {
 		$parserCache = new ParserCache(
 			'test',
 			$bag ?: new HashBagOStuff(),
-			'',
+			'19900220000000',
 			$this->getServiceContainer()->getHookContainer(),
 			new JsonCodec(),
 			new NullStatsdDataFactory(),
@@ -83,7 +83,7 @@ class ParserOutputAccessTest extends MediaWikiIntegrationTestCase {
 			'test',
 			$wanCache,
 			$expiry,
-			'',
+			'19900220000000',
 			new JsonCodec(),
 			new NullStatsdDataFactory(),
 			new NullLogger()
@@ -652,11 +652,6 @@ class ParserOutputAccessTest extends MediaWikiIntegrationTestCase {
 	 * flagged as "dirty".
 	 *
 	 * @dataProvider providePoolWorkDirty
-	 * @param $status
-	 * @param false $fastStale
-	 * @param $expectedMessage
-	 *
-	 * @throws MWException
 	 */
 	public function testPoolWorkDirty( $status, $fastStale, $expectedMessage ) {
 		MWTimestamp::setFakeTime( '2020-04-04T01:02:03' );

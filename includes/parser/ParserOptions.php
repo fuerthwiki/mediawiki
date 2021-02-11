@@ -306,7 +306,7 @@ class ParserOptions {
 	/**
 	 * Use tidy to cleanup output HTML?
 	 * @param bool|null $x New value (null is no change)
-	 * @return bool Old value
+	 * @return null
 	 * @deprecated since 1.35; tidy is always enabled so this has no effect
 	 */
 	public function setTidy( $x ) {
@@ -1337,7 +1337,7 @@ class ParserOptions {
 	/**
 	 * Registers a callback for tracking which ParserOptions which are used.
 	 * This is a private API with the parser.
-	 * @param callable $callback
+	 * @param callable|null $callback
 	 */
 	public function registerWatcher( $callback ) {
 		$this->onAccessCallback = $callback;
@@ -1436,11 +1436,9 @@ class ParserOptions {
 
 		// add in language specific options, if any
 		// @todo FIXME: This is just a way of retrieving the url/user preferred variant
-
-		$lang = $title ? $title->getPageLanguage() :
-			MediaWikiServices::getInstance()->getContentLanguage();
-		$converter = MediaWikiServices::getInstance()->getLanguageConverterFactory()
-			->getLanguageConverter( $lang );
+		$services = MediaWikiServices::getInstance();
+		$lang = $title ? $title->getPageLanguage() : $services->getContentLanguage();
+		$converter = $services->getLanguageConverterFactory()->getLanguageConverter( $lang );
 		$confstr .= $converter->getExtraHashOptions();
 
 		$confstr .= $wgRenderHashAppend;
@@ -1461,15 +1459,17 @@ class ParserOptions {
 
 	/**
 	 * Test whether these options are safe to cache
-	 * @since 1.30
+	 * @param string[]|null $usedOptions the list of options actually used in the parse. Defaults to all options.
 	 * @return bool
+	 * @since 1.30
 	 */
-	public function isSafeToCache() {
+	public function isSafeToCache( array $usedOptions = null ) {
 		$defaults = self::getCanonicalOverrides() + self::getDefaults();
-		foreach ( $this->options as $option => $value ) {
+		$usedOptions = $usedOptions ?? array_keys( $this->options );
+		foreach ( $usedOptions as $option ) {
 			if ( empty( self::$inCacheKey[$option] ) && empty( self::$callbacks[$option] ) ) {
-				$v = $this->optionToString( $value );
-				$d = $this->optionToString( $defaults[$option] );
+				$v = $this->optionToString( $this->options[$option] ?? null );
+				$d = $this->optionToString( $defaults[$option] ?? null );
 				if ( $v !== $d ) {
 					return false;
 				}

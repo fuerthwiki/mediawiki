@@ -9,9 +9,9 @@ use MediaWiki\Storage\EditResult;
 use MediaWiki\Storage\RevertedTagUpdate;
 use MediaWiki\Storage\RevisionRecord;
 use MediaWikiUnitTestCase;
+use MockTitleTrait;
 use PHPUnit\Framework\MockObject\Builder\InvocationMocker;
 use Psr\Log\LoggerInterface;
-use Title;
 use Wikimedia\Rdbms\ILoadBalancer;
 
 /**
@@ -19,6 +19,7 @@ use Wikimedia\Rdbms\ILoadBalancer;
  * @see RevertedTagUpdateIntegrationTest for an end-to-end test with the database
  */
 class RevertedTagUpdateTest extends MediaWikiUnitTestCase {
+	use MockTitleTrait;
 
 	/**
 	 * Convenience function for creating a RevertedTagUpdate that does not use
@@ -26,8 +27,7 @@ class RevertedTagUpdateTest extends MediaWikiUnitTestCase {
 	 * object should be provided.
 	 * TODO: clean this up once T245964 is resolved
 	 *
-	 * @param $futureChangeTags
-	 *
+	 * @param \FutureChangeTags $futureChangeTags
 	 * @param RevisionStore $revisionStore
 	 * @param LoggerInterface $logger
 	 * @param string[] $softwareTags
@@ -122,7 +122,7 @@ class RevertedTagUpdateTest extends MediaWikiUnitTestCase {
 		?string $sha1 = null
 	) {
 		$revisionRecord = new MutableRevisionRecord(
-			$this->createMock( Title::class )
+			$this->makeMockTitle( __METHOD__, [ 'id' => $pageId ] )
 		);
 		$revisionRecord->setId( $revisionId );
 		$revisionRecord->setTimestamp( $timestamp );
@@ -208,9 +208,6 @@ class RevertedTagUpdateTest extends MediaWikiUnitTestCase {
 	 * Test cases where the update is disabled through configuration.
 	 *
 	 * @dataProvider provideRevertedTagUpdateDisabled
-	 *
-	 * @param array $softwareChangeTags
-	 * @param int $revertedTagMaxDepth
 	 */
 	public function testRevertedTagUpdateDisabled(
 		array $softwareChangeTags,
@@ -268,8 +265,6 @@ class RevertedTagUpdateTest extends MediaWikiUnitTestCase {
 
 	/**
 	 * @dataProvider provideInvalidEditResults
-	 *
-	 * @param EditResult $editResult
 	 */
 	public function testInvalidEditResult( EditResult $editResult ) {
 		$futureChangeTags = $this->getMockBuilder( \FutureChangeTags::class )
@@ -399,10 +394,6 @@ class RevertedTagUpdateTest extends MediaWikiUnitTestCase {
 
 	/**
 	 * @dataProvider providePageIdMismatch
-	 *
-	 * @param int $oldestRevertedPageId
-	 * @param int $newestRevertedPageId
-	 * @param int $revertPageId
 	 */
 	public function testPageIdMismatch(
 		int $oldestRevertedPageId,

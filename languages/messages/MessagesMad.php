@@ -8,14 +8,14 @@
  *
  */
 
+$fallback = 'id';
+
 $namespaceNames = [
 	NS_MEDIA            => 'Mèḍia',
 	NS_SPECIAL          => 'Spesial',
-	NS_MAIN             => '',
 	NS_TALK             => 'Pakanḍhâ\'ân',
 	NS_USER             => 'Pangangghuy',
 	NS_USER_TALK        => 'Pakanḍhâ\'ânna_pangangghuy',
-	# NS_PROJECT set by $wgMetaNamespace
 	NS_PROJECT_TALK     => 'Pakanḍhâ\'ânna_$1',
 	NS_FILE             => 'Bhengkek',
 	NS_FILE_TALK        => 'Pakanḍhâ\'ânna_bhengkek',

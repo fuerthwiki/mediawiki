@@ -472,13 +472,8 @@ abstract class Skin extends ContextSource {
 	 *  setupSkinUserCss is required.
 	 */
 	final public function doSetupSkinUserCss( OutputPage $out ) {
-		$stylesBefore = $out->getModuleStyles();
-		$this->setupSkinUserCss( $out );
-		$stylesAfter = $out->getModuleStyles();
-		if ( count( $stylesAfter ) !== count( $stylesBefore ) ) {
-			// Styles were added by the setupSkinUserCss method. This is no longer allowed.
-			wfDeprecatedMsg( get_class( $this ) . '::setupSkinUserCss must not modify ' .
-				'the style module list, this is deprecated since 1.32', '1.32' );
+		if ( MWDebug::detectDeprecatedOverride( $this, __CLASS__, 'setupSkinUserCss', '1.32' ) ) {
+			$this->setupSkinUserCss( $out );
 		}
 	}
 
@@ -491,7 +486,7 @@ abstract class Skin extends ContextSource {
 	 * @param OutputPage $out Legacy parameter, identical to $this->getOutput()
 	 */
 	public function setupSkinUserCss( OutputPage $out ) {
-		// Stub.
+		wfDeprecated( __METHOD__, '1.32' );
 	}
 
 	/**
@@ -2253,6 +2248,13 @@ abstract class Skin extends ContextSource {
 			];
 			if ( isset( $plink['active'] ) ) {
 				$ptool['active'] = $plink['active'];
+			}
+			// Set class for the link to link-class, when defined.
+			// This allows newer notifications content navigation to retain their classes
+			// when merged back into the personal tools.
+			// Doing this here allows the loop below to overwrite the class if defined directly.
+			if ( isset( $plink['link-class'] ) ) {
+				$ptool['links'][0]['class'] = $plink['link-class'];
 			}
 			foreach ( [
 				'href',

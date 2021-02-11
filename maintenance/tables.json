@@ -23,8 +23,8 @@
 			}
 		],
 		"indexes": [
-			{ "name": "site_ids_site", "columns": [ "si_site" ], "unique": false },
-			{ "name": "site_ids_key", "columns": [ "si_key" ], "unique": false }
+			{ "name": "si_site", "columns": [ "si_site" ], "unique": false },
+			{ "name": "si_key", "columns": [ "si_key" ], "unique": false }
 		],
 		"pk": [ "si_type", "si_key" ]
 	},
@@ -2223,6 +2223,625 @@
 		"indexes": [],
 		"pk": [
 			"old_id"
+		]
+	},
+	{
+		"name": "oldimage",
+		"comment": "Previous revisions of uploaded files. Awkwardly, image rows have to be moved into this table at re-upload time.",
+		"columns": [
+			{
+				"name": "oi_name",
+				"comment": "Base filename: key to image.img_name",
+				"type": "binary",
+				"options": {
+					"notnull": true,
+					"default": "",
+					"length": 255
+				}
+			},
+			{
+				"name": "oi_archive_name",
+				"comment": "Filename of the archived file. This is generally a timestamp and '!' prepended to the base name.",
+				"type": "binary",
+				"options": {
+					"notnull": true,
+					"default": "",
+					"length": 255
+				}
+			},
+			{
+				"name": "oi_size",
+				"type": "integer",
+				"options": {
+					"unsigned": true,
+					"notnull": true,
+					"default": 0
+				}
+			},
+			{
+				"name": "oi_width",
+				"type": "integer",
+				"options": {
+					"notnull": true,
+					"default": 0
+				}
+			},
+			{
+				"name": "oi_height",
+				"type": "integer",
+				"options": {
+					"notnull": true,
+					"default": 0
+				}
+			},
+			{
+				"name": "oi_bits",
+				"type": "integer",
+				"options": {
+					"notnull": true,
+					"default": 0
+				}
+			},
+			{
+				"name": "oi_description_id",
+				"type": "bigint",
+				"options": {
+					"unsigned": true,
+					"notnull": true
+				}
+			},
+			{
+				"name": "oi_actor",
+				"type": "bigint",
+				"options": {
+					"unsigned": true,
+					"notnull": true
+				}
+			},
+			{
+				"name": "oi_timestamp",
+				"type": "mwtimestamp",
+				"options": {
+					"notnull": true,
+					"length": 14
+				}
+			},
+			{
+				"name": "oi_metadata",
+				"type": "blob",
+				"options": {
+					"notnull": true,
+					"length": 16777215
+				}
+			},
+			{
+				"name": "oi_media_type",
+				"type": "mwenum",
+				"options": {
+					"notnull": false,
+					"default": null,
+					"CustomSchemaOptions": {
+						"enum_values": [ "UNKNOWN", "BITMAP", "DRAWING", "AUDIO", "VIDEO", "MULTIMEDIA", "OFFICE", "TEXT", "EXECUTABLE", "ARCHIVE", "3D" ]
+					}
+				}
+			},
+			{
+				"name": "oi_major_mime",
+				"type": "mwenum",
+				"options": {
+					"notnull": true,
+					"default": "unknown",
+					"CustomSchemaOptions": {
+						"enum_values": [ "unknown", "application", "audio", "image", "text", "video", "message", "model", "multipart", "chemical" ]
+					}
+				}
+			},
+			{
+				"name": "oi_minor_mime",
+				"type": "binary",
+				"options": {
+					"notnull": true,
+					"default": "unknown",
+					"length": 100
+				}
+			},
+			{
+				"name": "oi_deleted",
+				"type": "mwtinyint",
+				"options": {
+					"unsigned": true,
+					"notnull": true,
+					"default": 0
+				}
+			},
+			{
+				"name": "oi_sha1",
+				"type": "binary",
+				"options": {
+					"notnull": true,
+					"default": "",
+					"length": 32
+				}
+			}
+		],
+		"indexes": [
+			{
+				"name": "oi_actor_timestamp",
+				"columns": [
+					"oi_actor",
+					"oi_timestamp"
+				],
+				"unique": false
+			},
+			{
+				"name": "oi_name_timestamp",
+				"columns": [
+					"oi_name",
+					"oi_timestamp"
+				],
+				"unique": false
+			},
+			{
+				"name": "oi_name_archive_name",
+				"comment": "oi_archive_name truncated to 14 to avoid key length overflow",
+				"columns": [
+					"oi_name",
+					"oi_archive_name"
+				],
+				"unique": false,
+				"options": { "lengths": [ null, 14 ] }
+			},
+			{
+				"name": "oi_sha1",
+				"columns": [
+					"oi_sha1"
+				],
+				"unique": false,
+				"options": { "lengths": [ 10 ] }
+			}
+		]
+	},
+	{
+		"name": "objectcache",
+		"comment": "For a few generic cache operations if not using Memcached",
+		"columns": [
+			{
+				"name": "keyname",
+				"type": "binary",
+				"options": { "notnull": true, "default": "", "length": 255 }
+			},
+			{
+				"name": "value",
+				"type": "blob",
+				"options": { "notnull": false, "length": 16777215 }
+			},
+			{
+				"name": "exptime",
+				"type": "mwtimestamp",
+				"options": { "notnull": true }
+			}
+		],
+		"indexes": [
+			{ "name": "exptime", "columns": [ "exptime" ], "unique": false }
+		],
+		"pk": [ "keyname" ]
+	},
+	{
+		"name": "ipblocks",
+		"comment": "Blocks against user accounts, IP addresses and IP ranges.",
+		"columns": [
+			{
+				"name": "ipb_id",
+				"comment": "Primary key, introduced for privacy.",
+				"type": "integer",
+				"options": {
+					"autoincrement": true,
+					"notnull": true
+				}
+			},
+			{
+				"name": "ipb_address",
+				"comment": "Blocked IP address in dotted-quad form or user name.",
+				"type": "blob",
+				"options": {
+					"notnull": true,
+					"length": 255
+				}
+			},
+			{
+				"name": "ipb_user",
+				"comment": "Blocked user ID or 0 for IP blocks.",
+				"type": "integer",
+				"options": {
+					"unsigned": true,
+					"notnull": true,
+					"default": 0
+				}
+			},
+			{
+				"name": "ipb_by_actor",
+				"comment": "Actor who made the block.",
+				"type": "bigint",
+				"options": {
+					"unsigned": true,
+					"notnull": true
+				}
+			},
+			{
+				"name": "ipb_reason_id",
+				"comment": "Key to comment_id. Text comment made by blocker.",
+				"type": "bigint",
+				"options": {
+					"unsigned": true,
+					"notnull": true
+				}
+			},
+			{
+				"name": "ipb_timestamp",
+				"comment": "Creation (or refresh) date in standard YMDHMS form. IP blocks expire automatically.",
+				"type": "mwtimestamp",
+				"options": {
+					"notnull": true
+				}
+			},
+			{
+				"name": "ipb_auto",
+				"comment": "Indicates that the IP address was banned because a banned user accessed a page through it. If this is 1, ipb_address will be hidden, and the block identified by block ID number.",
+				"type": "mwtinyint",
+				"options": {
+					"notnull": true,
+					"length": 1,
+					"default": 0
+				}
+			},
+			{
+				"name": "ipb_anon_only",
+				"comment": "If set to 1, block applies only to logged-out users",
+				"type": "mwtinyint",
+				"options": {
+					"notnull": true,
+					"length": 1,
+					"default": 0
+				}
+			},
+			{
+				"name": "ipb_create_account",
+				"comment": "Block prevents account creation from matching IP addresses",
+				"type": "mwtinyint",
+				"options": {
+					"notnull": true,
+					"length": 1,
+					"default": 1
+				}
+			},
+			{
+				"name": "ipb_enable_autoblock",
+				"comment": "Block triggers autoblocks",
+				"type": "mwtinyint",
+				"options": {
+					"notnull": true,
+					"length": 1,
+					"default": 1
+				}
+			},
+			{
+				"name": "ipb_expiry",
+				"comment": "Time at which the block will expire. May be \"infinity\"",
+				"type": "mwtimestamp",
+				"options": {
+					"notnull": true,
+					"CustomSchemaOptions": {
+						"allowInfinite": true
+					}
+				}
+			},
+			{
+				"name": "ipb_range_start",
+				"comment": "Start of an address range, in hexadecimal size chosen to allow IPv6. FIXME: this field were originally blank for single-IP blocks, but now it's populated. No migration was ever done. It should be fixed to be blank again for such blocks (T51504).",
+				"type": "blob",
+				"options": {
+					"notnull": true,
+					"length": 255
+				}
+			},
+			{
+				"name": "ipb_range_end",
+				"comment": "End of an address range, in hexadecimal size chosen to allow IPv6. FIXME: this field were originally blank for single-IP blocks, but now it's populated. No migration was ever done. It should be fixed to be blank again for such blocks (T51504).",
+				"type": "blob",
+				"options": {
+					"notnull": true,
+					"length": 255
+				}
+			},
+			{
+				"name": "ipb_deleted",
+				"comment": "Flag for entries hidden from users and Sysops",
+				"type": "mwtinyint",
+				"options": {
+					"notnull": true,
+					"length": 1,
+					"default": 0
+				}
+			},
+			{
+				"name": "ipb_block_email",
+				"comment": "Block prevents user from accessing Special:Emailuser",
+				"type": "mwtinyint",
+				"options": {
+					"notnull": true,
+					"length": 1,
+					"default": 0
+				}
+			},
+			{
+				"name": "ipb_allow_usertalk",
+				"comment": "Block allows user to edit their own talk page",
+				"type": "mwtinyint",
+				"options": {
+					"notnull": true,
+					"length": 1,
+					"default": 0
+				}
+			},
+			{
+				"name": "ipb_parent_block_id",
+				"comment": "ID of the block that caused this block to exist. Autoblocks set this to the original block so that the original block being deleted also deletes the autoblocks",
+				"type": "integer",
+				"options": {
+					"notnull": false,
+					"default": null
+				}
+			},
+			{
+				"name": "ipb_sitewide",
+				"comment": "Block user from editing any page on the site (other than their own user talk page).",
+				"type": "mwtinyint",
+				"options": {
+					"notnull": true,
+					"length": 1,
+					"default": 1
+				}
+			}
+		],
+		"indexes": [
+			{
+				"name": "ipb_address_unique",
+				"comment": "Unique index to support \"user already blocked\" messages. Any new options which prevent collisions should be included",
+				"columns": [
+					"ipb_address",
+					"ipb_user",
+					"ipb_auto"
+				],
+				"unique": true,
+				"options": { "lengths": [ 255, null, null ] }
+			},
+			{
+				"name": "ipb_user",
+				"comment": "For querying whether a logged-in user is blocked",
+				"columns": [
+					"ipb_user"
+				],
+				"unique": false
+			},
+			{
+				"name": "ipb_range",
+				"comment": "For querying whether an IP address is in any range",
+				"columns": [
+					"ipb_range_start",
+					"ipb_range_end"
+				],
+				"unique": false,
+				"options": { "lengths": [ 8, 8 ] }
+			},
+			{
+				"name": "ipb_timestamp",
+				"comment": "Index for Special:BlockList",
+				"columns": [
+					"ipb_timestamp"
+				],
+				"unique": false
+			},
+			{
+				"name": "ipb_expiry",
+				"comment": "Index for table pruning",
+				"columns": [
+					"ipb_expiry"
+				],
+				"unique": false
+			},
+			{
+				"name": "ipb_parent_block_id",
+				"comment": "Index for removing autoblocks when a parent block is removed",
+				"columns": [
+					"ipb_parent_block_id"
+				],
+				"unique": false
+			}
+		],
+		"pk": [
+			"ipb_id"
+		]
+	},
+	{
+		"name": "image",
+		"comment": "Uploaded images and other files.",
+		"columns": [
+			{
+				"name": "img_name",
+				"comment": "Filename. This is also the title of the associated description page, which will be in namespace 6 (NS_FILE).",
+				"type": "binary",
+				"options": {
+					"notnull": true,
+					"default": "",
+					"length": 255
+				}
+			},
+			{
+				"name": "img_size",
+				"comment": "File size in bytes.",
+				"type": "integer",
+				"options": {
+					"unsigned": true,
+					"notnull": true,
+					"default": 0
+				}
+			},
+			{
+				"name": "img_width",
+				"comment": "For images, width in pixels.",
+				"type": "integer",
+				"options": {
+					"notnull": true,
+					"default": 0
+				}
+			},
+			{
+				"name": "img_height",
+				"comment": "For images, height in pixels.",
+				"type": "integer",
+				"options": {
+					"notnull": true,
+					"default": 0
+				}
+			},
+			{
+				"name": "img_metadata",
+				"comment": "Extracted Exif metadata stored as a serialized PHP array.",
+				"type": "blob",
+				"options": {
+					"notnull": true,
+					"length": 16777215
+				}
+			},
+			{
+				"name": "img_bits",
+				"comment": "For images, bits per pixel if known.",
+				"type": "integer",
+				"options": {
+					"notnull": true,
+					"default": 0
+				}
+			},
+			{
+				"name": "img_media_type",
+				"comment": "Media type as defined by the MEDIATYPE_xxx constants",
+				"type": "mwenum",
+				"options": {
+					"notnull": false,
+					"default": null,
+					"CustomSchemaOptions": {
+						"enum_values": [ "UNKNOWN", "BITMAP", "DRAWING", "AUDIO", "VIDEO", "MULTIMEDIA", "OFFICE", "TEXT", "EXECUTABLE", "ARCHIVE", "3D" ]
+					}
+				}
+			},
+			{
+				"name": "img_major_mime",
+				"comment": "major part of a MIME media type as defined by IANA see https://www.iana.org/assignments/media-types/ for \"chemical\" cf. http://dx.doi.org/10.1021/ci9803233 by the ACS",
+				"type": "mwenum",
+				"options": {
+					"notnull": true,
+					"default": "unknown",
+					"CustomSchemaOptions": {
+						"enum_values": [ "unknown", "application", "audio", "image", "text", "video", "message", "model", "multipart", "chemical" ]
+					}
+				}
+			},
+			{
+				"name": "img_minor_mime",
+				"comment": "minor part of a MIME media type as defined by IANA the minor parts are not required to adhere to any standard but should be consistent throughout the database see https://www.iana.org/assignments/media-types/",
+				"type": "binary",
+				"options": {
+					"notnull": true,
+					"default": "unknown",
+					"length": 100
+				}
+			},
+			{
+				"name": "img_description_id",
+				"comment": "Foreign key to comment table, which contains the description field as entered by the uploader. This is displayed in image upload history and logs.",
+				"type": "bigint",
+				"options": {
+					"unsigned": true,
+					"notnull": true
+				}
+			},
+			{
+				"name": "img_actor",
+				"comment": "actor_id of the uploader.",
+				"type": "bigint",
+				"options": {
+					"unsigned": true,
+					"notnull": true
+				}
+			},
+			{
+				"name": "img_timestamp",
+				"comment": "Time of the upload.",
+				"type": "mwtimestamp",
+				"options": {
+					"notnull": true,
+					"length": 14
+				}
+			},
+			{
+				"name": "img_sha1",
+				"comment": "SHA-1 content hash in base-36",
+				"type": "binary",
+				"options": {
+					"notnull": true,
+					"default": "",
+					"length": 32
+				}
+			}
+		],
+		"indexes": [
+			{
+				"name": "img_actor_timestamp",
+				"comment": "Used by Special:Newimages and ApiQueryAllImages",
+				"columns": [
+					"img_actor",
+					"img_timestamp"
+				],
+				"unique": false
+			},
+			{
+				"name": "img_size",
+				"comment": "Used by Special:ListFiles for sort-by-size",
+				"columns": [
+					"img_size"
+				],
+				"unique": false
+			},
+			{
+				"name": "img_timestamp",
+				"comment": "Used by Special:Newimages and Special:ListFiles",
+				"columns": [
+					"img_timestamp"
+				],
+				"unique": false
+			},
+			{
+				"name": "img_sha1",
+				"comment": "Used in API and duplicate search",
+				"columns": [
+					"img_sha1"
+				],
+				"unique": false,
+				"options": { "lengths": [ 10 ] }
+			},
+			{
+				"name": "img_media_mime",
+				"comment": "Used to get media of one type",
+				"columns": [
+					"img_media_type",
+					"img_major_mime",
+					"img_minor_mime"
+				],
+				"unique": false
+			}
+		],
+		"pk": [
+			"img_name"
 		]
 	}
 ]

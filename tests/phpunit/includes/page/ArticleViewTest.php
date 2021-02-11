@@ -52,6 +52,9 @@ class ArticleViewTest extends MediaWikiIntegrationTestCase {
 			$revisions[ $key ] = $rev;
 		}
 
+		// Clear content model cache to support tests that mock the revision
+		$this->getServiceContainer()->getMainWANObjectCache()->clearProcessCache();
+
 		return $page;
 	}
 
@@ -185,7 +188,7 @@ class ArticleViewTest extends MediaWikiIntegrationTestCase {
 
 		$this->setTemporaryHook(
 			'ContentHandlerForModelID',
-			function ( $id, &$handler ) use ( $mockHandler ) {
+			static function ( $id, &$handler ) use ( $mockHandler ) {
 				$handler = $mockHandler;
 			}
 		);
@@ -478,7 +481,7 @@ class ArticleViewTest extends MediaWikiIntegrationTestCase {
 		// use ArticleViewHeader hook to bypass the parser cache
 		$this->setTemporaryHook(
 			'ArticleViewHeader',
-			function ( Article $articlePage, &$outputDone, &$useParserCache ) use ( $article ) {
+			static function ( Article $articlePage, &$outputDone, &$useParserCache ) use ( $article ) {
 				$useParserCache = false;
 			}
 		);
@@ -537,7 +540,7 @@ class ArticleViewTest extends MediaWikiIntegrationTestCase {
 		// use ArticleViewHeader hook to bypass the parser cache
 		$this->setTemporaryHook(
 			'ArticleViewHeader',
-			function ( Article $articlePage, &$outputDone, &$useParserCache ) use ( $article ) {
+			static function ( Article $articlePage, &$outputDone, &$useParserCache ) use ( $article ) {
 				$useParserCache = false;
 			}
 		);

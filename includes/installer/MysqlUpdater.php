@@ -35,177 +35,7 @@ class MysqlUpdater extends DatabaseUpdater {
 	protected function getCoreUpdateList() {
 		return [
 			// 1.2
-			[ 'addField', 'ipblocks', 'ipb_id', 'patch-ipblocks.sql' ],
-			[ 'addField', 'ipblocks', 'ipb_expiry', 'patch-ipb_expiry.sql' ],
 			[ 'doInterwikiUpdate' ],
-			[ 'doIndexUpdate' ],
-			[ 'addField', 'recentchanges', 'rc_type', 'patch-rc_type.sql' ],
-			[ 'addIndex', 'recentchanges', 'new_name_timestamp', 'patch-rc-newindex.sql' ],
-
-			// 1.3
-			[ 'addField', 'user', 'user_real_name', 'patch-user-realname.sql' ],
-			[ 'addTable', 'querycache', 'patch-querycache.sql' ],
-			[ 'addTable', 'objectcache', 'patch-objectcache.sql' ],
-			[ 'addTable', 'categorylinks', 'patch-categorylinks.sql' ],
-			[ 'doOldLinksUpdate' ],
-			[ 'doFixAncientImagelinks' ],
-			[ 'addField', 'recentchanges', 'rc_ip', 'patch-rc_ip.sql' ],
-
-			// 1.4
-			[ 'addIndex', 'image', 'PRIMARY', 'patch-image_name_primary.sql' ],
-			[ 'addField', 'recentchanges', 'rc_id', 'patch-rc_id.sql' ],
-			[ 'addField', 'recentchanges', 'rc_patrolled', 'patch-rc-patrol.sql' ],
-			[ 'addTable', 'logging', 'patch-logging.sql' ],
-			[ 'addField', 'user', 'user_token', 'patch-user_token.sql' ],
-			[ 'addField', 'watchlist', 'wl_notificationtimestamp', 'patch-email-notification.sql' ],
-			[ 'doWatchlistUpdate' ],
-			[ 'dropField', 'user', 'user_emailauthenticationtimestamp',
-				'patch-email-authentication.sql' ],
-
-			// 1.5
-			[ 'doSchemaRestructuring' ],
-			[ 'addField', 'logging', 'log_params', 'patch-log_params.sql' ],
-			[ 'checkBin', 'logging', 'log_title', 'patch-logging-title.sql', ],
-			[ 'addField', 'archive', 'ar_rev_id', 'patch-archive-rev_id.sql' ],
-			[ 'addField', 'page', 'page_len', 'patch-page_len.sql' ],
-			[ 'dropField', 'revision', 'inverse_timestamp', 'patch-inverse_timestamp.sql' ],
-			[ 'ifTableNotExists', 'content',
-				'addField', 'revision', 'rev_text_id', 'patch-rev_text_id.sql' ],
-			[ 'addField', 'revision', 'rev_deleted', 'patch-rev_deleted.sql' ],
-			[ 'addField', 'image', 'img_width', 'patch-img_width.sql' ],
-			[ 'addField', 'image', 'img_metadata', 'patch-img_metadata.sql' ],
-			[ 'addField', 'user', 'user_email_token', 'patch-user_email_token.sql' ],
-			[ 'ifTableNotExists', 'content',
-				'addField', 'archive', 'ar_text_id', 'patch-archive-text_id.sql' ],
-			[ 'doNamespaceSize' ],
-			[ 'addField', 'image', 'img_media_type', 'patch-img_media_type.sql' ],
-			[ 'doPagelinksUpdate' ],
-			[ 'dropField', 'image', 'img_type', 'patch-drop_img_type.sql' ],
-			[ 'doUserUniqueUpdate' ],
-			[ 'doUserGroupsUpdate' ],
-			[ 'addField', 'site_stats', 'ss_total_pages', 'patch-ss_total_articles.sql' ],
-			[ 'addTable', 'user_newtalk', 'patch-usernewtalk.sql' ],
-			[ 'addField', 'interwiki', 'iw_trans', 'patch-interwiki-trans.sql' ],
-
-			// 1.6
-			[ 'doWatchlistNull' ],
-			[ 'addIndex', 'logging', 'times', 'patch-logging-times-index.sql' ],
-			[ 'addField', 'ipblocks', 'ipb_range_start', 'patch-ipb_range_start.sql' ],
-			[ 'doPageRandomUpdate' ],
-			[ 'addField', 'user', 'user_registration', 'patch-user_registration.sql' ],
-			[ 'doTemplatelinksUpdate' ],
-			[ 'addTable', 'externallinks', 'patch-externallinks.sql' ],
-			[ 'addTable', 'job', 'patch-job.sql' ],
-			[ 'addField', 'site_stats', 'ss_images', 'patch-ss_images.sql' ],
-			[ 'addTable', 'langlinks', 'patch-langlinks.sql' ],
-			[ 'addTable', 'querycache_info', 'patch-querycacheinfo.sql' ],
-			[ 'addTable', 'filearchive', 'patch-filearchive.sql' ],
-			[ 'addField', 'ipblocks', 'ipb_anon_only', 'patch-ipb_anon_only.sql' ],
-			[ 'ifTableNotExists', 'actor', 'addIndex', 'recentchanges', 'rc_ns_usertext',
-				'patch-recentchanges-utindex.sql' ],
-			[ 'ifTableNotExists', 'actor', 'addIndex', 'recentchanges', 'rc_user_text',
-				'patch-rc_user_text-index.sql' ],
-
-			// 1.9
-			[ 'addField', 'user', 'user_newpass_time', 'patch-user_newpass_time.sql' ],
-			[ 'addTable', 'redirect', 'patch-redirect.sql' ],
-			[ 'addTable', 'querycachetwo', 'patch-querycachetwo.sql' ],
-			[ 'addField', 'ipblocks', 'ipb_enable_autoblock', 'patch-ipb_optional_autoblock.sql' ],
-			[ 'doBacklinkingIndicesUpdate' ],
-			[ 'addField', 'recentchanges', 'rc_old_len', 'patch-rc_len.sql' ],
-			[ 'addField', 'user', 'user_editcount', 'patch-user_editcount.sql' ],
-
-			// 1.10
-			[ 'doRestrictionsUpdate' ],
-			[ 'addField', 'logging', 'log_id', 'patch-log_id.sql' ],
-			[ 'addField', 'revision', 'rev_parent_id', 'patch-rev_parent_id.sql' ],
-			[ 'addField', 'page_restrictions', 'pr_id', 'patch-page_restrictions_sortkey.sql' ],
-			[ 'addField', 'revision', 'rev_len', 'patch-rev_len.sql' ],
-			[ 'addField', 'recentchanges', 'rc_deleted', 'patch-rc_deleted.sql' ],
-			[ 'addField', 'logging', 'log_deleted', 'patch-log_deleted.sql' ],
-			[ 'addField', 'archive', 'ar_deleted', 'patch-ar_deleted.sql' ],
-			[ 'addField', 'ipblocks', 'ipb_deleted', 'patch-ipb_deleted.sql' ],
-			[ 'addField', 'filearchive', 'fa_deleted', 'patch-fa_deleted.sql' ],
-			[ 'addField', 'archive', 'ar_len', 'patch-ar_len.sql' ],
-
-			// 1.11
-			[ 'addField', 'ipblocks', 'ipb_block_email', 'patch-ipb_emailban.sql' ],
-			[ 'doCategorylinksIndicesUpdate' ],
-			[ 'addField', 'oldimage', 'oi_metadata', 'patch-oi_metadata.sql' ],
-			[ 'ifTableNotExists', 'actor', 'addIndex', 'archive', 'usertext_timestamp',
-				'patch-archive-user-index.sql' ],
-			[ 'ifTableNotExists', 'actor', 'addIndex', 'image', 'img_usertext_timestamp',
-				'patch-image-user-index.sql' ],
-			[ 'ifTableNotExists', 'actor', 'addIndex', 'oldimage', 'oi_usertext_timestamp',
-				'patch-oldimage-user-index.sql' ],
-			[ 'addField', 'archive', 'ar_page_id', 'patch-archive-page_id.sql' ],
-			[ 'addField', 'image', 'img_sha1', 'patch-img_sha1.sql' ],
-
-			// 1.12
-			[ 'addTable', 'protected_titles', 'patch-protected_titles.sql' ],
-
-			// 1.13
-			[ 'ifTableNotExists', 'actor', 'addField', 'ipblocks', 'ipb_by_text', 'patch-ipb_by_text.sql' ],
-			[ 'addTable', 'page_props', 'patch-page_props.sql' ],
-			[ 'addTable', 'updatelog', 'patch-updatelog.sql' ],
-			[ 'addTable', 'category', 'patch-category.sql' ],
-			[ 'doCategoryPopulation' ],
-			[ 'addField', 'archive', 'ar_parent_id', 'patch-ar_parent_id.sql' ],
-			[ 'addField', 'user_newtalk', 'user_last_timestamp', 'patch-user_last_timestamp.sql' ],
-			[ 'doPopulateParentId' ],
-			[ 'checkBin', 'protected_titles', 'pt_title', 'patch-pt_title-encoding.sql', ],
-			[ 'ifTableNotExists', 'actor', 'doFilearchiveIndicesUpdate' ],
-
-			// 1.14
-			[ 'addField', 'site_stats', 'ss_active_users', 'patch-ss_active_users.sql' ],
-			[ 'doActiveUsersInit' ],
-			[ 'addField', 'ipblocks', 'ipb_allow_usertalk', 'patch-ipb_allow_usertalk.sql' ],
-
-			// 1.15
-			[ 'addTable', 'change_tag', 'patch-change_tag.sql' ],
-
-			// 1.16
-			[ 'addTable', 'user_properties', 'patch-user_properties.sql' ],
-			[ 'addTable', 'log_search', 'patch-log_search.sql' ],
-			[ 'ifTableNotExists', 'actor',
-				'addField', 'logging', 'log_user_text', 'patch-log_user_text.sql' ],
-			# listed separately from the previous update because 1.16 was released without this update
-			[ 'ifTableNotExists', 'actor', 'doLogUsertextPopulation' ],
-			[ 'doLogSearchPopulation' ],
-			[ 'addTable', 'l10n_cache', 'patch-l10n_cache.sql' ],
-			[ 'dropIndex', 'change_tag', 'ct_rc_id', 'patch-change_tag-indexes.sql' ],
-			[ 'addField', 'redirect', 'rd_interwiki', 'patch-rd_interwiki.sql' ],
-			[ 'doUpdateMimeMinorField' ],
-
-			// 1.17
-			[ 'addTable', 'iwlinks', 'patch-iwlinks.sql' ],
-			[ 'addIndex', 'iwlinks', 'iwl_prefix_title_from', 'patch-rename-iwl_prefix.sql' ],
-			[ 'addField', 'updatelog', 'ul_value', 'patch-ul_value.sql' ],
-			[ 'addField', 'interwiki', 'iw_api', 'patch-iw_api_and_wikiid.sql' ],
-			[ 'dropIndex', 'iwlinks', 'iwl_prefix', 'patch-kill-iwl_prefix.sql' ],
-			[ 'addField', 'categorylinks', 'cl_collation', 'patch-categorylinks-better-collation.sql' ],
-			[ 'doClFieldsUpdate' ],
-			[ 'addTable', 'module_deps', 'patch-module_deps.sql' ],
-			[ 'dropIndex', 'archive', 'ar_page_revid', 'patch-archive_kill_ar_page_revid.sql' ],
-			[ 'addIndexIfNoneExist',
-				'archive', [ 'ar_revid', 'ar_revid_uniq' ], 'patch-archive_ar_revid.sql' ],
-
-			// 1.18
-			[ 'doUserNewTalkTimestampNotNull' ],
-			[ 'addIndex', 'user', 'user_email', 'patch-user_email_index.sql' ],
-			[ 'modifyField', 'user_properties', 'up_property', 'patch-up_property.sql' ],
-			[ 'addTable', 'uploadstash', 'patch-uploadstash.sql' ],
-			[ 'addTable', 'user_former_groups', 'patch-user_former_groups.sql' ],
-
-			// 1.19
-			[ 'addField', 'revision', 'rev_sha1', 'patch-rev_sha1.sql' ],
-			[ 'doMigrateUserOptions' ],
-			[ 'dropField', 'user', 'user_options', 'patch-drop-user_options.sql' ],
-			[ 'addField', 'archive', 'ar_sha1', 'patch-ar_sha1.sql' ],
-			[ 'addIndex', 'page', 'page_redirect_namespace_len',
-				'patch-page_redirect_namespace_len.sql' ],
-			[ 'addField', 'uploadstash', 'us_chunk_inx', 'patch-uploadstash_chunk.sql' ],
-			[ 'addfield', 'job', 'job_timestamp', 'patch-jobs-add-timestamp.sql' ],
 
 			// 1.20
 			[ 'ifFieldExists', 'revision', 'rev_user',
@@ -483,12 +313,23 @@ class MysqlUpdater extends DatabaseUpdater {
 			[ 'modifyField', 'filearchive', 'fa_name', 'patch-filearchive-fa_name.sql' ],
 			[ 'dropDefault', 'filearchive', 'fa_deleted_timestamp' ],
 			[ 'dropDefault', 'filearchive', 'fa_timestamp' ],
+			[ 'modifyField', 'oldimage', 'oi_name', 'patch-oldimage-oi_name-varbinary.sql' ],
+			[ 'dropDefault', 'oldimage', 'oi_timestamp' ],
+			[ 'modifyField', 'objectcache', 'exptime', 'patch-objectcache-exptime-notnull.sql' ],
+			[ 'dropDefault', 'ipblocks', 'ipb_timestamp' ],
+			[ 'dropDefault', 'ipblocks', 'ipb_expiry' ],
+			[ 'renameIndex', 'archive', 'name_title_timestamp', 'ar_name_title_timestamp', false,
+				'patch-archive-rename-name_title_timestamp-index.sql' ],
+			[ 'modifyField', 'image', 'img_name', 'patch-image-img_name-varbinary.sql' ],
+			[ 'dropDefault', 'image', 'img_timestamp' ],
+			[ 'renameIndex', 'site_identifiers', 'site_ids_key', 'si_key', false,
+				'patch-site_identifiers-rename-indexes.sql' ],
 		];
 	}
 
 	/**
-	 * 1.4 betas were missing the 'binary' marker from logging.log_title,
-	 * which causes a collation mismatch error on joins in MySQL 4.1.
+	 * MW 1.4 betas were missing the 'binary' marker from logging.log_title,
+	 * which caused a MySQL collation mismatch error.
 	 *
 	 * @param string $table Table name
 	 * @param string $field Field name to check
@@ -554,23 +395,6 @@ class MysqlUpdater extends DatabaseUpdater {
 			true,
 			'Adding default interwiki definitions'
 		);
-	}
-
-	/**
-	 * Check that proper indexes are in place
-	 */
-	protected function doIndexUpdate() {
-		$meta = $this->db->fieldInfo( 'recentchanges', 'rc_timestamp' );
-		if ( $meta === false ) {
-			throw new MWException( 'Missing rc_timestamp field of recentchanges table. Should not happen.' );
-		}
-		if ( $meta->isMultipleKey() ) {
-			$this->output( "...indexes seem up to 20031107 standards.\n" );
-
-			return;
-		}
-
-		$this->applyPatch( 'patch-indexes.sql', true, "Updating indexes to 20031107" );
 	}
 
 	protected function doOldLinksUpdate() {

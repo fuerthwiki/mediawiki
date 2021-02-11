@@ -528,18 +528,18 @@ class OutputPageTest extends MediaWikiIntegrationTestCase {
 					[ 'UseCdn' => true, 'CdnMaxAge' => 3599 ] ],
 			'Hook allows cache use' =>
 				[ $lastModified + 1, $lastModified, true, [],
-				function ( $op, $that ) {
+				static function ( $op, $that ) {
 					$that->setTemporaryHook( 'OutputPageCheckLastModified',
-						function ( &$modifiedTimes ) {
+						static function ( &$modifiedTimes ) {
 							$modifiedTimes = [ 1 ];
 						}
 					);
 				} ],
 			'Hooks prohibits cache use' =>
 				[ $lastModified, $lastModified, false, [],
-				function ( $op, $that ) {
+				static function ( $op, $that ) {
 					$that->setTemporaryHook( 'OutputPageCheckLastModified',
-						function ( &$modifiedTimes ) {
+						static function ( &$modifiedTimes ) {
 							$modifiedTimes = [ max( $modifiedTimes ) + 1 ];
 						}
 					);
@@ -648,6 +648,9 @@ class OutputPageTest extends MediaWikiIntegrationTestCase {
 
 	/**
 	 * Shorthand for getting the text of a message, in content language.
+	 * @param MessageLocalizer $op
+	 * @param mixed ...$msgParams
+	 * @return string
 	 */
 	private static function getMsgText( MessageLocalizer $op, ...$msgParams ) {
 		return $op->msg( ...$msgParams )->inContentLanguage()->text();
@@ -1172,6 +1175,9 @@ class OutputPageTest extends MediaWikiIntegrationTestCase {
 	 * We allow different expectations for different tests as an associative array, like
 	 * [ 'set' => [ ... ], 'default' => [ ... ] ] if setCategoryLinks() will give a different
 	 * result.
+	 * @param array $expected
+	 * @param string $key
+	 * @return array
 	 */
 	private function extractExpectedCategories( array $expected, $key ) {
 		if ( !$expected || isset( $expected[0] ) ) {
@@ -1190,7 +1196,7 @@ class OutputPageTest extends MediaWikiIntegrationTestCase {
 			$mockContLang
 				->expects( $this->any() )
 				->method( 'convertHtml' )
-				->will( $this->returnCallback( function ( $arg ) {
+				->will( $this->returnCallback( static function ( $arg ) {
 					return $arg;
 				} ) );
 
@@ -1225,7 +1231,7 @@ class OutputPageTest extends MediaWikiIntegrationTestCase {
 
 		$op->expects( $this->any() )
 			->method( 'addCategoryLinksToLBAndGetResult' )
-			->will( $this->returnCallback( function ( array $categories ) use ( $fakeResults ) {
+			->will( $this->returnCallback( static function ( array $categories ) use ( $fakeResults ) {
 				$return = [];
 				foreach ( $categories as $category => $unused ) {
 					if ( isset( $fakeResults[$category] ) ) {
@@ -1248,7 +1254,7 @@ class OutputPageTest extends MediaWikiIntegrationTestCase {
 
 	private function doCategoryLinkAsserts( OutputPage $op, $expectedNormal, $expectedHidden ) {
 		$catLinks = $op->getCategoryLinks();
-		$this->assertSame( (bool)$expectedNormal + (bool)$expectedHidden, count( $catLinks ) );
+		$this->assertCount( (bool)$expectedNormal + (bool)$expectedHidden, $catLinks );
 		if ( $expectedNormal ) {
 			$this->assertSame( count( $expectedNormal ), count( $catLinks['normal'] ) );
 		}
@@ -1285,7 +1291,7 @@ class OutputPageTest extends MediaWikiIntegrationTestCase {
 			'Variant link' => [
 				[ 'Test' => 'Test', 'Estay' => 'Estay' ],
 				[ 'Test' => (object)[ 'page_title' => 'Test' ] ],
-				function ( &$link, &$title ) {
+				static function ( &$link, &$title ) {
 					if ( $link === 'Estay' ) {
 						$link = 'Test';
 						$title = Title::makeTitleSafe( NS_CATEGORY, $link );
@@ -1472,6 +1478,8 @@ class OutputPageTest extends MediaWikiIntegrationTestCase {
 	/**
 	 * Call either with arguments $methodName, $returnValue; or an array
 	 * [ $methodName => $returnValue, $methodName => $returnValue, ... ]
+	 * @param mixed ...$args
+	 * @return ParserOutput
 	 */
 	private function createParserOutputStub( ...$args ) : ParserOutput {
 		if ( count( $args ) === 0 ) {
@@ -1879,9 +1887,6 @@ class OutputPageTest extends MediaWikiIntegrationTestCase {
 	/**
 	 * @dataProvider provideParseAs
 	 * @covers OutputPage::parseAsContent
-	 * @param array $args To pass to parse()
-	 * @param string $expectedHTML Expected return value for parseAsContent()
-	 * @param string $expectedHTML Expected return value for parseInlineAsInterface(), if different
 	 */
 	public function testParseAsContent(
 		array $args, $expectedHTML, $expectedHTMLInline = null
@@ -1893,9 +1898,6 @@ class OutputPageTest extends MediaWikiIntegrationTestCase {
 	/**
 	 * @dataProvider provideParseAs
 	 * @covers OutputPage::parseAsInterface
-	 * @param array $args To pass to parse()
-	 * @param string $expectedHTML Expected return value for parseAsInterface()
-	 * @param string $expectedHTML Expected return value for parseInlineAsInterface(), if different
 	 */
 	public function testParseAsInterface(
 		array $args, $expectedHTML, $expectedHTMLInline = null
@@ -2352,14 +2354,27 @@ class OutputPageTest extends MediaWikiIntegrationTestCase {
 
 		if ( !in_array( 'notitle', $options ) ) {
 			$mockLang = $this->createMock( Language::class );
+			$mockLang->method( 'getCode' )->willReturn( $code );
 
+			$mockLanguageConverter = $this
+				->createMock( ILanguageConverter::class );
 			if ( in_array( 'varianturl', $options ) ) {
-				$mockLang->expects( $this->never() )->method( $this->anything() );
+				$mockLanguageConverter->expects( $this->never() )->method( $this->anything() );
 			} else {
-				$mockLang->method( 'hasVariants' )->willReturn( count( $variants ) > 1 );
-				$mockLang->method( 'getVariants' )->willReturn( $variants );
-				$mockLang->method( 'getCode' )->willReturn( $code );
+				$mockLanguageConverter->method( 'hasVariants' )->willReturn( count( $variants ) > 1 );
+				$mockLanguageConverter->method( 'getVariants' )->willReturn( $variants );
 			}
+
+			$languageConverterFactory = $this
+				->createMock( LanguageConverterFactory::class );
+			$languageConverterFactory
+				->expects( $this->any() )
+				->method( 'getLanguageConverter' )
+				->willReturn( $mockLanguageConverter );
+			$this->setService(
+				'LanguageConverterFactory',
+				$languageConverterFactory
+			);
 
 			$mockTitle = $this->createMock( Title::class );
 			$mockTitle->method( 'getPageLanguage' )->willReturn( $mockLang );
@@ -3027,12 +3042,10 @@ class OutputPageTest extends MediaWikiIntegrationTestCase {
 	}
 
 	/**
-	 * @param array $options
-	 * @param array $expectations
 	 * @covers OutputPage::sendCacheControl
 	 * @dataProvider provideSendCacheControl
 	 */
-	public function testSendCacheControl( array $options = [], array $expecations = [] ) {
+	public function testSendCacheControl( array $options = [], array $expectations = [] ) {
 		$output = $this->newInstance( [
 			'LoggedOutMaxAge' => $options['loggedOutMaxAge'] ?? 0,
 			'UseCdn' => $options['useCdn'] ?? false,
@@ -3061,7 +3074,7 @@ class OutputPageTest extends MediaWikiIntegrationTestCase {
 		];
 
 		foreach ( $headers as $header => $default ) {
-			$value = $expecations[$header] ?? $default;
+			$value = $expectations[$header] ?? $default;
 			if ( $value === true ) {
 				$this->assertNotEmpty( $response->getHeader( $header ) );
 			} elseif ( $value === false ) {

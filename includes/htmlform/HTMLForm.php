@@ -154,6 +154,7 @@ class HTMLForm extends ContextSource {
 		'check' => HTMLCheckField::class,
 		'toggle' => HTMLCheckField::class,
 		'int' => HTMLIntField::class,
+		'file' => HTMLFileField::class,
 		'float' => HTMLFloatField::class,
 		'info' => HTMLInfoField::class,
 		'selectorother' => HTMLSelectOrOtherField::class,
@@ -572,7 +573,7 @@ class HTMLForm extends ContextSource {
 
 	/**
 	 * Try submitting, with edit token check first
-	 * @return Status|bool
+	 * @return bool|string|array|Status As documented for HTMLForm::trySubmit
 	 */
 	public function tryAuthorizedSubmit() {
 		$result = false;

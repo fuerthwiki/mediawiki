@@ -356,7 +356,6 @@ class WebRequestTest extends MediaWikiIntegrationTestCase {
 	 */
 	public function testGetValues() {
 		$values = [ 'x' => 'Value', 'y' => '' ];
-		// Avoid FauxRequest (overrides getValues)
 		$req = $this->mockWebRequest( $values );
 		$this->assertSame( $values, $req->getValues() );
 		$this->assertSame( [ 'x' => 'Value' ], $req->getValues( 'x' ), 'Specific keys' );
@@ -399,7 +398,7 @@ class WebRequestTest extends MediaWikiIntegrationTestCase {
 			'wgUsePrivateIPs' => $private,
 			'wgHooks' => [
 				'IsTrustedProxy' => [
-					function ( &$ip, &$trusted ) use ( $xffList ) {
+					static function ( &$ip, &$trusted ) use ( $xffList ) {
 						$trusted = $trusted || in_array( $ip, $xffList );
 						return true;
 					}

@@ -170,7 +170,7 @@ interface ILoadBalancer {
 	public function setTempTablesOnlyMode( $value, $domain );
 
 	/**
-	 * Get the server index of the reader connection for a given group
+	 * Get the specific server index of the reader connection for a given group
 	 *
 	 * This takes into account load ratios and lag times. It should return a consistent
 	 * index during the life time of the load balancer. This initially checks replica DBs
@@ -181,7 +181,7 @@ interface ILoadBalancer {
 	 *
 	 * @param string|bool $group Query group or false for the generic group
 	 * @param string|bool $domain DB domain ID or false for the local domain
-	 * @return int|bool Returns false if no live handle can be obtained
+	 * @return int|bool Specific server index, or false if no live handle can be obtained
 	 */
 	public function getReaderIndex( $group = false, $domain = false );
 
@@ -193,7 +193,8 @@ interface ILoadBalancer {
 	 * do so once such a connection is opened.
 	 *
 	 * If a timeout happens when waiting, then getLaggedReplicaMode()/laggedReplicaUsed()
-	 * will return true.
+	 * will return true. This is useful for discouraging clients from taking further actions
+	 * if session consistency could not be maintained with respect to their last actions.
 	 *
 	 * @param DBMasterPos|bool $pos Master position or false
 	 */
@@ -201,6 +202,9 @@ interface ILoadBalancer {
 
 	/**
 	 * Set the master wait position and wait for a generic replica DB to catch up to it
+	 *
+	 * This method is only intented for use a throttling mechanism for high-volume updates.
+	 * Unlike waitFor(), failure does not effect getLaggedReplicaMode()/laggedReplicaUsed().
 	 *
 	 * This can be used a faster proxy for waitForAll()
 	 *
@@ -213,6 +217,9 @@ interface ILoadBalancer {
 	/**
 	 * Set the master wait position and wait for ALL replica DBs to catch up to it
 	 *
+	 * This method is only intented for use a throttling mechanism for high-volume updates.
+	 * Unlike waitFor(), failure does not effect getLaggedReplicaMode()/laggedReplicaUsed().
+	 *
 	 * @param DBMasterPos|bool $pos Master position or false
 	 * @param int|null $timeout Max seconds to wait; default is mWaitTimeout
 	 * @return bool Success (able to connect and no timeouts reached)
@@ -220,20 +227,22 @@ interface ILoadBalancer {
 	public function waitForAll( $pos, $timeout = null );
 
 	/**
-	 * Get any open connection to a given server index, local or foreign
+	 * Get an existing live handle to the given server index (on any domain)
 	 *
-	 * Use CONN_TRX_AUTOCOMMIT to only look for connections opened with that flag.
-	 * Avoid the use of transaction methods like IDatabase::begin() or IDatabase::startAtomic()
-	 * on any such connections.
+	 * Use the CONN_TRX_AUTOCOMMIT flag to only look for connections opened with that flag.
 	 *
-	 * @param int $i Server index or DB_MASTER/DB_REPLICA
+	 * Avoid the use of begin()/commit() and startAtomic()/endAtomic() on any handle returned.
+	 * This method is largely intended for internal by RDBMs callers that issue queries that do
+	 * not affect any current transaction.
+	 *
+	 * @param int $i Specific or virtual (DB_MASTER/DB_REPLICA) server index
 	 * @param int $flags Bitfield of CONN_* class constants
 	 * @return Database|bool False if no such connection is open
 	 */
 	public function getAnyOpenConnection( $i, $flags = 0 );
 
 	/**
-	 * Get a live handle for a real or virtual (DB_MASTER/DB_REPLICA) server index
+	 * Get a live handle for a specific or virtual (DB_MASTER/DB_REPLICA) server index
 	 *
 	 * The server index, $i, can be one of the following:
 	 *   - DB_REPLICA: a server index will be selected by the load balancer based on read
@@ -282,7 +291,7 @@ interface ILoadBalancer {
 	 * @see ILoadBalancer::reuseConnection()
 	 * @see ILoadBalancer::getServerAttributes()
 	 *
-	 * @param int $i Server index (overrides $groups) or DB_MASTER/DB_REPLICA
+	 * @param int $i Specific (overrides $groups) or virtual (DB_MASTER/DB_REPLICA) server index
 	 * @param string[]|string $groups Query group(s) in preference order; [] for the default group
 	 * @param string|bool $domain DB domain ID or false for the local domain
 	 * @param int $flags Bitfield of CONN_* class constants
@@ -290,14 +299,14 @@ interface ILoadBalancer {
 	 * @note This method throws DBAccessError if ILoadBalancer::disable() was called
 	 *
 	 * @return IDatabase|bool This returns false on failure if CONN_SILENCE_ERRORS is set
-	 * @throws DBError If no live handle can be obtained and CONN_SILENCE_ERRORS is not set
+	 * @throws DBError If no live handle could be obtained and CONN_SILENCE_ERRORS is not set
 	 * @throws DBAccessError If disable() was previously called
 	 * @throws InvalidArgumentException
 	 */
 	public function getConnection( $i, $groups = [], $domain = false, $flags = 0 );
 
 	/**
-	 * Get a live handle for a server index
+	 * Get a live handle for a specific server index
 	 *
 	 * This is a simpler version of getConnection() that does not accept virtual server
 	 * indexes (e.g. DB_MASTER/DB_REPLICA), does not assure that master DB handles have
@@ -329,16 +338,16 @@ interface ILoadBalancer {
 	public function reuseConnection( IDatabase $conn );
 
 	/**
-	 * Get a live database handle reference for a real or virtual (DB_MASTER/DB_REPLICA) server index
+	 * Get a live database handle reference for a server index
 	 *
 	 * The CONN_TRX_AUTOCOMMIT flag is ignored for databases with ATTR_DB_LEVEL_LOCKING
-	 * (e.g. sqlite) in order to avoid deadlocks. getServerAttributes()
-	 * can be used to check such flags beforehand. Avoid the use of begin() or startAtomic()
+	 * (e.g. sqlite) in order to avoid deadlocks. The getServerAttributes() method can be used
+	 * to check such flags beforehand. Avoid the use of begin() or startAtomic()
 	 * on any CONN_TRX_AUTOCOMMIT connections.
 	 *
 	 * @see ILoadBalancer::getConnection() for parameter information
 	 *
-	 * @param int $i Server index or DB_MASTER/DB_REPLICA
+	 * @param int $i Specific or virtual (DB_MASTER/DB_REPLICA) server index
 	 * @param string[]|string $groups Query group(s) in preference order; [] for the default group
 	 * @param string|bool $domain DB domain ID or false for the local domain
 	 * @param int $flags Bitfield of CONN_* class constants (e.g. CONN_TRX_AUTOCOMMIT)
@@ -347,7 +356,7 @@ interface ILoadBalancer {
 	public function getConnectionRef( $i, $groups = [], $domain = false, $flags = 0 );
 
 	/**
-	 * Get a database handle reference for a real or virtual (DB_MASTER/DB_REPLICA) server index
+	 * Get a lazy-connecting database handle reference for a server index
 	 *
 	 * The handle's methods simply proxy to those of an underlying IDatabase handle which
 	 * takes care of the actual connection and query logic.
@@ -359,17 +368,18 @@ interface ILoadBalancer {
 	 *
 	 * @see ILoadBalancer::getConnection() for parameter information
 	 *
-	 * @param int $i Server index or DB_MASTER/DB_REPLICA
+	 * @param int $i Specific or virtual (DB_MASTER/DB_REPLICA) server index
 	 * @param string[]|string $groups Query group(s) in preference order; [] for the default group
 	 * @param string|bool $domain DB domain ID or false for the local domain
-	 * @param int $flags Bitfield of CONN_* class constants (e.g. CONN_TRX_AUTOCOMMIT)
-	 * @return DBConnRef
+	 * @param int $flags Bitfield of CONN_* class constants
+	 * @return DBConnRef Live connection handle or null on failure
+	 * @throws DBError If no live handle could be obtained
+	 * @throws DBAccessError If disable() was previously called
 	 */
 	public function getLazyConnectionRef( $i, $groups = [], $domain = false, $flags = 0 );
 
 	/**
-	 * Get a live database handle for a real or virtual (DB_MASTER/DB_REPLICA) server index
-	 * that can be used for data migrations and schema changes
+	 * Get a live database handle, suitable for migrations and schema changes, for a server index
 	 *
 	 * The handle's methods simply proxy to those of an underlying IDatabase handle which
 	 * takes care of the actual connection and query logic.
@@ -381,16 +391,18 @@ interface ILoadBalancer {
 	 *
 	 * @see ILoadBalancer::getConnection() for parameter information
 	 *
-	 * @param int $i Server index or DB_MASTER/DB_REPLICA
+	 * @param int $i Specific or virtual (DB_MASTER/DB_REPLICA) server index
 	 * @param string[]|string $groups Query group(s) in preference order; [] for the default group
 	 * @param string|bool $domain DB domain ID or false for the local domain
 	 * @param int $flags Bitfield of CONN_* class constants (e.g. CONN_TRX_AUTOCOMMIT)
-	 * @return MaintainableDBConnRef
+	 * @return MaintainableDBConnRef Live connection handle
+	 * @throws DBError If no live handle could be obtained
+	 * @throws DBAccessError If disable() was previously called
 	 */
 	public function getMaintenanceConnectionRef( $i, $groups = [], $domain = false, $flags = 0 );
 
 	/**
-	 * Get the server index of the master server
+	 * Get the specific server index of the master server
 	 *
 	 * @return int
 	 */
@@ -461,7 +473,7 @@ interface ILoadBalancer {
 	public function getServerType( $i );
 
 	/**
-	 * @param int $i Server index
+	 * @param int $i Specific server index
 	 * @return array (Database::ATTRIBUTE_* constant => value) for all such constants
 	 * @since 1.31
 	 */
@@ -717,7 +729,7 @@ interface ILoadBalancer {
 	 * no lag, the maximum lag will be reported as -1.
 	 *
 	 * @param bool|string $domain Domain ID or false for the default database
-	 * @return array ( host, max lag, index of max lagged host )
+	 * @return array{0:string,1:float|int|false,2:int} (host, max lag, index of max lagged host)
 	 */
 	public function getMaxLag( $domain = false );
 
@@ -729,7 +741,7 @@ interface ILoadBalancer {
 	 * Values may be "false" if replication is too broken to estimate
 	 *
 	 * @param string|bool $domain
-	 * @return int[] Map of (server index => float|int|bool)
+	 * @return float[]|int[]|false[] Map of (server index => lag) in order of server index
 	 */
 	public function getLagTimes( $domain = false );
 

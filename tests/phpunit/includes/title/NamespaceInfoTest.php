@@ -17,6 +17,8 @@ class NamespaceInfoTest extends MediaWikiIntegrationTestCase {
 	 * Shared code
 	 * %{
 	 */
+
+	/** @var ScopedCallback */
 	private $scopedCallback;
 
 	protected function setUp() : void {
@@ -340,11 +342,11 @@ class NamespaceInfoTest extends MediaWikiIntegrationTestCase {
 
 	public function provideWantSignatures_ExtraSignatureNamespaces() {
 		$ret = array_map(
-			function ( $arr ) {
+			static function ( $arr ) {
 				// We've added all these as extra signature namespaces, so expect true
 				return [ $arr[0], true ];
 			},
-			self::provideWantSignatures()
+			$this->provideWantSignatures()
 		);
 
 		// Add one more that's false
@@ -411,8 +413,6 @@ class NamespaceInfoTest extends MediaWikiIntegrationTestCase {
 	}
 
 	/**
-	 * @param mixed $contentNamespaces To pass to constructor
-	 * @param array $expected
 	 * @dataProvider provideGetContentNamespaces
 	 * @covers NamespaceInfo::getContentNamespaces
 	 */
@@ -1016,7 +1016,7 @@ class NamespaceInfoTest extends MediaWikiIntegrationTestCase {
 	 */
 	private function setupHookNamespaces() {
 		$callback =
-			function ( &$canonicalNamespaces ) {
+			static function ( &$canonicalNamespaces ) {
 				$canonicalNamespaces[NS_MAIN] = 'Main';
 				unset( $canonicalNamespaces[NS_MEDIA] );
 				$canonicalNamespaces[123456] = 'Hooked';
@@ -1226,7 +1226,7 @@ class NamespaceInfoTest extends MediaWikiIntegrationTestCase {
 	public function testGetValidNamespaces_misc( array $namespaces, array $expected ) {
 		// Each namespace's name is just its index
 		$this->setTemporaryHook( 'CanonicalNamespaces',
-			function ( &$canonicalNamespaces ) use ( $namespaces ) {
+			static function ( &$canonicalNamespaces ) use ( $namespaces ) {
 				$canonicalNamespaces = array_combine( $namespaces, $namespaces );
 			}
 		);
@@ -1253,12 +1253,7 @@ class NamespaceInfoTest extends MediaWikiIntegrationTestCase {
 	 * TODO: This is superceeded by PermissionManagerTest::testGetNamespaceRestrictionLevels
 	 * Remove when deprecated method is removed.
 	 * @dataProvider provideGetRestrictionLevels
-	 * @covers       NamespaceInfo::getRestrictionLevels
-	 *
-	 * @param array $expected
-	 * @param int $ns
-	 * @param array|null $groups
-	 * @throws MWException
+	 * @covers NamespaceInfo::getRestrictionLevels
 	 */
 	public function testGetRestrictionLevels( array $expected, $ns, array $groups = null ) {
 		$this->hideDeprecated( 'NamespaceInfo::getRestrictionLevels' );

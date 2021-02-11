@@ -20,8 +20,8 @@ class SpecialPageAliasTest extends MediaWikiIntegrationTestCase {
 	public function testValidSpecialPageAliases( $code, $specialPageAliases ) {
 		foreach ( $specialPageAliases as $specialPage => $aliases ) {
 			foreach ( $aliases as $alias ) {
-				$msg = "$specialPage alias '$alias' in $code is valid with no slashes";
-				$this->assertRegExp( '/^[^\/]*$/', $msg );
+				$msg = "Special:$specialPage alias '$alias' in $code must not contain slashes";
+				$this->assertStringNotContainsString( '/', $alias, $msg );
 			}
 		}
 	}
@@ -29,17 +29,13 @@ class SpecialPageAliasTest extends MediaWikiIntegrationTestCase {
 	public function validSpecialPageAliasesProvider() {
 		$codes = array_keys( Language::fetchLanguageNames( null, 'mwfile' ) );
 
-		$data = [];
-
 		foreach ( $codes as $code ) {
 			$specialPageAliases = $this->getSpecialPageAliases( $code );
 
 			if ( $specialPageAliases !== [] ) {
-				$data[] = [ $code, $specialPageAliases ];
+				yield [ $code, $specialPageAliases ];
 			}
 		}
-
-		return $data;
 	}
 
 	/**

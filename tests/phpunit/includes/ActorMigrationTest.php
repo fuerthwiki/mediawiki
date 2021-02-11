@@ -2,6 +2,7 @@
 
 use MediaWiki\MediaWikiServices;
 use MediaWiki\User\UserIdentity;
+use MediaWiki\User\UserIdentityValue;
 use Wikimedia\ScopedCallback;
 use Wikimedia\TestingAccessWrapper;
 
@@ -29,7 +30,7 @@ class ActorMigrationTest extends MediaWikiLangTestCase {
 			'removed' => $w->removed,
 			'specialFields' => $w->specialFields,
 		];
-		$this->resetActorMigration = new ScopedCallback( function ( $w, $data ) {
+		$this->resetActorMigration = new ScopedCallback( static function ( $w, $data ) {
 			foreach ( $data as $k => $v ) {
 				$w->$k = $v;
 			}
@@ -70,7 +71,7 @@ class ActorMigrationTest extends MediaWikiLangTestCase {
 		return new ActorMigration(
 			$stage,
 			$mwServices->getUserFactory(),
-			$mwServices->getUserNameUtils()
+			$mwServices->getActorStoreFactory()
 		);
 	}
 
@@ -311,21 +312,15 @@ class ActorMigrationTest extends MediaWikiLangTestCase {
 	}
 
 	public function provideGetWhere() {
-		$makeUserIdentity = function ( $id, $name, $actor ) {
-			$u = $this->createMock( UserIdentity::class );
-			$u->method( 'getId' )->willReturn( $id );
-			$u->method( 'getName' )->willReturn( $name );
-			$u->method( 'getActorId' )->willReturn( $actor );
-			return $u;
-		};
-
-		$genericUser = $makeUserIdentity( 1, 'User1', 11 );
+		$genericUser = new UserIdentityValue( 1, 'User1', 11 );
 		$complicatedUsers = [
-			$makeUserIdentity( 1, 'User1', 11 ),
-			$makeUserIdentity( 2, 'User2', 12 ),
-			$makeUserIdentity( 3, 'User3', 0 ),
-			$makeUserIdentity( 0, '192.168.12.34', 34 ),
-			$makeUserIdentity( 0, '192.168.12.35', 0 ),
+			new UserIdentityValue( 1, 'User1', 11 ),
+			new UserIdentityValue( 2, 'User2', 12 ),
+			new UserIdentityValue( 3, 'User3', 0 ),
+			new UserIdentityValue( 0, '192.168.12.34', 34 ),
+			new UserIdentityValue( 0, '192.168.12.35', 0 ),
+			// test handling of non-normalized IPv6 IP
+			new UserIdentityValue( 0, '2600:1004:b14a:5ddd:3ebe:bba4:bfba:f37e', 0 ),
 		];
 
 		return [
@@ -429,7 +424,8 @@ class ActorMigrationTest extends MediaWikiLangTestCase {
 					'tables' => [],
 					'orconds' => [
 						'userid' => "am1_user IN (1,2,3) ",
-						'username' => "am1_user_text IN ('192.168.12.34','192.168.12.35') "
+						'username' => "am1_user_text IN ('192.168.12.34','192.168.12.35',"
+							. "'2600:1004:B14A:5DDD:3EBE:BBA4:BFBA:F37E') "
 					],
 					'joins' => [],
 				],
@@ -439,7 +435,8 @@ class ActorMigrationTest extends MediaWikiLangTestCase {
 					'tables' => [],
 					'orconds' => [
 						'userid' => "am1_user IN (1,2,3) ",
-						'username' => "am1_user_text IN ('192.168.12.34','192.168.12.35') "
+						'username' => "am1_user_text IN ('192.168.12.34','192.168.12.35',"
+							. "'2600:1004:B14A:5DDD:3EBE:BBA4:BFBA:F37E') "
 					],
 					'joins' => [],
 				],
@@ -463,28 +460,30 @@ class ActorMigrationTest extends MediaWikiLangTestCase {
 				SCHEMA_COMPAT_OLD, 'am1_user', $complicatedUsers, false, [
 					'tables' => [],
 					'orconds' => [
-						'username' => "am1_user_text IN ('User1','User2','User3','192.168.12.34','192.168.12.35') "
+						'username' => "am1_user_text IN ('User1','User2','User3','192.168.12.34',"
+							. "'192.168.12.35','2600:1004:B14A:5DDD:3EBE:BBA4:BFBA:F37E') "
 					],
 					'joins' => [],
 				],
 			],
-			'Multiple users, read-old' => [
+			'Multiple users, no use ID, read-old' => [
 				SCHEMA_COMPAT_WRITE_BOTH | SCHEMA_COMPAT_READ_OLD, 'am1_user', $complicatedUsers, false, [
 					'tables' => [],
 					'orconds' => [
-						'username' => "am1_user_text IN ('User1','User2','User3','192.168.12.34','192.168.12.35') "
+						'username' => "am1_user_text IN ('User1','User2','User3','192.168.12.34',"
+							. "'192.168.12.35','2600:1004:B14A:5DDD:3EBE:BBA4:BFBA:F37E') "
 					],
 					'joins' => [],
 				],
 			],
-			'Multiple users, read-new' => [
+			'Multiple users, no use ID, read-new' => [
 				SCHEMA_COMPAT_WRITE_BOTH | SCHEMA_COMPAT_READ_NEW, 'am1_user', $complicatedUsers, false, [
 					'tables' => [],
 					'orconds' => [ 'actor' => "am1_actor IN (11,12,34) " ],
 					'joins' => [],
 				],
 			],
-			'Multiple users, new' => [
+			'Multiple users, no use ID, new' => [
 				SCHEMA_COMPAT_NEW, 'am1_user', $complicatedUsers, false, [
 					'tables' => [],
 					'orconds' => [ 'actor' => "am1_actor IN (11,12,34) " ],
@@ -541,10 +540,7 @@ class ActorMigrationTest extends MediaWikiLangTestCase {
 	 */
 	public function testInsertRoundTrip( $table, $key, $pk, $usesTemp ) {
 		$u = $this->getTestUser()->getUser();
-		$user = $this->createMock( UserIdentity::class );
-		$user->method( 'getId' )->willReturn( $u->getId() );
-		$user->method( 'getName' )->willReturn( $u->getName() );
-		$user->method( 'getActorId' )->willReturn( $u->getActorId( $this->db ) );
+		$user = new UserIdentityValue( $u->getUserId(), $u->getName(), $u->getActorId( $this->db ) );
 
 		$stageNames = [
 			SCHEMA_COMPAT_OLD => 'old',
@@ -721,10 +717,7 @@ class ActorMigrationTest extends MediaWikiLangTestCase {
 	 */
 	public function testInsertUserIdentity( $stage ) {
 		$user = $this->getMutableTestUser()->getUser();
-		$userIdentity = $this->createMock( UserIdentity::class );
-		$userIdentity->method( 'getId' )->willReturn( $user->getId() );
-		$userIdentity->method( 'getName' )->willReturn( $user->getName() );
-		$userIdentity->method( 'getActorId' )->willReturn( 0 );
+		$userIdentity = new UserIdentityValue( $user->getUserId(), $user->getName(), 0 );
 
 		$m = $this->getMigration( $stage );
 		list( $fields, $callback ) =

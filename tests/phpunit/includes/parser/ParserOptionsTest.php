@@ -110,31 +110,48 @@ class ParserOptionsTest extends MediaWikiLangTestCase {
 	 * @dataProvider provideIsSafeToCache
 	 * @param bool $expect Expected value
 	 * @param array $options Options to set
+	 * @param array|null $usedOptions
 	 */
-	public function testIsSafeToCache( $expect, $options ) {
+	public function testIsSafeToCache( bool $expect, array $options, array $usedOptions = null ) {
 		$popt = ParserOptions::newCanonical( 'canonical' );
 		foreach ( $options as $name => $value ) {
 			$popt->setOption( $name, $value );
 		}
-		$this->assertSame( $expect, $popt->isSafeToCache() );
+		$this->assertSame( $expect, $popt->isSafeToCache( $usedOptions ) );
 	}
 
 	public static function provideIsSafeToCache() {
 		global $wgEnableParserLimitReporting;
 
-		$seven = function () {
+		$seven = static function () {
 			return 7;
 		};
 
 		return [
 			'No overrides' => [ true, [] ],
+			'No overrides, some used' => [ true, [], [ 'thumbsize', 'removeComments' ] ],
 			'In-key options are ok' => [ true, [
 				'thumbsize' => 1e100,
 				'printable' => false,
 			] ],
+			'In-key options are ok, some used' => [ true, [
+				'thumbsize' => 1e100,
+				'printable' => false,
+			], [ 'thumbsize', 'removeComments' ] ],
 			'Non-in-key options are not ok' => [ false, [
 				'removeComments' => false,
 			] ],
+			'Non-in-key options are not ok, used' => [ false, [
+				'removeComments' => false,
+			], [ 'removeComments' ] ],
+			'Non-in-key options are ok if other used' => [ true, [
+				'removeComments' => false,
+			], [ 'thumbsize' ] ],
+			'Non-in-key options are ok if nothing used' => [ true, [
+				'removeComments' => false,
+			], [] ],
+			'Unknown used options do not crash' => [ true, [
+			], [ 'unknown' ] ],
 			'Non-in-key options are not ok (2)' => [ false, [
 				'wrapclass' => 'foobar',
 			] ],
@@ -184,6 +201,7 @@ class ParserOptionsTest extends MediaWikiLangTestCase {
 		return [
 			'Canonical options, nothing used' => [ [], 'canonical', [] ],
 			'Canonical options, used some options' => [ $used, 'canonical', [] ],
+			'Canonical options, used some more options' => [ array_merge( $used, [ 'wrapclass' ] ), 'canonical', [] ],
 			'Used some options, non-default values' => [
 				$used,
 				'printable=1!thumbsize=200',
@@ -192,6 +210,7 @@ class ParserOptionsTest extends MediaWikiLangTestCase {
 					'printable' => true,
 				]
 			],
+
 			'Canonical options, used all non-lazy options' => [ $allUsableOptions, 'canonical', [] ],
 			'Canonical options, nothing used, but with hooks and $wgRenderHashAppend' => [
 				[],
@@ -263,7 +282,7 @@ class ParserOptionsTest extends MediaWikiLangTestCase {
 		$classWrapper = TestingAccessWrapper::newFromClass( ParserOptions::class );
 		$oldDefaults = $classWrapper->defaults;
 		$oldLazy = $classWrapper->lazyOptions;
-		$reset = new ScopedCallback( function () use ( $classWrapper, $oldDefaults, $oldLazy ) {
+		$reset = new ScopedCallback( static function () use ( $classWrapper, $oldDefaults, $oldLazy ) {
 			$classWrapper->defaults = $oldDefaults;
 			$classWrapper->lazyOptions = $oldLazy;
 		} );
@@ -281,7 +300,7 @@ class ParserOptionsTest extends MediaWikiLangTestCase {
 
 		$ctr = 0;
 		$classWrapper->defaults += [ __METHOD__ => null ];
-		$classWrapper->lazyOptions += [ __METHOD__ => function () use ( &$ctr ) {
+		$classWrapper->lazyOptions += [ __METHOD__ => static function () use ( &$ctr ) {
 			return ++$ctr;
 		} ];
 		$popt1 = ParserOptions::newCanonical( 'canonical' );
@@ -327,7 +346,7 @@ class ParserOptionsTest extends MediaWikiLangTestCase {
 
 		self::clearCache();
 
-		$this->setTemporaryHook( 'ParserOptionsRegister', function ( &$defaults, &$inCacheKey ) {
+		$this->setTemporaryHook( 'ParserOptionsRegister', static function ( &$defaults, &$inCacheKey ) {
 			$defaults += [
 				'foo' => 'foo',
 				'bar' => 'bar',
@@ -350,7 +369,7 @@ class ParserOptionsTest extends MediaWikiLangTestCase {
 		$this->assertFalse( $options->getSpeculativeRevId() );
 
 		$counter = 0;
-		$options->setSpeculativeRevIdCallback( function () use( &$counter ) {
+		$options->setSpeculativeRevIdCallback( static function () use( &$counter ) {
 			return ++$counter;
 		} );
 

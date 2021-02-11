@@ -182,11 +182,6 @@ class PermissionManagerTest extends MediaWikiUnitTestCase {
 	 * @covers \MediaWiki\Permissions\PermissionManager::checkUserConfigPermissions
 	 *
 	 * @dataProvider provideTestCheckUserConfigPermissionsForRedirect
-	 * @param bool $canEditOwnRedirect
-	 * @param bool $isRedirect
-	 * @param int $targetNamespace
-	 * @param string $targetText
-	 * @param bool $expectErrors
 	 */
 	public function testCheckUserConfigPermissionsForRedirect(
 		bool $canEditOwnRedirect,
@@ -263,11 +258,6 @@ class PermissionManagerTest extends MediaWikiUnitTestCase {
 	 * @covers \MediaWiki\Permissions\PermissionManager::checkPageRestrictions
 	 *
 	 * @dataProvider provideTestCheckPageRestrictions
-	 * @param string $action
-	 * @param array $restrictions
-	 * @param array $rights
-	 * @param bool $cascading
-	 * @param array $expectedErrors
 	 */
 	public function testCheckPageRestrictions(
 		string $action,
@@ -338,12 +328,6 @@ class PermissionManagerTest extends MediaWikiUnitTestCase {
 	 * @covers \MediaWiki\Permissions\PermissionManager::checkQuickPermissions
 	 *
 	 * @dataProvider provideTestCheckQuickPermissions
-	 * @param int $namespace
-	 * @param string $pageTitle
-	 * @param bool $userIsAnon
-	 * @param string $action
-	 * @param array $rights
-	 * @param string $expectedError
 	 */
 	public function testCheckQuickPermissions(
 		int $namespace,
@@ -365,14 +349,14 @@ class PermissionManagerTest extends MediaWikiUnitTestCase {
 		$namespaceInfo = $this->createMock( NamespaceInfo::class );
 		$namespaceInfo->method( 'isTalk' )
 			->willReturnCallback(
-				function ( $ns ) {
+				static function ( $ns ) {
 					return ( $ns > NS_MAIN && $ns % 2 === 1 );
 				}
 			);
 		$namespaceInfo->method( 'hasSubpages' )
 			->willReturnCallback(
 				// Only matters for user pages
-				function ( $ns ) {
+				static function ( $ns ) {
 					return ( $ns === NS_USER );
 				}
 			);

@@ -93,6 +93,10 @@ trait MockHttpTrait {
 			'HTTPMaxConnectTimeout' => 1,
 		] );
 
+		$failCallback = static function ( /* discard any arguments */ ) {
+			TestCase::fail( 'method should not be called' );
+		};
+
 		/** @var HttpRequestFactory|MockObject $mockHttpRequestFactory */
 		$mockHttpRequestFactory = $this->getMockBuilder( HttpRequestFactory::class )
 			->setConstructorArgs( [ $options, new NullLogger() ] )
@@ -104,7 +108,7 @@ trait MockHttpTrait {
 				->willReturn( $request );
 		} else {
 			$mockHttpRequestFactory->method( 'createMultiClient' )
-				->willReturnCallback( [ TestCase::class, 'fail' ] );
+				->willReturn( $this->createNoOpMock( MultiHttpClient::class ) );
 		}
 
 		if ( $request instanceof GuzzleHttp\Client ) {
@@ -112,18 +116,18 @@ trait MockHttpTrait {
 				->willReturn( $request );
 		} else {
 			$mockHttpRequestFactory->method( 'createGuzzleClient' )
-				->willReturnCallback( [ TestCase::class, 'fail' ] );
+				->willReturn( $this->createNoOpMock( GuzzleHttp\Client::class ) );
 		}
 
 		if ( $request === null ) {
 			$mockHttpRequestFactory->method( 'create' )
-				->willReturnCallback( [ TestCase::class, 'fail' ] );
+				->willReturnCallback( $failCallback );
 		} elseif ( $request instanceof MultiHttpClient ) {
 			$mockHttpRequestFactory->method( 'create' )
-				->willReturnCallback( [ TestCase::class, 'fail' ] );
+				->willReturnCallback( $failCallback );
 		} elseif ( $request instanceof GuzzleHttp\Client ) {
 			$mockHttpRequestFactory->method( 'create' )
-				->willReturnCallback( [ TestCase::class, 'fail' ] );
+				->willReturnCallback( $failCallback );
 		} elseif ( $request instanceof MWHttpRequest ) {
 			$mockHttpRequestFactory->method( 'create' )
 				->willReturn( $request );
@@ -170,14 +174,14 @@ trait MockHttpTrait {
 
 		$mockHttpRequest->method( 'getResponseHeaders' )->willReturn( $headers );
 		$mockHttpRequest->method( 'getResponseHeader' )->willReturnCallback(
-			function ( $name ) use ( $headers ) {
+			static function ( $name ) use ( $headers ) {
 				return $headers[$name] ?? null;
 			}
 		);
 
 		$dataCallback = null;
 		$mockHttpRequest->method( 'setCallback' )->willReturnCallback(
-			function ( $callback ) use ( &$dataCallback ) {
+			static function ( $callback ) use ( &$dataCallback ) {
 				$dataCallback = $callback;
 			}
 		);
@@ -225,13 +229,13 @@ trait MockHttpTrait {
 		);
 
 		$mockHttpRequestMulti->method( 'run' )->willReturnCallback(
-			function ( array $req, array $opts = [] ) use ( $mockHttpRequestMulti ) {
+			static function ( array $req, array $opts = [] ) use ( $mockHttpRequestMulti ) {
 				return $mockHttpRequestMulti->runMulti( [ $req ], $opts )[0]['response'];
 			}
 		);
 
 		$mockHttpRequestMulti->method( 'runMulti' )->willReturnCallback(
-			function ( array $reqs, array $opts = [] ) use ( $responses ) {
+			static function ( array $reqs, array $opts = [] ) use ( $responses ) {
 				foreach ( $reqs as $key => &$req ) {
 					$resp = $responses[$key] ?? [ 'code' => 0, 'error' => 'unknown' ];
 

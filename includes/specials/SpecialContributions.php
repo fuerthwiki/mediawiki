@@ -170,10 +170,7 @@ class SpecialContributions extends IncludableSpecialPage {
 
 		// Allows reverts to have the bot flag in recent changes. It is just here to
 		// be passed in the form at the top of the page
-		if ( MediaWikiServices::getInstance()
-				 ->getPermissionManager()
-				 ->userHasRight( $user, 'markbotedits' ) && $request->getBool( 'bot' )
-		) {
+		if ( $this->permissionManager->userHasRight( $user, 'markbotedits' ) && $request->getBool( 'bot' ) ) {
 			$this->opts['bot'] = '1';
 		}
 
@@ -195,7 +192,7 @@ class SpecialContributions extends IncludableSpecialPage {
 				return;
 			}
 
-			$out->addSubtitle( $this->contributionsSub( $userObj ) );
+			$out->addSubtitle( $this->contributionsSub( $userObj, $target ) );
 			$out->setHTMLTitle( $this->msg(
 				'pagetitle',
 				$this->msg( 'contributions-title', $target )->plain()
@@ -214,7 +211,7 @@ class SpecialContributions extends IncludableSpecialPage {
 			$id = $userObj->getId();
 
 			$target = $nt->getText();
-			$out->addSubtitle( $this->contributionsSub( $userObj ) );
+			$out->addSubtitle( $this->contributionsSub( $userObj, $target ) );
 			$out->setHTMLTitle( $this->msg(
 				'pagetitle',
 				$this->msg( 'contributions-title', $target )->plain()
@@ -237,7 +234,7 @@ class SpecialContributions extends IncludableSpecialPage {
 
 		$this->opts = ContribsPager::processDateFilter( $this->opts );
 
-		if ( $this->opts['namespace'] < NS_MAIN ) {
+		if ( $this->opts['namespace'] !== '' && $this->opts['namespace'] < NS_MAIN ) {
 			$this->getOutput()->wrapWikiMsg(
 				"<div class=\"mw-negative-namespace-not-supported error\">\n\$1\n</div>",
 				[ 'negative-namespace-not-supported' ]
@@ -272,10 +269,10 @@ class SpecialContributions extends IncludableSpecialPage {
 		}
 		// Don't use year and month for the feed URL, but pass them on if
 		// we redirect to API (if $feedType is specified)
-		if ( $feedType && $this->opts['year'] !== null ) {
+		if ( $feedType && isset( $this->opts['year'] ) ) {
 			$feedParams['year'] = $this->opts['year'];
 		}
-		if ( $feedType && $this->opts['month'] !== null ) {
+		if ( $feedType && isset( $this->opts['month'] ) ) {
 			$feedParams['month'] = $this->opts['month'];
 		}
 
@@ -299,7 +296,7 @@ class SpecialContributions extends IncludableSpecialPage {
 			if ( !$this->including() ) {
 				$out->addHTML( $this->getForm( $this->opts ) );
 			}
-			$pager = $this->getPager();
+			$pager = $this->getPager( $target );
 			if ( IPUtils::isValidRange( $target ) && !$pager->isQueryableRange( $target ) ) {
 				// Valid range, but outside CIDR limit.
 				$limits = $this->getConfig()->get( 'RangeContributionsCIDRLimit' );
@@ -374,11 +371,13 @@ class SpecialContributions extends IncludableSpecialPage {
 	/**
 	 * Generates the subheading with links
 	 * @param User $userObj User object for the target
+	 * @param string $targetName This mostly the same as $userObj->getName() but
+	 * normalization may make it differ. // T272225
 	 * @return string Appropriately-escaped HTML to be output literally
 	 * @todo FIXME: Almost the same as getSubTitle in SpecialDeletedContributions.php.
 	 * Could be combined.
 	 */
-	protected function contributionsSub( $userObj ) {
+	protected function contributionsSub( $userObj, $targetName ) {
 		$isAnon = $userObj->isAnon();
 		if ( !$isAnon && $userObj->isHidden() &&
 			!$this->permissionManager->userHasRight( $this->getUser(), 'hideuser' )
@@ -415,10 +414,15 @@ class SpecialContributions extends IncludableSpecialPage {
 
 		// T211910. Don't show action links if a range is outside block limit
 		$showForIp = IPUtils::isValid( $userObj ) ||
-			( IPUtils::isValidRange( $userObj ) && $this->getPager()->isQueryableRange( $userObj ) );
+			( IPUtils::isValidRange( $userObj ) && $this->getPager( $targetName )->isQueryableRange( $userObj ) );
 
 		if ( $talk && ( $userObj->isRegistered() || $showForIp ) ) {
-			$tools = self::getUserLinks( $this, $userObj );
+			$tools = self::getUserLinks(
+				$this,
+				$userObj,
+				$this->permissionManager,
+				$this->getHookRunner()
+			);
 			$links = Html::openElement( 'span', [ 'class' => 'mw-changeslist-links' ] );
 			foreach ( $tools as $tool ) {
 				$links .= Html::rawElement( 'span', [], $tool ) . ' ';
@@ -820,14 +824,18 @@ class SpecialContributions extends IncludableSpecialPage {
 			->search( UserNamePrefixSearch::AUDIENCE_PUBLIC, $search, $limit, $offset );
 	}
 
-	private function getPager() {
+	/**
+	 * @param string $target The normalized target username.
+	 * @return ContribsPager
+	 */
+	private function getPager( $target ) {
 		if ( $this->pager === null ) {
 			$options = [
-				'target' => $this->opts['target'],
+				'target' => $target,
 				'namespace' => $this->opts['namespace'],
 				'tagfilter' => $this->opts['tagfilter'],
-				'start' => $this->opts['start'],
-				'end' => $this->opts['end'],
+				'start' => $this->opts['start'] ?? '',
+				'end' => $this->opts['end'] ?? '',
 				'deletedOnly' => $this->opts['deletedOnly'],
 				'topOnly' => $this->opts['topOnly'],
 				'newOnly' => $this->opts['newOnly'],
@@ -839,7 +847,13 @@ class SpecialContributions extends IncludableSpecialPage {
 			$this->pager = new ContribsPager(
 				$this->getContext(),
 				$options,
-				$this->getLinkRenderer()
+				$this->getLinkRenderer(),
+				$this->linkBatchFactory,
+				$this->getHookContainer(),
+				$this->loadBalancer,
+				$this->actorMigration,
+				$this->revisionStore,
+				$this->namespaceInfo
 			);
 		}
 

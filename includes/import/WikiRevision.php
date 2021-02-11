@@ -169,6 +169,7 @@ class WikiRevision implements ImportableUploadRevision, ImportableOldRevision {
 
 	/**
 	 * @since 1.12.2
+	 * @var string|null
 	 */
 	protected $filename;
 
@@ -292,7 +293,7 @@ class WikiRevision implements ImportableUploadRevision, ImportableOldRevision {
 	 * @param string $text
 	 */
 	public function setText( $text ) {
-		$handler = ContentHandler::getForModelID( $this->model );
+		$handler = ContentHandler::getForModelID( $this->getModel() );
 		$content = $handler->unserializeContent( $text );
 		$this->setContent( SlotRecord::MAIN, $content );
 	}

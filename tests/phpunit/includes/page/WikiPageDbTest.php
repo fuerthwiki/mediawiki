@@ -133,6 +133,29 @@ class WikiPageDbTest extends MediaWikiLangTestCase {
 		serialize( $page );
 	}
 
+	public function provideTitlesThatCannotExist() {
+		yield 'Special' => [ NS_SPECIAL, 'Recentchanges' ]; // existing special page
+		yield 'Invalid character' => [ NS_MAIN, '#' ]; // bad character
+	}
+
+	/**
+	 * @dataProvider provideTitlesThatCannotExist
+	 */
+	public function testConstructionWithPageThatCannotExist( $ns, $text ) {
+		$title = Title::makeTitle( $ns, $text );
+
+		// NOTE: once WikiPage becomes a ProperPageIdentity, the constructor should throw!
+		$this->filterDeprecated( '/WikiPage constructed on a Title that cannot exist as a page/' );
+		$this->filterDeprecated( '/Accessing WikiPage that cannot exist as a page/' );
+		$page = new WikiPage( $title );
+
+		$this->assertFalse( $page->exists() );
+		$this->assertNull( $page->getRevisionRecord() );
+
+		// NOTE: once WikiPage becomes a PageIdentity, getId() should throw!
+		$this->assertSame( 0, $page->getId() );
+	}
+
 	/**
 	 * @covers WikiPage::prepareContentForEdit
 	 */
@@ -204,6 +227,7 @@ class WikiPageDbTest extends MediaWikiLangTestCase {
 		$this->hideDeprecated( 'WikiPage::doEditUpdates with a Revision object' );
 		$this->hideDeprecated( 'Revision::__construct' );
 		$this->hideDeprecated( 'Revision::getRevisionRecord' );
+		$this->hideDeprecated( 'MediaWiki\Revision\RevisionStore::newMutableRevisionFromArray' );
 
 		$user = $this->getTestUser()->getUser();
 
@@ -488,6 +512,47 @@ class WikiPageDbTest extends MediaWikiLangTestCase {
 
 		// two in page text and two in signature
 		$this->assertEquals( 4, $n, 'pagelinks should contain four links from the page' );
+	}
+
+	public function provideNonPageTitle() {
+		yield 'bad case and char' => [ Title::makeTitle( NS_MAIN, 'lower case and bad # char' ) ];
+		yield 'empty' => [ Title::makeTitle( NS_MAIN, '' ) ];
+		yield 'special' => [ Title::makeTitle( NS_SPECIAL, 'Dummy' ) ];
+		yield 'relative' => [ Title::makeTitle( NS_MAIN, '', '#section' ) ];
+		yield 'interwiki' => [ Title::makeTitle( NS_MAIN, 'Foo', '', 'acme' ) ];
+	}
+
+	/**
+	 * @dataProvider provideNonPageTitle
+	 * @covers WikiPage::doUserEditContent
+	 */
+	public function testDoUserEditContent_bad_page( $title ) {
+		$user1 = $this->getTestUser()->getUser();
+
+		$content = ContentHandler::makeContent(
+			"Yadda yadda",
+			$title,
+			CONTENT_MODEL_WIKITEXT
+		);
+
+		try {
+			$page = $this->newPage( $title );
+			$status = $page->doUserEditContent( $content, $user1, "[[testing]] 1", EDIT_NEW );
+		} catch ( Exception $ex ) {
+			// Throwing is an acceptable way to react to an invalid title,
+			// as long as no garbage is written to the database.
+		}
+
+		$row = $this->db->selectRow(
+			'page',
+			'*',
+			[
+				'page_namespace' => $title->getNamespace(),
+				'page_title' => $title->getDBkey()
+			]
+		);
+
+		$this->assertFalse( $row );
 	}
 
 	/**
@@ -799,7 +864,7 @@ class WikiPageDbTest extends MediaWikiLangTestCase {
 
 		$this->mergeMwGlobalArrayValue(
 			'wgContentHandlers', [
-				$name => function () use ( $handler ){
+				$name => static function () use ( $handler ){
 					return $handler;
 				}
 			]
@@ -841,7 +906,7 @@ class WikiPageDbTest extends MediaWikiLangTestCase {
 		$dataUpdates = $page->getDeletionUpdates( $page->getRevisionRecord() );
 		$this->assertNotEmpty( $dataUpdates );
 
-		$updateNames = array_map( function ( $du ) {
+		$updateNames = array_map( static function ( $du ) {
 			return isset( $du->_name ) ? $du->_name : get_class( $du );
 		}, $dataUpdates );
 
@@ -913,9 +978,7 @@ class WikiPageDbTest extends MediaWikiLangTestCase {
 	public function provideHasViewableContent() {
 		return [
 			[ 'WikiPageTest_testHasViewableContent', false, true ],
-			[ 'Special:WikiPageTest_testHasViewableContent', false ],
 			[ 'MediaWiki:WikiPageTest_testHasViewableContent', false ],
-			[ 'Special:Userlogin', true ],
 			[ 'MediaWiki:help', true ],
 		];
 	}
@@ -1657,10 +1720,6 @@ more stuff
 		$title = Title::makeTitle( NS_CATEGORY, 'SomeCategory' );
 		$page = WikiPage::factory( $title );
 		$this->assertEquals( WikiCategoryPage::class, get_class( $page ) );
-
-		$title = Title::makeTitle( NS_MAIN, 'SomePage' );
-		$page = WikiPage::factory( $title );
-		$this->assertEquals( WikiPage::class, get_class( $page ) );
 	}
 
 	/**
@@ -1979,6 +2038,7 @@ more stuff
 		$this->hideDeprecated( 'Revision::__construct' );
 		$this->hideDeprecated( 'Revision::getRevisionRecord' );
 		$this->hideDeprecated( 'Revision::getId' );
+		$this->hideDeprecated( 'MediaWiki\Revision\RevisionStore::newMutableRevisionFromArray' );
 
 		$user = $this->getTestSysop()->getUser();
 		$page = $this->createPage( __METHOD__, 'StartText' );
@@ -2014,6 +2074,7 @@ more stuff
 		$this->hideDeprecated( 'Revision::__construct' );
 		$this->hideDeprecated( 'Revision::getRevisionRecord' );
 		$this->hideDeprecated( 'Revision::getId' );
+		$this->hideDeprecated( 'MediaWiki\Revision\RevisionStore::newMutableRevisionFromArray' );
 
 		$user = $this->getTestSysop()->getUser();
 		$page = $this->createPage( __METHOD__, 'StartText' );
@@ -2047,6 +2108,7 @@ more stuff
 		$this->hideDeprecated( 'Revision::__construct' );
 		$this->hideDeprecated( 'Revision::getRevisionRecord' );
 		$this->hideDeprecated( 'WikiPage::updateIfNewerOn' );
+		$this->hideDeprecated( 'MediaWiki\Revision\RevisionStore::newMutableRevisionFromArray' );
 
 		$user = $this->getTestSysop()->getUser();
 		$page = $this->createPage( __METHOD__, 'StartText' );
@@ -2085,6 +2147,7 @@ more stuff
 		$this->hideDeprecated( 'Revision::__construct' );
 		$this->hideDeprecated( 'Revision::getRevisionRecord' );
 		$this->hideDeprecated( 'WikiPage::updateIfNewerOn' );
+		$this->hideDeprecated( 'MediaWiki\Revision\RevisionStore::newMutableRevisionFromArray' );
 
 		$user = $this->getTestSysop()->getUser();
 		$page = $this->createPage( __METHOD__, 'StartText' );
@@ -2570,7 +2633,7 @@ more stuff
 
 		$this->setTemporaryHook(
 			'WikiPageFactory',
-			function ( $title, &$page ) use ( &$isCalled, $expectedWikiPage ) {
+			static function ( $title, &$page ) use ( &$isCalled, $expectedWikiPage ) {
 				$page = $expectedWikiPage;
 				$isCalled = true;
 
@@ -2584,4 +2647,5 @@ more stuff
 		$this->assertTrue( $isCalled );
 		$this->assertSame( $expectedWikiPage, $wikiPage );
 	}
+
 }

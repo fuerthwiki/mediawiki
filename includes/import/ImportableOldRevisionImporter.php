@@ -68,13 +68,14 @@ class ImportableOldRevisionImporter implements OldRevisionImporter {
 		$this->wikiPageFactory = $wikiPageFactory ?? MediaWikiServices::getInstance()->getWikiPageFactory();
 	}
 
+	/** @inheritDoc */
 	public function import( ImportableOldRevision $importableRevision, $doUpdates = true ) {
 		$dbw = $this->loadBalancer->getConnectionRef( DB_MASTER );
 
 		# Sneak a single revision into place
 		$user = $importableRevision->getUserObj() ?: User::newFromName( $importableRevision->getUser() );
 		if ( $user ) {
-			$userId = intval( $user->getId() );
+			$userId = $user->getId();
 			$userText = $user->getName();
 		} else {
 			$userId = 0;

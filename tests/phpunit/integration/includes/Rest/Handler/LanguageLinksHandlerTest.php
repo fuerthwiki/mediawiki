@@ -6,9 +6,11 @@ use MediaWiki\Config\ServiceOptions;
 use MediaWiki\Interwiki\ClassicInterwikiLookup;
 use MediaWiki\Languages\LanguageNameUtils;
 use MediaWiki\MediaWikiServices;
+use MediaWiki\Page\PageIdentity;
 use MediaWiki\Rest\Handler\LanguageLinksHandler;
 use MediaWiki\Rest\LocalizedHttpException;
 use MediaWiki\Rest\RequestData;
+use MockTitleTrait;
 use Title;
 use Wikimedia\Message\MessageValue;
 
@@ -20,6 +22,7 @@ use Wikimedia\Message\MessageValue;
 class LanguageLinksHandlerTest extends \MediaWikiIntegrationTestCase {
 
 	use HandlerTestTrait;
+	use MockTitleTrait;
 
 	public function addDBData() {
 		$defaults = [
@@ -57,7 +60,6 @@ class LanguageLinksHandlerTest extends \MediaWikiIntegrationTestCase {
 		return new LanguageLinksHandler(
 			$services->getDBLoadBalancer(),
 			$languageNameUtils,
-			$this->makeMockPermissionManager(),
 			$titleCodec,
 			$titleCodec
 		);
@@ -153,7 +155,10 @@ class LanguageLinksHandlerTest extends \MediaWikiIntegrationTestCase {
 		$this->expectExceptionObject(
 			new LocalizedHttpException( new MessageValue( 'rest-permission-denied-title' ), 403 )
 		);
-		$this->executeHandler( $handler, $request, [ 'userCan' => false ] );
+		$this->executeHandler( $handler, $request, [ 'userCan' => false ], [], [], [],
+			$this->mockAnonAuthority( static function ( string $permission, ?PageIdentity $target ) {
+				return $target && !preg_match( '/Forbidden/', $target->getDBkey() );
+			} ) );
 	}
 
 }

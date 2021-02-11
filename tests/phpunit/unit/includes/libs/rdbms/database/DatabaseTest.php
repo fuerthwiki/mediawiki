@@ -185,7 +185,7 @@ class DatabaseTest extends PHPUnit\Framework\TestCase {
 		$db->clearFlag( DBO_TRX );
 		$called = false;
 		$flagSet = null;
-		$callback = function ( $trigger, IDatabase $db ) use ( &$flagSet, &$called ) {
+		$callback = static function ( $trigger, IDatabase $db ) use ( &$flagSet, &$called ) {
 			$called = true;
 			$flagSet = $db->getFlag( DBO_TRX );
 		};
@@ -208,7 +208,7 @@ class DatabaseTest extends PHPUnit\Framework\TestCase {
 
 		$db->clearFlag( DBO_TRX );
 		$db->onTransactionCommitOrIdle(
-			function ( $trigger, IDatabase $db ) {
+			static function ( $trigger, IDatabase $db ) {
 				$db->setFlag( DBO_TRX );
 			},
 			__METHOD__
@@ -237,7 +237,7 @@ class DatabaseTest extends PHPUnit\Framework\TestCase {
 
 		$called = false;
 		$flagSet = null;
-		$callback = function () use ( $db, &$flagSet, &$called ) {
+		$callback = static function () use ( $db, &$flagSet, &$called ) {
 			$called = true;
 			$flagSet = $db->getFlag( DBO_TRX );
 		};
@@ -268,7 +268,7 @@ class DatabaseTest extends PHPUnit\Framework\TestCase {
 
 		$db->setFlag( DBO_TRX );
 		try {
-			$db->onTransactionCommitOrIdle( function () {
+			$db->onTransactionCommitOrIdle( static function () {
 				throw new RuntimeException( 'test' );
 			} );
 			$this->fail( "Exception not thrown" );
@@ -290,7 +290,7 @@ class DatabaseTest extends PHPUnit\Framework\TestCase {
 
 		$called = false;
 		$db->onTransactionPreCommitOrIdle(
-			function ( IDatabase $db ) use ( &$called ) {
+			static function ( IDatabase $db ) use ( &$called ) {
 				$called = true;
 			},
 			__METHOD__
@@ -300,7 +300,7 @@ class DatabaseTest extends PHPUnit\Framework\TestCase {
 		$db->begin( __METHOD__ );
 		$called = false;
 		$db->onTransactionPreCommitOrIdle(
-			function ( IDatabase $db ) use ( &$called ) {
+			static function ( IDatabase $db ) use ( &$called ) {
 				$called = true;
 			},
 			__METHOD__
@@ -331,7 +331,7 @@ class DatabaseTest extends PHPUnit\Framework\TestCase {
 		$this->assertFalse( $lb->hasMasterChanges() );
 		$this->assertTrue( $db->getFlag( DBO_TRX ), 'DBO_TRX is set' );
 		$called = false;
-		$callback = function ( IDatabase $db ) use ( &$called ) {
+		$callback = static function ( IDatabase $db ) use ( &$called ) {
 			$called = true;
 		};
 		$db->onTransactionPreCommitOrIdle( $callback, __METHOD__ );
@@ -369,7 +369,7 @@ class DatabaseTest extends PHPUnit\Framework\TestCase {
 		$db->clearFlag( DBO_TRX );
 		$db->begin( __METHOD__ );
 		$called = false;
-		$db->onTransactionResolution( function ( $trigger, IDatabase $db ) use ( &$called ) {
+		$db->onTransactionResolution( static function ( $trigger, IDatabase $db ) use ( &$called ) {
 			$called = true;
 			$db->setFlag( DBO_TRX );
 		} );
@@ -380,7 +380,7 @@ class DatabaseTest extends PHPUnit\Framework\TestCase {
 		$db->clearFlag( DBO_TRX );
 		$db->begin( __METHOD__ );
 		$called = false;
-		$db->onTransactionResolution( function ( $trigger, IDatabase $db ) use ( &$called ) {
+		$db->onTransactionResolution( static function ( $trigger, IDatabase $db ) use ( &$called ) {
 			$called = true;
 			$db->setFlag( DBO_TRX );
 		} );
@@ -395,7 +395,7 @@ class DatabaseTest extends PHPUnit\Framework\TestCase {
 	public function testTransactionListener() {
 		$db = $this->db;
 
-		$db->setTransactionListener( 'ping', function () use ( $db, &$called ) {
+		$db->setTransactionListener( 'ping', static function () use ( $db, &$called ) {
 			$called = true;
 		} );
 
@@ -428,6 +428,7 @@ class DatabaseTest extends PHPUnit\Framework\TestCase {
 	 * that assert behaviour when the name is a mismatch, we need to
 	 * catch the error here instead of there).
 	 *
+	 * @param string[] $methods
 	 * @return Database
 	 */
 	private function getMockDB( $methods = [] ) {
@@ -460,6 +461,10 @@ class DatabaseTest extends PHPUnit\Framework\TestCase {
 		$wdb->connLogger = new \Psr\Log\NullLogger();
 		$wdb->queryLogger = new \Psr\Log\NullLogger();
 		$wdb->replLogger = new \Psr\Log\NullLogger();
+		$wdb->errorLogger = static function ( Throwable $e ) {
+		};
+		$wdb->deprecationLogger = static function ( $msg ) {
+		};
 		$wdb->currentDomain = DatabaseDomain::newUnspecified();
 		return $db;
 	}
@@ -780,7 +785,7 @@ class DatabaseTest extends PHPUnit\Framework\TestCase {
 	 * @covers Database::executeQuery()
 	 * @covers Database::assertIsWritableMaster()
 	 */
-	public function testShouldRejectPersistentWriteQueryOnReplicaDatabaseConnection(): void {
+	public function testShouldRejectPersistentWriteQueryOnReplicaDatabaseConnection() {
 		$this->expectException( DBReadOnlyRoleError::class );
 		$this->expectDeprecationMessage( 'Server is configured as a read-only replica database.' );
 
@@ -796,7 +801,7 @@ class DatabaseTest extends PHPUnit\Framework\TestCase {
 	 * @covers Database::executeQuery()
 	 * @covers Database::assertIsWritableMaster()
 	 */
-	public function testShouldAcceptTemporaryTableOperationsOnReplicaDatabaseConnection(): void {
+	public function testShouldAcceptTemporaryTableOperationsOnReplicaDatabaseConnection() {
 		$dbr = new DatabaseTestHelper(
 			__CLASS__ . '::' . $this->getName(),
 			[ 'topologyRole' => Database::ROLE_STREAMING_REPLICA ]
@@ -820,7 +825,7 @@ class DatabaseTest extends PHPUnit\Framework\TestCase {
 	 * @covers Database::executeQuery()
 	 * @covers Database::assertIsWritableMaster()
 	 */
-	public function testShouldRejectPseudoPermanentTemporaryTableOperationsOnReplicaDatabaseConnection(): void {
+	public function testShouldRejectPseudoPermanentTemporaryTableOperationsOnReplicaDatabaseConnection() {
 		$this->expectException( DBReadOnlyRoleError::class );
 		$this->expectDeprecationMessage( 'Server is configured as a read-only replica database.' );
 
@@ -840,7 +845,7 @@ class DatabaseTest extends PHPUnit\Framework\TestCase {
 	 * @covers Database::executeQuery()
 	 * @covers Database::assertIsWritableMaster()
 	 */
-	public function testShouldAcceptWriteQueryOnPrimaryDatabaseConnection(): void {
+	public function testShouldAcceptWriteQueryOnPrimaryDatabaseConnection() {
 		$dbr = new DatabaseTestHelper(
 			__CLASS__ . '::' . $this->getName(),
 			[ 'topologyRole' => Database::ROLE_STREAMING_MASTER ]
@@ -855,7 +860,7 @@ class DatabaseTest extends PHPUnit\Framework\TestCase {
 	 * @covers Database::executeQuery()
 	 * @covers Database::assertIsWritableMaster()
 	 */
-	public function testShouldRejectWriteQueryOnPrimaryDatabaseConnectionWhenReplicaQueryRoleFlagIsSet(): void {
+	public function testShouldRejectWriteQueryOnPrimaryDatabaseConnectionWhenReplicaQueryRoleFlagIsSet() {
 		$this->expectException( DBReadOnlyRoleError::class );
 		$this->expectDeprecationMessage( 'Cannot write; target role is DB_REPLICA' );
 

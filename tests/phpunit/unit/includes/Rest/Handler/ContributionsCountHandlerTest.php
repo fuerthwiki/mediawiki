@@ -7,16 +7,16 @@ use MediaWiki\Rest\LocalizedHttpException;
 use MediaWiki\Rest\RequestData;
 use MediaWiki\Rest\RequestInterface;
 use MediaWiki\Revision\ContributionsLookup;
+use MediaWiki\User\UserIdentityValue;
 use MediaWiki\User\UserNameUtils;
 use PHPUnit\Framework\MockObject\MockObject;
-use RequestContext;
 use Wikimedia\Message\MessageValue;
 
 /**
  * @covers \MediaWiki\Rest\Handler\ContributionsCountHandler
  */
 class ContributionsCountHandlerTest extends \MediaWikiUnitTestCase {
-	use ContributionsTestTrait;
+
 	use HandlerTestTrait;
 
 	private function newHandler( $numContributions = 5 ) {
@@ -31,7 +31,7 @@ class ContributionsCountHandlerTest extends \MediaWikiUnitTestCase {
 		);
 
 		$mockUserNameUtils->method( 'isIP' )
-			->willReturnCallback( function ( $name ) {
+			->willReturnCallback( static function ( $name ) {
 				return $name === '127.0.0.1';
 			} );
 
@@ -58,28 +58,27 @@ class ContributionsCountHandlerTest extends \MediaWikiUnitTestCase {
 	}
 
 	/**
-	 * @param RequestInterface $request
 	 * @dataProvider provideTestThatParametersAreHandledCorrectly
 	 */
 	public function testThatParametersAreHandledCorrectly( RequestInterface $request, $mode ) {
 		$mockContributionsLookup = $this->createNoOpMock( ContributionsLookup::class,
 			[ 'getContributionCount' ]
 		);
-		$user = $this->makeMockUser( false );
-		RequestContext::getMain()->setUser( $user );
+		$username = $request->getPathParams()['user'] ?? null;
+		$user = $username ? new UserIdentityValue( 42, $username, 24 ) : null;
 
 		$tag = $request->getQueryParams()['tag'] ?? null;
 		$mockContributionsLookup->method( 'getContributionCount' )
-			->with( $user, $user, $tag )
+			->with( $user, $this->anything(), $tag )
 			->willReturn( 123 );
 
 		$handler = $this->newHandler( 5 );
-		$username = $request->getPathParams()['user'] ?? null;
 		$validatedParams = [
-			'user' => $username ? $this->makeMockUser( $username ) : null,
+			'user' => $user,
 			'tag' => $tag ?? null,
 		];
-		$response = $this->executeHandler( $handler, $request, [ 'mode' => $mode ], [], $validatedParams );
+		$response = $this->executeHandler( $handler, $request, [ 'mode' => $mode ], [], $validatedParams, [],
+			$mode === 'me' ? $this->mockRegisteredUltimateAuthority() : null );
 
 		$this->assertSame( 200, $response->getStatusCode() );
 	}
@@ -88,13 +87,12 @@ class ContributionsCountHandlerTest extends \MediaWikiUnitTestCase {
 		$handler = $this->newHandler();
 		$request = new RequestData( [] );
 		$validatedParams = [ 'user' => null, 'tag' => null ];
-		$user = $this->makeMockUser( '127.0.0.1' );
-		RequestContext::getMain()->setUser( $user );
 
 		$this->expectExceptionObject(
 			new LocalizedHttpException( new MessageValue( 'rest-permission-denied-anon' ), 401 )
 		);
-		$this->executeHandler( $handler, $request, [ 'mode' => 'me' ], [], $validatedParams );
+		$this->executeHandler( $handler, $request, [ 'mode' => 'me' ], [], $validatedParams, [],
+			$this->mockAnonUltimateAuthority() );
 	}
 
 	public function provideThatResponseConformsToSchema() {
@@ -112,14 +110,13 @@ class ContributionsCountHandlerTest extends \MediaWikiUnitTestCase {
 		$request = new RequestData( $config );
 		$username = $request->getPathParams()['user'] ?? null;
 		$validatedParams = [
-			'user' => $this->makeMockUser( $username ),
+			'user' => $username ? new UserIdentityValue( 42, $username, 24 ) : null,
 			'tag' => null
 		];
-		$user = $this->makeMockUser( 'Betty' );
-		RequestContext::getMain()->setUser( $user );
 
 		$response = $this->executeHandlerAndGetBodyData(
-			$handler, $request, [ 'mode' => $mode ], [], $validatedParams
+			$handler, $request, [ 'mode' => $mode ], [], $validatedParams, [],
+				$this->mockRegisteredUltimateAuthority()
 		);
 
 		$this->assertSame( $expectedResponse, $response );
@@ -130,11 +127,8 @@ class ContributionsCountHandlerTest extends \MediaWikiUnitTestCase {
 		$handler = $this->newHandler();
 		$request = new RequestData( [ 'pathParams' => [ 'user' => $username ] ] );
 
-		$user = $this->makeMockUser( 'Betty' );
-		RequestContext::getMain()->setUser( $user );
-
 		$validatedParams = [
-			'user' => $this->makeMockUser( $username ),
+			'user' => new UserIdentityValue( 0, $username, 0 ),
 			'tag' => null
 		];
 
@@ -149,11 +143,9 @@ class ContributionsCountHandlerTest extends \MediaWikiUnitTestCase {
 		$ipAddr = '127.0.0.1';
 		$request = new RequestData( [ 'pathParams' => [ 'user' => $ipAddr ] ] );
 		$validatedParams = [
-			'user' => $this->makeMockUser( $ipAddr ),
+			'user' => new UserIdentityValue( 0, $ipAddr, 0 ),
 			'tag' => null
 		];
-		$user = $this->makeMockUser( 'Betty' );
-		RequestContext::getMain()->setUser( $user );
 
 		$data = $this->executeHandlerAndGetBodyData( $handler, $request, [ 'mode' => 'user' ], [], $validatedParams );
 		$this->assertArrayHasKey( 'count', $data );

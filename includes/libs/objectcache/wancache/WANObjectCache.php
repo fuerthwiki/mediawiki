@@ -183,13 +183,13 @@ class WANObjectCache implements
 	/** @var int Minimum key age, in seconds, for expected time-till-refresh to be considered */
 	private const AGE_NEW = 60;
 
-	/** @var int Idiom for getWithSetCallback() meaning "no cache stampede mutex required" */
+	/** @var int Idiom for getWithSetCallback() meaning "no cache stampede mutex" */
 	private const TSE_NONE = -1;
 
 	/** @var int Idiom for set()/getWithSetCallback() meaning "no post-expiration persistence" */
-	private const STALE_TTL_NONE = 0;
+	public const STALE_TTL_NONE = 0;
 	/** @var int Idiom for set()/getWithSetCallback() meaning "no post-expiration grace period" */
-	private const GRACE_TTL_NONE = 0;
+	public const GRACE_TTL_NONE = 0;
 	/** @var int Idiom for delete()/touchCheckKey() meaning "no hold-off period" */
 	public const HOLDOFF_TTL_NONE = 0;
 	/** @var int Alias for HOLDOFF_TTL_NONE (b/c) (deprecated since 1.34) */
@@ -344,6 +344,12 @@ class WANObjectCache implements
 		$this->setLogger( $params['logger'] ?? new NullLogger() );
 		$this->stats = $params['stats'] ?? new NullStatsdDataFactory();
 		$this->asyncHandler = $params['asyncHandler'] ?? null;
+
+		$this->cache->registerWrapperInfoForStats(
+			'WANCache',
+			'wanobjectcache',
+			[ __CLASS__, 'getCollectionFromKey' ]
+		);
 	}
 
 	/**
@@ -654,7 +660,7 @@ class WANObjectCache implements
 	 *      Default: null
 	 *   - walltime: How long the value took to generate in seconds. Default: null
 	 * @codingStandardsIgnoreStart
-	 * @phan-param array{lag?:int,since?:int,pending?:bool,lockTSE?:int,staleTTL?:int,creating?:bool,version?:?string,walltime?:int|float} $opts
+	 * @phan-param array{lag?:int,since?:int,pending?:bool,lockTSE?:int,staleTTL?:int,creating?:bool,version?:int,walltime?:int|float} $opts
 	 * @codingStandardsIgnoreEnd
 	 * @note Options added in 1.28: staleTTL
 	 * @note Options added in 1.33: creating
@@ -1089,6 +1095,9 @@ class WANObjectCache implements
 	 *   - a) Pass $key into $checkKeys
 	 *   - b) Use touchCheckKey( $key ) instead of delete( $key )
 	 *
+	 * This applies cache server I/O stampede protection against duplicate cache sets.
+	 * This is important when the callback is slow and/or yields large values for a key.
+	 *
 	 * Example usage (typical key):
 	 * @code
 	 *     $catInfo = $cache->getWithSetCallback(
@@ -1269,29 +1278,23 @@ class WANObjectCache implements
 	 *      is useful if thousands or millions of keys depend on the same entity. The entity can
 	 *      simply have its "check" key updated whenever the entity is modified.
 	 *      Default: [].
-	 *   - graceTTL: If the key is invalidated (by "checkKeys"/"touchedCallback") less than this
-	 *      many seconds ago, consider reusing the stale value. The odds of a refresh becomes
+	 *   - graceTTL: If the key is invalidated (by "checkKeys" or "touchedCallback") less than
+	 *      this many seconds ago, consider reusing the stale value. The odds of a refresh become
 	 *      more likely over time, becoming certain once the grace period is reached. This can
 	 *      reduce traffic spikes when millions of keys are compared to the same "check" key and
 	 *      touchCheckKey() or resetCheckKey() is called on that "check" key. This option is not
 	 *      useful for avoiding traffic spikes in the case of the key simply expiring on account
 	 *      of its TTL (use "lowTTL" instead).
 	 *      Default: WANObjectCache::GRACE_TTL_NONE.
-	 *   - lockTSE: If the key is tombstoned or invalidated (by "checkKeys"/"touchedCallback")
-	 *      less than this many seconds ago, try to have a single thread handle cache regeneration
-	 *      at any given time. Other threads will use stale values if possible. If, on miss,
-	 *      the time since expiration is low, the assumption is that the key is hot and that a
-	 *      stampede is worth avoiding. Note that if the key falls out of cache then concurrent
-	 *      threads will all run the callback on cache miss until the value is saved in cache.
-	 *      The only stampede protection in that case is from duplicate cache sets when the
-	 *      callback is slow and/or yields large values; consider using "busyValue" if such
-	 *      stampedes are a problem (e.g. high query load). Note that the higher "lockTSE" is
-	 *      set, the higher the worst-case staleness of returned values can be. Also note that
-	 *      this option does not by itself handle the case of the key simply expiring on account
-	 *      of its TTL, so make sure that "lowTTL" is not disabled when using this option. Avoid
-	 *      combining this option with delete() as it can always cause a stampede due to their
-	 *      being no stale value available until after a thread completes the callback.
-	 *      Use WANObjectCache::TSE_NONE to disable this logic.
+	 *   - lockTSE: Prefer the use of a mutex during value regeneration of the key if its TSE
+	 *      ("time since expiry") is less than the given number of seconds ago. The TSE is
+	 *      influenced by deletion, invalidation (e.g. by "checkKeys" or "touchedCallback"),
+	 *      and various other options (e.g. "staleTTL"). A low enough TSE is assumed to indicate
+	 *      a high enough key access rate to justify stampede avoidance. A thread that tries and
+	 *      fails to acquire the mutex will use a stale value for the key, if there is one, and,
+	 *      if not, it will execute the callback. Note that no cache value exists after deletion
+	 *      or storage-layer expiration/eviction; to prevent stampedes during these cases, avoid
+	 *      using delete(), keep "lowTTL" enabled, and consider using "busyValue".
 	 *      Default: WANObjectCache::TSE_NONE.
 	 *   - busyValue: Specify a placeholder value to use when no value exists and another thread
 	 *      is currently regenerating it. This assures that cache stampedes cannot happen if the
@@ -1681,6 +1684,29 @@ class WANObjectCache implements
 		}
 
 		return $fullKey;
+	}
+
+	/**
+	 * @param string $sisterKey Sister key from makeSisterKey()
+	 * @return string Key collection name
+	 * @internal For use by WANObjectCache/BagOStuff only
+	 * @since 1.36
+	 */
+	public static function getCollectionFromKey( string $sisterKey ) {
+		if ( substr( $sisterKey, -4 ) === '|#|v' ) {
+			// Key style: "WANCache:<base key>|#|<character>"
+			$collection = substr( $sisterKey, 9, strcspn( $sisterKey, ':|', 9 ) );
+		} elseif ( substr( $sisterKey, -3 ) === '}:v' ) {
+			// Key style: "WANCache:{<base key>}:<character>"
+			$collection = substr( $sisterKey, 10, strcspn( $sisterKey, ':}', 10 ) );
+		} elseif ( substr( $sisterKey, 9, 2 ) === 'v:' ) {
+			// Old key style: "WANCache:<character>:<base key>"
+			$collection = substr( $sisterKey, 11, strcspn( $sisterKey, ':', 11 ) );
+		} else {
+			$collection = 'internal';
+		}
+
+		return $collection;
 	}
 
 	/**
@@ -2160,25 +2186,31 @@ class WANObjectCache implements
 	}
 
 	/**
-	 * @see BagOStuff::makeKey()
-	 * @param string $class Key collection name
-	 * @param string|int ...$components Key components (starting with a key collection name)
-	 * @return string Colon-delimited list of $keyspace followed by escaped components
+	 * Make a cache key for the global keyspace and given components
+	 *
+	 * @see IStoreKeyEncoder::makeGlobalKey()
+	 *
+	 * @param string $collection Key collection name component
+	 * @param string|int ...$components Additional, ordered, key components for entity IDs
+	 * @return string Colon-separated, keyspace-prepended, ordered list of encoded components
 	 * @since 1.27
 	 */
-	public function makeKey( $class, ...$components ) {
-		return $this->cache->makeKey( ...func_get_args() );
+	public function makeGlobalKey( $collection, ...$components ) {
+		return $this->cache->makeGlobalKey( ...func_get_args() );
 	}
 
 	/**
-	 * @see BagOStuff::makeGlobalKey()
-	 * @param string $class Key collection name
-	 * @param string|int ...$components Key components (starting with a key collection name)
-	 * @return string Colon-delimited list of $keyspace followed by escaped components
+	 * Make a cache key using the "global" keyspace for the given components
+	 *
+	 * @see IStoreKeyEncoder::makeKey()
+	 *
+	 * @param string $collection Key collection name component
+	 * @param string|int ...$components Additional, ordered, key components for entity IDs
+	 * @return string Colon-separated, keyspace-prepended, ordered list of encoded components
 	 * @since 1.27
 	 */
-	public function makeGlobalKey( $class, ...$components ) {
-		return $this->cache->makeGlobalKey( ...func_get_args() );
+	public function makeKey( $collection, ...$components ) {
+		return $this->cache->makeKey( ...func_get_args() );
 	}
 
 	/**
@@ -2535,7 +2567,17 @@ class WANObjectCache implements
 		$func = $this->asyncHandler;
 		$func( function () use ( $key, $ttl, $callback, $opts, $cbParams ) {
 			$opts['minAsOf'] = INF;
-			$this->fetchOrRegenerate( $key, $ttl, $callback, $opts, $cbParams );
+			try {
+				$this->fetchOrRegenerate( $key, $ttl, $callback, $opts, $cbParams );
+			} catch ( Exception $e ) {
+				// Log some context for easier debugging
+				$this->logger->error( 'Async refresh failed for {key}', [
+					'key' => $key,
+					'ttl' => $ttl,
+					'exception' => $e
+				] );
+				throw $e;
+			}
 		} );
 
 		return true;
@@ -2777,7 +2819,7 @@ class WANObjectCache implements
 	}
 
 	/**
-	 * @param string $key String of the format <scope>:<class>[:<class or variable>]...
+	 * @param string $key String of the format <scope>:<collection>[:<constant or variable>]...
 	 * @return string A collection name to describe this class of key
 	 */
 	private function determineKeyClassForStats( $key ) {

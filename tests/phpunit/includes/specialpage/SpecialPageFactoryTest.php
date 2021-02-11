@@ -34,7 +34,7 @@ class SpecialPageFactoryTest extends MediaWikiIntegrationTestCase {
 		$count = 0;
 		$this->mergeMwGlobalArrayValue( 'wgHooks', [
 			'SpecialPage_initList' => [
-				function () use ( &$count ) {
+				static function () use ( &$count ) {
 					$count++;
 				}
 		] ] );
@@ -53,7 +53,7 @@ class SpecialPageFactoryTest extends MediaWikiIntegrationTestCase {
 
 		return [
 			'class name' => [ 'SpecialAllPages', false ],
-			'closure' => [ function () {
+			'closure' => [ static function () {
 				return new SpecialAllPages();
 			}, false ],
 			'function' => [ [ $this, 'newSpecialAllPages' ], false ],
@@ -148,7 +148,7 @@ class SpecialPageFactoryTest extends MediaWikiIntegrationTestCase {
 		// Catch the warnings we expect to be raised
 		$warnings = [];
 		$this->setMwGlobals( 'wgDevelopmentWarnings', true );
-		set_error_handler( function ( $errno, $errstr ) use ( &$warnings ) {
+		set_error_handler( static function ( $errno, $errstr ) use ( &$warnings ) {
 			if ( preg_match( '/First alias \'[^\']*\' for .*/', $errstr ) ||
 				preg_match( '/Did not find a usable alias for special page .*/', $errstr )
 			) {
@@ -265,7 +265,7 @@ class SpecialPageFactoryTest extends MediaWikiIntegrationTestCase {
 		$called = false;
 		$this->mergeMwGlobalArrayValue( 'wgHooks', [
 			'SpecialPage_initList' => [
-				function () use ( &$called ) {
+				static function () use ( &$called ) {
 					MediaWikiServices::getInstance()
 						->getSpecialPageFactory()
 						->getLocalNameFor( 'Specialpages' );
@@ -285,7 +285,7 @@ class SpecialPageFactoryTest extends MediaWikiIntegrationTestCase {
 
 		$this->setMwGlobals( 'wgSpecialPages',
 			[ 'TestPage' => [
-				'factory' => function ( $spf ) use ( &$type ) {
+				'factory' => static function ( $spf ) use ( &$type ) {
 					$type = get_class( $spf );
 
 					return new class() extends SpecialPage {

@@ -1,8 +1,5 @@
 <?php
 
-define( 'NS_UNITTEST', 5600 );
-define( 'NS_UNITTEST_TALK', 5601 );
-
 use MediaWiki\Block\CompositeBlock;
 use MediaWiki\Block\DatabaseBlock;
 use MediaWiki\Block\Restriction\NamespaceRestriction;
@@ -11,6 +8,7 @@ use MediaWiki\Block\SystemBlock;
 use MediaWiki\Interwiki\ClassicInterwikiLookup;
 use MediaWiki\MediaWikiServices;
 use MediaWiki\User\UserIdentityValue;
+use Wikimedia\Assert\PreconditionException;
 use Wikimedia\TestingAccessWrapper;
 
 /**
@@ -153,7 +151,7 @@ class UserTest extends MediaWikiIntegrationTestCase {
 		$this->assertNotContains( 'nukeworld', $rights, 'sanity check' );
 
 		// Add a hook manipulating the rights
-		$this->setTemporaryHook( 'UserGetRights', function ( $user, &$rights ) {
+		$this->setTemporaryHook( 'UserGetRights', static function ( $user, &$rights ) {
 			$rights[] = 'nukeworld';
 			$rights = array_diff( $rights, [ 'writetest' ] );
 		} );
@@ -578,7 +576,7 @@ class UserTest extends MediaWikiIntegrationTestCase {
 		$this->assertFalse( $this->user->checkPasswordValidity( $this->user->getName() )->isGood() );
 		$this->assertTrue( $this->user->checkPasswordValidity( $this->user->getName() )->isOK() );
 
-		$this->setTemporaryHook( 'isValidPassword', function ( $password, &$result, $user ) {
+		$this->setTemporaryHook( 'isValidPassword', static function ( $password, &$result, $user ) {
 			$result = 'isValidPassword returned false';
 			return false;
 		} );
@@ -589,7 +587,7 @@ class UserTest extends MediaWikiIntegrationTestCase {
 
 		$this->removeTemporaryHook( 'isValidPassword' );
 
-		$this->setTemporaryHook( 'isValidPassword', function ( $password, &$result, $user ) {
+		$this->setTemporaryHook( 'isValidPassword', static function ( $password, &$result, $user ) {
 			$result = true;
 			return true;
 		} );
@@ -600,7 +598,7 @@ class UserTest extends MediaWikiIntegrationTestCase {
 
 		$this->removeTemporaryHook( 'isValidPassword' );
 
-		$this->setTemporaryHook( 'isValidPassword', function ( $password, &$result, $user ) {
+		$this->setTemporaryHook( 'isValidPassword', static function ( $password, &$result, $user ) {
 			$result = 'isValidPassword returned true';
 			return true;
 		} );
@@ -734,7 +732,7 @@ class UserTest extends MediaWikiIntegrationTestCase {
 		$this->assertTrue( $user->isLoggedIn() ); // Deprecated wrapper method
 		$this->assertFalse( $user->isAnon() );
 
-		$this->setTemporaryHook( 'UserLogout', function ( &$user ) {
+		$this->setTemporaryHook( 'UserLogout', static function ( &$user ) {
 			return false;
 		} );
 		$user->logout();
@@ -895,26 +893,37 @@ class UserTest extends MediaWikiIntegrationTestCase {
 		$this->assertNull( $this->user->getBlock() );
 	}
 
+	public function provideIsPingLimitable() {
+		yield 'Not ip excluded' => [ [], null, true ];
+		yield 'Ip excluded' => [ [ '1.2.3.4' ], null, false ];
+		yield 'Ip subnet excluded' => [ [ '1.2.3.0/8' ], null, false ];
+		yield 'noratelimit right' => [ [], 'noratelimit', false ];
+	}
+
 	/**
+	 * @dataProvider provideIsPingLimitable
 	 * @covers User::isPingLimitable
+	 * @param array $rateLimitExcludeIps
+	 * @param string|null $rightOverride
+	 * @param bool $expected
 	 */
-	public function testIsPingLimitable() {
+	public function testIsPingLimitable(
+		array $rateLimitExcludeIps,
+		?string $rightOverride,
+		bool $expected
+	) {
 		$request = new FauxRequest();
 		$request->setIP( '1.2.3.4' );
 		$user = User::newFromSession( $request );
+		// We are trying to test for current user behaviour
+		// since we are interested in request IP
+		RequestContext::getMain()->setUser( $user );
 
-		$this->setMwGlobals( 'wgRateLimitsExcludedIPs', [] );
-		$this->assertTrue( $user->isPingLimitable() );
-
-		$this->setMwGlobals( 'wgRateLimitsExcludedIPs', [ '1.2.3.4' ] );
-		$this->assertFalse( $user->isPingLimitable() );
-
-		$this->setMwGlobals( 'wgRateLimitsExcludedIPs', [ '1.2.3.0/8' ] );
-		$this->assertFalse( $user->isPingLimitable() );
-
-		$this->setMwGlobals( 'wgRateLimitsExcludedIPs', [] );
-		$this->overrideUserPermissions( $user, 'noratelimit' );
-		$this->assertFalse( $user->isPingLimitable() );
+		$this->setMwGlobals( 'wgRateLimitsExcludedIPs', $rateLimitExcludeIps );
+		if ( $rightOverride ) {
+			$this->overrideUserPermissions( $user, $rightOverride );
+		}
+		$this->assertSame( $expected, $user->isPingLimitable() );
 	}
 
 	public function provideExperienceLevel() {
@@ -1058,6 +1067,53 @@ class UserTest extends MediaWikiIntegrationTestCase {
 		$user2 = User::newFromActorId( $user->getActorId() );
 		$this->assertSame( $user->getName(), $user2->getName(),
 			'User::newFromActorId works for an anonymous user' );
+	}
+
+	/**
+	 * @covers User::getActorId
+	 */
+	public function testForeignGetActorId() {
+		$user = User::newFromName( 'UserTestActorId1' );
+		$this->expectException( PreconditionException::class );
+		$user->getActorId( 'Foreign Wiki' );
+	}
+
+	/**
+	 * @covers User::getUserId
+	 */
+	public function testGetUserId() {
+		$id = '88888888';
+		$user = User::newFromId( $id );
+
+		$this->assertEquals( $id, $user->getUserId(),
+			'Can get user ID for user passing no parameter' );
+
+		$this->assertEquals( $id, $user->getUserId( User::LOCAL ),
+			'Can get user ID for user passing local wiki' );
+
+		$this->expectException( PreconditionException::class );
+		$user->getUserId( 'Foreign Wiki' );
+	}
+
+	/**
+	 * @covers User::getWikiId
+	 */
+	public function testGetWiki() {
+		$user = User::newFromName( 'UserTestActorId1' );
+		$this->assertSame( User::LOCAL, $user->getWikiId() );
+	}
+
+	/**
+	 * @covers User::assertWiki
+	 */
+	public function testAssertWiki() {
+		$user = User::newFromName( 'UserTestActorId1' );
+
+		$user->assertWiki( User::LOCAL );
+		$this->assertTrue( true, 'User is for local wiki' );
+
+		$this->expectException( PreconditionException::class );
+		$user->assertWiki( 'Foreign Wiki' );
 	}
 
 	/**
@@ -1563,7 +1619,7 @@ class UserTest extends MediaWikiIntegrationTestCase {
 	 */
 	public function testGetFirstLatestEditTimestamp() {
 		$clock = MWTimestamp::convert( TS_UNIX, '20100101000000' );
-		MWTimestamp::setFakeTime( function () use ( &$clock ) {
+		MWTimestamp::setFakeTime( static function () use ( &$clock ) {
 			return $clock += 1000;
 		} );
 		try {
@@ -1599,8 +1655,8 @@ class UserTest extends MediaWikiIntegrationTestCase {
 	 * @covers User::idFromName
 	 */
 	public function testExistingIdFromName() {
-		$this->assertTrue(
-			array_key_exists( $this->user->getName(), User::$idCacheByName ),
+		$this->assertArrayHasKey(
+			$this->user->getName(), User::$idCacheByName,
 			'Test user should already be in the id cache.'
 		);
 		$this->assertSame(
@@ -1617,13 +1673,13 @@ class UserTest extends MediaWikiIntegrationTestCase {
 	 * @covers User::idFromName
 	 */
 	public function testNonExistingIdFromName() {
-		$this->assertFalse(
-			array_key_exists( 'NotExisitngUser', User::$idCacheByName ),
+		$this->assertArrayNotHasKey(
+			'NotExisitngUser', User::$idCacheByName,
 			'Non exisitng user should not be in the id cache.'
 		);
 		$this->assertNull( User::idFromName( 'NotExisitngUser' ) );
-		$this->assertTrue(
-			array_key_exists( 'NotExisitngUser', User::$idCacheByName ),
+		$this->assertArrayHasKey(
+			'NotExisitngUser', User::$idCacheByName,
 			'Username will be cached when requested once.'
 		);
 		$this->assertNull( User::idFromName( 'NotExistingUser' ) );
@@ -1746,7 +1802,7 @@ class UserTest extends MediaWikiIntegrationTestCase {
 	public function testGetDefaultOptions() {
 		$this->resetServices();
 
-		$this->setTemporaryHook( 'UserGetDefaultOptions', function ( &$defaults ) {
+		$this->setTemporaryHook( 'UserGetDefaultOptions', static function ( &$defaults ) {
 			$defaults['extraoption'] = 42;
 		} );
 
@@ -1866,7 +1922,7 @@ class UserTest extends MediaWikiIntegrationTestCase {
 		$this->assertTrue( $user->addGroup( 'test2' ) );
 		$this->assertArrayEquals( [ 'test', 'test2' ], $user->getGroups() );
 
-		$this->setTemporaryHook( 'UserAddGroup', function ( $user, &$group, &$expiry ) {
+		$this->setTemporaryHook( 'UserAddGroup', static function ( $user, &$group, &$expiry ) {
 			return false;
 		} );
 		$this->assertFalse( $user->addGroup( 'test3' ) );
@@ -1891,7 +1947,7 @@ class UserTest extends MediaWikiIntegrationTestCase {
 			'A group membership that does not exist cannot be removed'
 		);
 
-		$this->setTemporaryHook( 'UserRemoveGroup', function ( $user, &$group ) {
+		$this->setTemporaryHook( 'UserRemoveGroup', static function ( $user, &$group ) {
 			return false;
 		} );
 
@@ -2058,7 +2114,7 @@ class UserTest extends MediaWikiIntegrationTestCase {
 
 		$this->removeTemporaryHook( 'UserSetEmail' );
 
-		$this->setTemporaryHook( 'UserSetEmail', function ( $user, &$email ) {
+		$this->setTemporaryHook( 'UserSetEmail', static function ( $user, &$email ) {
 			$email = 'SettingIntercepted@mediawiki.org';
 		} );
 		$user->setEmail( 'NewEmail@mediawiki.org' );
@@ -2068,7 +2124,7 @@ class UserTest extends MediaWikiIntegrationTestCase {
 			'Hooks can override setting email addresses'
 		);
 
-		$this->setTemporaryHook( 'UserGetEmail', function ( $user, &$email ) {
+		$this->setTemporaryHook( 'UserGetEmail', static function ( $user, &$email ) {
 			$email = 'GettingIntercepted@mediawiki.org';
 		} );
 		$this->assertSame(
@@ -2163,7 +2219,7 @@ class UserTest extends MediaWikiIntegrationTestCase {
 		$user->saveSettings();
 
 		$this->filterDeprecated( '/UserRequiresHTTPS hook/' );
-		$this->setTemporaryHook( 'UserRequiresHTTPS', function ( $user, &$https ) use ( $hook1 ) {
+		$this->setTemporaryHook( 'UserRequiresHTTPS', static function ( $user, &$https ) use ( $hook1 ) {
 			$https = $hook1;
 			return false;
 		} );
@@ -2314,7 +2370,7 @@ class UserTest extends MediaWikiIntegrationTestCase {
 		// Hook leaves $result false
 		$this->setTemporaryHook(
 			'PingLimiter',
-			function ( &$user, $action, &$result, $incrBy ) {
+			static function ( &$user, $action, &$result, $incrBy ) {
 				return false;
 			}
 		);
@@ -2327,7 +2383,7 @@ class UserTest extends MediaWikiIntegrationTestCase {
 		// Hook sets $result to true
 		$this->setTemporaryHook(
 			'PingLimiter',
-			function ( &$user, $action, &$result, $incrBy ) {
+			static function ( &$user, $action, &$result, $incrBy ) {
 				$result = true;
 				return false;
 			}
@@ -2367,7 +2423,7 @@ class UserTest extends MediaWikiIntegrationTestCase {
 		ObjectCache::$instances[$wgMainCacheType] = $cache;
 
 		$cache->setMockTime( $cacheTime ); // this is a reference!
-		MWTimestamp::setFakeTime( function () use ( &$appTime ) {
+		MWTimestamp::setFakeTime( static function () use ( &$appTime ) {
 			return (int)$appTime;
 		} );
 
@@ -2405,7 +2461,7 @@ class UserTest extends MediaWikiIntegrationTestCase {
 		ObjectCache::$instances[$wgMainCacheType] = $cache;
 
 		$cache->setMockTime( $fakeTime ); // this is a reference!
-		MWTimestamp::setFakeTime( function () use ( &$fakeTime ) {
+		MWTimestamp::setFakeTime( static function () use ( &$fakeTime ) {
 			return (int)$fakeTime;
 		} );
 
@@ -2436,7 +2492,7 @@ class UserTest extends MediaWikiIntegrationTestCase {
 		$access = TestingAccessWrapper::newFromObject( $user );
 		$access->mRequest = $req;
 		$access->mId = $id;
-		$access->setItemLoaded( 'id' );
+		$access->mLoadedItems = true;
 
 		$this->overrideUserPermissions( $user, [
 			'noratelimit' => false,
@@ -2592,7 +2648,7 @@ class UserTest extends MediaWikiIntegrationTestCase {
 		// Make sure time progresses between revisions.
 		// MediaWikiIntegrationTestCase automatically restores the real clock.
 		$clock = MWTimestamp::time();
-		MWTimestamp::setFakeTime( function () use ( &$clock ) {
+		MWTimestamp::setFakeTime( static function () use ( &$clock ) {
 			return ++$clock;
 		} );
 
@@ -2620,7 +2676,7 @@ class UserTest extends MediaWikiIntegrationTestCase {
 		);
 
 		$mockCentralIdLookup->method( 'centralIdFromLocalUser' )
-			->willReturnCallback( function ( User $user ) {
+			->willReturnCallback( static function ( User $user ) {
 				return $user->getId() % 100;
 			} );
 
@@ -2628,7 +2684,7 @@ class UserTest extends MediaWikiIntegrationTestCase {
 			'wgCentralIdLookupProvider' => 'test',
 			'wgCentralIdLookupProviders' => [
 				'test' => [
-					'factory' => function () use ( $mockCentralIdLookup ) {
+					'factory' => static function () use ( $mockCentralIdLookup ) {
 						return $mockCentralIdLookup;
 					}
 				]
@@ -2643,5 +2699,26 @@ class UserTest extends MediaWikiIntegrationTestCase {
 	public function testBadUserID() {
 		$user = User::newFromId( 999999999 );
 		$this->assertSame( 'Unknown user', $user->getName() );
+	}
+
+	/**
+	 * @covers User::probablyCan
+	 * @covers User::definitelyCan
+	 * @covers User::authorizeRead
+	 * @covers User::authorizeWrite
+	 */
+	public function testAuthorityMethods() {
+		$user = $this->getTestUser()->getUser();
+		$page = Title::makeTitle( NS_MAIN, 'Test' );
+		$this->assertFalse( $user->probablyCan( 'create', $page ) );
+		$this->assertFalse( $user->definitelyCan( 'create', $page ) );
+		$this->assertFalse( $user->authorizeRead( 'create', $page ) );
+		$this->assertFalse( $user->authorizeWrite( 'create', $page ) );
+
+		$this->overrideUserPermissions( $user, 'createpage' );
+		$this->assertTrue( $user->probablyCan( 'create', $page ) );
+		$this->assertTrue( $user->definitelyCan( 'create', $page ) );
+		$this->assertTrue( $user->authorizeRead( 'create', $page ) );
+		$this->assertTrue( $user->authorizeWrite( 'create', $page ) );
 	}
 }

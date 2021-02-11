@@ -10,7 +10,7 @@ use MediaWiki\Storage\EditResult;
 use MediaWiki\Storage\EditResultBuilder;
 use MediaWiki\Storage\PageUpdateException;
 use MediaWikiUnitTestCase;
-use Title;
+use MockTitleTrait;
 use Wikimedia\Rdbms\ILoadBalancer;
 
 /**
@@ -19,6 +19,7 @@ use Wikimedia\Rdbms\ILoadBalancer;
  * @see EditResultBuilderDbTest for integration tests with the database
  */
 class EditResultBuilderTest extends MediaWikiUnitTestCase {
+	use MockTitleTrait;
 
 	/**
 	 * @covers \MediaWiki\Storage\EditResultBuilder::buildEditResult
@@ -133,8 +134,8 @@ class EditResultBuilderTest extends MediaWikiUnitTestCase {
 	/**
 	 * Test the case where the edit restored the page exactly to a previous state.
 	 *
-	 * @covers       \MediaWiki\Storage\EditResult
-	 * @covers       \MediaWiki\Storage\EditResultBuilder
+	 * @covers \MediaWiki\Storage\EditResult
+	 * @covers \MediaWiki\Storage\EditResultBuilder
 	 * @dataProvider provideEnabledSoftwareTagsForRollback
 	 *
 	 * @param string[] $changeTags
@@ -325,7 +326,7 @@ class EditResultBuilderTest extends MediaWikiUnitTestCase {
 	 */
 	private function getDummyRevision() : MutableRevisionRecord {
 		return new MutableRevisionRecord(
-			$this->createMock( Title::class )
+			$this->makeMockTitle( 'Dummy' )
 		);
 	}
 

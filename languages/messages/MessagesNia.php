@@ -10,11 +10,9 @@
 $namespaceNames = [
 	NS_MEDIA            => 'Media',
 	NS_SPECIAL          => 'Si_tohude',
-	NS_MAIN             => '',
 	NS_TALK             => 'Huhuo',
 	NS_USER             => 'Sangoguna',
 	NS_USER_TALK        => 'Huhuo_zangoguna',
-	# NS_PROJECT set by $wgMetaNamespace
 	NS_PROJECT_TALK     => 'Huhuo_$1',
 	NS_FILE             => 'Berkas',
 	NS_FILE_TALK        => 'Huhuo_berkas',

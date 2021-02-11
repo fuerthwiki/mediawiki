@@ -177,7 +177,7 @@ class ApiDeleteTest extends ApiTestCase {
 		$this->editPage( $name, 'Some text' );
 
 		$this->setTemporaryHook( 'ArticleDelete',
-			function () {
+			static function () {
 				return false;
 			}
 		);
@@ -212,7 +212,7 @@ class ApiDeleteTest extends ApiTestCase {
 
 	public function testDeleteUnwatch() {
 		$name = 'Help:' . ucfirst( __FUNCTION__ );
-		$user = self::$users['sysop']->getUser();
+		$user = $this->getTestSysop()->getUser();
 
 		$this->editPage( $name, 'Some text' );
 		$this->assertTrue( Title::newFromText( $name )->exists() );

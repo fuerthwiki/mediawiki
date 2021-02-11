@@ -26,6 +26,8 @@ class EntryPoint {
 	private $context;
 	/** @var CorsUtils */
 	private $cors;
+	/** @var ?RequestInterface */
+	private static $mainRequest;
 
 	/**
 	 * @param IContextSource $context
@@ -40,17 +42,16 @@ class EntryPoint {
 		$services = MediaWikiServices::getInstance();
 		$conf = $services->getMainConfig();
 
+		$authority = $context->getAuthority();
 		$authorizer = new CompoundAuthorizer();
 		$authorizer
-			->addAuthorizer( new MWBasicAuthorizer( $context->getUser(),
-				$services->getPermissionManager() ) )
+			->addAuthorizer( new MWBasicAuthorizer( $authority ) )
 			->addAuthorizer( $cors );
 
 		$objectFactory = $services->getObjectFactory();
 		$restValidator = new Validator( $objectFactory,
-			$services->getPermissionManager(),
 			$request,
-			RequestContext::getMain()->getUser()
+			$authority
 		);
 
 		// Always include the "official" routes. Include additional routes if specified.
@@ -71,10 +72,24 @@ class EntryPoint {
 			$services->getLocalServerObjectCache(),
 			$responseFactory,
 			$authorizer,
+			$authority,
 			$objectFactory,
 			$restValidator,
 			$services->getHookContainer()
 		) )->setCors( $cors );
+	}
+
+	/**
+	 * @return ?RequestInterface The RequestInterface object used by this entry point.
+	 */
+	public static function getMainRequest(): ?RequestInterface {
+		if ( self::$mainRequest === null ) {
+			$conf = MediaWikiServices::getInstance()->getMainConfig();
+			self::$mainRequest = new RequestFromGlobals( [
+				'cookiePrefix' => $conf->get( 'CookiePrefix' )
+			] );
+		}
+		return self::$mainRequest;
 	}
 
 	public static function main() {
@@ -91,10 +106,6 @@ class EntryPoint {
 		$services = MediaWikiServices::getInstance();
 		$conf = $services->getMainConfig();
 
-		$request = new RequestFromGlobals( [
-			'cookiePrefix' => $conf->get( 'CookiePrefix' )
-		] );
-
 		$responseFactory = new ResponseFactory( self::getTextFormatters( $services ) );
 
 		$cors = new CorsUtils(
@@ -104,6 +115,8 @@ class EntryPoint {
 			$responseFactory,
 			$context->getUser()
 		);
+
+		$request = self::getMainRequest();
 
 		$router = self::createRouter( $context, $request, $responseFactory, $cors );
 

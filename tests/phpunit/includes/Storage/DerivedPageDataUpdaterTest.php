@@ -515,7 +515,7 @@ class DerivedPageDataUpdaterTest extends MediaWikiIntegrationTestCase {
 	 */
 	public function testGetPreparedEditAfterPrepareUpdate() {
 		$clock = MWTimestamp::convert( TS_UNIX, '20100101000000' );
-		MWTimestamp::setFakeTime( function () use ( &$clock ) {
+		MWTimestamp::setFakeTime( static function () use ( &$clock ) {
 			return $clock++;
 		} );
 
@@ -556,7 +556,7 @@ class DerivedPageDataUpdaterTest extends MediaWikiIntegrationTestCase {
 
 		$this->assertNotEmpty( $dataUpdates );
 
-		$linksUpdates = array_filter( $dataUpdates, function ( $du ) {
+		$linksUpdates = array_filter( $dataUpdates, static function ( $du ) {
 			return $du instanceof LinksUpdate;
 		} );
 		$this->assertCount( 1, $linksUpdates );
@@ -592,7 +592,7 @@ class DerivedPageDataUpdaterTest extends MediaWikiIntegrationTestCase {
 
 		$this->mergeMwGlobalArrayValue(
 			'wgContentHandlers', [
-				$name => function () use ( $handler ){
+				$name => static function () use ( $handler ){
 					return $handler;
 				}
 			]
@@ -659,7 +659,7 @@ class DerivedPageDataUpdaterTest extends MediaWikiIntegrationTestCase {
 
 		$this->assertNotEmpty( $dataUpdates );
 
-		$updateNames = array_map( function ( $du ) {
+		$updateNames = array_map( static function ( $du ) {
 			return isset( $du->_name ) ? $du->_name : get_class( $du );
 		}, $dataUpdates );
 
@@ -862,25 +862,16 @@ class DerivedPageDataUpdaterTest extends MediaWikiIntegrationTestCase {
 	/**
 	 * @dataProvider provideIsReusableFor
 	 * @covers \MediaWiki\Storage\DerivedPageDataUpdater::isReusableFor()
-	 *
-	 * @param User|null $prepUser
-	 * @param RevisionRecord|null $prepRevision
-	 * @param RevisionSlotsUpdate|null $prepUpdate
-	 * @param User|null $forUser
-	 * @param RevisionRecord|null $forRevision
-	 * @param RevisionSlotsUpdate|null $forUpdate
-	 * @param int|null $forParent
-	 * @param bool $isReusable
 	 */
 	public function testIsReusableFor(
-		User $prepUser = null,
-		RevisionRecord $prepRevision = null,
-		RevisionSlotsUpdate $prepUpdate = null,
-		User $forUser = null,
-		RevisionRecord $forRevision = null,
-		RevisionSlotsUpdate $forUpdate = null,
-		$forParent = null,
-		$isReusable = null
+		?User $prepUser,
+		?RevisionRecord $prepRevision,
+		?RevisionSlotsUpdate $prepUpdate,
+		?User $forUser,
+		?RevisionRecord $forRevision,
+		?RevisionSlotsUpdate $forUpdate,
+		$forParent,
+		$isReusable
 	) {
 		$updater = $this->getDerivedPageDataUpdater( __METHOD__ );
 
@@ -944,11 +935,6 @@ class DerivedPageDataUpdaterTest extends MediaWikiIntegrationTestCase {
 	/**
 	 * @dataProvider provideIsCountable
 	 *
-	 * @param string $articleCountMethod
-	 * @param string $wikitextContent
-	 * @param int $revisionVisibility
-	 * @param bool $isCountable
-	 * @throws \MWException
 	 * @covers \MediaWiki\Storage\DerivedPageDataUpdater::isCountable
 	 */
 	public function testIsCountable(
@@ -1133,9 +1119,6 @@ class DerivedPageDataUpdaterTest extends MediaWikiIntegrationTestCase {
 	 * @covers \MediaWiki\Storage\DerivedPageDataUpdater::doUpdates
 	 * @covers \MediaWiki\Storage\DerivedPageDataUpdater::maybeEnqueueRevertedTagUpdateJob
 	 * @dataProvider provideEnqueueRevertedTagUpdateJob
-	 *
-	 * @param bool $approved
-	 * @param int $queueSize
 	 */
 	public function testEnqueueRevertedTagUpdateJob( bool $approved, int $queueSize ) {
 		$page = $this->getPage( __METHOD__ );

@@ -90,7 +90,6 @@ class PageHTMLHandlerTest extends MediaWikiIntegrationTestCase {
 				'RightsUrl' => 'https://example.com/rights',
 				'RightsText' => 'some rights',
 			] ),
-			$this->getServiceContainer()->getPermissionManager(),
 			$this->getServiceContainer()->getRevisionLookup(),
 			$this->getServiceContainer()->getTitleFormatter(),
 			$this->getServiceContainer()->getTitleFactory(),
@@ -273,8 +272,6 @@ class PageHTMLHandlerTest extends MediaWikiIntegrationTestCase {
 
 	/**
 	 * @dataProvider provideHandlesParsoidError
-	 * @param Exception $parsoidException
-	 * @param Exception $expectedException
 	 */
 	public function testHandlesParsoidError(
 		Exception $parsoidException,

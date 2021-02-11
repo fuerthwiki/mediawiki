@@ -57,6 +57,7 @@ class ParserTestRunner {
 		'parserTests.txt',
 		'pfeqParserTests.txt',
 		'extraParserTests.txt',
+		'legacyMediaParserTests.txt',
 	];
 
 	/**
@@ -187,7 +188,7 @@ class ParserTestRunner {
 		global $wgParserTestFiles;
 
 		// Add core test files
-		$files = array_map( function ( $item ) {
+		$files = array_map( static function ( $item ) {
 			return __DIR__ . "/$item";
 		}, self::$coreTestFiles );
 
@@ -294,7 +295,7 @@ class ParserTestRunner {
 		$setup['wgDisableLangConversion'] = false;
 		$setup['wgDisableTitleConversion'] = false;
 		$setup['wgUsePigLatinVariant'] = false;
-		$reset = function () {
+		$reset = static function () {
 			// Reset to follow changes to $wgDisable*Conversion
 			MediaWikiServices::getInstance()->resetServiceForTesting( 'LanguageConverterFactory' );
 		};
@@ -318,7 +319,7 @@ class ParserTestRunner {
 				return $this->createRepoGroup();
 			}
 		);
-		$teardown[] = function () {
+		$teardown[] = static function () {
 			MediaWikiServices::getInstance()->resetServiceForTesting( 'RepoGroup' );
 		};
 
@@ -330,7 +331,7 @@ class ParserTestRunner {
 			'name' => 'nullLockManager',
 			'class' => NullLockManager::class,
 		] ];
-		$reset = function () {
+		$reset = static function () {
 			MediaWikiServices::getInstance()->resetServiceForTesting( 'LockManagerGroupFactory' );
 		};
 		$setup[] = $reset;
@@ -344,7 +345,7 @@ class ParserTestRunner {
 
 		// This is essential and overrides disabling of database messages in TestSetup
 		$setup['wgUseDatabaseMessages'] = true;
-		$reset = function () {
+		$reset = static function () {
 			MediaWikiServices::getInstance()->resetServiceForTesting( 'MessageCache' );
 		};
 		$setup[] = $reset;
@@ -361,7 +362,7 @@ class ParserTestRunner {
 		} );
 
 		$this->hideDeprecated( 'Hooks::clear' );
-		$teardown[] = function () {
+		$teardown[] = static function () {
 			Hooks::clear( 'ParserGetVariableValueTs' );
 		};
 
@@ -374,12 +375,12 @@ class ParserTestRunner {
 		MediaWikiServices::getInstance()->disableService( 'MediaHandlerFactory' );
 		MediaWikiServices::getInstance()->redefineService(
 			'MediaHandlerFactory',
-			function ( MediaWikiServices $services ) {
+			static function ( MediaWikiServices $services ) {
 				$handlers = $services->getMainConfig()->get( 'ParserTestMediaHandlers' );
 				return new MediaHandlerFactory( $handlers );
 			}
 		);
-		$teardown[] = function () {
+		$teardown[] = static function () {
 			MediaWikiServices::getInstance()->resetServiceForTesting( 'MediaHandlerFactory' );
 		};
 
@@ -391,7 +392,7 @@ class ParserTestRunner {
 		if ( isset( ObjectCache::$instances[CACHE_DB] ) ) {
 			$savedCache = ObjectCache::$instances[CACHE_DB];
 			ObjectCache::$instances[CACHE_DB] = new HashBagOStuff;
-			$teardown[] = function () use ( $savedCache ) {
+			$teardown[] = static function () use ( $savedCache ) {
 				ObjectCache::$instances[CACHE_DB] = $savedCache;
 			};
 		}
@@ -411,7 +412,7 @@ class ParserTestRunner {
 		];
 		// Changing wgExtraNamespaces invalidates caches in NamespaceInfo and any live Language
 		// object, both on setup and teardown
-		$reset = function () {
+		$reset = static function () {
 			MediaWikiServices::getInstance()->resetServiceForTesting( 'NamespaceInfo' );
 			MediaWikiServices::getInstance()->getContentLanguage()->resetNamespaces();
 		};
@@ -575,6 +576,8 @@ class ParserTestRunner {
 	 * isn't used because it doesn't alter the result of
 	 * Interwiki::getAllPrefixes() and so is incompatible with some users,
 	 * including Parsoid.)
+	 * @param array &$setup
+	 * @param array &$teardown
 	 */
 	private function appendInterwikiSetup( &$setup, &$teardown ) {
 		static $testInterwikis = [
@@ -662,7 +665,7 @@ class ParserTestRunner {
 		$setup['wgInterwikiScopes'] = $GLOBAL_SCOPE;
 		$setup['wgInterwikiCache'] =
 			ClassicInterwikiLookup::buildCdbHash( $testInterwikis, $GLOBAL_SCOPE );
-		$reset = function () {
+		$reset = static function () {
 			// Reset the service in case any other tests already cached some prefixes.
 			MediaWikiServices::getInstance()->resetServiceForTesting( 'InterwikiLookup' );
 		};
@@ -874,7 +877,7 @@ class ParserTestRunner {
 
 			$oldCallback = $options->getCurrentRevisionRecordCallback();
 			$options->setCurrentRevisionRecordCallback(
-				function ( Title $t, $parser = null ) use ( $title, $revRecord, $oldCallback ) {
+				static function ( Title $t, $parser = null ) use ( $title, $revRecord, $oldCallback ) {
 					if ( $t->equals( $title ) ) {
 						return $revRecord;
 					} else {
@@ -935,7 +938,7 @@ class ParserTestRunner {
 		$teardownGuard = $this->perTestSetup( $test );
 		[ $title, $options, $revId ] = $this->setupParserOptions(
 			(object)$test,
-			function ( $context, $title, $revId, $wikitext ) {
+			static function ( $context, $title, $revId, $wikitext ) {
 				return ParserOptions::newFromContext( $context );
 			}
 		);
@@ -946,12 +949,12 @@ class ParserTestRunner {
 		if ( isset( $opts['styletag'] ) ) {
 			// For testing the behavior of <style> (including those deduplicated
 			// into <link> tags), add tag hooks to allow them to be generated.
-			$parser->setHook( 'style', function ( $content, $attributes, $parser ) {
+			$parser->setHook( 'style', static function ( $content, $attributes, $parser ) {
 				$marker = Parser::MARKER_PREFIX . '-style-' . md5( $content ) . Parser::MARKER_SUFFIX;
 				$parser->mStripState->addNoWiki( $marker, $content );
 				return Html::inlineStyle( $marker, 'all', $attributes );
 			} );
-			$parser->setHook( 'link', function ( $content, $attributes, $parser ) {
+			$parser->setHook( 'link', static function ( $content, $attributes, $parser ) {
 				return Html::element( 'link', $attributes );
 			} );
 		}
@@ -1103,7 +1106,7 @@ class ParserTestRunner {
 		$teardownGuard = $this->perTestSetup( $test );
 		[ $title, $options, $revId ] = $this->setupParserOptions(
 			$test,
-			function ( $context, $title, $revId, $wikitext ) use ( $pageConfigFactory, &$pageConfig ) {
+			static function ( $context, $title, $revId, $wikitext ) use ( $pageConfigFactory, &$pageConfig ) {
 				$pageConfig = $pageConfigFactory->create(
 					$title,
 					$context->getUser(),
@@ -1249,16 +1252,16 @@ class ParserTestRunner {
 		$lang = MediaWikiServices::getInstance()->getLanguageFactory()->getLanguage( $langCode );
 		$lang->resetNamespaces();
 		$setup['wgContLang'] = $lang;
-		$setup[] = function () use ( $lang ) {
+		$setup[] = static function () use ( $lang ) {
 			MediaWikiServices::getInstance()->disableService( 'ContentLanguage' );
 			MediaWikiServices::getInstance()->redefineService(
 				'ContentLanguage',
-				function () use ( $lang ) {
+				static function () use ( $lang ) {
 					return $lang;
 				}
 			);
 		};
-		$teardown[] = function () {
+		$teardown[] = static function () {
 			MediaWikiServices::getInstance()->resetServiceForTesting( 'ContentLanguage' );
 		};
 		$reset = function () {
@@ -1295,7 +1298,7 @@ class ParserTestRunner {
 		$context->setSkin( $skinFactory->makeSkin( $skin ) );
 		$context->setOutput( new OutputPage( $context ) );
 		$setup['wgOut'] = $context->getOutput();
-		$teardown[] = function () use ( $context, $oldSkin ) {
+		$teardown[] = static function () use ( $context, $oldSkin ) {
 			// Clear language conversion tables
 			$wrapper = TestingAccessWrapper::newFromObject(
 				MediaWikiServices::getInstance()->getLanguageConverterFactory()
@@ -1353,17 +1356,17 @@ class ParserTestRunner {
 			true // postgres requires that we use temporary tables
 		);
 		MediaWikiIntegrationTestCase::resetNonServiceCaches();
-		$teardown[] = function () {
+		$teardown[] = static function () {
 			MediaWikiIntegrationTestCase::teardownTestDB();
 		};
 
 		MediaWikiIntegrationTestCase::installMockMwServices();
-		$teardown[] = function () {
+		$teardown[] = static function () {
 			MediaWikiIntegrationTestCase::restoreMwServices();
 		};
 
 		// Wipe some DB query result caches on setup and teardown
-		$reset = function () {
+		$reset = static function () {
 			$services = MediaWikiServices::getInstance();
 			$services->getLinkCache()->clear();
 
@@ -1705,14 +1708,14 @@ class ParserTestRunner {
 			$setup['wgLanguageCode'] = 'en';
 			$lang = $services->getLanguageFactory()->getLanguage( 'en' );
 			$setup['wgContLang'] = $lang;
-			$setup[] = function () use ( $lang ) {
+			$setup[] = static function () use ( $lang ) {
 				$services = MediaWikiServices::getInstance();
 				$services->disableService( 'ContentLanguage' );
-				$services->redefineService( 'ContentLanguage', function () use ( $lang ) {
+				$services->redefineService( 'ContentLanguage', static function () use ( $lang ) {
 					return $lang;
 				} );
 			};
-			$teardown[] = function () {
+			$teardown[] = static function () {
 				MediaWikiServices::getInstance()->resetServiceForTesting( 'ContentLanguage' );
 			};
 			$reset = function () {

@@ -34,55 +34,6 @@ class SqliteUpdater extends DatabaseUpdater {
 
 	protected function getCoreUpdateList() {
 		return [
-			// 1.14
-			[ 'addField', 'site_stats', 'ss_active_users', 'patch-ss_active_users.sql' ],
-			[ 'doActiveUsersInit' ],
-			[ 'addField', 'ipblocks', 'ipb_allow_usertalk', 'patch-ipb_allow_usertalk.sql' ],
-			[ 'sqliteInitialIndexes' ],
-
-			// 1.15
-			[ 'addTable', 'change_tag', 'patch-change_tag.sql' ],
-
-			// 1.16
-			[ 'addTable', 'user_properties', 'patch-user_properties.sql' ],
-			[ 'addTable', 'log_search', 'patch-log_search.sql' ],
-			[ 'ifTableNotExists', 'actor',
-				'addField', 'logging', 'log_user_text', 'patch-log_user_text.sql' ],
-			# listed separately from the previous update because 1.16 was released without this update
-			[ 'ifTableNotExists', 'actor', 'doLogUsertextPopulation' ],
-			[ 'doLogSearchPopulation' ],
-			[ 'addTable', 'l10n_cache', 'patch-l10n_cache.sql' ],
-			[ 'dropIndex', 'change_tag', 'ct_rc_id', 'patch-change_tag-indexes.sql' ],
-			[ 'addField', 'redirect', 'rd_interwiki', 'patch-rd_interwiki.sql' ],
-			[ 'sqliteSetupSearchindex' ],
-
-			// 1.17
-			[ 'addTable', 'iwlinks', 'patch-iwlinks.sql' ],
-			[ 'addIndex', 'iwlinks', 'iwl_prefix_title_from', 'patch-rename-iwl_prefix.sql' ],
-			[ 'addField', 'updatelog', 'ul_value', 'patch-ul_value.sql' ],
-			[ 'addField', 'interwiki', 'iw_api', 'patch-iw_api_and_wikiid.sql' ],
-			[ 'dropIndex', 'iwlinks', 'iwl_prefix', 'patch-kill-iwl_prefix.sql' ],
-			[ 'addField', 'categorylinks', 'cl_collation', 'patch-categorylinks-better-collation.sql' ],
-			[ 'addTable', 'module_deps', 'patch-module_deps.sql' ],
-			[ 'dropIndex', 'archive', 'ar_page_revid', 'patch-archive_kill_ar_page_revid.sql' ],
-			[ 'addIndexIfNoneExist',
-				'archive', [ 'ar_revid', 'ar_revid_uniq' ], 'patch-archive_ar_revid.sql' ],
-
-			// 1.18
-			[ 'addIndex', 'user', 'user_email', 'patch-user_email_index.sql' ],
-			[ 'addTable', 'uploadstash', 'patch-uploadstash.sql' ],
-			[ 'addTable', 'user_former_groups', 'patch-user_former_groups.sql' ],
-
-			// 1.19
-			[ 'doMigrateUserOptions' ],
-			[ 'dropField', 'user', 'user_options', 'patch-drop-user_options.sql' ],
-			[ 'addField', 'revision', 'rev_sha1', 'patch-rev_sha1.sql' ],
-			[ 'addField', 'archive', 'ar_sha1', 'patch-ar_sha1.sql' ],
-			[ 'addIndex', 'page', 'page_redirect_namespace_len',
-				'patch-page_redirect_namespace_len.sql' ],
-			[ 'addField', 'uploadstash', 'us_chunk_inx', 'patch-uploadstash_chunk.sql' ],
-			[ 'addfield', 'job', 'job_timestamp', 'patch-jobs-add-timestamp.sql' ],
-
 			// 1.20
 			[ 'ifFieldExists', 'revision', 'rev_user',
 				'addIndex', 'revision', 'page_user_timestamp', 'patch-revision-user-page-index.sql' ],
@@ -325,6 +276,14 @@ class SqliteUpdater extends DatabaseUpdater {
 			[ 'renameIndex', 'sites', 'sites_global_key', 'site_global_key', false, 'patch-sites-rename-indexes.sql' ],
 			[ 'renameIndex', 'logging', 'type_time', 'log_type_time', false, 'patch-logging-rename-indexes.sql' ],
 			[ 'modifyField', 'filearchive', 'fa_name', 'patch-filearchive-fa_name.sql' ],
+			[ 'modifyField', 'oldimage', 'oi_name', 'patch-oldimage-oi_name-varbinary.sql' ],
+			[ 'modifyField', 'objectcache', 'exptime', 'patch-objectcache-exptime-notnull.sql' ],
+			[ 'modifyField', 'ipblocks', 'ipb_timestamp', 'patch-ipblocks-ipb_timestamp-drop-default.sql' ],
+			[ 'renameIndex', 'archive', 'name_title_timestamp', 'ar_name_title_timestamp', false,
+				'patch-archive-rename-name_title_timestamp-index.sql' ],
+			[ 'modifyField', 'image', 'img_name', 'patch-image-img_name-varbinary.sql' ],
+			[ 'renameIndex', 'site_identifiers', 'site_ids_key', 'si_key', false,
+				'patch-site_identifiers-rename-indexes.sql' ],
 		];
 	}
 

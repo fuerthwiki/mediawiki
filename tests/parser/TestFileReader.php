@@ -37,13 +37,13 @@ class TestFileReader {
 		if ( isset( $options['regex'] ) ) {
 			$options['filter'] = [ 'regex' => $options['regex'] ];
 		}
-		$parsoidReader = ParsoidTestFileReader::read( $file, function ( $msg ) {
+		$parsoidReader = ParsoidTestFileReader::read( $file, static function ( $msg ) {
 			wfDeprecatedMsg( $msg, '1.35', false, false );
 		} );
 		$testFormat = intval( $parsoidReader->fileOptions['version'] ?? '1' );
 		if ( $testFormat < 2 ) {
 			throw new MWException(
-				"Support for the parserTest v1 file format was removed in MediaWiki 1.36"
+				"$file needs an update. Support for the parserTest v1 file format was removed in MediaWiki 1.36"
 			);
 		}
 		$tests = [];

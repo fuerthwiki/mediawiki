@@ -22,7 +22,7 @@ class ObjectFactoryMakeContentHandlerWithSpecsToTest extends MediaWikiIntegratio
 	}
 
 	/**
-	 * @covers       \Wikimedia\ObjectFactory::createObject
+	 * @covers \Wikimedia\ObjectFactory::createObject
 	 *
 	 * @param array $handlerSpecs
 	 *
@@ -44,7 +44,7 @@ class ObjectFactoryMakeContentHandlerWithSpecsToTest extends MediaWikiIntegratio
 			'typical list' => [
 				[
 					'ExistClassName' => DummyContentHandlerForTesting::class,
-					'ExistCallbackWithExistClassName' => function ( $modelID ) {
+					'ExistCallbackWithExistClassName' => static function ( $modelID ) {
 						return new DummyContentHandlerForTesting( $modelID );
 					},
 				],
@@ -54,12 +54,9 @@ class ObjectFactoryMakeContentHandlerWithSpecsToTest extends MediaWikiIntegratio
 	}
 
 	/**
-	 * @covers       \Wikimedia\ObjectFactory::createObject
+	 * @covers \Wikimedia\ObjectFactory::createObject
 	 *
 	 * @dataProvider provideHandlerSpecsWithMWException
-	 *
-	 * @param array $handlerSpecs
-	 * @param string $exceptionName
 	 */
 	public function testCreateContentHandlerForModelID_callWithProvider_throwsException(
 		array $handlerSpecs,
@@ -85,13 +82,13 @@ class ObjectFactoryMakeContentHandlerWithSpecsToTest extends MediaWikiIntegratio
 		return [
 			'UnexpectedValueException with wrong specs result' => [
 				[
-					'ExistCallbackWithWrongType' => function () {
+					'ExistCallbackWithWrongType' => static function () {
 						return true;
 					},
-					'ExistCallbackWithNull' => function () {
+					'ExistCallbackWithNull' => static function () {
 						return null;
 					},
-					'ExistCallbackWithEmptyString' => function () {
+					'ExistCallbackWithEmptyString' => static function () {
 						return '';
 					},
 					'WrongClassName' => self::class,
@@ -111,7 +108,7 @@ class ObjectFactoryMakeContentHandlerWithSpecsToTest extends MediaWikiIntegratio
 			],
 			'Error expected' => [
 				[
-					'ExistCallbackWithNotExistClassName' => function () {
+					'ExistCallbackWithNotExistClassName' => static function () {
 						return \ClassNameNotExist();
 					},
 				],

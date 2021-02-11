@@ -305,7 +305,7 @@ class ApiResult implements ApiSerializable {
 					"Conflicting keys ($keys) when attempting to merge element $name"
 				);
 			}
-		} else {
+		} elseif ( $value !== $arr[$name] ) {
 			throw new RuntimeException(
 				"Attempting to add element $name=$value, existing value is {$arr[$name]}"
 			);
@@ -771,11 +771,14 @@ class ApiResult implements ApiSerializable {
 	/**
 	 * Test whether a key should be considered metadata
 	 *
-	 * @param string $key
+	 * @param string|int $key
 	 * @return bool
 	 */
 	public static function isMetadataKey( $key ) {
-		return substr( $key, 0, 1 ) === '_';
+		// Optimization: This is a very hot and highly optimized code path. Note that ord() only
+		// considers the first character and also works with empty strings and integers.
+		// 95 corresponds to the '_' character.
+		return ord( $key ) === 95;
 	}
 
 	/**
@@ -902,94 +905,94 @@ class ApiResult implements ApiSerializable {
 				throw new InvalidArgumentException( __METHOD__ . ': Unknown value for "Strip"' );
 		}
 
-		// Type transformation
-		if ( $transformTypes !== null ) {
-			if ( $defaultType === 'array' && $maxKey !== count( $data ) - 1 ) {
-				$defaultType = 'assoc';
-			}
-
-			// Override type, if provided
-			$type = $defaultType;
-			if ( isset( $metadata[self::META_TYPE] ) && $metadata[self::META_TYPE] !== 'default' ) {
-				$type = $metadata[self::META_TYPE];
-			}
-			if ( ( $type === 'kvp' || $type === 'BCkvp' ) &&
-				empty( $transformTypes['ArmorKVP'] )
-			) {
-				$type = 'assoc';
-			} elseif ( $type === 'BCarray' ) {
-				$type = 'array';
-			} elseif ( $type === 'BCassoc' ) {
-				$type = 'assoc';
-			}
-
-			// Apply transformation
-			switch ( $type ) {
-				case 'assoc':
-					$metadata[self::META_TYPE] = 'assoc';
-					$data += $keepMetadata;
-					return empty( $transformTypes['AssocAsObject'] ) ? $data : (object)$data;
-
-				case 'array':
-					ksort( $data );
-					$data = array_values( $data );
-					$metadata[self::META_TYPE] = 'array';
-					return $data + $keepMetadata;
-
-				case 'kvp':
-				case 'BCkvp':
-					$key = $metadata[self::META_KVP_KEY_NAME] ?? $transformTypes['ArmorKVP'];
-					$valKey = isset( $transforms['BC'] ) ? '*' : 'value';
-					$assocAsObject = !empty( $transformTypes['AssocAsObject'] );
-					$merge = !empty( $metadata[self::META_KVP_MERGE] );
-
-					$ret = [];
-					foreach ( $data as $k => $v ) {
-						if ( $merge && ( is_array( $v ) || is_object( $v ) ) ) {
-							$vArr = (array)$v;
-							if ( isset( $vArr[self::META_TYPE] ) ) {
-								$mergeType = $vArr[self::META_TYPE];
-							} elseif ( is_object( $v ) ) {
-								$mergeType = 'assoc';
-							} else {
-								$keys = array_keys( $vArr );
-								sort( $keys, SORT_NUMERIC );
-								$mergeType = ( $keys === array_keys( $keys ) ) ? 'array' : 'assoc';
-							}
-						} else {
-							$mergeType = 'n/a';
-						}
-						if ( $mergeType === 'assoc' ) {
-							$item = $vArr + [
-								$key => $k,
-							];
-							if ( $strip === 'none' ) {
-								self::setPreserveKeysList( $item, [ $key ] );
-							}
-						} else {
-							$item = [
-								$key => $k,
-								$valKey => $v,
-							];
-							if ( $strip === 'none' ) {
-								$item += [
-									self::META_PRESERVE_KEYS => [ $key ],
-									self::META_CONTENT => $valKey,
-									self::META_TYPE => 'assoc',
-								];
-							}
-						}
-						$ret[] = $assocAsObject ? (object)$item : $item;
-					}
-					$metadata[self::META_TYPE] = 'array';
-
-					return $ret + $keepMetadata;
-
-				default:
-					throw new UnexpectedValueException( "Unknown type '$type'" );
-			}
-		} else {
+		// No type transformation
+		if ( $transformTypes === null ) {
 			return $data + $keepMetadata;
+		}
+
+		if ( $defaultType === 'array' && $maxKey !== count( $data ) - 1 ) {
+			$defaultType = 'assoc';
+		}
+
+		// Override type, if provided
+		$type = $defaultType;
+		if ( isset( $metadata[self::META_TYPE] ) && $metadata[self::META_TYPE] !== 'default' ) {
+			$type = $metadata[self::META_TYPE];
+		}
+		if ( ( $type === 'kvp' || $type === 'BCkvp' ) &&
+			empty( $transformTypes['ArmorKVP'] )
+		) {
+			$type = 'assoc';
+		} elseif ( $type === 'BCarray' ) {
+			$type = 'array';
+		} elseif ( $type === 'BCassoc' ) {
+			$type = 'assoc';
+		}
+
+		// Apply transformation
+		switch ( $type ) {
+			case 'assoc':
+				$metadata[self::META_TYPE] = 'assoc';
+				$data += $keepMetadata;
+				return empty( $transformTypes['AssocAsObject'] ) ? $data : (object)$data;
+
+			case 'array':
+				ksort( $data );
+				$data = array_values( $data );
+				$metadata[self::META_TYPE] = 'array';
+				return $data + $keepMetadata;
+
+			case 'kvp':
+			case 'BCkvp':
+				$key = $metadata[self::META_KVP_KEY_NAME] ?? $transformTypes['ArmorKVP'];
+				$valKey = isset( $transforms['BC'] ) ? '*' : 'value';
+				$assocAsObject = !empty( $transformTypes['AssocAsObject'] );
+				$merge = !empty( $metadata[self::META_KVP_MERGE] );
+
+				$ret = [];
+				foreach ( $data as $k => $v ) {
+					if ( $merge && ( is_array( $v ) || is_object( $v ) ) ) {
+						$vArr = (array)$v;
+						if ( isset( $vArr[self::META_TYPE] ) ) {
+							$mergeType = $vArr[self::META_TYPE];
+						} elseif ( is_object( $v ) ) {
+							$mergeType = 'assoc';
+						} else {
+							$keys = array_keys( $vArr );
+							sort( $keys, SORT_NUMERIC );
+							$mergeType = ( $keys === array_keys( $keys ) ) ? 'array' : 'assoc';
+						}
+					} else {
+						$mergeType = 'n/a';
+					}
+					if ( $mergeType === 'assoc' ) {
+						$item = $vArr + [
+							$key => $k,
+						];
+						if ( $strip === 'none' ) {
+							self::setPreserveKeysList( $item, [ $key ] );
+						}
+					} else {
+						$item = [
+							$key => $k,
+							$valKey => $v,
+						];
+						if ( $strip === 'none' ) {
+							$item += [
+								self::META_PRESERVE_KEYS => [ $key ],
+								self::META_CONTENT => $valKey,
+								self::META_TYPE => 'assoc',
+							];
+						}
+					}
+					$ret[] = $assocAsObject ? (object)$item : $item;
+				}
+				$metadata[self::META_TYPE] = 'array';
+
+				return $ret + $keepMetadata;
+
+			default:
+				throw new UnexpectedValueException( "Unknown type '$type'" );
 		}
 	}
 

@@ -23,9 +23,9 @@ use Wikimedia\Rdbms\MaintainableDBConnRef;
 class RevisionStoreTest extends MediaWikiIntegrationTestCase {
 
 	/**
-	 * @param LoadBalancer $loadBalancer
-	 * @param SqlBlobStore $blobStore
-	 * @param WANObjectCache $WANObjectCache
+	 * @param LoadBalancer|null $loadBalancer
+	 * @param SqlBlobStore|null $blobStore
+	 * @param WANObjectCache|null $WANObjectCache
 	 *
 	 * @return RevisionStore
 	 */
@@ -43,6 +43,7 @@ class RevisionStoreTest extends MediaWikiIntegrationTestCase {
 			MediaWikiServices::getInstance()->getSlotRoleStore(),
 			MediaWikiServices::getInstance()->getSlotRoleRegistry(),
 			MediaWikiServices::getInstance()->getActorMigration(),
+			MediaWikiServices::getInstance()->getActorStore(),
 			$this->getMockContentHandlerFactory(),
 			MediaWikiServices::getInstance()->getHookContainer()
 		);
@@ -70,7 +71,7 @@ class RevisionStoreTest extends MediaWikiIntegrationTestCase {
 	 * @return callable
 	 */
 	private function getMockDBConnRefCallback( ILoadBalancer $mockLoadBalancer, IDatabase $db ) {
-		return function ( $i, $g, $domain, $flg ) use ( $mockLoadBalancer, $db ) {
+		return static function ( $i, $g, $domain, $flg ) use ( $mockLoadBalancer, $db ) {
 			return new MaintainableDBConnRef( $mockLoadBalancer, $db, $i );
 		};
 	}

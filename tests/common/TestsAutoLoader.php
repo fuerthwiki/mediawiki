@@ -33,6 +33,9 @@ $wgAutoloadClasses += [
 	# tests/integration
 	'MWHttpRequestTestCase' => "$testDir/integration/includes/http/MWHttpRequestTestCase.php",
 
+	# tests/exception
+	'TestThrowerDummy' => "$testDir/phpunit/data/exception/TestThrowerDummy.php",
+
 	# tests/parser
 	'DbTestPreviewer' => "$testDir/parser/DbTestPreviewer.php",
 	'DbTestRecorder' => "$testDir/parser/DbTestRecorder.php",
@@ -88,7 +91,6 @@ $wgAutoloadClasses += [
 	'ApiUploadTestCase' => "$testDir/phpunit/includes/api/ApiUploadTestCase.php",
 	'MockApi' => "$testDir/phpunit/includes/api/MockApi.php",
 	'MockApiQueryBase' => "$testDir/phpunit/includes/api/MockApiQueryBase.php",
-	'UserWrapper' => "$testDir/phpunit/includes/api/UserWrapper.php",
 	'RandomImageGenerator' => "$testDir/phpunit/includes/api/RandomImageGenerator.php",
 
 	# tests/phpunit/includes/auth
@@ -174,9 +176,7 @@ $wgAutoloadClasses += [
 
 	# tests/phpunit/includes/Revision
 	'MediaWiki\Tests\Revision\RevisionSlotsTest' => "$testDir/phpunit/includes/Revision/RevisionSlotsTest.php",
-	'MediaWiki\Tests\Revision\RevisionRecordTests' => "$testDir/phpunit/includes/Revision/RevisionRecordTests.php",
 	'MediaWiki\Tests\Revision\RevisionStoreDbTestBase' => "$testDir/phpunit/includes/Revision/RevisionStoreDbTestBase.php",
-	'MediaWiki\Tests\Revision\RevisionStoreRecordTest' => "$testDir/phpunit/includes/Revision/RevisionStoreRecordTest.php",
 
 	# test/phpunit/includes/user
 	'UserOptionsLookupTest' => "$testDir/phpunit/includes/user/UserOptionsLookupTest.php",
@@ -213,6 +213,7 @@ $wgAutoloadClasses += [
 	'MockDjVuHandler' => "$testDir/phpunit/mocks/media/MockDjVuHandler.php",
 	'MockChangesListFilter' => "$testDir/phpunit/mocks/MockChangesListFilter.php",
 	'MockChangesListFilterGroup' => "$testDir/phpunit/mocks/MockChangesListFilterGroup.php",
+	'MockTitleTrait' => "$testDir/phpunit/mocks/MockTitleTrait.php",
 	'MockWebRequest' => "$testDir/phpunit/mocks/MockWebRequest.php",
 	'NullHttpRequestFactory' => "$testDir/phpunit/mocks/NullHttpRequestFactory.php",
 	'NullMultiHttpClient' => "$testDir/phpunit/mocks/NullMultiHttpClient.php",
@@ -235,6 +236,9 @@ $wgAutoloadClasses += [
 	# tests/phpunit/unit/includes/filebackend
 	'FileBackendGroupTestTrait' => "$testDir/phpunit/unit/includes/filebackend/FileBackendGroupTestTrait.php",
 
+	# tests/phpunit/unit/includes/HookContainer
+	'MediaWiki\Tests\HookContainer\HookRunnerTestBase' => "$testDir/phpunit/unit/includes/HookContainer/HookRunnerTestBase.php",
+
 	# tests/phpunit/unit/includes/json
 	'MediaWiki\\Tests\\Json\\JsonUnserializableSuperClass' => "$testDir/phpunit/mocks/json/JsonUnserializableSuperClass.php",
 	'MediaWiki\\Tests\\Json\\JsonUnserializableSubClass' => "$testDir/phpunit/mocks/json/JsonUnserializableSubClass.php",
@@ -250,11 +254,15 @@ $wgAutoloadClasses += [
 	'PasswordTestCase' => "$testDir/phpunit/unit/includes/password/PasswordTestCase.php",
 
 	# tests/phpunit/unit/includes/Rest/Handler
+	'MediaWiki\Tests\Unit\Permissions\MockAuthorityTrait' => "$testDir/phpunit/mocks/permissions/MockAuthorityTrait.php",
 	'MediaWiki\Tests\Rest\Handler\ActionModuleBasedHandlerTestTrait' => "$testDir/phpunit/unit/includes/Rest/Handler/ActionModuleBasedHandlerTestTrait.php",
 	'MediaWiki\Tests\Rest\Handler\HandlerTestTrait' => "$testDir/phpunit/unit/includes/Rest/Handler/HandlerTestTrait.php",
 	'MediaWiki\Tests\Rest\Handler\HelloHandler' => "$testDir/phpunit/unit/includes/Rest/Handler/HelloHandler.php",
 	'MediaWiki\Tests\Rest\Handler\MediaTestTrait' => "$testDir/phpunit/unit/includes/Rest/Handler/MediaTestTrait.php",
-	'MediaWiki\Tests\Rest\Handler\ContributionsTestTrait' => "$testDir/phpunit/unit/includes/Rest/Handler/ContributionsTestTrait.php",
+
+	# tests/phpunit/unit/includes/Revision
+	'MediaWiki\Tests\Unit\Revision\RevisionRecordTests' => "$testDir/phpunit/unit/includes/Revision/RevisionRecordTests.php",
+	'MediaWiki\Tests\Unit\Revision\RevisionStoreRecordTest' => "$testDir/phpunit/unit/includes/Revision/RevisionStoreRecordTest.php",
 
 	# tests/suites
 	'ParserTestFileSuite' => "$testDir/phpunit/suites/ParserTestFileSuite.php",
@@ -272,7 +280,7 @@ $wgAutoloadClasses += [
  * mapping. Once we drop support for PHPUnit 4 this
  * should be considered deprecated and eventually removed.
  */
-spl_autoload_register( function ( $class ) {
+spl_autoload_register( static function ( $class ) {
 	if ( strpos( $class, 'PHPUnit_' ) !== 0 ) {
 		// Skip if it doesn't start with the old prefix
 		return;

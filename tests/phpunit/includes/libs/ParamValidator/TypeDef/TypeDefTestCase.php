@@ -11,16 +11,13 @@ use Wikimedia\ParamValidator\ValidationException;
 /**
  * Test case infrastructure for TypeDef subclasses
  *
- * Generally you'll only need to override static::$testClass and data providers
- * for methods the TypeDef actually implements.
+ * Generally you'll only need to implement self::getInstance() and
+ * data providers methods.
  */
 abstract class TypeDefTestCase extends \PHPUnit\Framework\TestCase {
 
 	/** Standard "$ret" array for provideCheckSettings */
 	protected const STDRET = [ 'issues' => [ 'X' ], 'allowedKeys' => [ 'Y' ], 'messages' => [] ];
-
-	/** @var string|null TypeDef class name being tested */
-	protected static $testClass = null;
 
 	/**
 	 * Create a SimpleCallbacks for testing
@@ -43,13 +40,7 @@ abstract class TypeDefTestCase extends \PHPUnit\Framework\TestCase {
 	 * @param array $options Options array.
 	 * @return TypeDef
 	 */
-	protected function getInstance( SimpleCallbacks $callbacks, array $options ) {
-		if ( static::$testClass === null ) {
-			throw new \LogicException( 'Either assign static::$testClass or override ' . __METHOD__ );
-		}
-
-		return new static::$testClass( $callbacks );
-	}
+	abstract protected function getInstance( SimpleCallbacks $callbacks, array $options );
 
 	/**
 	 * @dataProvider provideValidate
@@ -102,9 +93,6 @@ abstract class TypeDefTestCase extends \PHPUnit\Framework\TestCase {
 
 	/**
 	 * @dataProvider provideNormalizeSettings
-	 * @param array $settings
-	 * @param array $expect
-	 * @param array $options Options array
 	 */
 	public function testNormalizeSettings( array $settings, array $expect, array $options = [] ) {
 		$typeDef = $this->getInstance( new SimpleCallbacks( [] ), $options );
@@ -170,10 +158,6 @@ abstract class TypeDefTestCase extends \PHPUnit\Framework\TestCase {
 
 	/**
 	 * @dataProvider provideStringifyValue
-	 * @param mixed $value
-	 * @param string|null $expect
-	 * @param array $settings
-	 * @param array $options Options array
 	 */
 	public function testStringifyValue( $value, $expect, array $settings = [], array $options = [] ) {
 		$typeDef = $this->getInstance( new SimpleCallbacks( [] ), $options );
@@ -193,10 +177,6 @@ abstract class TypeDefTestCase extends \PHPUnit\Framework\TestCase {
 
 	/**
 	 * @dataProvider provideGetInfo
-	 * @param array $settings
-	 * @param array $expectParamInfo
-	 * @param array $expectHelpInfo
-	 * @param array $options Options array
 	 */
 	public function testGetInfo(
 		array $settings, array $expectParamInfo, array $expectHelpInfo, array $options = []

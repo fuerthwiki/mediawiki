@@ -68,6 +68,8 @@ class PageArchiveTest extends MediaWikiIntegrationTestCase {
 	protected function setUp() : void {
 		parent::setUp();
 
+		$this->hideDeprecated( 'MediaWiki\Revision\RevisionStore::newMutableRevisionFromArray' );
+
 		// First create our dummy page
 		$page = Title::newFromText( 'PageArchiveTest_thePage' );
 		$page = new WikiPage( $page );
@@ -84,7 +86,7 @@ class PageArchiveTest extends MediaWikiIntegrationTestCase {
 		$this->firstRev = $page->getRevisionRecord();
 
 		// Insert IP revision
-		$this->ipEditor = '2001:db8::1';
+		$this->ipEditor = '2001:DB8:0:0:0:0:0:1';
 
 		$revisionStore = MediaWikiServices::getInstance()->getRevisionStore();
 

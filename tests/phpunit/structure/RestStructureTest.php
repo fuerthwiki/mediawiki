@@ -44,7 +44,6 @@ class RestStructureTest extends MediaWikiIntegrationTestCase {
 
 	/**
 	 * @dataProvider providePathParameters
-	 * @param array $spec
 	 */
 	public function testPathParameters( array $spec ) : void {
 		$router = TestingAccessWrapper::newFromObject( $this->getRouter() );
@@ -96,9 +95,6 @@ class RestStructureTest extends MediaWikiIntegrationTestCase {
 
 	/**
 	 * @dataProvider provideParameters
-	 * @param array $spec
-	 * @param string $name
-	 * @param mixed $settings
 	 */
 	public function testParameters( array $spec, string $name, $settings ) : void {
 		static $sources = [ 'path', 'query', 'post' ];
@@ -177,7 +173,7 @@ class RestStructureTest extends MediaWikiIntegrationTestCase {
 			foreach ( $method as $m ) {
 				$key = "{$m} {$spec['path']}";
 
-				$this->assertFalse( array_key_exists( $key, $routes ), "{$key} already exists in routes" );
+				$this->assertArrayNotHasKey( $key, $routes, "{$key} already exists in routes" );
 
 				$routes[$key] = true;
 			}

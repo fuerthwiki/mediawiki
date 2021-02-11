@@ -317,7 +317,7 @@ class MWExceptionHandler {
 
 		$url = WebRequest::getGlobalRequestURL();
 		$msgParts = [
-			'[{exception_id}] {exception_url}   PHP Fatal Error',
+			'[{reqId}] {exception_url}   PHP Fatal Error',
 			( $line || $file ) ? ' from' : '',
 			$line ? " line $line" : '',
 			( $line && $file ) ? ' of' : '',
@@ -341,12 +341,7 @@ TXT;
 
 		$e = new ErrorException( "PHP Fatal Error: {$message}", 0, $level, $file, $line );
 		$logger = LoggerFactory::getInstance( 'exception' );
-		$logger->error( $msg, [
-			'exception' => $e,
-			'exception_id' => WebRequest::getRequestId(),
-			'exception_url' => $url,
-			'caught_by' => self::CAUGHT_BY_HANDLER
-		] );
+		$logger->error( $msg, self::getLogContext( $e, self::CAUGHT_BY_HANDLER ) );
 
 		return false;
 	}
@@ -355,14 +350,15 @@ TXT;
 	 * Generate a string representation of a throwable's stack trace
 	 *
 	 * Like Throwable::getTraceAsString, but replaces argument values with
-	 * argument type or class name.
+	 * their type or class name, and prepends the start line of the throwable.
 	 *
 	 * @param Throwable $e
 	 * @return string
 	 * @see prettyPrintTrace()
 	 */
 	public static function getRedactedTraceAsString( Throwable $e ) {
-		return self::prettyPrintTrace( self::getRedactedTrace( $e ) );
+		$from = 'from ' . $e->getFile() . '(' . $e->getLine() . ')' . "\n";
+		return $from . self::prettyPrintTrace( self::getRedactedTrace( $e ) );
 	}
 
 	/**
@@ -474,8 +470,6 @@ TXT;
 	public static function getLogMessage( Throwable $e ) {
 		$id = WebRequest::getRequestId();
 		$type = get_class( $e );
-		$file = $e->getFile();
-		$line = $e->getLine();
 		$message = $e->getMessage();
 		$url = self::getURL() ?: '[no req]';
 
@@ -485,7 +479,7 @@ TXT;
 				. $message;
 		}
 
-		return "[$id] $url   $type from line $line of $file: $message";
+		return "[$id] $url   $type: $message";
 	}
 
 	/**
@@ -499,11 +493,9 @@ TXT;
 	 */
 	public static function getLogNormalMessage( Throwable $e ) {
 		$type = get_class( $e );
-		$file = $e->getFile();
-		$line = $e->getLine();
 		$message = $e->getMessage();
 
-		return "[{exception_id}] {exception_url}   $type from line $line of $file: $message";
+		return "[{reqId}] {exception_url}   $type: $message";
 	}
 
 	/**
@@ -533,8 +525,14 @@ TXT;
 	public static function getLogContext( Throwable $e, $catcher = self::CAUGHT_BY_OTHER ) {
 		return [
 			'exception' => $e,
-			'exception_id' => WebRequest::getRequestId(),
 			'exception_url' => self::getURL() ?: '[no req]',
+			// The reqId context key use the same familiar name and value as the top-level field
+			// provided by LogstashFormatter. However, formatters are configurable at run-time,
+			// and their top-level fields are logically separate from context keys and cannot be,
+			// substituted in a message, hence set explicitly here. For WMF users, these may feel,
+			// like the same thing due to Monolog V0 handling, which transmits "fields" and "context",
+			// in the same JSON object (after message formatting).
+			'reqId' => WebRequest::getRequestId(),
 			'caught_by' => $catcher
 		];
 	}

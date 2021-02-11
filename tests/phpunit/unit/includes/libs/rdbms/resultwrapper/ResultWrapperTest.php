@@ -25,7 +25,6 @@ use Wikimedia\Rdbms\IDatabase;
 use Wikimedia\Rdbms\ResultWrapper;
 
 /**
- * @group Database
  * @covers \Wikimedia\Rdbms\ResultWrapper
  */
 class ResultWrapperTest extends PHPUnit\Framework\TestCase {
@@ -38,31 +37,29 @@ class ResultWrapperTest extends PHPUnit\Framework\TestCase {
 			->disableOriginalConstructor()
 			->getMock();
 		$db->method( 'select' )->willReturnCallback(
-			function () use ( $db, $rows ) {
+			static function () use ( $db, $rows ) {
 				return new ResultWrapper( $db, $rows );
 			}
 		);
 		$db->method( 'dataSeek' )->willReturnCallback(
-			function ( ResultWrapper $res, $pos ) use ( $db ) {
+			static function ( ResultWrapper $res, $pos ) use ( $db ) {
 				// Position already set in ResultWrapper
 			}
 		);
 		$db->method( 'fetchRow' )->willReturnCallback(
-			function ( ResultWrapper $res ) use ( $db ) {
-				$row = $res::unwrap( $res )[$res->key()] ?? false;
-
-				return $row;
+			static function ( ResultWrapper $res ) use ( $db ) {
+				return $res::unwrap( $res )[$res->key()] ?? false;
 			}
 		);
 		$db->method( 'fetchObject' )->willReturnCallback(
-			function ( ResultWrapper $res ) use ( $db ) {
+			static function ( ResultWrapper $res ) use ( $db ) {
 				$row = $res::unwrap( $res )[$res->key()] ?? false;
 
 				return $row ? (object)$row : false;
 			}
 		);
 		$db->method( 'numRows' )->willReturnCallback(
-			function ( ResultWrapper $res ) use ( $db ) {
+			static function ( ResultWrapper $res ) use ( $db ) {
 				return count( $res::unwrap( $res ) );
 			}
 		);

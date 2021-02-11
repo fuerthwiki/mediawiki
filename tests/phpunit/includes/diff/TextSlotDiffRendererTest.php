@@ -22,7 +22,6 @@ class TextSlotDiffRendererTest extends MediaWikiIntegrationTestCase {
 	 * @param array|null $oldContentArgs To pass to makeContent() (if not null)
 	 * @param array|null $newContentArgs
 	 * @param string|Exception $expectedResult
-	 * @throws Exception
 	 */
 	public function testGetDiff(
 		?array $oldContentArgs, ?array $newContentArgs, $expectedResult
@@ -105,7 +104,7 @@ class TextSlotDiffRendererTest extends MediaWikiIntegrationTestCase {
 
 	/**
 	 * Convert a HTML diff to a human-readable format and hopefully make the test less fragile.
-	 * @param string diff
+	 * @param string $diff
 	 * @return string
 	 */
 	private function getPlainDiff( $diff ) {

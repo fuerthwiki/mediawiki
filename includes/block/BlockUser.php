@@ -36,6 +36,7 @@ use RevisionDeleteUser;
 use Status;
 use Title;
 use User;
+use Wikimedia\Timestamp\ConvertibleTimestamp;
 
 /**
  * Handles the backend logic of blocking users
@@ -151,6 +152,9 @@ class BlockUser {
 
 	/** @var string[] */
 	private $tags = [];
+
+	/** @var int|null */
+	private $logDeletionFlags;
 
 	/**
 	 * @param ServiceOptions $options
@@ -280,6 +284,14 @@ class BlockUser {
 	}
 
 	/**
+	 * @unstable This method might be removed without prior notice (see T271101)
+	 * @param int $flags One of LogPage::* constants
+	 */
+	public function setLogDeletionFlags( int $flags ) : void {
+		$this->logDeletionFlags = $flags;
+	}
+
+	/**
 	 * Convert a submitted expiry time, which may be relative ("2 weeks", etc) or absolute
 	 * ("24 May 2034", etc), into an absolute timestamp we can put into the database.
 	 *
@@ -289,14 +301,15 @@ class BlockUser {
 	 *
 	 * @param string $expiry Whatever was typed into the form
 	 *
-	 * @return string|bool Timestamp or 'infinity' or false on error.
+	 * @return string|false Timestamp (format TS_MW) or 'infinity' or false on error.
 	 */
 	public static function parseExpiryInput( string $expiry ) {
 		if ( wfIsInfinity( $expiry ) ) {
 			return 'infinity';
 		}
 
-		$expiry = strtotime( $expiry );
+		// ConvertibleTimestamp::time() used so we can fake the current time in tests
+		$expiry = strtotime( $expiry, ConvertibleTimestamp::time() );
 
 		if ( $expiry < 0 || $expiry === false ) {
 			return false;
@@ -617,6 +630,9 @@ class BlockUser {
 		// Relate log ID to block ID (T27763)
 		$logEntry->setRelations( [ 'ipb_id' => $block->getId() ] );
 		$logEntry->addTags( $this->tags );
+		if ( $this->logDeletionFlags !== null ) {
+			$logEntry->setDeleted( $this->logDeletionFlags );
+		}
 		$logId = $logEntry->insert();
 		$logEntry->publish( $logId );
 	}

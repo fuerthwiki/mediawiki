@@ -420,8 +420,12 @@ class PageUpdaterTest extends MediaWikiIntegrationTestCase {
 				$this->assertSame( $expected['summary'], $summary );
 				$this->assertSame( EDIT_NEW, $flags );
 
-				$title = $renderedRevision->getRevision()->getPageAsLinkTarget();
-				$this->assertSame( $expected['title']->getFullText(), $title->getFullText() );
+				$this->assertTrue(
+					$expected['title']->isSamePageAs( $renderedRevision->getRevision()->getPage() )
+				);
+				$this->assertTrue(
+					$expected['title']->isSameLinkAs( $renderedRevision->getRevision()->getPageAsLinkTarget() )
+				);
 
 				$slots = $renderedRevision->getRevision()->getSlots();
 				foreach ( $expected['slots'] as $slot => $content ) {
@@ -456,7 +460,7 @@ class PageUpdaterTest extends MediaWikiIntegrationTestCase {
 
 		$expectedError = 'aborted-by-test-hook';
 		$this->setTemporaryHook( 'MultiContentSave',
-			function ( RenderedRevision $renderedRevision, User $user,
+			static function ( RenderedRevision $renderedRevision, User $user,
 				$summary, $flags, Status $hookStatus
 			) use ( $expectedError ) {
 				$hookStatus->fatal( $expectedError );
@@ -760,7 +764,6 @@ class PageUpdaterTest extends MediaWikiIntegrationTestCase {
 
 	/**
 	 * @dataProvider provideSetUsePageCreationLog
-	 * @param bool $use
 	 */
 	public function testSetUsePageCreationLog( $use, $expected ) {
 		$user = $this->getTestUser()->getUser();
@@ -785,35 +788,35 @@ class PageUpdaterTest extends MediaWikiIntegrationTestCase {
 	public function provideMagicWords() {
 		yield 'PAGEID' => [
 			'Test {{PAGEID}} Test',
-			function ( RevisionRecord $rev ) {
+			static function ( RevisionRecord $rev ) {
 				return $rev->getPageId();
 			}
 		];
 
 		yield 'REVISIONID' => [
 			'Test {{REVISIONID}} Test',
-			function ( RevisionRecord $rev ) {
+			static function ( RevisionRecord $rev ) {
 				return $rev->getId();
 			}
 		];
 
 		yield 'REVISIONUSER' => [
 			'Test {{REVISIONUSER}} Test',
-			function ( RevisionRecord $rev ) {
+			static function ( RevisionRecord $rev ) {
 				return $rev->getUser()->getName();
 			}
 		];
 
 		yield 'REVISIONTIMESTAMP' => [
 			'Test {{REVISIONTIMESTAMP}} Test',
-			function ( RevisionRecord $rev ) {
+			static function ( RevisionRecord $rev ) {
 				return $rev->getTimestamp();
 			}
 		];
 
 		yield 'subst:REVISIONUSER' => [
 			'Test {{subst:REVISIONUSER}} Test',
-			function ( RevisionRecord $rev ) {
+			static function ( RevisionRecord $rev ) {
 				return $rev->getUser()->getName();
 			},
 			'subst'
@@ -821,7 +824,7 @@ class PageUpdaterTest extends MediaWikiIntegrationTestCase {
 
 		yield 'subst:PAGENAME' => [
 			'Test {{subst:PAGENAME}} Test',
-			function ( RevisionRecord $rev ) {
+			static function ( RevisionRecord $rev ) {
 				return 'PageUpdaterTest::testMagicWords';
 			},
 			'subst'

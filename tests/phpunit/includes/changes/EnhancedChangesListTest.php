@@ -96,13 +96,13 @@ class EnhancedChangesListTest extends MediaWikiLangTestCase {
 			return 'Hello world prefix';
 		} );
 
-		$this->setTemporaryHook( 'EnhancedChangesListModifyLineData', function (
+		$this->setTemporaryHook( 'EnhancedChangesListModifyLineData', static function (
 			$enhancedChangesList, &$data, $block, $rc, &$classes, &$attribs
 		) {
 			$data['recentChangesFlags']['minor'] = 1;
 		} );
 
-		$this->setTemporaryHook( 'EnhancedChangesListModifyBlockLineData', function (
+		$this->setTemporaryHook( 'EnhancedChangesListModifyBlockLineData', static function (
 			$enhancedChangesList, &$data, $rcObj
 		) {
 			$data['recentChangesFlags']['bot'] = 1;
@@ -200,6 +200,8 @@ class EnhancedChangesListTest extends MediaWikiLangTestCase {
 	}
 
 	/**
+	 * @param string $timestamp
+	 * @param string $pageTitle
 	 * @return RecentChange
 	 */
 	private function getEditChange( $timestamp, $pageTitle = 'Cat' ) {
@@ -221,6 +223,9 @@ class EnhancedChangesListTest extends MediaWikiLangTestCase {
 	}
 
 	/**
+	 * @param string $timestamp
+	 * @param int $thisId
+	 * @param int $lastId
 	 * @return RecentChange
 	 */
 	private function getCategorizationChange( $timestamp, $thisId, $lastId ) {

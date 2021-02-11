@@ -6,8 +6,8 @@ CREATE TABLE /*_*/site_identifiers (
   si_type VARBINARY(32) NOT NULL,
   si_key VARBINARY(32) NOT NULL,
   si_site INT UNSIGNED NOT NULL,
-  INDEX site_ids_site (si_site),
-  INDEX site_ids_key (si_key),
+  INDEX si_site (si_site),
+  INDEX si_key (si_key),
   PRIMARY KEY(si_type, si_key)
 ) /*$wgDBTableOptions*/;
 
@@ -623,4 +623,122 @@ CREATE TABLE /*_*/text (
   old_text MEDIUMBLOB NOT NULL,
   old_flags TINYBLOB NOT NULL,
   PRIMARY KEY(old_id)
+) /*$wgDBTableOptions*/;
+
+
+CREATE TABLE /*_*/oldimage (
+  oi_name VARBINARY(255) DEFAULT '' NOT NULL,
+  oi_archive_name VARBINARY(255) DEFAULT '' NOT NULL,
+  oi_size INT UNSIGNED DEFAULT 0 NOT NULL,
+  oi_width INT DEFAULT 0 NOT NULL,
+  oi_height INT DEFAULT 0 NOT NULL,
+  oi_bits INT DEFAULT 0 NOT NULL,
+  oi_description_id BIGINT UNSIGNED NOT NULL,
+  oi_actor BIGINT UNSIGNED NOT NULL,
+  oi_timestamp BINARY(14) NOT NULL,
+  oi_metadata MEDIUMBLOB NOT NULL,
+  oi_media_type ENUM(
+    'UNKNOWN', 'BITMAP', 'DRAWING', 'AUDIO',
+    'VIDEO', 'MULTIMEDIA', 'OFFICE',
+    'TEXT', 'EXECUTABLE', 'ARCHIVE',
+    '3D'
+  ) DEFAULT NULL,
+  oi_major_mime ENUM(
+    'unknown', 'application', 'audio',
+    'image', 'text', 'video', 'message',
+    'model', 'multipart', 'chemical'
+  ) DEFAULT 'unknown' NOT NULL,
+  oi_minor_mime VARBINARY(100) DEFAULT 'unknown' NOT NULL,
+  oi_deleted TINYINT UNSIGNED DEFAULT 0 NOT NULL,
+  oi_sha1 VARBINARY(32) DEFAULT '' NOT NULL,
+  INDEX oi_actor_timestamp (oi_actor, oi_timestamp),
+  INDEX oi_name_timestamp (oi_name, oi_timestamp),
+  INDEX oi_name_archive_name (
+    oi_name,
+    oi_archive_name(14)
+  ),
+  INDEX oi_sha1 (
+    oi_sha1(10)
+  )
+) /*$wgDBTableOptions*/;
+
+
+CREATE TABLE /*_*/objectcache (
+  keyname VARBINARY(255) DEFAULT '' NOT NULL,
+  value MEDIUMBLOB DEFAULT NULL,
+  exptime BINARY(14) NOT NULL,
+  INDEX exptime (exptime),
+  PRIMARY KEY(keyname)
+) /*$wgDBTableOptions*/;
+
+
+CREATE TABLE /*_*/ipblocks (
+  ipb_id INT AUTO_INCREMENT NOT NULL,
+  ipb_address TINYBLOB NOT NULL,
+  ipb_user INT UNSIGNED DEFAULT 0 NOT NULL,
+  ipb_by_actor BIGINT UNSIGNED NOT NULL,
+  ipb_reason_id BIGINT UNSIGNED NOT NULL,
+  ipb_timestamp BINARY(14) NOT NULL,
+  ipb_auto TINYINT(1) DEFAULT 0 NOT NULL,
+  ipb_anon_only TINYINT(1) DEFAULT 0 NOT NULL,
+  ipb_create_account TINYINT(1) DEFAULT 1 NOT NULL,
+  ipb_enable_autoblock TINYINT(1) DEFAULT 1 NOT NULL,
+  ipb_expiry VARBINARY(14) NOT NULL,
+  ipb_range_start TINYBLOB NOT NULL,
+  ipb_range_end TINYBLOB NOT NULL,
+  ipb_deleted TINYINT(1) DEFAULT 0 NOT NULL,
+  ipb_block_email TINYINT(1) DEFAULT 0 NOT NULL,
+  ipb_allow_usertalk TINYINT(1) DEFAULT 0 NOT NULL,
+  ipb_parent_block_id INT DEFAULT NULL,
+  ipb_sitewide TINYINT(1) DEFAULT 1 NOT NULL,
+  UNIQUE INDEX ipb_address_unique (
+    ipb_address(255),
+    ipb_user,
+    ipb_auto
+  ),
+  INDEX ipb_user (ipb_user),
+  INDEX ipb_range (
+    ipb_range_start(8),
+    ipb_range_end(8)
+  ),
+  INDEX ipb_timestamp (ipb_timestamp),
+  INDEX ipb_expiry (ipb_expiry),
+  INDEX ipb_parent_block_id (ipb_parent_block_id),
+  PRIMARY KEY(ipb_id)
+) /*$wgDBTableOptions*/;
+
+
+CREATE TABLE /*_*/image (
+  img_name VARBINARY(255) DEFAULT '' NOT NULL,
+  img_size INT UNSIGNED DEFAULT 0 NOT NULL,
+  img_width INT DEFAULT 0 NOT NULL,
+  img_height INT DEFAULT 0 NOT NULL,
+  img_metadata MEDIUMBLOB NOT NULL,
+  img_bits INT DEFAULT 0 NOT NULL,
+  img_media_type ENUM(
+    'UNKNOWN', 'BITMAP', 'DRAWING', 'AUDIO',
+    'VIDEO', 'MULTIMEDIA', 'OFFICE',
+    'TEXT', 'EXECUTABLE', 'ARCHIVE',
+    '3D'
+  ) DEFAULT NULL,
+  img_major_mime ENUM(
+    'unknown', 'application', 'audio',
+    'image', 'text', 'video', 'message',
+    'model', 'multipart', 'chemical'
+  ) DEFAULT 'unknown' NOT NULL,
+  img_minor_mime VARBINARY(100) DEFAULT 'unknown' NOT NULL,
+  img_description_id BIGINT UNSIGNED NOT NULL,
+  img_actor BIGINT UNSIGNED NOT NULL,
+  img_timestamp BINARY(14) NOT NULL,
+  img_sha1 VARBINARY(32) DEFAULT '' NOT NULL,
+  INDEX img_actor_timestamp (img_actor, img_timestamp),
+  INDEX img_size (img_size),
+  INDEX img_timestamp (img_timestamp),
+  INDEX img_sha1 (
+    img_sha1(10)
+  ),
+  INDEX img_media_mime (
+    img_media_type, img_major_mime, img_minor_mime
+  ),
+  PRIMARY KEY(img_name)
 ) /*$wgDBTableOptions*/;

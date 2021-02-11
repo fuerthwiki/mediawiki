@@ -62,7 +62,7 @@ abstract class Maintenance {
 	public const DB_ADMIN = 2;
 
 	// Const for getStdin()
-	public const STDIN_ALL = 'all';
+	public const STDIN_ALL = -1;
 
 	/**
 	 * Array of desired/allowed params
@@ -103,7 +103,7 @@ abstract class Maintenance {
 	 * Batch size. If a script supports this, they should set
 	 * a default with setBatchSize()
 	 *
-	 * @var int
+	 * @var int|null
 	 */
 	protected $mBatchSize = null;
 
@@ -118,11 +118,11 @@ abstract class Maintenance {
 	 * @var array[]
 	 * @phan-var array<string,array{desc:string,require:bool,withArg:string,shortName:string,multiOccurrence:bool}>
 	 */
-	private $mDependantParameters = [];
+	private $mDependentParameters = [];
 
 	/**
 	 * Used by getDB() / setDB()
-	 * @var IMaintainableDatabase
+	 * @var IMaintainableDatabase|null
 	 */
 	private $mDb = null;
 
@@ -131,7 +131,7 @@ abstract class Maintenance {
 
 	/**
 	 * Used when creating separate schema files.
-	 * @var resource
+	 * @var resource|null
 	 */
 	public $fileHandle;
 
@@ -144,7 +144,7 @@ abstract class Maintenance {
 	/**
 	 * Accessible via getConfig()
 	 *
-	 * @var Config
+	 * @var Config|null
 	 */
 	private $config;
 
@@ -383,7 +383,7 @@ abstract class Maintenance {
 				'per batch, default: ' . $this->mBatchSize, false, true );
 			if ( isset( $this->mParams['batch-size'] ) ) {
 				// This seems a little ugly...
-				$this->mDependantParameters['batch-size'] = $this->mParams['batch-size'];
+				$this->mDependentParameters['batch-size'] = $this->mParams['batch-size'];
 			}
 		}
 	}
@@ -398,8 +398,8 @@ abstract class Maintenance {
 
 	/**
 	 * Return input from stdin.
-	 * @param int|null $len The number of bytes to read. If null, just return the handle.
-	 *   Maintenance::STDIN_ALL returns the full length
+	 * @param int|null $len The number of bytes to read. If null, just
+	 * return the handle. Maintenance::STDIN_ALL returns the full content
 	 * @return mixed
 	 */
 	protected function getStdin( $len = null ) {
@@ -551,7 +551,7 @@ abstract class Maintenance {
 	 * Add the default parameters to the scripts
 	 */
 	protected function addDefaultParams() {
-		# Generic (non script dependant) options:
+		# Generic (non-script-dependent) options:
 
 		$this->addOption( 'help', 'Display this help message', false, false, 'h' );
 		$this->addOption( 'quiet', 'Whether to suppress non-error output', false, false, 'q' );
@@ -573,7 +573,7 @@ abstract class Maintenance {
 		# Save generic options to display them separately in help
 		$this->mGenericParameters = $this->mParams;
 
-		# Script dependant options:
+		# Script-dependent options:
 
 		// If we support a DB, show the options
 		if ( $this->getDbType() > 0 ) {
@@ -582,9 +582,9 @@ abstract class Maintenance {
 			$this->addOption( 'dbgroupdefault', 'The default DB group to use.', false, true );
 		}
 
-		# Save additional script dependant options to display
+		# Save additional script-dependent options to display
 		#  them separately in help
-		$this->mDependantParameters = array_diff_key( $this->mParams, $this->mGenericParameters );
+		$this->mDependentParameters = array_diff_key( $this->mParams, $this->mGenericParameters );
 	}
 
 	/**
@@ -717,7 +717,7 @@ abstract class Maintenance {
 				require_once $classFile;
 			}
 			if ( !class_exists( $maintClass ) ) {
-				$this->error( "Cannot spawn child: $maintClass" );
+				$this->fatalError( "Cannot spawn child: $maintClass" );
 			}
 		}
 
@@ -1058,7 +1058,7 @@ abstract class Maintenance {
 	 * Definitely show the help. Does not exit.
 	 */
 	protected function showHelp() {
-		$screenWidth = 80; // TODO: Calculate this!
+		$screenWidth = self::getTermSize()[0];
 		$tab = "    ";
 		$descWidth = $screenWidth - ( 2 * strlen( $tab ) );
 
@@ -1092,61 +1092,33 @@ abstract class Maintenance {
 		}
 		$this->output( "$output\n\n" );
 
-		# TODO abstract some repetitive code below
+		$this->formatHelpItems(
+			$this->mGenericParameters,
+			'Generic maintenance parameters',
+			$descWidth, $tab
+		);
 
-		// Generic parameters
-		$this->output( "Generic maintenance parameters:\n" );
-		foreach ( $this->mGenericParameters as $par => $info ) {
-			if ( $info['shortName'] !== false ) {
-				$par .= " (-{$info['shortName']})";
-			}
-			$this->output(
-				wordwrap( "$tab--$par: " . $info['desc'], $descWidth,
-					"\n$tab$tab" ) . "\n"
-			);
-		}
-		$this->output( "\n" );
+		$this->formatHelpItems(
+			$this->mDependentParameters,
+			'Script dependent parameters',
+			$descWidth, $tab
+		);
 
-		$scriptDependantParams = $this->mDependantParameters;
-		if ( count( $scriptDependantParams ) > 0 ) {
-			$this->output( "Script dependant parameters:\n" );
-			// Parameters description
-			foreach ( $scriptDependantParams as $par => $info ) {
-				if ( $info['shortName'] !== false ) {
-					$par .= " (-{$info['shortName']})";
-				}
-				$this->output(
-					wordwrap( "$tab--$par: " . $info['desc'], $descWidth,
-						"\n$tab$tab" ) . "\n"
-				);
-			}
-			$this->output( "\n" );
-		}
-
-		// Script specific parameters not defined on construction by
+		// Script-specific parameters not defined on construction by
 		// Maintenance::addDefaultParams()
 		$scriptSpecificParams = array_diff_key(
 			# all script parameters:
 			$this->mParams,
 			# remove the Maintenance default parameters:
 			$this->mGenericParameters,
-			$this->mDependantParameters
+			$this->mDependentParameters
 		);
-		'@phan-var array[] $scriptSpecificParams';
-		if ( count( $scriptSpecificParams ) > 0 ) {
-			$this->output( "Script specific parameters:\n" );
-			// Parameters description
-			foreach ( $scriptSpecificParams as $par => $info ) {
-				if ( $info['shortName'] !== false ) {
-					$par .= " (-{$info['shortName']})";
-				}
-				$this->output(
-					wordwrap( "$tab--$par: " . $info['desc'], $descWidth,
-						"\n$tab$tab" ) . "\n"
-				);
-			}
-			$this->output( "\n" );
-		}
+
+		$this->formatHelpItems(
+			$scriptSpecificParams,
+			'Script specific parameters',
+			$descWidth, $tab
+		);
 
 		// Print arguments
 		if ( count( $this->mArgList ) > 0 ) {
@@ -1162,6 +1134,29 @@ abstract class Maintenance {
 			}
 			$this->output( "\n" );
 		}
+	}
+
+	private function formatHelpItems( array $items, $heading, $descWidth, $tab ) {
+		if ( $items === [] ) {
+			return;
+		}
+
+		$this->output( "$heading:\n" );
+
+		foreach ( $items as $name => $info ) {
+			if ( $info['shortName'] !== false ) {
+				$name .= ' (-' . $info['shortName'] . ')';
+			}
+			$this->output(
+				wordwrap(
+					"$tab--$name: " . $info['desc'],
+					$descWidth,
+					"\n$tab$tab"
+				) . "\n"
+			);
+		}
+
+		$this->output( "\n" );
 	}
 
 	/**
@@ -1256,6 +1251,31 @@ abstract class Maintenance {
 	public function globals() {
 		if ( $this->hasOption( 'globals' ) ) {
 			print_r( $GLOBALS );
+		}
+	}
+
+	/**
+	 * Call before shutdown to run any deferred updates
+	 * @since 1.36
+	 */
+	public function shutdown() {
+		$lbFactory = null;
+		if (
+			$this->getDbType() !== self::DB_NONE &&
+			// Service might be disabled, e.g. when running install.php
+			!MediaWikiServices::getInstance()->isServiceDisabled( 'DBLoadBalancerFactory' )
+		) {
+			$lbFactory = MediaWikiServices::getInstance()->getDBLoadBalancerFactory();
+			$lbFactory->commitMasterChanges( get_class( $this ) );
+			// @TODO: make less assumptions about deferred updates being coupled to the DB
+			DeferredUpdates::doUpdates();
+		}
+
+		wfLogProfilingData();
+
+		if ( $lbFactory ) {
+			$lbFactory->commitMasterChanges( 'doMaintenance' );
+			$lbFactory->shutdown( $lbFactory::SHUTDOWN_NO_CHRONPROT );
 		}
 	}
 
@@ -1651,13 +1671,20 @@ abstract class Maintenance {
 	 * @return array
 	 */
 	public static function getTermSize() {
+		static $termSize = null;
+
+		if ( $termSize !== null ) {
+			return $termSize;
+		}
+
 		$default = [ 80, 50 ];
-		if ( wfIsWindows() ) {
-			return $default;
+
+		if ( wfIsWindows() || Shell::isDisabled() ) {
+			$termSize = $default;
+
+			return $termSize;
 		}
-		if ( Shell::isDisabled() ) {
-			return $default;
-		}
+
 		// It's possible to get the screen size with VT-100 terminal escapes,
 		// but reading the responses is not possible without setting raw mode
 		// (unless you want to require the user to press enter), and that
@@ -1665,16 +1692,18 @@ abstract class Maintenance {
 		// something that can do the relevant syscalls. There are a few
 		// options. Linux and Mac OS X both have "stty size" which does the
 		// job directly.
-		$result = Shell::command( 'stty', 'size' )
-			->passStdin()
-			->execute();
-		if ( $result->getExitCode() !== 0 ) {
-			return $default;
+		$result = Shell::command( 'stty', 'size' )->passStdin()->execute();
+		if ( $result->getExitCode() !== 0 ||
+			!preg_match( '/^(\d+) (\d+)$/', $result->getStdout(), $m )
+		) {
+			$termSize = $default;
+
+			return $termSize;
 		}
-		if ( !preg_match( '/^(\d+) (\d+)$/', $result->getStdout(), $m ) ) {
-			return $default;
-		}
-		return [ intval( $m[2] ), intval( $m[1] ) ];
+
+		$termSize = [ intval( $m[2] ), intval( $m[1] ) ];
+
+		return $termSize;
 	}
 
 	/**
@@ -1726,7 +1755,7 @@ abstract class Maintenance {
 	protected function parseIntList( $text ) {
 		$ids = preg_split( '/[\s,;:|]+/', $text );
 		$ids = array_map(
-			function ( $id ) {
+			static function ( $id ) {
 				return (int)$id;
 			},
 			$ids

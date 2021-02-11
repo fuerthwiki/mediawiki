@@ -20,13 +20,13 @@ class DatabaseBlockStoreTest extends MediaWikiIntegrationTestCase {
 	/** @var User */
 	private $sysop;
 
-	/** @var integer */
+	/** @var int */
 	private $expiredBlockId = 11111;
 
-	/** @var integer */
+	/** @var int */
 	private $unexpiredBlockId = 22222;
 
-	/** @var integer */
+	/** @var int */
 	private $autoblockId = 33333;
 
 	/**
@@ -138,7 +138,7 @@ class DatabaseBlockStoreTest extends MediaWikiIntegrationTestCase {
 		$this->assertIsArray( $result );
 		$this->assertArrayHasKey( 'id', $result );
 		$this->assertArrayHasKey( 'autoIds', $result );
-		$this->assertSame( 0, count( $result['autoIds'] ) );
+		$this->assertCount( 0, $result['autoIds'] );
 
 		$retrievedBlock = DatabaseBlock::newFromId( $result['id'] );
 		$this->assertTrue( $block->equals( $retrievedBlock ) );

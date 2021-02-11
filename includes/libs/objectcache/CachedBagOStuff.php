@@ -54,11 +54,6 @@ class CachedBagOStuff extends BagOStuff {
 		$this->attrMap = $backend->attrMap;
 	}
 
-	public function setDebug( $enabled ) {
-		parent::setDebug( $enabled );
-		$this->store->setDebug( $enabled );
-	}
-
 	public function get( $key, $flags = 0 ) {
 		$value = $this->procCache->get( $key, $flags );
 		if ( $value !== false || $this->procCache->hasKey( $key ) ) {
@@ -165,12 +160,12 @@ class CachedBagOStuff extends BagOStuff {
 		return $this->genericKeyFromComponents( $keyspace, ...$components );
 	}
 
-	public function makeKey( $class, ...$components ) {
-		return $this->genericKeyFromComponents( $this->keyspace, $class, ...$components );
+	public function makeKey( $collection, ...$components ) {
+		return $this->genericKeyFromComponents( $this->keyspace, $collection, ...$components );
 	}
 
-	public function makeGlobalKey( $class, ...$components ) {
-		return $this->genericKeyFromComponents( self::GLOBAL_KEYSPACE, $class, ...$components );
+	public function makeGlobalKey( $collection, ...$components ) {
+		return $this->genericKeyFromComponents( self::GLOBAL_KEYSPACE, $collection, ...$components );
 	}
 
 	protected function convertGenericKey( $key ) {

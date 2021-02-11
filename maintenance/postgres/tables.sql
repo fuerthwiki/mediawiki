@@ -111,100 +111,29 @@ CREATE TABLE archive (
   ar_len            INTEGER          NULL
 );
 ALTER SEQUENCE archive_ar_id_seq OWNED BY archive.ar_id;
-CREATE INDEX archive_name_title_timestamp ON archive (ar_namespace,ar_title,ar_timestamp);
-CREATE INDEX archive_actor                ON archive (ar_actor);
+CREATE INDEX ar_name_title_timestamp ON archive (ar_namespace,ar_title,ar_timestamp);
+CREATE INDEX ar_actor_timestamp                ON archive (ar_actor,ar_timestamp);
 CREATE UNIQUE INDEX ar_revid_uniq ON archive (ar_rev_id);
-
-
-CREATE SEQUENCE ipblocks_ipb_id_seq;
-CREATE TABLE ipblocks (
-  ipb_id                INTEGER      NOT NULL  PRIMARY KEY DEFAULT nextval('ipblocks_ipb_id_seq'),
-  ipb_address           TEXT             NULL,
-  ipb_user              INTEGER          NULL  REFERENCES mwuser(user_id) ON DELETE SET NULL DEFERRABLE INITIALLY DEFERRED,
-  ipb_by_actor          INTEGER      NOT NULL,
-  ipb_reason_id         INTEGER      NOT NULL,
-  ipb_timestamp         TIMESTAMPTZ  NOT NULL,
-  ipb_auto              SMALLINT     NOT NULL  DEFAULT 0,
-  ipb_anon_only         SMALLINT     NOT NULL  DEFAULT 0,
-  ipb_create_account    SMALLINT     NOT NULL  DEFAULT 1,
-  ipb_enable_autoblock  SMALLINT     NOT NULL  DEFAULT 1,
-  ipb_expiry            TIMESTAMPTZ  NOT NULL,
-  ipb_range_start       TEXT,
-  ipb_range_end         TEXT,
-  ipb_deleted           SMALLINT     NOT NULL  DEFAULT 0,
-  ipb_block_email       SMALLINT     NOT NULL  DEFAULT 0,
-  ipb_allow_usertalk    SMALLINT     NOT NULL  DEFAULT 0,
-  ipb_parent_block_id   INTEGER          NULL            REFERENCES ipblocks(ipb_id) ON DELETE SET NULL DEFERRABLE INITIALLY DEFERRED,
-  ipb_sitewide          SMALLINT     NOT NULL  DEFAULT 1
-);
-ALTER SEQUENCE ipblocks_ipb_id_seq OWNED BY ipblocks.ipb_id;
-CREATE UNIQUE INDEX ipb_address_unique ON ipblocks (ipb_address,ipb_user,ipb_auto);
-CREATE INDEX ipb_user    ON ipblocks (ipb_user);
-CREATE INDEX ipb_timestamp ON ipblocks (ipb_timestamp);
-CREATE INDEX ipb_expiry ON ipblocks (ipb_expiry);
-CREATE INDEX ipb_range   ON ipblocks (ipb_range_start,ipb_range_end);
-CREATE INDEX ipb_parent_block_id   ON ipblocks (ipb_parent_block_id);
-
-CREATE TABLE image (
-  img_name         TEXT      NOT NULL  PRIMARY KEY,
-  img_size         INTEGER   NOT NULL,
-  img_width        INTEGER   NOT NULL,
-  img_height       INTEGER   NOT NULL,
-  img_metadata     BYTEA     NOT NULL  DEFAULT '',
-  img_bits         SMALLINT,
-  img_media_type   TEXT,
-  img_major_mime   TEXT                DEFAULT 'unknown',
-  img_minor_mime   TEXT                DEFAULT 'unknown',
-  img_description_id INTEGER NOT NULL,
-  img_actor        INTEGER   NOT NULL,
-  img_timestamp    TIMESTAMPTZ,
-  img_sha1         TEXT      NOT NULL  DEFAULT ''
-);
-CREATE INDEX img_size_idx      ON image (img_size);
-CREATE INDEX img_timestamp_idx ON image (img_timestamp);
-CREATE INDEX img_sha1          ON image (img_sha1);
-
-CREATE TABLE oldimage (
-  oi_name          TEXT         NOT NULL,
-  oi_archive_name  TEXT         NOT NULL,
-  oi_size          INTEGER      NOT NULL,
-  oi_width         INTEGER      NOT NULL,
-  oi_height        INTEGER      NOT NULL,
-  oi_bits          SMALLINT         NULL,
-  oi_description_id INTEGER     NOT NULL,
-  oi_actor         INTEGER      NOT NULL,
-  oi_timestamp     TIMESTAMPTZ      NULL,
-  oi_metadata      BYTEA        NOT NULL DEFAULT '',
-  oi_media_type    TEXT             NULL,
-  oi_major_mime    TEXT             NULL DEFAULT 'unknown',
-  oi_minor_mime    TEXT             NULL DEFAULT 'unknown',
-  oi_deleted       SMALLINT     NOT NULL DEFAULT 0,
-  oi_sha1          TEXT         NOT NULL DEFAULT ''
-);
-ALTER TABLE oldimage ADD CONSTRAINT oldimage_oi_name_fkey_cascaded FOREIGN KEY (oi_name) REFERENCES image(img_name) ON DELETE CASCADE ON UPDATE CASCADE DEFERRABLE INITIALLY DEFERRED;
-CREATE INDEX oi_name_timestamp    ON oldimage (oi_name,oi_timestamp);
-CREATE INDEX oi_name_archive_name ON oldimage (oi_name,oi_archive_name);
-CREATE INDEX oi_sha1              ON oldimage (oi_sha1);
 
 
 CREATE SEQUENCE recentchanges_rc_id_seq;
 CREATE TABLE recentchanges (
   rc_id              INTEGER      NOT NULL  PRIMARY KEY DEFAULT nextval('recentchanges_rc_id_seq'),
   rc_timestamp       TIMESTAMPTZ  NOT NULL,
-  rc_actor           INTEGER      NOT NULL,
-  rc_namespace       SMALLINT     NOT NULL,
-  rc_title           TEXT         NOT NULL,
-  rc_comment_id      INTEGER      NOT NULL,
+  rc_actor           BIGINT       NOT NULL,
+  rc_namespace       INTEGER      NOT NULL DEFAULT 0,
+  rc_title           TEXT         NOT NULL DEFAULT '',
+  rc_comment_id      BIGINT       NOT NULL,
   rc_minor           SMALLINT     NOT NULL  DEFAULT 0,
   rc_bot             SMALLINT     NOT NULL  DEFAULT 0,
   rc_new             SMALLINT     NOT NULL  DEFAULT 0,
-  rc_cur_id          INTEGER          NULL,
-  rc_this_oldid      INTEGER      NOT NULL,
-  rc_last_oldid      INTEGER      NOT NULL,
+  rc_cur_id          INTEGER      NOT NULL  DEFAULT 0,
+  rc_this_oldid      INTEGER      NOT NULL  DEFAULT 0,
+  rc_last_oldid      INTEGER      NOT NULL  DEFAULT 0,
   rc_type            SMALLINT     NOT NULL  DEFAULT 0,
-  rc_source          TEXT         NOT NULL,
+  rc_source          TEXT         NOT NULL  DEFAULT '',
   rc_patrolled       SMALLINT     NOT NULL  DEFAULT 0,
-  rc_ip              CIDR,
+  rc_ip              TEXT         NOT NULL  DEFAULT '',
   rc_old_len         INTEGER,
   rc_new_len         INTEGER,
   rc_deleted         SMALLINT     NOT NULL  DEFAULT 0,
@@ -215,21 +144,14 @@ CREATE TABLE recentchanges (
 );
 ALTER SEQUENCE recentchanges_rc_id_seq OWNED BY recentchanges.rc_id;
 CREATE INDEX rc_timestamp       ON recentchanges (rc_timestamp);
-CREATE INDEX rc_timestamp_bot   ON recentchanges (rc_timestamp) WHERE rc_bot = 0;
 CREATE INDEX rc_namespace_title_timestamp ON recentchanges (rc_namespace, rc_title, rc_timestamp);
 CREATE INDEX rc_cur_id          ON recentchanges (rc_cur_id);
 CREATE INDEX new_name_timestamp ON recentchanges (rc_new, rc_namespace, rc_timestamp);
 CREATE INDEX rc_ip              ON recentchanges (rc_ip);
+CREATE INDEX rc_ns_actor        ON recentchanges (rc_namespace, rc_actor);
+CREATE INDEX rc_actor           ON recentchanges (rc_actor, rc_timestamp);
 CREATE INDEX rc_name_type_patrolled_timestamp ON recentchanges (rc_namespace, rc_type, rc_patrolled, rc_timestamp);
 CREATE INDEX rc_this_oldid      ON recentchanges (rc_this_oldid);
-
-
-CREATE TABLE objectcache (
-  keyname  TEXT                   UNIQUE,
-  value    BYTEA        NOT NULL  DEFAULT '',
-  exptime  TIMESTAMPTZ  NOT NULL
-);
-CREATE INDEX objectcacache_exptime ON objectcache (exptime);
 
 -- Tsearch2 2 stuff. Will fail if we don't have proper access to the tsearch2 tables
 -- Make sure you also change patch-tsearch2funcs.sql if the funcs below change.

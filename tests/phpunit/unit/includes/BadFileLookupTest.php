@@ -25,7 +25,12 @@ WIKITEXT;
 	/** @var HookContainer */
 	private $hookContainer;
 
-	/** Shared with GlobalWithDBTest */
+	/**
+	 * Shared with GlobalWithDBTest
+	 * @param string $name
+	 * @param bool &$bad
+	 * @return bool
+	 */
 	public static function badImageHook( $name, &$bad ) {
 		switch ( $name ) {
 			case 'Hook_bad.jpg':
@@ -47,7 +52,7 @@ WIKITEXT;
 			->will( $this->returnCallback( function ( $name ) {
 				$mockFile = $this->createMock( File::class );
 				$mockFile->expects( $this->once() )->method( 'getTitle' )
-					->will( $this->returnCallback( function () use ( $name ) {
+					->will( $this->returnCallback( static function () use ( $name ) {
 						switch ( $name ) {
 							case 'Redirect to bad.jpg':
 								return new TitleValue( NS_FILE, 'Bad.jpg' );
@@ -71,6 +76,7 @@ WIKITEXT;
 
 	/**
 	 * Just returns null for every findFile().
+	 * @return RepoGroup
 	 */
 	private function getMockRepoGroupNull() {
 		$mock = $this->createMock( RepoGroup::class );

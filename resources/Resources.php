@@ -139,7 +139,7 @@ return [
 			[ 'name' => 'config.json', 'callback' => 'ResourceLoader::getSiteConfigSettings' ],
 			[
 				'name' => 'legacy.wikibits.js',
-				'callback' => function ( ResourceLoaderContext $context, Config $config ) {
+				'callback' => static function ( ResourceLoaderContext $context, Config $config ) {
 					return $config->get( 'IncludeLegacyJavaScript' ) ?
 						new ResourceLoaderFilePath( 'legacy.wikibits.js' ) : '';
 				}
@@ -562,7 +562,7 @@ return [
 			'resources/src/vue/i18n.js',
 			[
 				'name' => 'resources/lib/vue/vue.js',
-				'callback' => function ( ResourceLoaderContext $context, Config $config ) {
+				'callback' => static function ( ResourceLoaderContext $context, Config $config ) {
 					// Use the development version if development mode is enabled, or if we're in debug mode
 					$file = $config->get( 'VueDevelopmentMode' ) || $context->getDebug() ?
 						'resources/lib/vue/vue.common.dev.js' :
@@ -580,7 +580,7 @@ return [
 			'resources/src/vue/vuex.js',
 			[
 				'name' => 'resources/lib/vuex/vuex.js',
-				'callback' => function ( ResourceLoaderContext $context, Config $config ) {
+				'callback' => static function ( ResourceLoaderContext $context, Config $config ) {
 					// Use the development version if development mode is enabled, or if we're in debug mode
 					$file = $config->get( 'VueDevelopmentMode' ) || $context->getDebug() ?
 						'resources/lib/vuex/vuex.js' :
@@ -1029,24 +1029,24 @@ return [
 		'packageFiles' => [
 			'Uri.js',
 			[ 'name' => 'loose.regexp.js',
-				'callback' => function () {
+				'callback' => static function () {
 					global $IP;
 					return ResourceLoaderMwUrlModule::makeJsFromExtendedRegExp(
 						file_get_contents( "$IP/resources/src/mediawiki.Uri/loose.regexp" )
 					);
 				},
-				'versionCallback' => function () {
+				'versionCallback' => static function () {
 					return new ResourceLoaderFilePath( 'loose.regexp' );
 				},
 			],
 			[ 'name' => 'strict.regexp.js',
-				'callback' => function () {
+				'callback' => static function () {
 					global $IP;
 					return ResourceLoaderMwUrlModule::makeJsFromExtendedRegExp(
 						file_get_contents( "$IP/resources/src/mediawiki.Uri/strict.regexp" )
 					);
 				},
-				'versionCallback' => function () {
+				'versionCallback' => static function () {
 					return new ResourceLoaderFilePath( 'strict.regexp' );
 				},
 			],
@@ -1181,13 +1181,13 @@ return [
 			'resources/src/mediawiki.action/mediawiki.action.edit.preview.js',
 			[
 				'name' => 'resources/src/mediawiki.action/mediawiki.action.edit.preview.parsedMessages.json',
-				'callback' => function ( MessageLocalizer $messageLocalizer ) {
+				'callback' => static function ( MessageLocalizer $messageLocalizer ) {
 					return [
 						'previewnote' => $messageLocalizer->msg( 'previewnote' )->parse(),
 					];
 				},
 				// Use versionCallback to avoid calling the parser from version invalidation code.
-				'versionCallback' => function ( MessageLocalizer $messageLocalizer ) {
+				'versionCallback' => static function ( MessageLocalizer $messageLocalizer ) {
 					return [
 						'previewnote' => [
 							// Include the text of the message, in case the canonical translation changes
@@ -1240,6 +1240,19 @@ return [
 			'default' => 'resources/src/mediawiki.action/mediawiki.action.history.styles.less',
 		],
 		'targets' => [ 'desktop', 'mobile' ],
+	],
+	'mediawiki.action.protect' => [
+		'localBasePath' => "$IP/resources/src/mediawiki.action",
+		'remoteBasePath' => "$wgResourceBasePath/resources/src/mediawiki.action",
+		'packageFiles' => [
+			'mediawiki.action.protect.js',
+			[ 'name' => 'config.json', 'config' => [ 'CascadingRestrictionLevels' ] ],
+		],
+		'dependencies' => [
+			'oojs-ui-core',
+			'jquery.lengthLimit'
+		],
+		'messages' => [ 'protect-unchain-permissions' ]
 	],
 	'mediawiki.action.view.metadata' => [
 		'styles' => 'resources/src/mediawiki.action/mediawiki.action.view.metadata.css',
@@ -1363,7 +1376,7 @@ return [
 		'remoteBasePath' => "$wgResourceBasePath/resources/src/mediawiki.jqueryMsg",
 		'packageFiles' => [
 			'mediawiki.jqueryMsg.js',
-			[ 'name' => 'parserDefaults.json', 'callback' => function (
+			[ 'name' => 'parserDefaults.json', 'callback' => static function (
 				ResourceLoaderContext $context, Config $config
 			) {
 				$tagData = Sanitizer::getRecognizedTagData();
@@ -1410,7 +1423,7 @@ return [
 		'remoteBasePath' => "$wgResourceBasePath/resources/src/mediawiki.language",
 		'packageFiles' => [
 			'mediawiki.language.names.js',
-			[ 'name' => 'names.json', 'callback' => function ( ResourceLoaderContext $context ) {
+			[ 'name' => 'names.json', 'callback' => static function ( ResourceLoaderContext $context ) {
 				return MediaWikiServices::getInstance()
 					->getLanguageNameUtils()
 					->getLanguageNames( $context->getLanguage(), 'all' );
@@ -1505,7 +1518,7 @@ return [
 			'ready.js',
 			'checkboxShift.js',
 			'checkboxHack.js',
-			[ 'name' => 'config.json', 'callback' => function (
+			[ 'name' => 'config.json', 'callback' => static function (
 				ResourceLoaderContext $context,
 				Config $config
 			) {
@@ -1513,6 +1526,7 @@ return [
 					'search' => true,
 					'collapsible' => true,
 					'sortable' => true,
+					'selectorLogoutLink' => '#pt-logout a[data-mw="interface"]'
 				];
 
 				Hooks::runner()->onSkinPageReadyConfig( $context, $readyConfig );
@@ -2063,6 +2077,13 @@ return [
 	],
 	'mediawiki.special.import' => [
 		'scripts' => 'resources/src/mediawiki.special.import.js',
+		'dependencies' => [
+			'mediawiki.widgets'
+		]
+	],
+	'mediawiki.special.import.styles.ooui' => [
+		'styles' => 'resources/src/mediawiki.special.import.styles.ooui.less',
+		'targets' => [ 'desktop', 'mobile' ],
 	],
 	'mediawiki.special.preferences.ooui' => [
 		'targets' => [ 'desktop', 'mobile' ],
@@ -2282,6 +2303,7 @@ return [
 		],
 	],
 	'mediawiki.legacy.protect' => [
+		'deprecated' => "Please use mediawiki.action.protect",
 		'localBasePath' => "$IP/resources/src/mediawiki.legacy",
 		'remoteBasePath' => "$wgResourceBasePath/resources/src/mediawiki.legacy",
 		'packageFiles' => [
@@ -2745,7 +2767,7 @@ return [
 		'remoteBasePath' => "$wgResourceBasePath/resources/src/mediawiki.watchstar.widgets",
 		'packageFiles' => [
 			'WatchlistExpiryWidget.js',
-			[ 'name' => 'data.json', 'callback' => function ( MessageLocalizer $messageLocalizer ) {
+			[ 'name' => 'data.json', 'callback' => static function ( MessageLocalizer $messageLocalizer ) {
 				return WatchAction::getExpiryOptions( $messageLocalizer, false );
 			} ]
 		],
@@ -2832,7 +2854,13 @@ return [
 		'messages' => [
 			'ooui-field-help',
 			'ooui-combobox-button-label',
-			'ooui-popup-widget-close-button-aria-label'
+			'ooui-popup-widget-close-button-aria-label',
+			'ooui-selectfile-button-select',
+			'ooui-selectfile-button-select-multiple',
+			'ooui-selectfile-dragdrop-placeholder',
+			'ooui-selectfile-dragdrop-placeholder-multiple',
+			'ooui-selectfile-not-supported',
+			'ooui-selectfile-placeholder',
 		],
 		'targets' => [ 'desktop', 'mobile' ],
 	],
@@ -2866,12 +2894,6 @@ return [
 			'ooui-outline-control-move-down',
 			'ooui-outline-control-move-up',
 			'ooui-outline-control-remove',
-			'ooui-selectfile-button-select',
-			'ooui-selectfile-button-select-multiple',
-			'ooui-selectfile-dragdrop-placeholder',
-			'ooui-selectfile-dragdrop-placeholder-multiple',
-			'ooui-selectfile-not-supported',
-			'ooui-selectfile-placeholder',
 		],
 		'targets' => [ 'desktop', 'mobile' ],
 	],

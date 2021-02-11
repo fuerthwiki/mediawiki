@@ -14,6 +14,12 @@ class ApiQueryInfoTest extends ApiTestCase {
 
 	protected function setUp(): void {
 		parent::setUp();
+
+		$this->tablesUsed = array_merge(
+			$this->tablesUsed,
+			[ 'watchlist', 'watchlist_expiry' ]
+		);
+
 		$this->setMwGlobals( [
 			'wgWatchlistExpiry' => true,
 		] );
@@ -39,8 +45,8 @@ class ApiQueryInfoTest extends ApiTestCase {
 		list( $data ) = $this->doApiRequest( [
 				'action' => 'query',
 				'prop' => 'info',
-				'inprop' => 'watched',
-				'titles' => $title->getText(),
+				'inprop' => 'watched|notificationtimestamp',
+				'titles' => $title->getText() . '|' . 'NonExistingPage_lkasdoiewlmasdoiwem7483',
 		], null, false, $user );
 
 		$this->assertArrayHasKey( 'query', $data );

@@ -82,13 +82,6 @@ use Wikimedia\ScopedCallback;
  * @ingroup Parser
  */
 class Parser {
-	/**
-	 * Update this version number when the ParserOutput format
-	 * changes in an incompatible way, so the parser cache
-	 * can automatically discard old data.
-	 */
-	public const VERSION = '1.6.4';
-
 	# Flags for Parser::setFunctionHook
 	public const SFH_NO_HASH = 1;
 	public const SFH_OBJECT_ARGS = 2;
@@ -112,8 +105,11 @@ class Parser {
 	# Regular expression for a non-newline space
 	private const SPACE_NOT_NL = '(?:\t|&nbsp;|&\#0*160;|&\#[Xx]0*[Aa]0;|\p{Zs})';
 
-	# Flags for preprocessToDom
-	public const PTD_FOR_INCLUSION = 1;
+	/**
+	 * @var int Preprocess wikitext in transclusion mode
+	 * @deprecated Since 1.36
+	 */
+	public const PTD_FOR_INCLUSION = Preprocessor::DOM_FOR_INCLUSION;
 
 	# Allowed values for $this->mOutputType
 	# Parameter to startExternalParse().
@@ -381,6 +377,8 @@ class Parser {
 		'Sitename',
 		'StylePath',
 		'TranscludeCacheExpiry',
+		'PreprocessorCacheThreshold',
+		'DisableLangConversion'
 	];
 
 	/**
@@ -957,7 +955,7 @@ class Parser {
 		$this->startParse( $title, $options, self::OT_PLAIN, true );
 
 		$flags = PPFrame::NO_ARGS | PPFrame::NO_TEMPLATES;
-		$dom = $this->preprocessToDom( $text, self::PTD_FOR_INCLUSION );
+		$dom = $this->preprocessToDom( $text, Preprocessor::DOM_FOR_INCLUSION );
 		$text = $this->getPreprocessor()->newFrame()->expand( $dom, $flags );
 		$text = $this->mStripState->unstripBoth( $text );
 		return $text;
@@ -1143,8 +1141,16 @@ class Parser {
 	 */
 	public function getPreprocessor() {
 		if ( !isset( $this->mPreprocessor ) ) {
-			$this->mPreprocessor = new Preprocessor_Hash( $this );
+			$this->mPreprocessor = new Preprocessor_Hash(
+				$this,
+				MediaWikiServices::getInstance()->getMainWANObjectCache(),
+				[
+					'cacheThreshold' => $this->svcOptions->get( 'PreprocessorCacheThreshold' ),
+					'disableLangConversion' => $this->svcOptions->get( 'DisableLangConversion' )
+				]
+			);
 		}
+
 		return $this->mPreprocessor;
 	}
 
@@ -1536,7 +1542,7 @@ class Parser {
 			if ( !$frame->depth ) {
 				$flag = 0;
 			} else {
-				$flag = self::PTD_FOR_INCLUSION;
+				$flag = Preprocessor::DOM_FOR_INCLUSION;
 			}
 			$dom = $this->preprocessToDom( $text, $flag );
 			$text = $frame->expand( $dom );
@@ -2806,30 +2812,24 @@ class Parser {
 	}
 
 	/**
-	 * Preprocess some wikitext and return the document tree.
-	 * This is the ghost of replace_variables().
+	 * Get the document object model for the given wikitext
 	 *
-	 * @param string $text The text to parse
-	 * @param int $flags Bitwise combination of:
-	 *   - self::PTD_FOR_INCLUSION: Handle "<noinclude>" and "<includeonly>" as if the text is being
-	 *     included. Default is to assume a direct page view.
+	 * @see Preprocessor::preprocessToObj()
 	 *
 	 * The generated DOM tree must depend only on the input text and the flags.
-	 * The DOM tree must be the same in OT_HTML and OT_WIKI mode, to avoid a regression of T6899.
+	 * The DOM tree must be the same in OT_HTML and OT_WIKI mode, to avoid a
+	 * regression of T6899.
 	 *
 	 * Any flag added to the $flags parameter here, or any other parameter liable to cause a
 	 * change in the DOM tree for a given text, must be passed through the section identifier
 	 * in the section edit link and thus back to extractSections().
 	 *
-	 * The output of this function is currently only cached in process memory, but a persistent
-	 * cache may be implemented at a later date which takes further advantage of these strict
-	 * dependency requirements.
-	 *
+	 * @param string $text Wikitext
+	 * @param int $flags Bit field of Preprocessor::DOM_* constants
 	 * @return PPNode
 	 */
 	public function preprocessToDom( $text, $flags = 0 ) {
-		$dom = $this->getPreprocessor()->preprocessToObj( $text, $flags );
-		return $dom;
+		return $this->getPreprocessor()->preprocessToObj( $text, $flags );
 	}
 
 	/**
@@ -3180,7 +3180,7 @@ class Parser {
 				} else {
 					$text = $this->interwikiTransclude( $title, 'raw' );
 					# Preprocess it like a template
-					$text = $this->preprocessToDom( $text, self::PTD_FOR_INCLUSION );
+					$text = $this->preprocessToDom( $text, Preprocessor::DOM_FOR_INCLUSION );
 					$isChildObj = true;
 				}
 				$found = true;
@@ -3414,7 +3414,7 @@ class Parser {
 			return [ false, $title ];
 		}
 
-		$dom = $this->preprocessToDom( $text, self::PTD_FOR_INCLUSION );
+		$dom = $this->preprocessToDom( $text, Preprocessor::DOM_FOR_INCLUSION );
 		$this->mTplDomCache[$titleText] = $dom;
 
 		if ( !$title->equals( $cacheTitle ) ) {
@@ -4554,8 +4554,8 @@ class Parser {
 		$p1 = "/\[\[(:?$nc+:|:|)($tc+?)( ?\\($tc+\\))\\|]]/";
 		// [[ns:page（context）|]] (double-width brackets, added in r40257)
 		$p4 = "/\[\[(:?$nc+:|:|)($tc+?)( ?（$tc+）)\\|]]/";
-		// [[ns:page (context), context|]] (using either single or double-width comma)
-		$p3 = "/\[\[(:?$nc+:|:|)($tc+?)( ?\\($tc+\\)|)((?:, |，)$tc+|)\\|]]/";
+		// [[ns:page (context), context|]] (using single, double-width or Arabic comma)
+		$p3 = "/\[\[(:?$nc+:|:|)($tc+?)( ?\\($tc+\\)|)((?:, |，|، )$tc+|)\\|]]/";
 		// [[|page]] (reverse pipe trick: add context from page title)
 		$p2 = "/\[\[\\|($tc+)]]/";
 
@@ -5567,7 +5567,7 @@ class Parser {
 		$sectionIndex = array_pop( $sectionParts );
 		foreach ( $sectionParts as $part ) {
 			if ( $part === 'T' ) {
-				$flags |= self::PTD_FOR_INCLUSION;
+				$flags |= Preprocessor::DOM_FOR_INCLUSION;
 			}
 		}
 
@@ -6277,7 +6277,7 @@ class Parser {
 	 * and instructs OutputPage to enable OOUI for itself.
 	 *
 	 * @since 1.26
-	 * @deprecated since 1.35, use $parser->getOutput()->enableOOUI() instead.
+	 * @deprecated since 1.35, use $parser->getOutput()->setEnableOOUI() instead.
 	 */
 	public function enableOOUI() {
 		wfDeprecated( __METHOD__, '1.35' );

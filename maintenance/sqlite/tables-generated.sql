@@ -9,9 +9,9 @@ CREATE TABLE /*_*/site_identifiers (
   PRIMARY KEY(si_type, si_key)
 );
 
-CREATE INDEX site_ids_site ON /*_*/site_identifiers (si_site);
+CREATE INDEX si_site ON /*_*/site_identifiers (si_site);
 
-CREATE INDEX site_ids_key ON /*_*/site_identifiers (si_key);
+CREATE INDEX si_key ON /*_*/site_identifiers (si_key);
 
 
 CREATE TABLE /*_*/updatelog (
@@ -647,4 +647,98 @@ CREATE INDEX fa_sha1 ON /*_*/filearchive (fa_sha1);
 CREATE TABLE /*_*/text (
   old_id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
   old_text BLOB NOT NULL, old_flags BLOB NOT NULL
+);
+
+
+CREATE TABLE /*_*/oldimage (
+  oi_name BLOB DEFAULT '' NOT NULL, oi_archive_name BLOB DEFAULT '' NOT NULL,
+  oi_size INTEGER UNSIGNED DEFAULT 0 NOT NULL,
+  oi_width INTEGER DEFAULT 0 NOT NULL,
+  oi_height INTEGER DEFAULT 0 NOT NULL,
+  oi_bits INTEGER DEFAULT 0 NOT NULL,
+  oi_description_id BIGINT UNSIGNED NOT NULL,
+  oi_actor BIGINT UNSIGNED NOT NULL,
+  oi_timestamp BLOB NOT NULL, oi_metadata BLOB NOT NULL,
+  oi_media_type TEXT DEFAULT NULL, oi_major_mime TEXT DEFAULT 'unknown' NOT NULL,
+  oi_minor_mime BLOB DEFAULT 'unknown' NOT NULL,
+  oi_deleted SMALLINT UNSIGNED DEFAULT 0 NOT NULL,
+  oi_sha1 BLOB DEFAULT '' NOT NULL
+);
+
+CREATE INDEX oi_actor_timestamp ON /*_*/oldimage (oi_actor, oi_timestamp);
+
+CREATE INDEX oi_name_timestamp ON /*_*/oldimage (oi_name, oi_timestamp);
+
+CREATE INDEX oi_name_archive_name ON /*_*/oldimage (oi_name, oi_archive_name);
+
+CREATE INDEX oi_sha1 ON /*_*/oldimage (oi_sha1);
+
+
+CREATE TABLE /*_*/objectcache (
+  keyname BLOB DEFAULT '' NOT NULL,
+  value BLOB DEFAULT NULL,
+  exptime BLOB NOT NULL,
+  PRIMARY KEY(keyname)
+);
+
+CREATE INDEX exptime ON /*_*/objectcache (exptime);
+
+
+CREATE TABLE /*_*/ipblocks (
+  ipb_id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+  ipb_address BLOB NOT NULL, ipb_user INTEGER UNSIGNED DEFAULT 0 NOT NULL,
+  ipb_by_actor BIGINT UNSIGNED NOT NULL,
+  ipb_reason_id BIGINT UNSIGNED NOT NULL,
+  ipb_timestamp BLOB NOT NULL, ipb_auto SMALLINT DEFAULT 0 NOT NULL,
+  ipb_anon_only SMALLINT DEFAULT 0 NOT NULL,
+  ipb_create_account SMALLINT DEFAULT 1 NOT NULL,
+  ipb_enable_autoblock SMALLINT DEFAULT 1 NOT NULL,
+  ipb_expiry BLOB NOT NULL, ipb_range_start BLOB NOT NULL,
+  ipb_range_end BLOB NOT NULL, ipb_deleted SMALLINT DEFAULT 0 NOT NULL,
+  ipb_block_email SMALLINT DEFAULT 0 NOT NULL,
+  ipb_allow_usertalk SMALLINT DEFAULT 0 NOT NULL,
+  ipb_parent_block_id INTEGER DEFAULT NULL,
+  ipb_sitewide SMALLINT DEFAULT 1 NOT NULL
+);
+
+CREATE UNIQUE INDEX ipb_address_unique ON /*_*/ipblocks (ipb_address, ipb_user, ipb_auto);
+
+CREATE INDEX ipb_user ON /*_*/ipblocks (ipb_user);
+
+CREATE INDEX ipb_range ON /*_*/ipblocks (ipb_range_start, ipb_range_end);
+
+CREATE INDEX ipb_timestamp ON /*_*/ipblocks (ipb_timestamp);
+
+CREATE INDEX ipb_expiry ON /*_*/ipblocks (ipb_expiry);
+
+CREATE INDEX ipb_parent_block_id ON /*_*/ipblocks (ipb_parent_block_id);
+
+
+CREATE TABLE /*_*/image (
+  img_name BLOB DEFAULT '' NOT NULL,
+  img_size INTEGER UNSIGNED DEFAULT 0 NOT NULL,
+  img_width INTEGER DEFAULT 0 NOT NULL,
+  img_height INTEGER DEFAULT 0 NOT NULL,
+  img_metadata BLOB NOT NULL,
+  img_bits INTEGER DEFAULT 0 NOT NULL,
+  img_media_type TEXT DEFAULT NULL,
+  img_major_mime TEXT DEFAULT 'unknown' NOT NULL,
+  img_minor_mime BLOB DEFAULT 'unknown' NOT NULL,
+  img_description_id BIGINT UNSIGNED NOT NULL,
+  img_actor BIGINT UNSIGNED NOT NULL,
+  img_timestamp BLOB NOT NULL,
+  img_sha1 BLOB DEFAULT '' NOT NULL,
+  PRIMARY KEY(img_name)
+);
+
+CREATE INDEX img_actor_timestamp ON /*_*/image (img_actor, img_timestamp);
+
+CREATE INDEX img_size ON /*_*/image (img_size);
+
+CREATE INDEX img_timestamp ON /*_*/image (img_timestamp);
+
+CREATE INDEX img_sha1 ON /*_*/image (img_sha1);
+
+CREATE INDEX img_media_mime ON /*_*/image (
+  img_media_type, img_major_mime, img_minor_mime
 );

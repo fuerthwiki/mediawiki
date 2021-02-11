@@ -78,12 +78,6 @@ class ReplicatedBagOStuff extends BagOStuff {
 		$this->attrMap = $this->mergeFlagMaps( [ $this->readStore, $this->writeStore ] );
 	}
 
-	public function setDebug( $enabled ) {
-		parent::setDebug( $enabled );
-		$this->writeStore->setDebug( $enabled );
-		$this->readStore->setDebug( $enabled );
-	}
-
 	public function get( $key, $flags = 0 ) {
 		$store = (
 			$this->hadRecentSessionWrite( [ $key ] ) ||
@@ -277,12 +271,12 @@ class ReplicatedBagOStuff extends BagOStuff {
 		return $this->genericKeyFromComponents( $keyspace, ...$components );
 	}
 
-	public function makeKey( $class, ...$components ) {
-		return $this->genericKeyFromComponents( $this->keyspace, $class, ...$components );
+	public function makeKey( $collection, ...$components ) {
+		return $this->genericKeyFromComponents( $this->keyspace, $collection, ...$components );
 	}
 
-	public function makeGlobalKey( $class, ...$components ) {
-		return $this->genericKeyFromComponents( self::GLOBAL_KEYSPACE, $class, ...$components );
+	public function makeGlobalKey( $collection, ...$components ) {
+		return $this->genericKeyFromComponents( self::GLOBAL_KEYSPACE, $collection, ...$components );
 	}
 
 	protected function convertGenericKey( $key ) {

@@ -58,8 +58,6 @@ class EditResultTest extends MediaWikiUnitTestCase {
 	/**
 	 * @covers \MediaWiki\Storage\EditResult::isRevert()
 	 * @dataProvider provideIsRevertEditResults
-	 * @param EditResult $er
-	 * @param bool $isRevert
 	 */
 	public function testIsRevert( EditResult $er, bool $isRevert ) {
 		$this->assertSame( $isRevert, $er->isRevert(), 'isRevert()' );
@@ -127,8 +125,8 @@ class EditResultTest extends MediaWikiUnitTestCase {
 	}
 
 	/**
-	 * @covers       \MediaWiki\Storage\EditResult::getRevertMethod()
-	 * @covers       \MediaWiki\Storage\EditResult::getRevertTags()
+	 * @covers \MediaWiki\Storage\EditResult::getRevertMethod()
+	 * @covers \MediaWiki\Storage\EditResult::getRevertTags()
 	 * @dataProvider provideGetRevertMethodEditResults
 	 *
 	 * @param EditResult $er
@@ -227,7 +225,6 @@ class EditResultTest extends MediaWikiUnitTestCase {
 	 * @covers \MediaWiki\Storage\EditResult::jsonSerialize()
 	 * @covers \MediaWiki\Storage\EditResult::newFromArray
 	 * @dataProvider provideSerialization
-	 * @param EditResult $editResult
 	 */
 	public function testSerialization( EditResult $editResult ) {
 		$serialized = FormatJson::encode( $editResult );

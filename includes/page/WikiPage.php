@@ -137,6 +137,16 @@ class WikiPage implements Page, IDBAccessObject {
 	 * @param Title $title
 	 */
 	public function __construct( Title $title ) {
+		if ( !$title->canExist() ) {
+			// TODO: In order to allow WikiPage to implement ProperPageIdentity,
+			//       throw here to prevent construction of a WikiPage that doesn't
+			//       represent a proper page.
+			wfDeprecatedMsg(
+				"WikiPage constructed on a Title that cannot exist as a page: $title",
+				'1.36'
+			);
+		}
+
 		$this->mTitle = $title;
 	}
 
@@ -430,6 +440,18 @@ class WikiPage implements Page, IDBAccessObject {
 	 * @return void
 	 */
 	public function loadPageData( $from = 'fromdb' ) {
+		if ( !$this->mTitle->canExist() ) {
+			// NOTE: If and when WikiPage implements PageIdentity but not yet ProperPageIdentity,
+			//       throw here to prevent usage of a WikiPage that doesn't
+			//       represent a proper page.
+			// NOTE: The constructor will already have triggered a warning, but seeing how
+			//       bad instances of WikiPage are used will be helpful.
+			wfDeprecatedMsg(
+				"Accessing WikiPage that cannot exist as a page: {$this->mTitle}. ",
+				'1.36'
+			);
+		}
+
 		$from = self::convertSelectType( $from );
 		if ( is_int( $from ) && $from <= $this->mDataLoadedFrom ) {
 			// We already have the data from the correct location, no need to load it twice.
@@ -620,7 +642,8 @@ class WikiPage implements Page, IDBAccessObject {
 						);
 						return $this->mTitle->getContentModel();
 					}
-				}
+				},
+				[ 'pcTTL' => $cache::TTL_PROC_LONG ]
 			);
 		}
 
@@ -693,6 +716,18 @@ class WikiPage implements Page, IDBAccessObject {
 			return; // already loaded
 		}
 
+		if ( !$this->mTitle->canExist() ) {
+			// NOTE: If and when WikiPage implements PageIdentity but not yet ProperPageIdentity,
+			//       throw here to prevent usage of a WikiPage that doesn't
+			//       represent a proper page.
+			// NOTE: The constructor will already have triggered a warning, but seeing how
+			//       bad instances of WikiPage are used will be helpful.
+			wfDeprecatedMsg(
+				"Accessing WikiPage that cannot exist as a page: {$this->mTitle}. ",
+				'1.36'
+			);
+		}
+
 		$latest = $this->getLatest();
 		if ( !$latest ) {
 			return; // page doesn't exist or is missing page_latest info
@@ -705,7 +740,7 @@ class WikiPage implements Page, IDBAccessObject {
 			// SELECT. Thus we need S1 to also gets the revision row FOR UPDATE; otherwise, it
 			// may not find it since a page row UPDATE and revision row INSERT by S2 may have
 			// happened after the first S1 SELECT.
-			// https://dev.mysql.com/doc/refman/5.0/en/set-transaction.html#isolevel_repeatable-read
+			// https://dev.mysql.com/doc/refman/5.7/en/set-transaction.html#isolevel_repeatable-read
 			$revision = $this->getRevisionStore()
 				->getRevisionByPageId( $this->getId(), $latest, RevisionStore::READ_LOCKING );
 		} elseif ( $this->mDataLoadedFrom == self::READ_LATEST ) {

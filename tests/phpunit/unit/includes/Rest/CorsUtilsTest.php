@@ -30,9 +30,6 @@ class CorsUtilsTest extends \MediaWikiUnitTestCase {
 
 	/**
 	 * @dataProvider provideAuthorizeAllowOrigin
-	 * @param bool $isRegistered
-	 * @param bool $needsWriteAccess
-	 * @param string $origin
 	 */
 	public function testAuthorizeAllowOrigin( bool $isRegistered, bool $needsWriteAccess, string $origin ) {
 		$user = $this->createMock( UserIdentity::class );
@@ -233,8 +230,6 @@ class CorsUtilsTest extends \MediaWikiUnitTestCase {
 
 	/**
 	 * @dataProvider provideModifyResponseDisallowUntrustedOriginCookieAuth
-	 * @param string $requestMethod
-	 * @param string $isRegistered
 	 */
 	public function testModifyResponseDisallowUntrustedOriginCookieAuth(
 		string $origin,

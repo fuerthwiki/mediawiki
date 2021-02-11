@@ -69,6 +69,7 @@ use MediaWiki\Revision\RevisionStore;
 use MediaWiki\Revision\RevisionStoreFactory;
 use MediaWiki\Revision\SlotRoleRegistry;
 use MediaWiki\Shell\CommandFactory;
+use MediaWiki\Shell\ShellboxClientFactory;
 use MediaWiki\SpecialPage\SpecialPageFactory;
 use MediaWiki\Storage\BlobStore;
 use MediaWiki\Storage\BlobStoreFactory;
@@ -76,6 +77,9 @@ use MediaWiki\Storage\NameTableStore;
 use MediaWiki\Storage\NameTableStoreFactory;
 use MediaWiki\Storage\PageEditStash;
 use MediaWiki\Storage\RevertedTagUpdateManager;
+use MediaWiki\User\ActorNormalization;
+use MediaWiki\User\ActorStore;
+use MediaWiki\User\ActorStoreFactory;
 use MediaWiki\User\TalkPageNotificationManager;
 use MediaWiki\User\UserEditTracker;
 use MediaWiki\User\UserFactory;
@@ -122,6 +126,7 @@ use Wikimedia\NonSerializable\NonSerializableTrait;
 use Wikimedia\ObjectFactory;
 use Wikimedia\Rdbms\ILoadBalancer;
 use Wikimedia\Rdbms\LBFactory;
+use Wikimedia\RequestTimeout\CriticalSectionProvider;
 use Wikimedia\Services\NoSuchServiceException;
 use Wikimedia\Services\SalvageableService;
 use Wikimedia\Services\ServiceContainer;
@@ -167,9 +172,36 @@ class MediaWikiServices extends ServiceContainer {
 	use NonSerializableTrait;
 
 	/**
+	 * @var bool
+	 */
+	private static $globalInstanceAllowed = false;
+
+	/**
 	 * @var MediaWikiServices|null
 	 */
 	private static $instance = null;
+
+	/**
+	 * Allows a global service container instance to exist.
+	 *
+	 * This should be called only after configuration settings have been read and extensions
+	 * have been registered. Any change made to configuration after this method has been called
+	 * may be ineffective or even harmful.
+	 *
+	 * @see getInstance()
+	 *
+	 * @since 1.36
+	 */
+	public static function allowGlobalInstance() {
+		self::$globalInstanceAllowed = true;
+
+		if ( self::$instance ) {
+			// TODO: in 1.37, getInstance() should fail if $globalInstanceAllowed is false! (T153256)
+			// Until then, we have to reset service instances that have already been created.
+			// No need to warn here, getService() has already triggered a deprecation warning.
+			self::resetGlobalInstance( null, 'quick' );
+		}
+	}
 
 	/**
 	 * Returns true if an instance has already been initialized. This can be used to avoid accessing
@@ -184,6 +216,8 @@ class MediaWikiServices extends ServiceContainer {
 	/**
 	 * Returns the global default instance of the top level service locator.
 	 *
+	 * @note if called before allowGlobalInstance(), this method will fail.
+	 *
 	 * @since 1.27
 	 *
 	 * The default instance is initialized using the service instantiator functions
@@ -196,6 +230,11 @@ class MediaWikiServices extends ServiceContainer {
 	 * @return MediaWikiServices
 	 */
 	public static function getInstance() : self {
+		// TODO: in 1.37, getInstance() should fail if $globalInstanceAllowed is false! (T153256)
+		if ( !self::$globalInstanceAllowed ) {
+			wfDeprecatedMsg( 'Premature access to service container', '1.36' );
+		}
+
 		if ( self::$instance === null ) {
 			// NOTE: constructing GlobalVarConfig here is not particularly pretty,
 			// but some information from the global scope has to be injected here,
@@ -210,6 +249,15 @@ class MediaWikiServices extends ServiceContainer {
 			$runner->onMediaWikiServices( self::$instance );
 		}
 		return self::$instance;
+	}
+
+	public function getService( $name ) {
+		// TODO: in 1.37, getInstance() should fail if $globalInstanceAllowed is false! (T153256)
+		if ( !self::$globalInstanceAllowed && $this === self::$instance ) {
+			wfDeprecatedMsg( "Premature access to service '$name'", '1.36', false, 3 );
+		}
+
+		return parent::getService( $name );
 	}
 
 	/**
@@ -502,6 +550,30 @@ class MediaWikiServices extends ServiceContainer {
 	}
 
 	/**
+	 * @return ActorStore
+	 * @since 1.36
+	 */
+	public function getActorNormalization() : ActorNormalization {
+		return $this->getActorStoreFactory()->getActorNormalization();
+	}
+
+	/**
+	 * @return ActorStore
+	 * @since 1.36
+	 */
+	public function getActorStore() : ActorStore {
+		return $this->getActorStoreFactory()->getActorStore();
+	}
+
+	/**
+	 * @since 1.36
+	 * @return ActorStoreFactory
+	 */
+	public function getActorStoreFactory() : ActorStoreFactory {
+		return $this->getService( 'ActorStoreFactory' );
+	}
+
+	/**
 	 * @since 1.35
 	 * @return AuthManager
 	 */
@@ -676,6 +748,14 @@ class MediaWikiServices extends ServiceContainer {
 	 */
 	public function getContributionsLookup() : ContributionsLookup {
 		return $this->getService( 'ContributionsLookup' );
+	}
+
+	/**
+	 * @since 1.36
+	 * @return CriticalSectionProvider
+	 */
+	public function getCriticalSectionProvider() : CriticalSectionProvider {
+		return $this->getService( 'CriticalSectionProvider' );
 	}
 
 	/**
@@ -1251,6 +1331,14 @@ class MediaWikiServices extends ServiceContainer {
 	 */
 	public function getSearchEngineFactory() : SearchEngineFactory {
 		return $this->getService( 'SearchEngineFactory' );
+	}
+
+	/**
+	 * @since 1.36
+	 * @return ShellboxClientFactory
+	 */
+	public function getShellboxClientFactory() : ShellboxClientFactory {
+		return $this->getService( 'ShellboxClientFactory' );
 	}
 
 	/**

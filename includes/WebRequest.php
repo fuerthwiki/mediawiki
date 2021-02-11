@@ -136,8 +136,9 @@ class WebRequest {
 	 * If the REQUEST_URI is not provided we'll fall back on the PATH_INFO
 	 * provided by the server if any and use that to set a 'title' parameter.
 	 *
-	 * @internal This has many odd special cases and so should only be used by
-	 *   interpolateTitle() for index.php. Instead try getRequestPathSuffix().
+	 * This internal method handles many odd cases and is tailored specifically for
+	 * used by WebRequest::interpolateTitle, for index.php requests.
+	 * Consider using WebRequest::getRequestPathSuffix for other path-related use cases.
 	 *
 	 * @param string $want If this is not 'all', then the function
 	 * will return an empty array if it determines that the URL is
@@ -146,7 +147,7 @@ class WebRequest {
 	 * @return string[] Any query arguments found in path matches.
 	 * @throws FatalError If invalid routes are configured (T48998)
 	 */
-	public static function getPathInfo( $want = 'all' ) {
+	protected static function getPathInfo( $want = 'all' ) {
 		// PATH_INFO is mangled due to https://bugs.php.net/bug.php?id=31892
 		// And also by Apache 2.x, double slashes are converted to single slashes.
 		// So we will use REQUEST_URI if possible.
@@ -318,22 +319,21 @@ class WebRequest {
 	}
 
 	/**
-	 * Get the unique request ID.
-	 * This is either the value of the UNIQUE_ID envvar (if present) or a
-	 * randomly-generated 24-character string.
+	 * Get the current request ID.
+	 *
+	 * This is usually based on the `X-Request-Id` header, or the `UNIQUE_ID`
+	 * environment variable, falling back to (process cached) randomly-generated string.
 	 *
 	 * @return string
 	 * @since 1.27
 	 */
 	public static function getRequestId() {
-		// This method is called from various error handlers and should be kept simple.
-
+		// This method is called from various error handlers and MUST be kept simple and stateless.
 		if ( !self::$reqId ) {
 			global $wgAllowExternalReqID;
-			$id = $wgAllowExternalReqID
-				? RequestContext::getMain()->getRequest()->getHeader( 'X-Request-Id' )
-				: null;
-			if ( !$id ) {
+			if ( $wgAllowExternalReqID ) {
+				$id = $_SERVER['HTTP_X_REQUEST_ID'] ?? $_SERVER['UNIQUE_ID'] ?? wfRandomString( 24 );
+			} else {
 				$id = $_SERVER['UNIQUE_ID'] ?? wfRandomString( 24 );
 			}
 			self::$reqId = $id;
@@ -677,15 +677,14 @@ class WebRequest {
 	}
 
 	/**
-	 * Extracts the given named values into an array.
-	 * If no arguments are given, returns all input values.
+	 * Extracts the (given) named values into an array.
 	 * No transformation is performed on the values.
 	 *
+	 * @param string ...$names If no arguments are given, returns all input values
 	 * @return array
 	 */
-	public function getValues() {
-		$names = func_get_args();
-		if ( count( $names ) == 0 ) {
+	public function getValues( ...$names ) {
+		if ( $names === [] ) {
 			$names = array_keys( $this->data );
 		}
 
@@ -1296,7 +1295,11 @@ class WebRequest {
 			# IP addresses over proxy servers controlled by this site (more sensible).
 			# Note that some XFF values might be "unknown" with Squid/Varnish.
 			foreach ( $ipchain as $i => $curIP ) {
-				$curIP = IPUtils::sanitizeIP( IPUtils::canonicalize( $curIP ) );
+				$curIP = IPUtils::sanitizeIP(
+					IPUtils::canonicalize(
+						self::canonicalizeIPv6LoopbackAddress( $curIP )
+					)
+				);
 				if ( !$curIP || !isset( $ipchain[$i + 1] ) || $ipchain[$i + 1] === 'unknown'
 					|| !$proxyLookup->isTrustedProxy( $curIP )
 				) {
@@ -1307,14 +1310,19 @@ class WebRequest {
 					$wgUsePrivateIPs ||
 					$proxyLookup->isConfiguredProxy( $curIP ) // T50919; treat IP as sane
 				) {
+					$nextIP = $ipchain[$i + 1];
+
 					// Follow the next IP according to the proxy
-					$nextIP = IPUtils::canonicalize( $ipchain[$i + 1] );
+					$nextIP = IPUtils::canonicalize(
+						self::canonicalizeIPv6LoopbackAddress( $nextIP )
+					);
 					if ( !$nextIP && $isConfigured ) {
 						// We have not yet made it past CDN/proxy servers of this site,
 						// so either they are misconfigured or there is some IP spoofing.
 						throw new MWException( "Invalid IP given in XFF '$forwardedFor'." );
 					}
 					$ip = $nextIP;
+
 					// keep traversing the chain
 					continue;
 				}
@@ -1330,6 +1338,23 @@ class WebRequest {
 		}
 
 		$this->ip = $ip;
+		return $ip;
+	}
+
+	/**
+	 * Converts ::1 (IPv6 loopback address) to 127.0.0.1 (IPv4 loopback address);
+	 * assists in matching trusted proxies.
+	 *
+	 * @param string $ip
+	 * @return string either '127.0.0.1' or $ip
+	 * @since 1.36
+	 */
+	public static function canonicalizeIPv6LoopbackAddress( $ip ) {
+		// Code moved from IPUtils library. See T248237#6614927
+		$m = [];
+		if ( preg_match( '/^0*' . IPUtils::RE_IPV6_GAP . '1$/', $ip, $m ) ) {
+			return '127.0.0.1';
+		}
 		return $ip;
 	}
 

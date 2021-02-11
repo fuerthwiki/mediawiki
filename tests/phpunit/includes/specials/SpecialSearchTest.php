@@ -122,7 +122,7 @@ class SpecialSearchTest extends MediaWikiIntegrationTestCase {
 				$EMPTY_REQUEST, [
 				'searchNs2' => 1,
 				'searchNs14' => 1,
-			] + array_fill_keys( array_map( function ( $ns ) {
+			] + array_fill_keys( array_map( static function ( $ns ) {
 				return "searchNs$ns";
 			}, $defaultNS ), 0 ),
 				'advanced', [ 2, 14 ],
@@ -136,6 +136,7 @@ class SpecialSearchTest extends MediaWikiIntegrationTestCase {
 	 * Helper to create a new User object with given options
 	 * User remains anonymous though
 	 * @param array|null $opt
+	 * @return User
 	 */
 	protected function newUserWithSearchNS( $opt = null ) {
 		$u = User::newFromId( 0 );
@@ -209,6 +210,22 @@ class SpecialSearchTest extends MediaWikiIntegrationTestCase {
 				'first suggestion',
 				[]
 			],
+
+			[
+				'Prev/next links are using the rewritten query',
+				'/search=rewritten\+query" title="Next 20 results"/',
+				'original query',
+				'rewritten query',
+				array_fill( 0, 100, Title::newMainPage() )
+			],
+
+			[
+				'Show x results per page link uses the rewritten query',
+				'/search=rewritten\+query" title="Show \d+ results/',
+				'original query',
+				'rewritten query',
+				array_fill( 0, 100, Title::newMainPage() )
+			],
 		];
 	}
 
@@ -223,7 +240,7 @@ class SpecialSearchTest extends MediaWikiIntegrationTestCase {
 		$rewrittenQuery,
 		array $resultTitles
 	) {
-		$results = array_map( function ( $title ) {
+		$results = array_map( static function ( $title ) {
 			return SearchResult::newFromTitle( $title );
 		}, $resultTitles );
 
@@ -386,21 +403,24 @@ class SpecialSearchTest extends MediaWikiIntegrationTestCase {
 	public function test_create_link_not_shown_if_variant_link_is_known() {
 		$searchTerm = "Test create link not shown if variant link is known";
 		$variantLink = "the replaced link variant text should not be visible";
-		$variantTitle = $this->createMock( Title::class );
+
+		$variantTitle = $this->createNoOpMock(
+			Title::class,
+			[ 'isKnown', 'getPrefixedText', 'getDBkey', 'isExternal' ]
+		);
+
+		$variantTitle->method( "isKnown" )->willReturn( true );
+		$variantTitle->method( "isExternal" )->willReturn( false );
+		$variantTitle->method( "getDBkey" )->willReturn( $searchTerm . " (variant)" );
+		$variantTitle->method( "getPrefixedText" )->willReturn( $searchTerm . " (variant)" );
 
 		$specialSearchFactory = function () use ( $variantTitle, $variantLink, $searchTerm ) {
-			$variantTitle->method( "isKnown" )
-				->willReturn( true );
-
-			$variantTitle->method( "getPrefixedText" )
-				->willReturn( $searchTerm . " (variant)" );
-
 			$languageConverter = $this->createMock( ILanguageConverter::class );
 			$languageConverter->method( 'hasVariants' )->willReturn( true );
 			$languageConverter->expects( $this->once() )
 				->method( 'findVariantLink' )
 				->willReturnCallback(
-					function ( &$link, &$nt, $unused = false ) use ( $searchTerm, $variantTitle, $variantLink ) {
+					static function ( &$link, &$nt, $unused = false ) use ( $searchTerm, $variantTitle, $variantLink ) {
 						if ( $link === $searchTerm ) {
 							$link = $variantLink;
 							$nt = $variantTitle;

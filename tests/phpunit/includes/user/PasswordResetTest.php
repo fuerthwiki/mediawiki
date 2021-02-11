@@ -269,12 +269,12 @@ class PasswordResetTest extends MediaWikiIntegrationTestCase {
 		$userFactory = $this->createMock( UserFactory::class );
 		$userFactory->method( 'newFromName' )
 			->willReturnCallback(
-				function ( $username ) use ( $users ) {
+				static function ( $username ) use ( $users ) {
 					return $users[ $username ] ?? null;
 				}
 			);
 
-		$lookupUser = function ( $username ) use ( $users ) {
+		$lookupUser = static function ( $username ) use ( $users ) {
 			return $users[ $username ] ?? false;
 		};
 
@@ -656,7 +656,7 @@ class PasswordResetTest extends MediaWikiIntegrationTestCase {
 			->getMock();
 		$authManager->method( 'allowsAuthenticationDataChange' )
 			->willReturnCallback(
-				function ( TemporaryPasswordAuthenticationRequest $req )
+				static function ( TemporaryPasswordAuthenticationRequest $req )
 						use ( $allowed, $ignored, $mailThrottledLimited ) {
 					if ( in_array( $req->username, $mailThrottledLimited, true ) ) {
 						return Status::newGood( 'throttled-mailpassword' );

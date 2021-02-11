@@ -104,6 +104,7 @@ use MediaWiki\Revision\RevisionStore;
 use MediaWiki\Revision\RevisionStoreFactory;
 use MediaWiki\Revision\SlotRoleRegistry;
 use MediaWiki\Shell\CommandFactory;
+use MediaWiki\Shell\ShellboxClientFactory;
 use MediaWiki\SpecialPage\SpecialPageFactory;
 use MediaWiki\Storage\BlobStore;
 use MediaWiki\Storage\BlobStoreFactory;
@@ -113,6 +114,7 @@ use MediaWiki\Storage\NameTableStoreFactory;
 use MediaWiki\Storage\PageEditStash;
 use MediaWiki\Storage\RevertedTagUpdateManager;
 use MediaWiki\Storage\SqlBlobStore;
+use MediaWiki\User\ActorStoreFactory;
 use MediaWiki\User\DefaultOptionsLookup;
 use MediaWiki\User\TalkPageNotificationManager;
 use MediaWiki\User\UserEditTracker;
@@ -129,6 +131,8 @@ use Wikimedia\DependencyStore\KeyValueDependencyStore;
 use Wikimedia\DependencyStore\SqlModuleDependencyStore;
 use Wikimedia\Message\IMessageFormatterFactory;
 use Wikimedia\ObjectFactory;
+use Wikimedia\RequestTimeout\CriticalSectionProvider;
+use Wikimedia\RequestTimeout\RequestTimeout;
 use Wikimedia\Services\RecursiveServiceDependencyException;
 use Wikimedia\UUID\GlobalIdGenerator;
 
@@ -137,7 +141,16 @@ return [
 		return new ActorMigration(
 			SCHEMA_COMPAT_NEW,
 			$services->getUserFactory(),
-			$services->getUserNameUtils()
+			$services->getActorStoreFactory()
+		);
+	},
+
+	'ActorStoreFactory' => function ( MediaWikiServices $services ) : ActorStoreFactory {
+		return new ActorStoreFactory(
+			new ServiceOptions( ActorStoreFactory::CONSTRUCTOR_OPTIONS, $services->getMainConfig() ),
+			$services->getDBLoadBalancerFactory(),
+			$services->getUserNameUtils(),
+			LoggerFactory::getInstance( 'ActorStore' )
 		);
 	},
 
@@ -197,8 +210,7 @@ return [
 			),
 			$services->getPermissionManager(),
 			LoggerFactory::getInstance( 'BlockManager' ),
-			$services->getHookContainer(),
-			$services->getUserGroupManagerFactory()->getUserGroupManager()
+			$services->getHookContainer()
 		);
 	},
 
@@ -298,11 +310,16 @@ return [
 			$services->getLinkRenderer(),
 			$services->getLinkBatchFactory(),
 			$services->getHookContainer(),
-			$services->getPermissionManager(),
 			$services->getDBLoadBalancer(),
 			$services->getActorMigration(),
 			$services->getNamespaceInfo()
 		);
+	},
+
+	'CriticalSectionProvider' => function ( MediaWikiServices $services ) : CriticalSectionProvider {
+		$config = $services->getMainConfig();
+		$limit = $config->get( 'CommandLineMode' ) ? INF : $config->get( 'CriticalSectionTimeLimit' );
+		return RequestTimeout::singleton()->createCriticalSectionProvider( $limit );
 	},
 
 	'CryptHKDF' => function ( MediaWikiServices $services ) : CryptHKDF {
@@ -708,6 +725,7 @@ return [
 		}
 
 		$params = $mainConfig->get( 'ObjectCaches' )[$id];
+		$params['stats'] = $services->getStatsdDataFactory();
 
 		$store = ObjectCache::newFromParams( $params, $mainConfig );
 		$store->getLogger()->debug( 'MainObjectStash using store {class}', [
@@ -739,6 +757,7 @@ return [
 				"wgObjectCaches must have \"$cacheId\" set (via wgWANObjectCaches)"
 			);
 		}
+		$storeParams['stats'] = $services->getStatsdDataFactory();
 		$store = ObjectCache::newFromParams( $storeParams, $mainConfig );
 		$logger = $store->getLogger();
 		$logger->debug( 'MainWANObjectCache using store {class}', [
@@ -1193,6 +1212,7 @@ return [
 			$services->getMainWANObjectCache(),
 			$services->getCommentStore(),
 			$services->getActorMigration(),
+			$services->getActorStoreFactory(),
 			LoggerFactory::getInstance( 'RevisionStore' ),
 			$services->getContentHandlerFactory(),
 			$services->getHookContainer()
@@ -1219,6 +1239,14 @@ return [
 		);
 	},
 
+	'ShellboxClientFactory' => function ( MediaWikiServices $services ) : ShellboxClientFactory {
+		return new ShellboxClientFactory(
+			$services->getHttpRequestFactory(),
+			$services->getMainConfig()->get( 'ShellboxUrl' ),
+			$services->getMainConfig()->get( 'ShellboxSecretKey' )
+		);
+	},
+
 	'ShellCommandFactory' => function ( MediaWikiServices $services ) : CommandFactory {
 		$config = $services->getMainConfig();
 
@@ -1231,7 +1259,8 @@ return [
 		$cgroup = $config->get( 'ShellCgroup' );
 		$restrictionMethod = $config->get( 'ShellRestrictionMethod' );
 
-		$factory = new CommandFactory( $limits, $cgroup, $restrictionMethod );
+		$factory = new CommandFactory( $services->getShellboxClientFactory(),
+			$limits, $cgroup, $restrictionMethod );
 		$factory->setLogger( LoggerFactory::getInstance( 'exec' ) );
 		$factory->logStderr();
 
@@ -1520,7 +1549,8 @@ return [
 			$services->getNamespaceInfo(),
 			$services->getRevisionLookup(),
 			$services->getHookContainer(),
-			$services->getLinkBatchFactory()
+			$services->getLinkBatchFactory(),
+			$services->getUserFactory()
 		);
 		$store->setStatsdDataFactory( $services->getStatsdDataFactory() );
 

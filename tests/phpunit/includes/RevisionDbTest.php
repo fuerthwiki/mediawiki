@@ -249,6 +249,7 @@ class RevisionDbTest extends MediaWikiIntegrationTestCase {
 	public function testInsertOn_success() {
 		$this->hideDeprecated( 'Revision::getTextId' );
 		$this->hideDeprecated( 'Revision::insertOn' );
+		$this->hideDeprecated( 'MediaWiki\Revision\RevisionStore::newMutableRevisionFromArray' );
 
 		$parentId = $this->testPage->getLatest();
 
@@ -308,6 +309,7 @@ class RevisionDbTest extends MediaWikiIntegrationTestCase {
 	}
 
 	public function provideInsertOn_exceptionOnIncomplete() {
+		$this->hideDeprecated( 'MediaWiki\Revision\RevisionStore::newMutableRevisionFromArray' );
 		$content = new TextContent( '' );
 		$user = User::newFromName( 'Foo' );
 
@@ -348,6 +350,7 @@ class RevisionDbTest extends MediaWikiIntegrationTestCase {
 	 */
 	public function testInsertOn_exceptionOnIncomplete( $array, $expException, $expMessage ) {
 		$this->hideDeprecated( 'Revision::insertOn' );
+		$this->hideDeprecated( 'MediaWiki\Revision\RevisionStore::newMutableRevisionFromArray' );
 
 		// If an ExternalStore is set don't use it.
 		$this->setMwGlobals( 'wgDefaultExternalStore', false );
@@ -405,6 +408,7 @@ class RevisionDbTest extends MediaWikiIntegrationTestCase {
 	 * @covers Revision::newFromRow
 	 */
 	public function testNewFromRow() {
+		$this->hideDeprecated( 'MediaWiki\Revision\RevisionStore::newMutableRevisionFromArray' );
 		$orig = $this->makeRevisionWithProps();
 
 		$dbr = wfGetDB( DB_REPLICA );
@@ -424,41 +428,41 @@ class RevisionDbTest extends MediaWikiIntegrationTestCase {
 
 	public function provideNewFromArchiveRow() {
 		yield [
-			function ( $f ) {
+			static function ( $f ) {
 				return $f;
 			},
 		];
 		yield [
-			function ( $f ) {
+			static function ( $f ) {
 				return $f + [ 'ar_namespace', 'ar_title' ];
 			},
 		];
 		yield [
-			function ( $f ) {
+			static function ( $f ) {
 				unset( $f['ar_text_id'] );
 				return $f;
 			},
 		];
 		yield [
-			function ( $f ) {
+			static function ( $f ) {
 				unset( $f['ar_page_id'] );
 				return $f;
 			},
 		];
 		yield [
-			function ( $f ) {
+			static function ( $f ) {
 				unset( $f['ar_parent_id'] );
 				return $f;
 			},
 		];
 		yield [
-			function ( $f ) {
+			static function ( $f ) {
 				unset( $f['ar_rev_id'] );
 				return $f;
 			},
 		];
 		yield [
-			function ( $f ) {
+			static function ( $f ) {
 				unset( $f['ar_sha1'] );
 				return $f;
 			},
@@ -484,6 +488,7 @@ class RevisionDbTest extends MediaWikiIntegrationTestCase {
 			$services->getSlotRoleStore(),
 			$services->getSlotRoleRegistry(),
 			$services->getActorMigration(),
+			$services->getActorStore(),
 			$services->getContentHandlerFactory(),
 			$services->getHookContainer()
 		);
@@ -627,6 +632,7 @@ class RevisionDbTest extends MediaWikiIntegrationTestCase {
 	public function testGetPage() {
 		$this->hideDeprecated( 'Revision::newFromId' );
 		$this->hideDeprecated( 'Revision::getPage' );
+		$this->hideDeprecated( 'MediaWiki\Revision\RevisionStore::newMutableRevisionFromArray' );
 		$page = $this->testPage;
 
 		$orig = $this->makeRevisionWithProps( [ 'page' => $page->getId() ] );
@@ -642,6 +648,7 @@ class RevisionDbTest extends MediaWikiIntegrationTestCase {
 		$this->hideDeprecated( 'WikiPage::getRevision' );
 		$this->hideDeprecated( 'Revision::isCurrent' );
 		$this->hideDeprecated( 'Revision::newFromId' );
+		$this->hideDeprecated( 'MediaWiki\Revision\RevisionStore::newMutableRevisionFromArray' );
 
 		$rev1 = $this->testPage->getRevision();
 
@@ -807,6 +814,7 @@ class RevisionDbTest extends MediaWikiIntegrationTestCase {
 	 */
 	public function testInsertOn() {
 		$this->hideDeprecated( 'Revision::getTimestamp' );
+		$this->hideDeprecated( 'MediaWiki\Revision\RevisionStore::newMutableRevisionFromArray' );
 
 		$ip = '2600:387:ed7:947e:8c16:a1ad:dd34:1dd7';
 
@@ -841,6 +849,8 @@ class RevisionDbTest extends MediaWikiIntegrationTestCase {
 		$this->hideDeprecated( 'Revision::userWasLastToEdit' );
 		$this->hideDeprecated( 'Revision::insertOn' );
 		$this->hideDeprecated( 'Revision::getTimestamp' );
+		$this->hideDeprecated( 'MediaWiki\Revision\RevisionStore::newMutableRevisionFromArray' );
+
 		$userA = User::newFromName( "RevisionStorageTest_userA" );
 		$userB = User::newFromName( "RevisionStorageTest_userB" );
 
@@ -990,6 +1000,7 @@ class RevisionDbTest extends MediaWikiIntegrationTestCase {
 	 */
 	public function testGetContentModel( $text, $title, $model, $format, $expectedModel ) {
 		$this->hideDeprecated( 'Revision::getContentModel' );
+		$this->hideDeprecated( 'MediaWiki\Revision\RevisionStore::newMutableRevisionFromArray' );
 
 		$rev = $this->newTestRevision( $text, $title, $model, $format );
 
@@ -1001,6 +1012,7 @@ class RevisionDbTest extends MediaWikiIntegrationTestCase {
 	 */
 	public function testGetContentModelForEmptyRevision() {
 		$this->hideDeprecated( 'Revision::getContentModel' );
+		$this->hideDeprecated( 'MediaWiki\Revision\RevisionStore::newMutableRevisionFromArray' );
 
 		$rev = new Revision( [], 0, $this->testPage->getTitle() );
 
@@ -1029,6 +1041,7 @@ class RevisionDbTest extends MediaWikiIntegrationTestCase {
 		$this->hideDeprecated( 'Revision::getContentFormat' );
 		$this->hideDeprecated( 'Revision::getContentHandler' );
 		$this->hideDeprecated( 'Revision::getContentModel' );
+		$this->hideDeprecated( 'MediaWiki\Revision\RevisionStore::newMutableRevisionFromArray' );
 
 		$rev = $this->newTestRevision( $text, $title, $model, $format );
 
@@ -1042,6 +1055,7 @@ class RevisionDbTest extends MediaWikiIntegrationTestCase {
 		$this->hideDeprecated( 'Revision::getContentFormat' );
 		$this->hideDeprecated( 'Revision::getContentHandler' );
 		$this->hideDeprecated( 'Revision::getContentModel' );
+		$this->hideDeprecated( 'MediaWiki\Revision\RevisionStore::newMutableRevisionFromArray' );
 
 		$rev = new Revision( [], 0, $this->testPage->getTitle() );
 
@@ -1070,6 +1084,7 @@ class RevisionDbTest extends MediaWikiIntegrationTestCase {
 	public function testGetContentHandler( $text, $title, $model, $format, $expectedClass ) {
 		$this->hideDeprecated( 'Revision::getContentHandler' );
 		$this->hideDeprecated( 'Revision::getContentModel' );
+		$this->hideDeprecated( 'MediaWiki\Revision\RevisionStore::newMutableRevisionFromArray' );
 
 		$rev = $this->newTestRevision( $text, $title, $model, $format );
 
@@ -1107,6 +1122,7 @@ class RevisionDbTest extends MediaWikiIntegrationTestCase {
 		$audience, $expectedSerialization
 	) {
 		$this->hideDeprecated( 'Revision::getContent' );
+		$this->hideDeprecated( 'MediaWiki\Revision\RevisionStore::newMutableRevisionFromArray' );
 
 		$rev = $this->newTestRevision( $text, $title, $model, $format );
 		$content = $rev->getContent( $audience );
@@ -1122,6 +1138,7 @@ class RevisionDbTest extends MediaWikiIntegrationTestCase {
 	 */
 	public function testGetContent_failure() {
 		$this->hideDeprecated( 'Revision::getContent' );
+		$this->hideDeprecated( 'MediaWiki\Revision\RevisionStore::newMutableRevisionFromArray' );
 
 		$rev = new Revision( [
 			'page' => $this->testPage->getId(),
@@ -1154,6 +1171,7 @@ class RevisionDbTest extends MediaWikiIntegrationTestCase {
 	 */
 	public function testGetSize( $text, $model, $expected_size ) {
 		$this->hideDeprecated( 'Revision::getSize' );
+		$this->hideDeprecated( 'MediaWiki\Revision\RevisionStore::newMutableRevisionFromArray' );
 
 		$rev = $this->newTestRevision( $text, 'RevisionTest_testGetSize', $model );
 		$this->assertEquals( $expected_size, $rev->getSize() );
@@ -1177,6 +1195,7 @@ class RevisionDbTest extends MediaWikiIntegrationTestCase {
 	 */
 	public function testGetSha1( $text, $model, $expected_hash ) {
 		$this->hideDeprecated( 'Revision::getSha1' );
+		$this->hideDeprecated( 'MediaWiki\Revision\RevisionStore::newMutableRevisionFromArray' );
 
 		$rev = $this->newTestRevision( $text, 'RevisionTest_testGetSha1', $model );
 		$this->assertEquals( $expected_hash, $rev->getSha1() );
@@ -1189,6 +1208,7 @@ class RevisionDbTest extends MediaWikiIntegrationTestCase {
 	 */
 	public function testGetContentClone() {
 		$this->hideDeprecated( 'Revision::getContent' );
+		$this->hideDeprecated( 'MediaWiki\Revision\RevisionStore::newMutableRevisionFromArray' );
 
 		$content = new RevisionTestModifyableContent( "foo" );
 
@@ -1227,6 +1247,7 @@ class RevisionDbTest extends MediaWikiIntegrationTestCase {
 	 */
 	public function testGetContentUncloned() {
 		$this->hideDeprecated( 'Revision::getContent' );
+		$this->hideDeprecated( 'MediaWiki\Revision\RevisionStore::newMutableRevisionFromArray' );
 
 		$rev = $this->newTestRevision( "hello", "testGetContentUncloned_dummy", CONTENT_MODEL_WIKITEXT );
 		$content = $rev->getContent( Revision::RAW );
@@ -1426,6 +1447,7 @@ class RevisionDbTest extends MediaWikiIntegrationTestCase {
 	 * @covers Revision::getTitle
 	 */
 	public function testGetTitle_fromRevisionWhichWillLoadTheTitle() {
+		$this->hideDeprecated( 'MediaWiki\Revision\RevisionStore::newMutableRevisionFromArray' );
 		$rev = new Revision( [ 'id' => $this->testPage->getLatest() ] );
 		$this->assertTrue(
 			$this->testPage->getTitle()->equals(
@@ -1780,6 +1802,7 @@ class RevisionDbTest extends MediaWikiIntegrationTestCase {
 	 */
 	public function testUserCan( $bitField, $field, $userGroups, $expected ) {
 		$this->hideDeprecated( 'Revision::userCan' );
+		$this->hideDeprecated( 'MediaWiki\Revision\RevisionStore::newMutableRevisionFromArray' );
 
 		$this->setGroupPermissions(
 			[
@@ -1804,6 +1827,7 @@ class RevisionDbTest extends MediaWikiIntegrationTestCase {
 
 	public function provideGetTextId() {
 		$this->hideDeprecated( 'Revision::__construct' );
+		$this->hideDeprecated( 'MediaWiki\Revision\RevisionStore::newMutableRevisionFromArray' );
 
 		$title = $this->getMockTitle();
 
@@ -1829,7 +1853,7 @@ class RevisionDbTest extends MediaWikiIntegrationTestCase {
 
 	/**
 	 * @dataProvider provideGetTextId
-	 * @covers       Revision::getTextId()
+	 * @covers Revision::getTextId()
 	 */
 	public function testGetTextId( Revision $rev, $expected ) {
 		$this->hideDeprecated( 'Revision::getTextId' );
@@ -1849,7 +1873,7 @@ class RevisionDbTest extends MediaWikiIntegrationTestCase {
 
 	/**
 	 * @dataProvider provideGetSerializedData
-	 * @covers       Revision::getTextId()
+	 * @covers Revision::getTextId()
 	 *
 	 * @param Revision $rev
 	 * @param int $expected

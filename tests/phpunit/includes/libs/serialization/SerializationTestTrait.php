@@ -1,6 +1,7 @@
 <?php
 
 // phpcs:disable MediaWiki.Commenting.FunctionComment.ObjectTypeHintParam
+// phpcs:disable MediaWiki.Commenting.FunctionComment.MissingParamTag -- Traits are not excluded
 
 namespace Wikimedia\Tests;
 
@@ -45,9 +46,6 @@ trait SerializationTestTrait {
 	 * Tests that $deserialized objects retrieved from stored files for various MW versions
 	 * equal to the $expected
 	 * @dataProvider provideTestDeserialization
-	 * @param callable $deserializer
-	 * @param object $expected
-	 * @param string $data
 	 */
 	public function testDeserialization( callable $deserializer, object $expected, string $data ) {
 		$deserialized = $deserializer( $data );
@@ -91,9 +89,6 @@ trait SerializationTestTrait {
 	/**
 	 * Test that the current master $serialized instances are equal to stored $expected instances.
 	 * @dataProvider provideSerialization
-	 * @param callable $serializer
-	 * @param string $expected
-	 * @param object $testInstance
 	 */
 	public function testSerialization( callable $serializer, string $expected, object $testInstance ) {
 		$this->assertSame( $expected, $serializer( $testInstance ) );
@@ -123,10 +118,6 @@ trait SerializationTestTrait {
 	 * Test that the $expected instance can be serialized and successfully be deserialized again.
 	 *
 	 * @dataProvider provideSerializationRoundTrip
-	 *
-	 * @param object $instance
-	 * @param callable $serializer
-	 * @param callable $deserializer
 	 */
 	public function testSerializationRoundTrip(
 		object $instance,
@@ -199,7 +190,7 @@ trait SerializationTestTrait {
 	public function provideDeserializedTestObjects(): Generator {
 		$className = $this->getClassToTest();
 		$testCases = $this->getTestInstancesAndAssertions();
-		$testObjects = array_map( function ( $testCase ) {
+		$testObjects = array_map( static function ( $testCase ) {
 			return $testCase['instance'];
 		}, $testCases );
 		foreach ( $this->getSupportedSerializationFormats() as $serializationFormat ) {
@@ -233,8 +224,6 @@ trait SerializationTestTrait {
 	 * @see self::getTestInstancesAndAssertions()
 	 * @dataProvider provideDeserializedTestObjects
 	 * @dataProvider provideCurrentVersionTestObjects
-	 * @param object $testInstance
-	 * @param callable $assertionsCallback
 	 */
 	public function testAcceptanceOfDeserializedInstances(
 		object $testInstance,
@@ -248,7 +237,7 @@ trait SerializationTestTrait {
 	 * @return array
 	 */
 	private function getTestInstances(): array {
-		return array_map( function ( $testCase ) {
+		return array_map( static function ( $testCase ) {
 			return $testCase['instance'];
 		}, $this->getTestInstancesAndAssertions() );
 	}

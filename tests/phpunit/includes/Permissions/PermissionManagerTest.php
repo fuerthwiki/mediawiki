@@ -14,7 +14,6 @@ use MediaWiki\Revision\MutableRevisionRecord;
 use MediaWiki\Session\SessionId;
 use MediaWiki\Session\TestUtils;
 use MediaWikiLangTestCase;
-use MWException;
 use RequestContext;
 use stdClass;
 use TestAllServiceOptionsUsed;
@@ -859,7 +858,7 @@ class PermissionManagerTest extends MediaWikiLangTestCase {
 		$this->assertNotContains( 'nukeworld', $rights, 'sanity check' );
 
 		// Add a hook manipluating the rights
-		$this->setTemporaryHook( 'UserGetRights', function ( $user, &$rights ) {
+		$this->setTemporaryHook( 'UserGetRights', static function ( $user, &$rights ) {
 			$rights[] = 'nukeworld';
 			$rights = array_diff( $rights, [ 'writetest' ] );
 		} );
@@ -1121,12 +1120,7 @@ class PermissionManagerTest extends MediaWikiLangTestCase {
 
 	/**
 	 * @dataProvider provideGetRestrictionLevels
-	 * @covers       \MediaWiki\Permissions\PermissionManager::getNamespaceRestrictionLevels
-	 *
-	 * @param array $expected
-	 * @param int $ns
-	 * @param array|null $userGroups
-	 * @throws MWException
+	 * @covers \MediaWiki\Permissions\PermissionManager::getNamespaceRestrictionLevels
 	 */
 	public function testGetRestrictionLevels( array $expected, $ns, array $userGroups = null ) {
 		$this->setMwGlobals( [

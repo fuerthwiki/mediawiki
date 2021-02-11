@@ -157,6 +157,9 @@ abstract class MediaWikiIntegrationTestCase extends PHPUnit\Framework\TestCase {
 
 	/**
 	 * @stable for calling
+	 * @param string|null $name
+	 * @param array $data
+	 * @param string $dataName
 	 */
 	public function __construct( $name = null, array $data = [], $dataName = '' ) {
 		parent::__construct( $name, $data, $dataName );
@@ -355,7 +358,7 @@ abstract class MediaWikiIntegrationTestCase extends PHPUnit\Framework\TestCase {
 		ConfigFactory $oldFactory,
 		array $configurations
 	) {
-		return function ( MediaWikiServices $services ) use ( $oldFactory, $configurations ) {
+		return static function ( MediaWikiServices $services ) use ( $oldFactory, $configurations ) {
 			$factory = new ConfigFactory();
 
 			// clone configurations from $oldFactory that are not overwritten by $configurations
@@ -579,7 +582,7 @@ abstract class MediaWikiIntegrationTestCase extends PHPUnit\Framework\TestCase {
 
 		// T46192 Do not attempt to send a real e-mail
 		$this->setTemporaryHook( 'AlternateUserMailer',
-			function () {
+			static function () {
 				return false;
 			}
 		);
@@ -629,8 +632,6 @@ abstract class MediaWikiIntegrationTestCase extends PHPUnit\Framework\TestCase {
 		// Clear any cached test users so they don't retain references to old services
 		TestUserRegistry::clear();
 
-		// Re-enable any disabled deprecation warnings
-		MWDebug::clearLog();
 		// Restore mw globals
 		foreach ( $this->mwGlobals as $key => $value ) {
 			$GLOBALS[$key] = $value;
@@ -718,7 +719,7 @@ abstract class MediaWikiIntegrationTestCase extends PHPUnit\Framework\TestCase {
 		if ( is_callable( $service ) ) {
 			$instantiator = $service;
 		} else {
-			$instantiator = function () use ( $service ) {
+			$instantiator = static function () use ( $service ) {
 				return $service;
 			};
 		}
@@ -1078,7 +1079,7 @@ abstract class MediaWikiIntegrationTestCase extends PHPUnit\Framework\TestCase {
 		$newServices->resetServiceForTesting( 'DBLoadBalancerFactory' );
 		$newServices->redefineService(
 			'DBLoadBalancerFactory',
-			function ( MediaWikiServices $services ) use ( $oldLoadBalancerFactory ) {
+			static function ( MediaWikiServices $services ) use ( $oldLoadBalancerFactory ) {
 				return $oldLoadBalancerFactory;
 			}
 		);
@@ -1087,7 +1088,7 @@ abstract class MediaWikiIntegrationTestCase extends PHPUnit\Framework\TestCase {
 		$newServices->resetServiceForTesting( 'HttpRequestFactory' );
 		$newServices->redefineService(
 			'HttpRequestFactory',
-			function ( MediaWikiServices $services ) {
+			static function ( MediaWikiServices $services ) {
 				return new NullHttpRequestFactory();
 			}
 		);
@@ -1138,7 +1139,7 @@ abstract class MediaWikiIntegrationTestCase extends PHPUnit\Framework\TestCase {
 		global $wgParser, $wgContLang;
 		// We don't have to replace the parser if it wasn't unstubbed
 		if ( !( $wgParser instanceof StubObject ) ) {
-			$wgParser = new StubObject( 'wgParser', function () {
+			$wgParser = new StubObject( 'wgParser', static function () {
 				return MediaWikiServices::getInstance()->getParser();
 			} );
 		}
@@ -1725,6 +1726,7 @@ abstract class MediaWikiIntegrationTestCase extends PHPUnit\Framework\TestCase {
 	 * Applies the schema overrides returned by getSchemaOverrides(),
 	 * after undoing any previously applied schema overrides.
 	 * Called once per test class, just before addDataOnce().
+	 * @param IMaintainableDatabase $db
 	 */
 	private function setUpSchema( IMaintainableDatabase $db ) {
 		// Undo any active overrides.
@@ -1826,13 +1828,13 @@ abstract class MediaWikiIntegrationTestCase extends PHPUnit\Framework\TestCase {
 
 		$originalTables = array_filter(
 			$originalTables,
-			function ( $pt ) use ( $unittestPrefixRegex ) {
+			static function ( $pt ) use ( $unittestPrefixRegex ) {
 				return !preg_match( $unittestPrefixRegex, $pt );
 			}
 		);
 
 		$originalTables = array_map(
-			function ( $pt ) use ( $originalPrefixRegex ) {
+			static function ( $pt ) use ( $originalPrefixRegex ) {
 				return preg_replace( $originalPrefixRegex, '', $pt );
 			},
 			$originalTables
@@ -2157,7 +2159,7 @@ abstract class MediaWikiIntegrationTestCase extends PHPUnit\Framework\TestCase {
 	 */
 	protected function arrayWrap( array $elements ) {
 		return array_map(
-			function ( $element ) {
+			static function ( $element ) {
 				return [ $element ];
 			},
 			$elements
@@ -2255,7 +2257,7 @@ abstract class MediaWikiIntegrationTestCase extends PHPUnit\Framework\TestCase {
 			NS_FILE, NS_CATEGORY, NS_MEDIAWIKI, NS_USER // don't mess with magic namespaces
 		] );
 
-		$talk = array_filter( $namespaces, function ( $ns ) use ( $nsInfo ) {
+		$talk = array_filter( $namespaces, static function ( $ns ) use ( $nsInfo ) {
 			return $nsInfo->isTalk( $ns );
 		} );
 
