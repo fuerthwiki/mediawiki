@@ -120,6 +120,7 @@ class DefaultPreferencesFactory implements PreferencesFactory {
 		'RCWatchCategoryMembership',
 		'SearchMatchRedirectPreference',
 		'SecureLogin',
+		'ScriptPath',
 		'SignatureValidation',
 		'ThumbLimits',
 	];
@@ -466,6 +467,21 @@ class DefaultPreferencesFactory implements PreferencesFactory {
 				'section' => 'personal/info'
 			];
 		}
+
+		$defaultPreferences['downloaduserdata'] = [
+			'type' => 'info',
+			'raw' => true,
+			'label-message' => 'prefs-user-downloaddata-label',
+			'default' => HTML::Element(
+				'a',
+				[
+					'href' => $this->options->get( 'ScriptPath' ) . '/api.php?action=query&meta=userinfo',
+				],
+				$context->msg( 'prefs-user-downloaddata-info' )->text()
+			 ),
+			'help-message' => [ 'prefs-user-downloaddata-help-message', $user->getName() ],
+			'section' => 'personal/info',
+		];
 
 		$languages = $this->languageNameUtils->getLanguageNames( null, 'mwfile' );
 		$languageCode = $this->options->get( 'LanguageCode' );
@@ -1428,7 +1444,7 @@ class DefaultPreferencesFactory implements PreferencesFactory {
 
 		// Sort by the internal name, so that the ordering is the same for each display language,
 		// especially if some skin names are translated to use a different alphabet and some are not.
-		uksort( $validSkinNames, function ( $a, $b ) use ( $defaultSkin ) {
+		uksort( $validSkinNames, static function ( $a, $b ) use ( $defaultSkin ) {
 			// Display the default first in the list by comparing it as lesser than any other.
 			if ( strcasecmp( $a, $defaultSkin ) === 0 ) {
 				return -1;

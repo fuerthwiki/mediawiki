@@ -315,6 +315,15 @@ class User implements Authority, IDBAccessObject, UserIdentity {
 		}
 	}
 
+	public function __sleep(): array {
+		return array_diff(
+			array_keys( get_object_vars( $this ) ),
+			[
+				'mThisAsAuthority' // memoization, will be recreated on demand.
+			]
+		);
+	}
+
 	/**
 	 * Test if it's safe to load this User object.
 	 *
@@ -2332,7 +2341,7 @@ class User implements Authority, IDBAccessObject, UserIdentity {
 			$cache->delete( $key, 1 ); // low tombstone/"hold-off" TTL
 		} else {
 			$lb->getConnectionRef( DB_MASTER )->onTransactionPreCommitOrIdle(
-				function () use ( $cache, $key ) {
+				static function () use ( $cache, $key ) {
 					$cache->delete( $key );
 				},
 				__METHOD__

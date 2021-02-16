@@ -44,180 +44,6 @@ class PostgresUpdater extends DatabaseUpdater {
 	protected function getCoreUpdateList() {
 		return [
 			[ 'addTable', 'bot_passwords', 'patch-bot_passwords.sql' ],
-
-			# Needed before new field
-			[ 'convertArchive2' ],
-
-			# type changes
-			[ 'changeField', 'archive', 'ar_deleted', 'smallint', '' ],
-			[ 'changeField', 'archive', 'ar_minor_edit', 'smallint',
-				'ar_minor_edit::smallint DEFAULT 0' ],
-			[ 'changeField', 'filearchive', 'fa_deleted', 'smallint', '' ],
-			[ 'changeField', 'filearchive', 'fa_height', 'integer', '' ],
-			[ 'changeField', 'filearchive', 'fa_metadata', 'bytea', "decode(fa_metadata,'escape')" ],
-			[ 'changeField', 'filearchive', 'fa_size', 'integer', '' ],
-			[ 'changeField', 'filearchive', 'fa_width', 'integer', '' ],
-			[ 'changeField', 'filearchive', 'fa_storage_group', 'text', '' ],
-			[ 'changeField', 'filearchive', 'fa_storage_key', 'text', '' ],
-			[ 'changeField', 'image', 'img_metadata', 'bytea', "decode(img_metadata,'escape')" ],
-			[ 'changeField', 'image', 'img_size', 'integer', '' ],
-			[ 'changeField', 'image', 'img_width', 'integer', '' ],
-			[ 'changeField', 'image', 'img_height', 'integer', '' ],
-			[ 'changeField', 'interwiki', 'iw_local', 'smallint', 'iw_local::smallint' ],
-			[ 'changeField', 'interwiki', 'iw_trans', 'smallint', 'iw_trans::smallint DEFAULT 0' ],
-			[ 'changeField', 'ipblocks', 'ipb_auto', 'smallint', 'ipb_auto::smallint DEFAULT 0' ],
-			[ 'changeField', 'ipblocks', 'ipb_anon_only', 'smallint',
-				"CASE WHEN ipb_anon_only=' ' THEN 0 ELSE ipb_anon_only::smallint END DEFAULT 0" ],
-			[ 'changeField', 'ipblocks', 'ipb_create_account', 'smallint',
-				"CASE WHEN ipb_create_account=' ' THEN 0 ELSE ipb_create_account::smallint END DEFAULT 1" ],
-			[ 'changeField', 'ipblocks', 'ipb_enable_autoblock', 'smallint',
-				"CASE WHEN ipb_enable_autoblock=' ' THEN 0 ELSE ipb_enable_autoblock::smallint END DEFAULT 1" ],
-			[ 'changeField', 'ipblocks', 'ipb_block_email', 'smallint',
-				"CASE WHEN ipb_block_email=' ' THEN 0 ELSE ipb_block_email::smallint END DEFAULT 0" ],
-			[ 'changeField', 'ipblocks', 'ipb_address', 'text', 'ipb_address::text' ],
-			[ 'changeField', 'ipblocks', 'ipb_deleted', 'smallint', 'ipb_deleted::smallint DEFAULT 0' ],
-			[ 'changeField', 'mwuser', 'user_token', 'text', '' ],
-			[ 'changeField', 'mwuser', 'user_email_token', 'text', '' ],
-			[ 'changeField', 'objectcache', 'keyname', 'text', '' ],
-			[ 'changeField', 'oldimage', 'oi_height', 'integer', '' ],
-			[ 'changeField', 'oldimage', 'oi_size', 'integer', '' ],
-			[ 'changeField', 'oldimage', 'oi_width', 'integer', '' ],
-			[ 'changeField', 'page', 'page_is_redirect', 'smallint',
-				'page_is_redirect::smallint DEFAULT 0' ],
-			[ 'changeField', 'page', 'page_is_new', 'smallint', 'page_is_new::smallint DEFAULT 0' ],
-			[ 'changeField', 'querycache', 'qc_value', 'integer', '' ],
-			[ 'changeField', 'querycachetwo', 'qcc_value', 'integer', '' ],
-			[ 'changeField', 'recentchanges', 'rc_bot', 'smallint', 'rc_bot::smallint DEFAULT 0' ],
-			[ 'changeField', 'recentchanges', 'rc_deleted', 'smallint', '' ],
-			[ 'changeField', 'recentchanges', 'rc_minor', 'smallint', 'rc_minor::smallint DEFAULT 0' ],
-			[ 'changeField', 'recentchanges', 'rc_new', 'smallint', 'rc_new::smallint DEFAULT 0' ],
-			[ 'changeField', 'recentchanges', 'rc_type', 'smallint', 'rc_type::smallint DEFAULT 0' ],
-			[ 'changeField', 'recentchanges', 'rc_patrolled', 'smallint',
-				'rc_patrolled::smallint DEFAULT 0' ],
-			[ 'changeField', 'revision', 'rev_deleted', 'smallint', 'rev_deleted::smallint DEFAULT 0' ],
-			[ 'changeField', 'revision', 'rev_minor_edit', 'smallint',
-				'rev_minor_edit::smallint DEFAULT 0' ],
-			[ 'changeField', 'user_newtalk', 'user_ip', 'text', 'host(user_ip)' ],
-			[ 'changeField', 'uploadstash', 'us_image_bits', 'smallint', '' ],
-
-			# null changes
-			[ 'changeNullableField', 'oldimage', 'oi_bits', 'NULL' ],
-			[ 'changeNullableField', 'oldimage', 'oi_timestamp', 'NULL' ],
-			[ 'changeNullableField', 'oldimage', 'oi_major_mime', 'NULL' ],
-			[ 'changeNullableField', 'oldimage', 'oi_minor_mime', 'NULL' ],
-			[ 'changeNullableField', 'image', 'img_metadata', 'NOT NULL' ],
-			[ 'changeNullableField', 'filearchive', 'fa_metadata', 'NOT NULL' ],
-			[ 'changeNullableField', 'recentchanges', 'rc_cur_id', 'NULL' ],
-			[ 'changeNullableField', 'recentchanges', 'rc_cur_time', 'NULL' ],
-
-			[ 'checkOiDeleted' ],
-
-			# New indexes
-			[ 'ifTableNotExists', 'actor', 'addPgIndex', 'archive', 'archive_user_text', '(ar_user_text)' ],
-			[ 'addPgIndex', 'image', 'img_sha1', '(img_sha1)' ],
-			[ 'addPgIndex', 'ipblocks', 'ipb_parent_block_id', '(ipb_parent_block_id)' ],
-			[ 'addPgIndex', 'oldimage', 'oi_sha1', '(oi_sha1)' ],
-			[ 'addPgIndex', 'page', 'page_mediawiki_title', '(page_title) WHERE page_namespace = 8' ],
-			[ 'addPgIndex', 'page_props', 'pp_propname_page', '(pp_propname, pp_page)' ],
-			[ 'ifFieldExists', 'revision', 'rev_text_id',
-				'addPgIndex', 'revision', 'rev_text_id_idx', '(rev_text_id)' ],
-			[ 'addPgIndex', 'recentchanges', 'rc_timestamp_bot', '(rc_timestamp) WHERE rc_bot = 0' ],
-			[ 'addPgIndex', 'watchlist', 'wl_user', '(wl_user)' ],
-			[ 'addPgIndex', 'watchlist', 'wl_user_notificationtimestamp',
-				'(wl_user, wl_notificationtimestamp)' ],
-			[ 'ifTableNotExists', 'actor', 'addPgIndex', 'logging', 'logging_user_type_time',
-				'(log_user, log_type, log_timestamp)' ],
-			[ 'addPgIndex', 'logging', 'logging_page_id_time', '(log_page,log_timestamp)' ],
-			[ 'addPgIndex', 'iwlinks', 'iwl_prefix_from_title', '(iwl_prefix, iwl_from, iwl_title)' ],
-			[ 'addPgIndex', 'iwlinks', 'iwl_prefix_title_from', '(iwl_prefix, iwl_title, iwl_from)' ],
-			[ 'addPgIndex', 'job', 'job_timestamp_idx', '(job_timestamp)' ],
-			[ 'addPgIndex', 'job', 'job_sha1', '(job_sha1)' ],
-			[ 'addPgIndex', 'job', 'job_cmd_token', '(job_cmd, job_token, job_random)' ],
-			[ 'addPgIndex', 'job', 'job_cmd_token_id', '(job_cmd, job_token, job_id)' ],
-			[ 'addPgIndex', 'filearchive', 'fa_sha1', '(fa_sha1)' ],
-			[ 'ifTableNotExists', 'actor', 'addPgIndex', 'logging', 'logging_user_text_type_time',
-				'(log_user_text, log_type, log_timestamp)' ],
-			[ 'ifTableNotExists', 'actor', 'addPgIndex', 'logging', 'logging_user_text_time',
-				'(log_user_text, log_timestamp)' ],
-
-			[ 'checkIndex', 'cl_sortkey', [
-				[ 'cl_to', 'text_ops', 'btree', 0 ],
-				[ 'cl_sortkey', 'text_ops', 'btree', 0 ],
-				[ 'cl_from', 'int4_ops', 'btree', 0 ],
-			],
-				'CREATE INDEX cl_sortkey ON "categorylinks" ' .
-					'USING "btree" ("cl_to", "cl_sortkey", "cl_from")' ],
-			[ 'checkIndex', 'iwl_prefix_title_from', [
-				[ 'iwl_prefix', 'text_ops', 'btree', 0 ],
-				[ 'iwl_title', 'text_ops', 'btree', 0 ],
-				[ 'iwl_from', 'int4_ops', 'btree', 0 ],
-			],
-			'CREATE INDEX iwl_prefix_title_from ON "iwlinks" ' .
-				'USING "btree" ("iwl_prefix", "iwl_title", "iwl_from")' ],
-			[ 'checkIndex', 'logging_times', [
-				[ 'log_timestamp', 'timestamptz_ops', 'btree', 0 ],
-			],
-			'CREATE INDEX "logging_times" ON "logging" USING "btree" ("log_timestamp")' ],
-			[ 'dropPgIndex', 'oldimage', 'oi_name' ],
-			[ 'checkIndex', 'oi_name_archive_name', [
-				[ 'oi_name', 'text_ops', 'btree', 0 ],
-				[ 'oi_archive_name', 'text_ops', 'btree', 0 ],
-			],
-			'CREATE INDEX "oi_name_archive_name" ON "oldimage" ' .
-				'USING "btree" ("oi_name", "oi_archive_name")' ],
-			[ 'checkIndex', 'oi_name_timestamp', [
-				[ 'oi_name', 'text_ops', 'btree', 0 ],
-				[ 'oi_timestamp', 'timestamptz_ops', 'btree', 0 ],
-			],
-			'CREATE INDEX "oi_name_timestamp" ON "oldimage" ' .
-				'USING "btree" ("oi_name", "oi_timestamp")' ],
-			[ 'checkIndex', 'page_main_title', [
-				[ 'page_title', 'text_pattern_ops', 'btree', 0 ],
-			],
-			'CREATE INDEX "page_main_title" ON "page" ' .
-				'USING "btree" ("page_title" "text_pattern_ops") WHERE ("page_namespace" = 0)' ],
-			[ 'checkIndex', 'page_mediawiki_title', [
-				[ 'page_title', 'text_pattern_ops', 'btree', 0 ],
-			],
-			'CREATE INDEX "page_mediawiki_title" ON "page" ' .
-				'USING "btree" ("page_title" "text_pattern_ops") WHERE ("page_namespace" = 8)' ],
-			[ 'checkIndex', 'page_project_title', [
-				[ 'page_title', 'text_pattern_ops', 'btree', 0 ],
-			],
-			'CREATE INDEX "page_project_title" ON "page" ' .
-				'USING "btree" ("page_title" "text_pattern_ops") ' .
-				'WHERE ("page_namespace" = 4)' ],
-			[ 'checkIndex', 'page_talk_title', [
-				[ 'page_title', 'text_pattern_ops', 'btree', 0 ],
-			],
-			'CREATE INDEX "page_talk_title" ON "page" ' .
-				'USING "btree" ("page_title" "text_pattern_ops") ' .
-				'WHERE ("page_namespace" = 1)' ],
-			[ 'checkIndex', 'page_user_title', [
-				[ 'page_title', 'text_pattern_ops', 'btree', 0 ],
-			],
-			'CREATE INDEX "page_user_title" ON "page" ' .
-				'USING "btree" ("page_title" "text_pattern_ops") WHERE ' .
-				'("page_namespace" = 2)' ],
-			[ 'checkIndex', 'page_utalk_title', [
-				[ 'page_title', 'text_pattern_ops', 'btree', 0 ],
-			],
-			'CREATE INDEX "page_utalk_title" ON "page" ' .
-				'USING "btree" ("page_title" "text_pattern_ops") ' .
-				'WHERE ("page_namespace" = 3)' ],
-			[ 'checkIndex', 'ts2_page_text', [
-				[ 'textvector', 'tsvector_ops', 'gist', 0 ],
-			],
-				'CREATE INDEX "ts2_page_text" ON "text" USING "gist" ("textvector")' ],
-			[ 'checkIndex', 'ts2_page_title', [
-				[ 'titlevector', 'tsvector_ops', 'gist', 0 ],
-			],
-			'CREATE INDEX "ts2_page_title" ON "page" USING "gist" ("titlevector")' ],
-
-			[ 'checkOiNameConstraint' ],
-			[ 'checkPageDeletedTrigger' ],
-			[ 'checkRevUserFkey' ],
-			[ 'dropPgIndex', 'ipblocks', 'ipb_address' ],
 			[ 'checkIndex', 'ipb_address_unique', [
 				[ 'ipb_address', 'text_ops', 'btree', 0 ],
 				[ 'ipb_user', 'int4_ops', 'btree', 0 ],
@@ -225,8 +51,6 @@ class PostgresUpdater extends DatabaseUpdater {
 			],
 			'CREATE UNIQUE INDEX ipb_address_unique ' .
 				'ON ipblocks (ipb_address,ipb_user,ipb_auto)' ],
-
-			[ 'checkIwlPrefix' ],
 
 			# r81574
 			[ 'addInterwikiType' ],
@@ -1405,19 +1229,6 @@ END;
 				'patch-revision_rev_user_fkey.sql',
 				false,
 				"Changing constraint 'revision_rev_user_fkey' to ON DELETE RESTRICT"
-			);
-		}
-	}
-
-	/**
-	 * MW 1.17
-	 */
-	protected function checkIwlPrefix() {
-		if ( $this->db->indexExists( 'iwlinks', 'iwl_prefix', __METHOD__ ) ) {
-			$this->applyPatch(
-				'patch-rename-iwl_prefix.sql',
-				false,
-				"Replacing index 'iwl_prefix' with 'iwl_prefix_title_from'"
 			);
 		}
 	}

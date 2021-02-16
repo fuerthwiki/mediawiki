@@ -596,6 +596,20 @@ return [
 		'targets' => [ 'desktop', 'mobile' ],
 	],
 
+	'wvui' => [
+		'packageFiles' => [
+			'resources/src/wvui/wvui.js',
+			'resources/lib/wvui/wvui.commonjs2.js',
+		],
+		'styles' => [
+			'resources/lib/wvui/wvui.css',
+		],
+		'dependencies' => [
+			'vue'
+		],
+		'targets' => [ 'desktop', 'mobile' ],
+	],
+
 	/* MediaWiki */
 	'mediawiki.template' => [
 		'scripts' => 'resources/src/mediawiki.template.js',
@@ -1145,11 +1159,15 @@ return [
 		],
 	],
 	'mediawiki.action.edit' => [
-		'scripts' => [
-			'resources/src/mediawiki.action.edit/edit.js',
-			'resources/src/mediawiki.action.edit/stash.js',
+		'targets' => [ 'desktop', 'mobile' ],
+		'localBasePath' => "$IP/resources/src/mediawiki.action.edit",
+		'remoteBasePath' => "$wgResourceBasePath/resources/src/mediawiki.action.edit",
+		'packageFiles' => [
+			'edit.js',
+			'stash.js',
+			'watchlistExpiry.js',
 		],
-		'styles' => 'resources/src/mediawiki.action.edit/edit.css',
+		'styles' => 'edit.css',
 		'dependencies' => [
 			'mediawiki.action.edit.styles',
 			'mediawiki.editfont.styles',
@@ -1306,13 +1324,6 @@ return [
 			'editwarning-warning',
 			// editwarning-warning uses {{int:prefs-editing}}
 			'prefs-editing'
-		],
-	],
-	'mediawiki.action.edit.watchlistExpiry' => [
-		'targets' => [ 'desktop', 'mobile' ],
-		'scripts' => 'resources/src/mediawiki.action/mediawiki.action.edit.watchlistExpiry.js',
-		'dependencies' => [
-			'oojs-ui-core'
 		],
 	],
 	'mediawiki.action.view.filepage' => [

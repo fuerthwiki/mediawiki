@@ -34,62 +34,6 @@ class SqliteUpdater extends DatabaseUpdater {
 
 	protected function getCoreUpdateList() {
 		return [
-			// 1.20
-			[ 'ifFieldExists', 'revision', 'rev_user',
-				'addIndex', 'revision', 'page_user_timestamp', 'patch-revision-user-page-index.sql' ],
-			[ 'addField', 'ipblocks', 'ipb_parent_block_id', 'patch-ipb-parent-block-id.sql' ],
-			[ 'addIndex', 'ipblocks', 'ipb_parent_block_id', 'patch-ipb-parent-block-id-index.sql' ],
-			[ 'dropField', 'category', 'cat_hidden', 'patch-cat_hidden.sql' ],
-
-			// 1.21
-			[ 'ifFieldExists', 'revision', 'rev_text_id',
-				'addField', 'revision', 'rev_content_format', 'patch-revision-rev_content_format.sql' ],
-			[ 'ifFieldExists', 'revision', 'rev_text_id',
-				'addField', 'revision', 'rev_content_model', 'patch-revision-rev_content_model.sql' ],
-			[ 'ifFieldExists', 'archive', 'ar_text_id',
-				'addField', 'archive', 'ar_content_format', 'patch-archive-ar_content_format.sql' ],
-			[ 'ifFieldExists', 'archive', 'ar_text_id',
-				'addField', 'archive', 'ar_content_model', 'patch-archive-ar_content_model.sql' ],
-			[ 'addField', 'page', 'page_content_model', 'patch-page-page_content_model.sql' ],
-
-			[ 'dropField', 'site_stats', 'ss_admins', 'patch-drop-ss_admins.sql' ],
-			[ 'dropField', 'recentchanges', 'rc_moved_to_title', 'patch-rc_moved.sql' ],
-			[ 'addTable', 'sites', 'patch-sites.sql' ],
-			[ 'addField', 'filearchive', 'fa_sha1', 'patch-fa_sha1.sql' ],
-			[ 'addField', 'job', 'job_token', 'patch-job_token.sql' ],
-			[ 'addField', 'job', 'job_attempts', 'patch-job_attempts.sql' ],
-			[ 'addField', 'uploadstash', 'us_props', 'patch-uploadstash-us_props.sql' ],
-			[ 'modifyField', 'user_groups', 'ug_group', 'patch-ug_group-length-increase-255.sql' ],
-			[ 'modifyField', 'user_former_groups', 'ufg_group',
-				'patch-ufg_group-length-increase-255.sql' ],
-			[ 'addIndex', 'page_props', 'pp_propname_page',
-				'patch-page_props-propname-page-index.sql' ],
-			[ 'addIndex', 'image', 'img_media_mime', 'patch-img_media_mime-index.sql' ],
-
-			// 1.22
-			[ 'addIndex', 'iwlinks', 'iwl_prefix_from_title', 'patch-iwlinks-from-title-index.sql' ],
-			[ 'addField', 'archive', 'ar_id', 'patch-archive-ar_id.sql' ],
-			[ 'addField', 'externallinks', 'el_id', 'patch-externallinks-el_id.sql' ],
-
-			// 1.23
-			[ 'addField', 'recentchanges', 'rc_source', 'patch-rc_source.sql' ],
-			[ 'ifTableNotExists', 'actor', 'addIndex', 'logging', 'log_user_text_type_time',
-				'patch-logging_user_text_type_time_index.sql' ],
-			[ 'ifTableNotExists', 'actor', 'addIndex', 'logging', 'log_user_text_time',
-				'patch-logging_user_text_time_index.sql' ],
-			[ 'addField', 'page', 'page_links_updated', 'patch-page_links_updated.sql' ],
-			[ 'addField', 'user', 'user_password_expires', 'patch-user_password_expire.sql' ],
-
-			// 1.24
-			[ 'addField', 'page_props', 'pp_sortkey', 'patch-pp_sortkey.sql' ],
-			[ 'dropField', 'recentchanges', 'rc_cur_time', 'patch-drop-rc_cur_time.sql' ],
-			[ 'addIndex', 'watchlist', 'wl_user_notificationtimestamp',
-				'patch-watchlist-user-notificationtimestamp-index.sql' ],
-			[ 'addField', 'page', 'page_lang', 'patch-page-page_lang.sql' ],
-			[ 'addField', 'pagelinks', 'pl_from_namespace', 'patch-pl_from_namespace.sql' ],
-			[ 'addField', 'templatelinks', 'tl_from_namespace', 'patch-tl_from_namespace.sql' ],
-			[ 'addField', 'imagelinks', 'il_from_namespace', 'patch-il_from_namespace.sql' ],
-
 			// 1.25
 			[ 'dropTable', 'hitcounter' ],
 			[ 'dropField', 'site_stats', 'ss_total_views', 'patch-drop-ss_total_views.sql' ],

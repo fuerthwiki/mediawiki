@@ -195,7 +195,9 @@ class ExtensionRegistry {
 			'checkDev' => $this->checkDev,
 			'queue' => $this->queued,
 		];
-		return $cache->makeKey(
+
+		// Allow reusing cached ExtensionRegistry metadata between wikis (T274648)
+		return $cache->makeGlobalKey(
 			"registration-$component",
 			// We vary the cache on the current queue (what will be or already was loaded)
 			// plus various versions of stuff for VersionChecker
@@ -266,7 +268,7 @@ class ExtensionRegistry {
 	 * Get the current load queue. Not intended to be used
 	 * outside of the installer.
 	 *
-	 * @return int[]
+	 * @return int[] Map of extension.json files' modification timestamps keyed by absolute path
 	 */
 	public function getQueue() {
 		return $this->queued;

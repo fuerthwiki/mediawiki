@@ -56,7 +56,7 @@ class CommentStore {
 
 	/**
 	 * Define fields that use temporary tables for transitional purposes
-	 * @var array[] Keys are '$key', values are arrays with these possible fields:
+	 * Array keys are field names, values are arrays with these possible fields:
 	 *  - table: Temporary table name
 	 *  - pk: Temporary table column referring to the main table's primary key
 	 *  - field: Temporary table column referring comment.comment_id
@@ -64,7 +64,7 @@ class CommentStore {
 	 *  - stage: Migration stage
 	 *  - deprecatedIn: Version when using insertWithTempTable() was deprecated
 	 */
-	private $tempTables = [
+	protected const TEMP_TABLES = [
 		'rev_comment' => [
 			'table' => 'revision_comment_temp',
 			'pk' => 'revcomment_rev',
@@ -148,10 +148,9 @@ class CommentStore {
 				$fields["{$key}_old"] = $key;
 			}
 
-			$tempTableStage = isset( $this->tempTables[$key] )
-				? $this->tempTables[$key]['stage'] : MIGRATION_NEW;
+			$tempTableStage = static::TEMP_TABLES[$key]['stage'] ?? MIGRATION_NEW;
 			if ( $tempTableStage & SCHEMA_COMPAT_READ_OLD ) {
-				$fields["{$key}_pk"] = $this->tempTables[$key]['joinPK'];
+				$fields["{$key}_pk"] = static::TEMP_TABLES[$key]['joinPK'];
 			}
 			if ( $tempTableStage & SCHEMA_COMPAT_READ_NEW ) {
 				$fields["{$key}_id"] = "{$key}_id";
@@ -190,10 +189,9 @@ class CommentStore {
 			} else { // READ_BOTH or READ_NEW
 				$join = ( $this->stage & SCHEMA_COMPAT_READ_OLD ) ? 'LEFT JOIN' : 'JOIN';
 
-				$tempTableStage = isset( $this->tempTables[$key] )
-					? $this->tempTables[$key]['stage'] : MIGRATION_NEW;
+				$tempTableStage = static::TEMP_TABLES[$key]['stage'] ?? MIGRATION_NEW;
 				if ( $tempTableStage & SCHEMA_COMPAT_READ_OLD ) {
-					$t = $this->tempTables[$key];
+					$t = static::TEMP_TABLES[$key];
 					$alias = "temp_$key";
 					$tables[$alias] = $t['table'];
 					$joins[$alias] = [ $join, "{$alias}.{$t['pk']} = {$t['joinPK']}" ];
@@ -201,7 +199,7 @@ class CommentStore {
 						$joinField = "{$alias}.{$t['field']}";
 					} else {
 						// Nothing hits this code path for now, but will in the future when we set
-						// $this->tempTables['rev_comment']['stage'] to MIGRATION_WRITE_NEW while
+						// static::TEMP_TABLES['rev_comment']['stage'] to MIGRATION_WRITE_NEW while
 						// merging revision_comment_temp into revision.
 						// @codeCoverageIgnoreStart
 						$joins[$alias][0] = 'LEFT JOIN';
@@ -267,8 +265,7 @@ class CommentStore {
 			}
 			$data = null;
 		} else {
-			$tempTableStage = isset( $this->tempTables[$key] )
-				? $this->tempTables[$key]['stage'] : MIGRATION_NEW;
+			$tempTableStage = static::TEMP_TABLES[$key]['stage'] ?? MIGRATION_NEW;
 			$row2 = null;
 			if ( ( $tempTableStage & SCHEMA_COMPAT_READ_NEW ) && array_key_exists( "{$key}_id", $row ) ) {
 				if ( !$db ) {
@@ -294,7 +291,7 @@ class CommentStore {
 						. "does have fields for getCommentLegacy()"
 					);
 				}
-				$t = $this->tempTables[$key];
+				$t = static::TEMP_TABLES[$key];
 				$id = $row["{$key}_pk"];
 				$row2 = $db->selectRow(
 					[ $t['table'], 'comment' ],
@@ -505,13 +502,12 @@ class CommentStore {
 		}
 
 		if ( $this->stage & SCHEMA_COMPAT_WRITE_NEW ) {
-			$tempTableStage = isset( $this->tempTables[$key] )
-				? $this->tempTables[$key]['stage'] : MIGRATION_NEW;
+			$tempTableStage = static::TEMP_TABLES[$key]['stage'] ?? MIGRATION_NEW;
 			if ( $tempTableStage & SCHEMA_COMPAT_WRITE_OLD ) {
-				$t = $this->tempTables[$key];
+				$t = static::TEMP_TABLES[$key];
 				$func = __METHOD__;
 				$commentId = $comment->id;
-				$callback = function ( $id ) use ( $dbw, $commentId, $t, $func ) {
+				$callback = static function ( $id ) use ( $dbw, $commentId, $t, $func ) {
 					$dbw->insert(
 						$t['table'],
 						[
@@ -552,8 +548,7 @@ class CommentStore {
 			// @codeCoverageIgnoreEnd
 		}
 
-		$tempTableStage = isset( $this->tempTables[$key] )
-			? $this->tempTables[$key]['stage'] : MIGRATION_NEW;
+		$tempTableStage = static::TEMP_TABLES[$key]['stage'] ?? MIGRATION_NEW;
 		if ( $tempTableStage & SCHEMA_COMPAT_WRITE_OLD ) {
 			throw new InvalidArgumentException( "Must use insertWithTempTable() for $key" );
 		}
@@ -590,15 +585,15 @@ class CommentStore {
 			// @codeCoverageIgnoreEnd
 		}
 
-		if ( !isset( $this->tempTables[$key] ) ) {
+		if ( !isset( static::TEMP_TABLES[$key] ) ) {
 			throw new InvalidArgumentException( "Must use insert() for $key" );
-		} elseif ( isset( $this->tempTables[$key]['deprecatedIn'] ) ) {
-			wfDeprecated( __METHOD__ . " for $key", $this->tempTables[$key]['deprecatedIn'] );
+		} elseif ( isset( static::TEMP_TABLES[$key]['deprecatedIn'] ) ) {
+			wfDeprecated( __METHOD__ . " for $key", static::TEMP_TABLES[$key]['deprecatedIn'] );
 		}
 
 		list( $fields, $callback ) = $this->insertInternal( $dbw, $key, $comment, $data );
 		if ( !$callback ) {
-			$callback = function () {
+			$callback = static function () {
 				// Do nothing.
 			};
 		}

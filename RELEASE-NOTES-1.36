@@ -27,22 +27,25 @@ this is no longer recommended and the option has been removed.
 …
 
 ==== New configuration ====
-* $wgManualRevertSearchRadius – this introduces a new feature that marks edits
-  as reverts if they restore the page to an exact previous state. This
-  configuration variable sets the maximum number of revisions of a page that
-  will be checked against every new edit. Set this to 0 to disable the feature
-  entirely.
-* $wgOldRevisionParserCacheExpireTime was added, to control caching of
-  ParserOutput for old revisions (T244058).
+* (T256001) $wgManualRevertSearchRadius – This setting introduces a feature that
+  marks edits as reverts if they restore the page to an exact previous state.
+  This configuration variable sets the maximum number of revisions of a page
+  that will be checked against every new edit. Set this to 0 to disable the
+  feature entirely.
+* (T244058) $wgOldRevisionParserCacheExpireTime — This setting was added to
+  control caching of ParserOutput for old revisions.
 * …
 
 ==== Changed configuration ====
+* (T274695) $wgAjaxEditStash — This setting, to disable the edit stashing
+  feature when users start writing an edit summary, has been deprecated. In
+  future releases, this feature will always be enabled.
 * …
 
 ==== Removed configuration ====
-* $wgUseTwoButtonsSearchForm - This setting, deprecated in 1.35, has been
+* $wgUseTwoButtonsSearchForm — This setting, deprecated in 1.35, has been
   removed.
-* $wgAllowImageMoving - This setting, deprecated in 1.35, has been removed.
+* $wgAllowImageMoving — This setting, deprecated in 1.35, has been removed.
   Use group permission settings instead. For example, to prevent sysops
   from moving files, set `$wgGroupPermissions['sysop']['movefile'] = false;`
 * $wgExtNewTables, $wgExtNewFields, $wgExtNewIndexes, $wgExtPGNewFields,
@@ -94,6 +97,7 @@ this is no longer recommended and the option has been removed.
 * Added pear/net_url2 2.2.2.
 * Added wikimedia/request-timeout 1.0.0.
 * Added wikimedia/shellbox 1.0.2.
+* Added WVUI 0.1.0.
 * …
 
 ===== New development-only external libraries =====
@@ -107,6 +111,7 @@ this is no longer recommended and the option has been removed.
 * Updated pear/mail_mime from 1.10.8 to 1.10.9.
 * Updated pear/net_smtp from 1.9.1 to 1.9.2.
 * Updated pimple/pimple from 3.3.0 to 3.3.1.
+* Updated wikimedia/cldr-plural-rule-parser from 1.0.0 to 2.0.0.
 * Updated wikimedia/html-formatter from 1.0.2 to 2.0.1.
 * Updated wikimedia/ip-utils from 1.0.0 to 3.0.1.
 * Updated wikimedia/less.php from 3.0.0 to 3.1.0.
@@ -114,6 +119,7 @@ this is no longer recommended and the option has been removed.
 * Updated wikimedia/remex-html from 2.2.0 to 2.2.2.
 * Updated wikimedia/xmp-reader from 0.7.0 to 0.8.0.
 * Updated wikimedia/utfnormal from 2.0.0 to 3.0.1.
+* Updated wikimedia/wait-condition-loop from 1.0.1 to 2.0.1.
 * …
 
 ===== Changed development-only external libraries =====
@@ -365,6 +371,12 @@ because of Phabricator reports.
   been added.  The methods were unused outside of MediaWiki core.
 * SquidPurgeClient and SquidPurgeClientPool, deprecated since 1.35, have been
   removed.
+* Several methods on WikiPage will now throw an exception when called on a
+  WikiPage instance that where constructed on a title that does not refer to a
+  proper page (but rather a special page or interwiki link). The behavior was
+  previously undefined and could in some cases lead to data corruption.
+  Affected methods are: getId(), insertOn(), newPageUpdater(),
+  doUpdateRestrictions(), doDeleteArticleReal(), doRollback(), doEditContent().
 * ParserTestRunner no longer invokes the ParserTestTables hook, instead
   cloning all database tables before running tests as MediaWikiIntegrationTest
   does.  If an extension was misusing the hook to *exclude* tables from the
@@ -500,9 +512,16 @@ because of Phabricator reports.
    - wfDebugMem
    - wfGetPrecompiledData
    - wfNegotiateType
+* BeforeParserFetchTemplateAndtitleHook has been deprecated; replace
+  with the new BeforeParserFetchTemplateRevisionRecord hook. (The
+  similar ParserFetchTemplateHook was deprecated in 1.35; the new hook
+  replaces both.)
 * The InterwikiLoadPrefix hook has been deprecated; it is not compatible
   with future wikitext parsers (which need to enumerate all interwiki
   prefixes).  In test cases please use $wgInterwikiCache instead.
+* WikiPage instances should no longer be constructed for titles that do not
+  represent editable pages (e.g. special pages). WikiPages were always
+  documented to represent "MediaWiki article and history".
 * Skin::getSkinStylePath() has been deprecated. Please replace usages with
   the direct path to the resources.
 * The second argument of EnhancedChangesList::getDiffHistLinks, $query, has
@@ -533,6 +552,9 @@ because of Phabricator reports.
   existing code, but it only supports version 2 of the test file
   specification and may be more strict when parsing invalid input,
   including duplicate tests.
+* A new hook was added, BeforeParserFetchTemplateRevisionRecord, which
+  unifies and replaces the old BeforeParserFetchTemplateAndtitleHook and
+  ParserFetchTemplateHook.
 * The SkinLessImportPaths attribute was added, allowing skins to add a
   directory to the import path for LESS stylesheets. Skins can use this
   to provide a custom version of mediawiki.skin.variables.less, setting

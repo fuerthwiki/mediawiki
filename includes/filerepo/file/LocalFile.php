@@ -382,7 +382,7 @@ class LocalFile extends File {
 		}
 
 		$this->repo->getMasterDB()->onTransactionPreCommitOrIdle(
-			function () use ( $key ) {
+			static function () use ( $key ) {
 				MediaWikiServices::getInstance()->getMainWANObjectCache()->delete( $key );
 			},
 			__METHOD__
@@ -1987,7 +1987,7 @@ class LocalFile extends File {
 			new AutoCommitUpdate(
 				$this->getRepo()->getMasterDB(),
 				__METHOD__,
-				function () use ( $oldTitleFile, $newTitleFile, $archiveNames ) {
+				static function () use ( $oldTitleFile, $newTitleFile, $archiveNames ) {
 					$oldTitleFile->purgeEverything();
 					foreach ( $archiveNames as $archiveName ) {
 						/** @var OldLocalFile $oldTitleFile */
@@ -2368,7 +2368,7 @@ class LocalFile extends File {
 	 *
 	 * This method should not be used outside of LocalFile/LocalFile*Batch
 	 *
-	 * The commit and loc release will happen when no atomic sections are active, which
+	 * The commit and lock release will happen when no atomic sections are active, which
 	 * may happen immediately or at some point after calling this
 	 */
 	public function unlock() {

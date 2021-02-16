@@ -302,7 +302,7 @@ class LinkHolderArray {
 		# Do the thing
 		$text = preg_replace_callback(
 			'/(<!--LINK\'" .*?-->)/',
-			function ( array $matches ) use ( $replacePairs ) {
+			static function ( array $matches ) use ( $replacePairs ) {
 				return $replacePairs[$matches[1]];
 			},
 			$text
@@ -333,7 +333,7 @@ class LinkHolderArray {
 
 		$text = preg_replace_callback(
 			'/<!--IWLINK\'" (.*?)-->/',
-			function ( array $matches ) use ( $replacePairs ) {
+			static function ( array $matches ) use ( $replacePairs ) {
 				return $replacePairs[$matches[1]];
 			},
 			$text
@@ -488,11 +488,7 @@ class LinkHolderArray {
 				$originalCats = $output->getCategories();
 				foreach ( $originalCats as $cat => $sortkey ) {
 					// make the replacement
-					if ( array_key_exists( $cat, $varCategories ) ) {
-						$newCats[$varCategories[$cat]] = $sortkey;
-					} else {
-						$newCats[$cat] = $sortkey;
-					}
+					$newCats[$varCategories[$cat] ?? $cat] = $sortkey;
 				}
 				$output->setCategoryLinks( $newCats );
 			}

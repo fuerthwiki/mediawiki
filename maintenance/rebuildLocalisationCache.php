@@ -109,7 +109,7 @@ class RebuildLocalisationCache extends Maintenance {
 			LocalisationCache::getStoreFromConf( $conf, $wgCacheDirectory ),
 			LoggerFactory::getInstance( 'localisation' ),
 			$this->hasOption( 'no-clear-message-blob-store' ) ? [] :
-				[ function () use ( $services ) {
+				[ static function () use ( $services ) {
 					MessageBlobStore::clearGlobalCacheEntry( $services->getMainWANObjectCache() );
 				} ],
 			$services->getLanguageNameUtils(),
@@ -162,9 +162,18 @@ class RebuildLocalisationCache extends Maintenance {
 		foreach ( $pids as $pid ) {
 			$status = 0;
 			pcntl_waitpid( $pid, $status );
-			if ( pcntl_wexitstatus( $status ) ) {
-				// Pass a fatal error code through to the caller
-				$parentStatus = pcntl_wexitstatus( $status );
+
+			if ( pcntl_wifexited( $status ) ) {
+			$code = pcntl_wexitstatus( $status );
+				if ( $code ) {
+					$this->output( "Pid $pid exited with status $code !!\n" );
+				}
+				// Mush all child statuses into a single value in the parent.
+				$parentStatus |= $code;
+			} elseif ( pcntl_wifsignaled( $status ) ) {
+				$signum = pcntl_wtermsig( $status );
+				$this->output( "Pid $pid terminated by signal $signum !!\n" );
+				$parentStatus |= 1;
 			}
 		}
 

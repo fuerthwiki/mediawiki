@@ -23,11 +23,13 @@
 use MediaWiki\Config\ServiceOptions;
 use MediaWiki\Content\ContentHandlerFactory;
 use MediaWiki\Content\IContentHandlerFactory;
+use MediaWiki\DAO\WikiAwareEntityTrait;
 use MediaWiki\Debug\DeprecatablePropertyArray;
 use MediaWiki\Edit\PreparedEdit;
 use MediaWiki\HookContainer\ProtectedHookAccessorTrait;
 use MediaWiki\Logger\LoggerFactory;
 use MediaWiki\MediaWikiServices;
+use MediaWiki\Page\PageIdentity;
 use MediaWiki\Page\ParserOutputAccess;
 use MediaWiki\Revision\RevisionRecord;
 use MediaWiki\Revision\RevisionRenderer;
@@ -40,6 +42,7 @@ use MediaWiki\Storage\EditResultCache;
 use MediaWiki\Storage\PageUpdater;
 use MediaWiki\Storage\RevisionSlotsUpdate;
 use Wikimedia\Assert\Assert;
+use Wikimedia\Assert\PreconditionException;
 use Wikimedia\IPUtils;
 use Wikimedia\NonSerializable\NonSerializableTrait;
 use Wikimedia\Rdbms\FakeResultWrapper;
@@ -52,9 +55,10 @@ use Wikimedia\Rdbms\LoadBalancer;
  * Some fields are public only for backwards-compatibility. Use accessors.
  * In the past, this class was part of Article.php and everything was public.
  */
-class WikiPage implements Page, IDBAccessObject {
+class WikiPage implements Page, IDBAccessObject, PageIdentity {
 	use NonSerializableTrait;
 	use ProtectedHookAccessorTrait;
+	use WikiAwareEntityTrait;
 
 	// Constants for $mDataLoadedFrom and related
 
@@ -134,9 +138,13 @@ class WikiPage implements Page, IDBAccessObject {
 	private $derivedDataUpdater = null;
 
 	/**
-	 * @param Title $title
+	 * @param PageIdentity $pageIdentity
 	 */
-	public function __construct( Title $title ) {
+	public function __construct( PageIdentity $pageIdentity ) {
+		$pageIdentity->assertWiki( PageIdentity::LOCAL );
+
+		// TODO: remove the need for casting to Title.
+		$title = Title::castFromPageIdentity( $pageIdentity );
 		if ( !$title->canExist() ) {
 			// TODO: In order to allow WikiPage to implement ProperPageIdentity,
 			//       throw here to prevent construction of a WikiPage that doesn't
@@ -159,16 +167,18 @@ class WikiPage implements Page, IDBAccessObject {
 	}
 
 	/**
-	 * Create a WikiPage object of the appropriate class for the given title.
+	 * Create a WikiPage object of the appropriate class for the given PageIdentity.
+	 * The PageIdentity must represent a proper page that can exist on the wiki,
+	 * that is, not a special page or media link or section link or interwiki link.
 	 *
-	 * @param Title $title
+	 * @param PageIdentity $pageIdentity
 	 *
 	 * @throws MWException
 	 * @return WikiPage|WikiCategoryPage|WikiFilePage
 	 * @deprecated since 1.36, use WikiPageFactory::newFromTitle instead
 	 */
-	public static function factory( Title $title ) {
-		return MediaWikiServices::getInstance()->getWikiPageFactory()->newFromTitle( $title );
+	public static function factory( PageIdentity $pageIdentity ) {
+		return MediaWikiServices::getInstance()->getWikiPageFactory()->newFromTitle( $pageIdentity );
 	}
 
 	/**
@@ -410,6 +420,10 @@ class WikiPage implements Page, IDBAccessObject {
 	 * @return stdClass|false Database result resource, or false on failure
 	 */
 	public function pageDataFromTitle( $dbr, $title, $options = [] ) {
+		if ( !$title->canExist() ) {
+			return false;
+		}
+
 		return $this->pageData( $dbr, [
 			'page_namespace' => $title->getNamespace(),
 			'page_title' => $title->getDBkey() ], $options );
@@ -562,9 +576,32 @@ class WikiPage implements Page, IDBAccessObject {
 	}
 
 	/**
+	 * Code that requires this WikiPage to be a "proper page" in the sense
+	 * defined by PageIdentity should call this method.
+	 *
+	 * @note In the future, this method should become redundant, as the
+	 * constructor should not allow a WikiPage to be constructed for as title
+	 * that does not represent a proper page. For the time being, we allow
+	 * such instances for backwards compatibility.
+	 *
+	 * @throws PreconditionException
+	 */
+	private function assertProperPage() {
+		Assert::precondition(
+			$this->mTitle->canExist(),
+			'This WikiPage instance does not represent a proper page!'
+		);
+	}
+
+	/**
+	 * @param string|false $wikiId
+	 *
 	 * @return int Page ID
 	 */
-	public function getId() {
+	public function getId( $wikiId = self::LOCAL ): int {
+		$this->assertWiki( $wikiId );
+		$this->assertProperPage();
+
 		if ( !$this->mDataLoaded ) {
 			$this->loadPageData();
 		}
@@ -574,7 +611,7 @@ class WikiPage implements Page, IDBAccessObject {
 	/**
 	 * @return bool Whether or not the page exists in the database
 	 */
-	public function exists() {
+	public function exists(): bool {
 		if ( !$this->mDataLoaded ) {
 			$this->loadPageData();
 		}
@@ -1313,6 +1350,8 @@ class WikiPage implements Page, IDBAccessObject {
 	 *   page ID is already in use.
 	 */
 	public function insertOn( $dbw, $pageId = null ) {
+		$this->assertProperPage();
+
 		$pageIdForInsert = $pageId ? [ 'page_id' => $pageId ] : [];
 		$dbw->insert(
 			'page',
@@ -1820,6 +1859,8 @@ class WikiPage implements Page, IDBAccessObject {
 	 * @return PageUpdater
 	 */
 	public function newPageUpdater( User $user, RevisionSlotsUpdate $forUpdate = null ) {
+		$this->assertProperPage();
+
 		$config = MediaWikiServices::getInstance()->getMainConfig();
 
 		$pageUpdater = new PageUpdater(
@@ -2324,6 +2365,8 @@ class WikiPage implements Page, IDBAccessObject {
 	) {
 		global $wgCascadingRestrictionLevels;
 
+		$this->assertProperPage();
+
 		if ( wfReadOnly() ) {
 			return Status::newFatal( wfMessage( 'readonlytext', wfReadOnlyReason() ) );
 		}
@@ -2785,6 +2828,7 @@ class WikiPage implements Page, IDBAccessObject {
 		$tags = [], $logsubtype = 'delete', $immediate = false
 	) {
 		wfDebug( __METHOD__ );
+		$this->assertProperPage();
 
 		$status = Status::newGood();
 
@@ -2945,7 +2989,7 @@ class WikiPage implements Page, IDBAccessObject {
 			$logid = $logEntry->insert();
 
 			$dbw->onTransactionPreCommitOrIdle(
-				function () use ( $logEntry, $logid ) {
+				static function () use ( $logEntry, $logid ) {
 					// T58776: avoid deadlocks (especially from FileDeleteForm)
 					$logEntry->publish( $logid );
 				},
@@ -3227,6 +3271,8 @@ class WikiPage implements Page, IDBAccessObject {
 	public function doRollback(
 		$fromP, $summary, $token, $bot, &$resultDetails, User $user, $tags = null
 	) {
+		$this->assertProperPage();
+
 		$resultDetails = null;
 
 		// Check permissions
@@ -3295,7 +3341,7 @@ class WikiPage implements Page, IDBAccessObject {
 		}
 
 		$currentEditorForPublic = $current->getUser( RevisionRecord::FOR_PUBLIC );
-		$legacyCurrentCallback = function () use ( $current ) {
+		$legacyCurrentCallback = static function () use ( $current ) {
 			// Only created when needed
 			return new Revision( $current );
 		};
@@ -3527,7 +3573,7 @@ class WikiPage implements Page, IDBAccessObject {
 
 		$this->getHookRunner()->onRollbackComplete( $this, $guser, $target, $current );
 
-		$legacyTargetCallback = function () use ( $target ) {
+		$legacyTargetCallback = static function () use ( $target ) {
 			// Only create the Revision object if needed
 			return new Revision( $target );
 		};
@@ -3697,7 +3743,7 @@ class WikiPage implements Page, IDBAccessObject {
 
 		// Purge ?action=info cache
 		$revid = $revRecord ? $revRecord->getId() : null;
-		DeferredUpdates::addCallableUpdate( function () use ( $title, $revid ) {
+		DeferredUpdates::addCallableUpdate( static function () use ( $title, $revid ) {
 			InfoAction::invalidateCache( $title, $revid );
 		} );
 
@@ -3719,7 +3765,7 @@ class WikiPage implements Page, IDBAccessObject {
 			return; // @todo: perhaps this wiki is only used as a *source* for content?
 		}
 
-		DeferredUpdates::addCallableUpdate( function () use ( $title ) {
+		DeferredUpdates::addCallableUpdate( static function () use ( $title ) {
 			$cache = MediaWikiServices::getInstance()->getMainWANObjectCache();
 			$cache->resetCheckKey(
 				// Do not include the namespace since there can be multiple aliases to it
@@ -3880,7 +3926,7 @@ class WikiPage implements Page, IDBAccessObject {
 			$cat = Category::newFromName( $catName );
 			$this->getHookRunner()->onCategoryAfterPageRemoved( $cat, $this, $id );
 			// Refresh counts on categories that should be empty now (after commit, T166757)
-			DeferredUpdates::addCallableUpdate( function () use ( $cat ) {
+			DeferredUpdates::addCallableUpdate( static function () use ( $cat ) {
 				$cat->refreshCountsIfEmpty();
 			} );
 		}
@@ -3968,7 +4014,7 @@ class WikiPage implements Page, IDBAccessObject {
 
 			$slotContent = [ SlotRecord::MAIN => $rev ];
 		} else {
-			$slotContent = array_map( function ( SlotRecord $slot ) {
+			$slotContent = array_map( static function ( SlotRecord $slot ) {
 				return $slot->getContent();
 			}, $rev->getSlots()->getSlots() );
 		}
@@ -3993,7 +4039,7 @@ class WikiPage implements Page, IDBAccessObject {
 			$legacyUpdates = $content->getDeletionUpdates( $this );
 
 			// HACK: filter out redundant and incomplete LinksDeletionUpdate
-			$legacyUpdates = array_filter( $legacyUpdates, function ( $update ) {
+			$legacyUpdates = array_filter( $legacyUpdates, static function ( $update ) {
 				return !( $update instanceof LinksDeletionUpdate );
 			} );
 
@@ -4068,6 +4114,72 @@ class WikiPage implements Page, IDBAccessObject {
 		// As a side-effect, this makes sure mLastRevision doesn't
 		// end up being an instance of the old Revision class (see T259181).
 		$this->clear();
+	}
+
+	/**
+	 * @inheritDoc
+	 * @since 1.36
+	 */
+	public function getNamespace(): int {
+		return $this->getTitle()->getNamespace();
+	}
+
+	/**
+	 * @inheritDoc
+	 * @since 1.36
+	 */
+	public function getDBkey(): string {
+		return $this->getTitle()->getDBkey();
+	}
+
+	/**
+	 * @return false self::LOCAL
+	 * @since 1.36
+	 */
+	public function getWikiId() {
+		return $this->getTitle()->getWikiId();
+	}
+
+	/**
+	 * @return true
+	 * @since 1.36
+	 */
+	public function canExist(): bool {
+		// NOTE: once WikiPage becomes a ProperPageIdentity, this should always return true
+		return $this->mTitle->canExist();
+	}
+
+	/**
+	 * @inheritDoc
+	 * @since 1.36
+	 */
+	public function __toString(): string {
+		return $this->mTitle->__toString();
+	}
+
+	/**
+	 * @inheritDoc
+	 * @since 1.36
+	 *
+	 * @param PageIdentity $other
+	 * @return bool
+	 */
+	public function isSamePageAs( PageIdentity $other ): bool {
+		// NOTE: keep in sync with PageIdentityValue::isSamePageAs()!
+
+		if ( $other->getWikiId() !== $this->getWikiId()
+			|| $other->getId() !== $this->getId() ) {
+			return false;
+		}
+
+		if ( $this->getId() === 0 ) {
+			if ( $other->getNamespace() !== $this->getNamespace()
+				|| $other->getDBkey() !== $this->getDBkey() ) {
+				return false;
+			}
+		}
+
+		return true;
 	}
 
 }

@@ -1916,7 +1916,7 @@ class OutputPage extends ContextSource {
 		if ( $this->getConfig()->get( 'ImagePreconnect' ) && count( $parserOutput->getImages() ) ) {
 			$preconnect = [];
 			$repoGroup = MediaWikiServices::getInstance()->getRepoGroup();
-			$repoGroup->forEachForeignRepo( function ( $repo ) use ( &$preconnect ) {
+			$repoGroup->forEachForeignRepo( static function ( $repo ) use ( &$preconnect ) {
 				$preconnect[] = wfParseUrl( $repo->getZoneUrl( 'thumb' ) )['host'];
 			} );
 			$preconnect[] = wfParseUrl( $repoGroup->getLocalRepo()->getZoneUrl( 'thumb' ) )['host'];
@@ -2538,6 +2538,7 @@ class OutputPage extends ContextSource {
 
 			$redirect = $this->mRedirect;
 			$code = $this->mRedirectCode;
+			$content = '';
 
 			if ( $this->getHookRunner()->onBeforePageRedirect( $this, $redirect, $code ) ) {
 				if ( $code == '301' || $code == '303' ) {
@@ -2554,15 +2555,21 @@ class OutputPage extends ContextSource {
 				$response->header( "Content-Type: text/html; charset=utf-8" );
 				if ( $config->get( 'DebugRedirects' ) ) {
 					$url = htmlspecialchars( $redirect );
-					print "<!DOCTYPE html>\n<html>\n<head>\n<title>Redirect</title>\n</head>\n<body>\n";
-					print "<p>Location: <a href=\"$url\">$url</a></p>\n";
-					print "</body>\n</html>\n";
+					$content = "<!DOCTYPE html>\n<html>\n<head>\n"
+						. "<title>Redirect</title>\n</head>\n<body>\n"
+						. "<p>Location: <a href=\"$url\">$url</a></p>\n"
+						. "</body>\n</html>\n";
+
+					if ( !$return ) {
+						print $content;
+					}
+
 				} else {
 					$response->header( 'Location: ' . $redirect );
 				}
 			}
 
-			return $return ? '' : null;
+			return $return ? $content : null;
 		} elseif ( $this->mStatusCode ) {
 			$response->statusHeader( $this->mStatusCode );
 		}
@@ -3008,7 +3015,7 @@ class OutputPage extends ContextSource {
 
 			// Filter out modules handled by buildExemptModules()
 			$moduleStyles = array_filter( $moduleStyles,
-				function ( $name ) use ( $rl, $context, &$exemptGroups, &$exemptStates ) {
+				static function ( $name ) use ( $rl, $context, &$exemptGroups, &$exemptStates ) {
 					$module = $rl->getModule( $name );
 					if ( $module ) {
 						$group = $module->getGroup();
