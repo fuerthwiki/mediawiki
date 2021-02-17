@@ -253,7 +253,7 @@ wfLoadExtension( 'SecureLinkFixer' );
 wfLoadExtension( 'TextExtracts' );
 wfLoadExtension( 'SemanticCite' );
 wfLoadExtension( 'SemanticScribunto' );
-#wfLoadExtension( 'Mermaid' ); Does not work @fuerthwiki.de
+wfLoadExtension( 'Mermaid' );
 wfLoadExtension( 'SemanticCompoundQueries' );
 wfLoadExtension( 'ExternalData' );
 
