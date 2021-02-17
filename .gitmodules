@@ -209,9 +209,9 @@
 [submodule "extensions/Mermaid"]
 	path = extensions/Mermaid
 	url = git@github.com:SemanticMediaWiki/Mermaid.git
-[submodule "extensions/SemanticCompoundQueries"]
-	path = extensions/SemanticCompoundQueries
-	url = git@github.com:SemanticMediaWiki/SemanticCompoundQueries.git
 [submodule "extensions/ExternalData"]
 	path = extensions/ExternalData
 	url = https://gerrit.wikimedia.org/r/mediawiki/extensions/ExternalData
+[submodule "extensions/SemanticCompoundQueries"]
+	path = extensions/SemanticCompoundQueries
+	url = https://github.com/SemanticMediaWiki/SemanticCompoundQueries.git
