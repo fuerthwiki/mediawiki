@@ -143,9 +143,6 @@
 [submodule "extensions/CollapsibleVector"]
 	path = extensions/CollapsibleVector
 	url = git@github.com:wikimedia/mediawiki-extensions-CollapsibleVector.git
-[submodule "extensions/Collection"]
-	path = extensions/Collection
-	url = git@github.com:wikimedia/mediawiki-extensions-Collection.git
 [submodule "extensions/Echo"]
 	path = extensions/Echo
 	url = git@github.com:wikimedia/mediawiki-extensions-Echo.git
@@ -206,9 +203,6 @@
 [submodule "extensions/SemanticScribunto"]
 	path = extensions/SemanticScribunto
 	url = https://github.com/SemanticMediaWiki/SemanticScribunto.git
-[submodule "cronjobs"]
-	path = cronjobs
-	url = git@github.com:fuerthwiki/cronjobs.git
 [submodule "vendor"]
 	path = vendor
 	url = git@github.com:fuerthwiki/vendor.git
