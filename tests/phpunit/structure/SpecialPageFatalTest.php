@@ -1,6 +1,8 @@
 <?php
 
 use MediaWiki\MediaWikiServices;
+use MediaWiki\Permissions\UltimateAuthority;
+use MediaWiki\User\UserIdentityValue;
 
 /**
  * Test that runs against all registered special pages to make sure that regular
@@ -26,19 +28,25 @@ class SpecialPageFatalTest extends MediaWikiIntegrationTestCase {
 	public function provideSpecialPages() {
 		$spf = MediaWikiServices::getInstance()->getSpecialPageFactory();
 		foreach ( $spf->getNames() as $name ) {
-			yield $name => [ $spf->getPage( $name ) ];
+			yield [ $name ];
 		}
 	}
 
 	/**
 	 * @dataProvider provideSpecialPages
 	 */
-	public function testSpecialPageDoesNotFatal( SpecialPage $page ) {
+	public function testSpecialPageDoesNotFatal( $name ) {
+		$spf = MediaWikiServices::getInstance()->getSpecialPageFactory();
+		$page = $spf->getPage( $name );
+		if ( !$page ) {
+			$this->markTestSkipped( "Could not create special page $name" );
+		}
+
 		$executor = new SpecialPageExecutor();
-		$user = User::newFromName( 'UTSysop' );
+		$authority = new UltimateAuthority( new UserIdentityValue( 0, 'UTSysop', 0 ) );
 
 		try {
-			$executor->executeSpecialPage( $page, '', null, 'qqx', $user );
+			$executor->executeSpecialPage( $page, '', null, 'qqx', $authority );
 		} catch ( \PHPUnit\Framework\Error\Deprecated $deprecated ) {
 			// Allow deprecation,
 			// this test want to check fatals or other things breaking the extension

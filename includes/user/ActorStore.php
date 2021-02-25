@@ -23,6 +23,7 @@ namespace MediaWiki\User;
 use CannotCreateActorException;
 use DBAccessObjectUtils;
 use InvalidArgumentException;
+use MapCacheLRU;
 use MediaWiki\DAO\WikiAwareEntity;
 use Psr\Log\LoggerInterface;
 use stdClass;
@@ -42,6 +43,8 @@ class ActorStore implements UserIdentityLookup, ActorNormalization {
 
 	public const UNKNOWN_USER_NAME = 'Unknown user';
 
+	private const LOCAL_CACHE_SIZE = 5;
+
 	/** @var ILoadBalancer */
 	private $loadBalancer;
 
@@ -53,6 +56,15 @@ class ActorStore implements UserIdentityLookup, ActorNormalization {
 
 	/** @var string|false */
 	private $wikiId;
+
+	/** @var MapCacheLRU int actor ID => [ UserIdentity, int actor ID ] */
+	private $actorsByActorId;
+
+	/** @var MapCacheLRU int user ID => [ UserIdentity, int actor ID ] */
+	private $actorsByUserId;
+
+	/** @var MapCacheLRU string user name => [ UserIdentity, int actor ID ] */
+	private $actorsByName;
 
 	/**
 	 * @param ILoadBalancer $loadBalancer
@@ -73,6 +85,10 @@ class ActorStore implements UserIdentityLookup, ActorNormalization {
 		$this->userNameUtils = $userNameUtils;
 		$this->logger = $logger;
 		$this->wikiId = $wikiId;
+
+		$this->actorsByActorId = new MapCacheLRU( self::LOCAL_CACHE_SIZE );
+		$this->actorsByUserId = new MapCacheLRU( self::LOCAL_CACHE_SIZE );
+		$this->actorsByName = new MapCacheLRU( self::LOCAL_CACHE_SIZE );
 	}
 
 	/**
@@ -110,7 +126,10 @@ class ActorStore implements UserIdentityLookup, ActorNormalization {
 				throw new InvalidArgumentException( "Actor name can not be empty for {$userId} and {$actorId}" );
 			}
 		}
-		return new UserIdentityValue( $userId, $row->actor_name, $actorId, $this->wikiId );
+
+		$actor = new UserIdentityValue( $userId, $row->actor_name, $actorId, $this->wikiId );
+		$this->addUserIdentityToCache( $actorId, $actor );
+		return $actor;
 	}
 
 	/**
@@ -157,12 +176,30 @@ class ActorStore implements UserIdentityLookup, ActorNormalization {
 				throw new InvalidArgumentException( "Actor name can not be empty for {$userId} and {$actorId}" );
 			}
 		}
-		return new UserIdentityValue(
+
+		$actorId = (int)$actorId;
+		$actor = new UserIdentityValue(
 			$userId,
 			$name,
-			(int)$actorId,
+			$actorId,
 			$this->wikiId
 		);
+
+		$this->addUserIdentityToCache( $actorId, $actor );
+		return $actor;
+	}
+
+	/**
+	 * @param int $actorId
+	 * @param UserIdentity $actor
+	 */
+	private function addUserIdentityToCache( int $actorId, UserIdentity $actor ) {
+		$this->actorsByActorId->set( $actorId, [ $actor, $actorId ] );
+		$userId = $actor->getUserId( $actor->getWikiId() );
+		if ( $userId ) {
+			$this->actorsByUserId->set( $userId, [ $actor, $actorId ] );
+		}
+		$this->actorsByName->set( $actor->getName(), [ $actor, $actorId ] );
 	}
 
 	/**
@@ -176,7 +213,16 @@ class ActorStore implements UserIdentityLookup, ActorNormalization {
 		if ( !$actorId ) {
 			return null;
 		}
-		return $this->getActorFromConds( [ 'actor_id' => $actorId ], $queryFlags );
+
+		$cachedValue = $this->actorsByActorId->get( $actorId );
+		if ( $cachedValue ) {
+			return $cachedValue[0];
+		}
+
+		return $this->newSelectQueryBuilder( $queryFlags )
+			->caller( __METHOD__ )
+			->conds( [ 'actor_id' => $actorId ] )
+			->fetchUserIdentity();
 	}
 
 	/**
@@ -196,7 +242,16 @@ class ActorStore implements UserIdentityLookup, ActorNormalization {
 		if ( !$name ) {
 			throw new InvalidArgumentException( "Unable to normalize the provided actor name {$name}" );
 		}
-		return $this->getActorFromConds( [ 'actor_name' => $name ], $queryFlags );
+
+		$cachedValue = $this->actorsByName->get( $name );
+		if ( $cachedValue ) {
+			return $cachedValue[0];
+		}
+
+		return $this->newSelectQueryBuilder( $queryFlags )
+			->caller( __METHOD__ )
+			->userNames( $name )
+			->fetchUserIdentity();
 	}
 
 	/**
@@ -210,10 +265,20 @@ class ActorStore implements UserIdentityLookup, ActorNormalization {
 		if ( !$userId ) {
 			return null;
 		}
-		return $this->getActorFromConds( [ 'actor_user' => $userId ], $queryFlags );
+
+		$cachedValue = $this->actorsByUserId->get( $userId );
+		if ( $cachedValue ) {
+			return $cachedValue[0];
+		}
+
+		return $this->newSelectQueryBuilder( $queryFlags )
+			->caller( __METHOD__ )
+			->userIds( $userId )
+			->fetchUserIdentity();
 	}
 
 	/**
+	 * TODO: remove this method
 	 * Find actor by $userId or by $name in this order.
 	 *
 	 * @note calling this method is different from instantiating a new UserIdentity
@@ -286,10 +351,14 @@ class ActorStore implements UserIdentityLookup, ActorNormalization {
 			return null;
 		}
 
-		// TODO: fix FileImporter tests and make this into selectField
+		$cachedValue = $this->actorsByName->get( $name );
+		if ( $cachedValue ) {
+			return $cachedValue[1];
+		}
+
 		$row = $db->selectRow(
 			'actor',
-			'actor_id',
+			[ 'actor_user', 'actor_name', 'actor_id' ],
 			[ 'actor_name' => $name ],
 			__METHOD__
 		);
@@ -299,7 +368,10 @@ class ActorStore implements UserIdentityLookup, ActorNormalization {
 		}
 
 		$id = (int)$row->actor_id;
-		// TODO: Cache! Cache! Cache! But while we are not yet caching, let's use
+
+		// to cache row
+		$this->newActorFromRow( $row );
+
 		// existing UserIdentity actor field - T273974
 		if ( $user instanceof UserIdentityValue ) {
 			$user->setActorId( $id );
@@ -330,6 +402,7 @@ class ActorStore implements UserIdentityLookup, ActorNormalization {
 		// possibility and then throw on mismatching User object - T273972
 		// $user->assertWiki( $this->wikiId );
 
+		// allow cache to be used, because if it is in the cache, it already has an actor ID
 		$existingActorId = $this->findActorIdInternal( $user, $dbw );
 		if ( $existingActorId ) {
 			return $existingActorId;
@@ -380,6 +453,9 @@ class ActorStore implements UserIdentityLookup, ActorNormalization {
 			}
 		}
 
+		// to cache row
+		$this->newActorFromRowFields( $userId, $userName, $actorId );
+
 		// TODO: this is extremely ugly, but this is temporary. UserIdentity/User is getting
 		// untied from the actor_id, so the getActorId method is being removed. Until that happens,
 		// we need to set the actor ID on the user.
@@ -395,10 +471,11 @@ class ActorStore implements UserIdentityLookup, ActorNormalization {
 	/**
 	 * Returns a canonical form of user name suitable for storage.
 	 *
+	 * @internal
 	 * @param string $name
 	 * @return string|null
 	 */
-	private function normalizeUserName( string $name ): ?string {
+	public function normalizeUserName( string $name ): ?string {
 		if ( $this->userNameUtils->isIP( $name ) ) {
 			return IPUtils::sanitizeIP( $name );
 		} else {
@@ -414,27 +491,6 @@ class ActorStore implements UserIdentityLookup, ActorNormalization {
 			// fix existing DB rows - T273933
 			return $name;
 		}
-	}
-
-	/**
-	 * Queries an actor by $conds
-	 *
-	 * @param array $conds
-	 * @param int $queryFlags
-	 * @return UserIdentity|null
-	 */
-	private function getActorFromConds( array $conds, int $queryFlags = self::READ_NORMAL ): ?UserIdentity {
-		$row = $this->getDBConnectionRefForQueryFlags( $queryFlags )
-			->selectRow(
-				'actor',
-				[ 'actor_id', 'actor_name', 'actor_user' ],
-				$conds,
-				__METHOD__
-			);
-		if ( $row === false ) {
-			return null;
-		}
-		return $this->newActorFromRow( $row );
 	}
 
 	/**
@@ -484,5 +540,18 @@ class ActorStore implements UserIdentityLookup, ActorNormalization {
 		$actor = new UserIdentityValue( 0, self::UNKNOWN_USER_NAME, 0, $this->wikiId );
 		$this->acquireActorId( $actor );
 		return $actor;
+	}
+
+	/**
+	 * Returns a specialized SelectQueryBuilder for querying the UserIdentity objects.
+	 *
+	 * @param int $queryFlags one of IDBAccessObject constants
+	 * @return UserSelectQueryBuilder
+	 */
+	public function newSelectQueryBuilder( int $queryFlags = self::READ_NORMAL ): UserSelectQueryBuilder {
+		return new UserSelectQueryBuilder(
+			$this->getDBConnectionRefForQueryFlags( $queryFlags ),
+			$this
+		);
 	}
 }

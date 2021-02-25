@@ -106,7 +106,12 @@ class ApiQuery extends ApiBase {
 		'recentchanges' => ApiQueryRecentChanges::class,
 		'search' => ApiQuerySearch::class,
 		'tags' => ApiQueryTags::class,
-		'usercontribs' => ApiQueryUserContribs::class,
+		'usercontribs' => [
+			'class' => ApiQueryUserContribs::class,
+			'services' => [
+				'UserIdentityLookup',
+			],
+		],
 		'users' => ApiQueryUsers::class,
 		'watchlist' => ApiQueryWatchlist::class,
 		'watchlistraw' => ApiQueryWatchlistRaw::class,
@@ -459,7 +464,7 @@ class ApiQuery extends ApiBase {
 		if ( count( $titles ) ) {
 			/** @var Title $title */
 			foreach ( $titles as $title ) {
-				if ( $this->getPermissionManager()->userCan( 'read', $this->getUser(), $title ) ) {
+				if ( $this->getAuthority()->authorizeRead( 'read', $title ) ) {
 					$exportTitles[] = $title;
 				}
 			}

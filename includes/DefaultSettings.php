@@ -312,17 +312,50 @@ $wgFileCacheDirectory = false;
 $wgLogo = false;
 
 /**
- * The URL path to various wiki logos.
- * The `1x` logo size should be 135x135 pixels.
- * The `1.5x` 1.5x version of square logo
- * The `2x` 2x version of square logo
- * The `svg` version of square logo
+ * Specification for different versions of the wiki logo.
+ *
+ * This is an array which should have the following k/v pairs:
+ * All path values can be either absolute or relative URIs
+ *
+ * The `1x` key is a path to the 1x version of square logo (should be 135x135 pixels)
+ * The `1.5x` key is a path to the 1.5x version of square logo
+ * The `2x` key is a path to the 2x version of square logo
+ * The `svg` key is a path to the svg version of square logo
+ * The `icon` key is a path to the version of the logo without wordmark and tagline
  * The `wordmark` key should point to an array with the following fields
- *  - `src` relative or absolute path to a landscape logo
- *  - `width` defining the width of the logo in pixels.
- *  - `height` defining the height of the logo in pixels.
- * All values can be either an absolute or relative URI
- * Configuration is optional provided $wgLogo is used instead.
+ *  - `src` path to wordmark version
+ *  - `1x` path to svg wordmark version (if you want to
+ * 		   support browsers with SVG support with an SVG logo)
+ *  - `width` width of the logo in pixels
+ *  - `height` height of the logo in pixels
+ * The `tagline` key should point to an array with the following fields
+ *  - `src` path to tagline image
+ *  - `width` width of the tagline in pixels
+ *  - `height` height of the tagline in pixels
+ *
+ *
+ * @par Example:
+ * @code
+ * $wgLogos = [
+ *	  '1x' => 'path/to/1x_version.png',
+ *	  '1.5x' => 'path/to/1.5x_version.png',
+ *	  '2x' => 'path/to/2x_version.png',
+ *	  'svg' => 'path/to/svg_version.svg',
+ *	  'icon' => 'path/to/icon.png',
+ *	  'wordmark' => [
+ *	  	'src' => 'path/to/wordmark_version.png',
+ *	  	'1x' => 'path/to/wordmark_version.svg',
+ *	  	'width' => 135,
+ *	  	'height' => 20,
+ *	  ],
+ *	  'tagline' => [
+ *	  	'src' => 'path/to/tagline_version.png',
+ *	  	'width' => 135,
+ *		'height' => 15,
+ *    ]
+ * ];
+ * @endcode
+ *
  * Defaults to [ "1x" => $wgLogo ],
  *   or [ "1x" => "$wgResourceBasePath/resources/assets/wiki.png" ] if $wgLogo is not set.
  * @since 1.35
@@ -429,7 +462,11 @@ $wgUploadBaseUrl = '';
  * To enable remote on-demand scaling, set this to the thumbnail base URL.
  * Full thumbnail URL will be like $wgUploadStashScalerBaseUrl/e/e6/Foo.jpg/123px-Foo.jpg
  * where 'e6' are the first two characters of the MD5 hash of the file name.
- * If $wgUploadStashScalerBaseUrl is set to false, thumbs are rendered locally as needed.
+ *
+ * @deprecated since 1.36 Use thumbProxyUrl in $wgLocalFileRepo
+ *
+ * If $wgUploadStashScalerBaseUrl and thumbProxyUrl are both false, thumbs are
+ * rendered locally as needed.
  * @since 1.17
  */
 $wgUploadStashScalerBaseUrl = false;
@@ -561,6 +598,15 @@ $wgImgAuthUrlPathMap = [];
  *   - thumbScriptUrl   The URL for thumb.php (optional, not recommended)
  *   - transformVia404  Whether to skip media file transformation on parse and rely on a 404
  *                      handler instead.
+ *   - thumbProxyUrl    Optional. URL of where to proxy thumb.php requests to. This is
+ *                      also used internally for remote thumbnailing of upload stash files.
+ *                      Example: http://127.0.0.1:8888/wiki/dev/thumb/
+ *   - thumbProxySecret Optional value of the X-Swift-Secret header to use in requests to
+ *                      thumbProxyUrl
+ *   - disableLocalTransform
+ *                      If present and true, local image scaling will be disabled -- it will
+ *                      throw an exception if attempted. thumbProxyUrl must be set for this
+ *                      to work, as well as either transformVia404 (preferred) or thumbScriptUrl.
  *   - initialCapital   Equivalent to $wgCapitalLinks (or $wgCapitalLinkOverrides[NS_FILE],
  *                      determines whether filenames implicitly start with a capital letter.
  *                      The current implementation may give incorrect description page links
@@ -6306,6 +6352,7 @@ $wgGrantPermissions['editpage']['edit'] = true;
 $wgGrantPermissions['editpage']['minoredit'] = true;
 $wgGrantPermissions['editpage']['applychangetags'] = true;
 $wgGrantPermissions['editpage']['changetags'] = true;
+$wgGrantPermissions['editpage']['editcontentmodel'] = true;
 
 $wgGrantPermissions['editprotected'] = $wgGrantPermissions['editpage'];
 $wgGrantPermissions['editprotected']['editprotected'] = true;
@@ -9726,6 +9773,15 @@ $wgRestAllowCrossOriginCookieAuth = false;
  * @see https://phabricator.wikimedia.org/T263579
  */
 $wgParserCacheUseJson = true;
+
+/**
+ * An array of open graph tags which should be added by all skins.
+ * Accepted values are "og:title", "og:type" and "twitter:card".
+ * Since some of these fields can be provided by extensions it defaults to an empty array.
+ *
+ * @since 1.36
+ */
+$wgSkinMetaTags = [];
 
 /*
  * This file uses VisualStudio style region/endregion fold markers which are

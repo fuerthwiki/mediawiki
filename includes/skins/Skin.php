@@ -204,6 +204,7 @@ abstract class Skin extends ContextSource {
 	 * @param OutputPage $out
 	 */
 	public function initPage( OutputPage $out ) {
+		$skinMetaTags = $this->getConfig()->get( 'SkinMetaTags' );
 		$this->preloadExistence();
 
 		if ( $this->isResponsive() ) {
@@ -212,7 +213,19 @@ abstract class Skin extends ContextSource {
 				'width=device-width, initial-scale=1.0, ' .
 				'user-scalable=yes, minimum-scale=0.25, maximum-scale=5.0'
 			);
+		}
 
+		$tags = [
+			'og:title' => $out->getDisplayTitle(),
+			'twitter:card' => 'summary_large_image',
+			'og:type' => 'website',
+		];
+
+		// Support sharing on platforms such as Facebook and Twitter
+		foreach ( $tags as $key => $value ) {
+			if ( in_array( $key, $skinMetaTags ) ) {
+				$out->addMeta( $key, $value );
+			}
 		}
 	}
 
@@ -284,16 +297,15 @@ abstract class Skin extends ContextSource {
 			$modules['content'][] = 'mediawiki.toc';
 		}
 
-		$services = MediaWikiServices::getInstance();
-		$permManager = $services->getPermissionManager();
-		if ( $user->isRegistered()
-			&& $permManager->userHasAllRights( $user, 'writeapi', 'viewmywatchlist', 'editmywatchlist' )
+		$authority = $this->getAuthority();
+		if ( $authority->getPerformer()->isRegistered()
+			&& $authority->isAllowedAll( 'writeapi', 'viewmywatchlist', 'editmywatchlist' )
 			&& $this->getRelevantTitle()->canExist()
 		) {
 			$modules['watch'][] = 'mediawiki.page.watch.ajax';
 		}
 
-		$userOptionsLookup = $services->getUserOptionsLookup();
+		$userOptionsLookup = MediaWikiServices::getInstance()->getUserOptionsLookup();
 		if ( $userOptionsLookup->getBoolOption( $user, 'editsectiononrightclick' )
 			|| ( $out->isArticle() && $userOptionsLookup->getOption( $user, 'editondblclick' ) )
 		) {
@@ -496,7 +508,6 @@ abstract class Skin extends ContextSource {
 	 */
 	public function getPageClasses( $title ) {
 		$numeric = 'ns-' . $title->getNamespace();
-		$user = $this->getUser();
 
 		if ( $title->isSpecialPage() ) {
 			$type = 'ns-special';
@@ -515,9 +526,7 @@ abstract class Skin extends ContextSource {
 				$type = 'ns-subject';
 			}
 			// T208315: add HTML class when the user can edit the page
-			if ( MediaWikiServices::getInstance()->getPermissionManager()
-					->quickUserCan( 'edit', $user, $title )
-			) {
+			if ( $this->getAuthority()->probablyCan( 'edit', $title ) ) {
 				$type .= ' mw-editable';
 			}
 		}
@@ -772,17 +781,15 @@ abstract class Skin extends ContextSource {
 	public function getUndeleteLink() {
 		$action = $this->getRequest()->getVal( 'action', 'view' );
 		$title = $this->getTitle();
-		$user = $this->getUser();
 		$linkRenderer = MediaWikiServices::getInstance()->getLinkRenderer();
-		$permissionManager = MediaWikiServices::getInstance()->getPermissionManager();
 
 		if ( ( !$title->exists() || $action == 'history' ) &&
-			$permissionManager->quickUserCan( 'deletedhistory', $user, $title )
+			$this->getAuthority()->probablyCan( 'deletedhistory', $title )
 		) {
 			$n = $title->getDeletedEditsCount();
 
 			if ( $n ) {
-				if ( $permissionManager->quickUserCan( 'undelete', $user, $title ) ) {
+				if ( $this->getAuthority()->probablyCan( 'undelete', $title ) ) {
 					$msg = 'thisisdeleted';
 				} else {
 					$msg = 'viewdeleted';
@@ -1608,7 +1615,6 @@ abstract class Skin extends ContextSource {
 		}
 
 		$user = $this->getRelevantUser();
-		$permissionManager = MediaWikiServices::getInstance()->getPermissionManager();
 
 		// The relevant user should only be set if it exists. However, if it exists but is hidden,
 		// and the viewer cannot see hidden users, this exposes the fact that the user exists;
@@ -1616,7 +1622,7 @@ abstract class Skin extends ContextSource {
 		// is what getRelevantUser returns if there is no user set (though it is documented as
 		// always returning a User...) See T120883
 		if ( $user && $user->isRegistered() && $user->isHidden() &&
-			 !$permissionManager->userHasRight( $this->getUser(), 'hideuser' )
+			 !$this->getAuthority()->isAllowed( 'hideuser' )
 		) {
 			$user = null;
 		}
@@ -1634,7 +1640,7 @@ abstract class Skin extends ContextSource {
 				'href' => self::makeSpecialUrlSubpage( 'Log', $rootUser )
 			];
 
-			if ( $permissionManager->userHasRight( $this->getUser(), 'block' ) ) {
+			if ( $this->getAuthority()->isAllowed( 'block' ) ) {
 				$nav_urls['blockip'] = [
 					'text' => $this->msg( 'blockip', $rootUser )->text(),
 					'href' => self::makeSpecialUrlSubpage( 'Block', $rootUser )

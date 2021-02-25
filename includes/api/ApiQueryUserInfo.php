@@ -186,7 +186,7 @@ class ApiQueryUserInfo extends ApiQueryBase {
 
 		if ( isset( $this->prop['preferencestoken'] ) &&
 			!$this->lacksSameOriginSecurity() &&
-			$this->getPermissionManager()->userHasRight( $user, 'editmyoptions' )
+			$this->getAuthority()->isAllowed( 'editmyoptions' )
 		) {
 			$vals['preferencestoken'] = $user->getEditToken( '', $this->getMain()->getRequest() );
 		}
@@ -212,8 +212,7 @@ class ApiQueryUserInfo extends ApiQueryBase {
 			$vals['realname'] = $user->getRealName();
 		}
 
-		if ( $this->getPermissionManager()->userHasRight( $user, 'viewmyprivateinfo' ) &&
-				isset( $this->prop['email'] ) ) {
+		if ( $this->getAuthority()->isAllowed( 'viewmyprivateinfo' ) && isset( $this->prop['email'] ) ) {
 			$vals['email'] = $user->getEmail();
 			$auth = $user->getEmailAuthenticationTimestamp();
 			if ( $auth !== null ) {
@@ -330,6 +329,7 @@ class ApiQueryUserInfo extends ApiQueryBase {
 		return [
 			'prop' => [
 				ApiBase::PARAM_ISMULTI => true,
+				ApiBase::PARAM_ALL => true,
 				ApiBase::PARAM_TYPE => [
 					'blockinfo',
 					'hasmsg',

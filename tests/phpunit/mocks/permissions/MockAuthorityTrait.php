@@ -47,7 +47,7 @@ trait MockAuthorityTrait {
 	 * @return Authority
 	 */
 	private function mockRegisteredNullAuthority(): Authority {
-		return new UltimateAuthority( new UserIdentityValue( 42, 'Petr', 24 ) );
+		return new SimpleAuthority( new UserIdentityValue( 42, 'Petr', 24 ), [] );
 	}
 
 	/**
@@ -105,7 +105,7 @@ trait MockAuthorityTrait {
 	 */
 	private function mockAuthority( UserIdentity $performer, callable $permissionCallback ): Authority {
 		$mock = $this->createMock( Authority::class );
-		$mock->method( 'getActor' )->willReturn( $performer );
+		$mock->method( 'getPerformer' )->willReturn( $performer );
 		$methods = [ 'isAllowed', 'probablyCan', 'definitelyCan', 'authorizeRead', 'authorizeWrite' ];
 		foreach ( $methods as $method ) {
 			$mock->method( $method )->willReturnCallback( $permissionCallback );
