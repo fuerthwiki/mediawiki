@@ -16,6 +16,7 @@ important information when upgrading from versions prior to 1.11.
 Some specific notes for MediaWiki 1.36 upgrades are below:
 * MediaWiki 1.36 now requires the PHP internationalization extension
   (commonly referred to as Intl, ext-intl and php-intl).
+* MediaWiki refuses to run on PHP 7.4.0–7.4.8, which have a PHP bug (T270228).
 * …
 
 For notes on 1.35.x and older releases, see HISTORY.
@@ -98,9 +99,9 @@ this is no longer recommended and the option has been removed.
 * …
 
 ==== New external libraries ====
-* Added pear/net_url2 2.2.2.
+* Added wikimedia/minify 2.1.0.
 * Added wikimedia/request-timeout 1.0.0.
-* Added wikimedia/shellbox 1.0.2.
+* Added wikimedia/shellbox 1.0.4.
 * Added WVUI 0.1.0.
 * …
 
@@ -116,6 +117,7 @@ this is no longer recommended and the option has been removed.
 * Updated pear/net_smtp from 1.9.1 to 1.9.2.
 * Updated pimple/pimple from 3.3.0 to 3.3.1.
 * Updated wikimedia/cldr-plural-rule-parser from 1.0.0 to 2.0.0.
+* Updated wikimedia/composer-merge-plugin from 1.4.1 to 2.0.1.
 * Updated wikimedia/html-formatter from 1.0.2 to 2.0.1.
 * Updated wikimedia/ip-utils from 1.0.0 to 3.0.1.
 * Updated wikimedia/less.php from 3.0.0 to 3.1.0.
@@ -498,6 +500,13 @@ because of Phabricator reports.
    - convertTitle
    - updateConversionTable
    - commafy
+* The following functions from the Title class have been hard deprecated:
+   - getPreviousRevisionID
+   - getNextRevisionID
+   - getEarliestRevTime 
+* The following functions from the Title class have been removed:
+   - countRevisionsBetween
+   - getAuthorsBetween
 * The mw.language.commafy client-side method has been deprecated, to match
   the deprecation of Language::commafy.  Use mw.language.convertNumber
   instead.
@@ -543,6 +552,9 @@ because of Phabricator reports.
 * Command::cgroup() is deprecated and no longer functional. $wgShellCgroup is
   now implemented as an Executor option.
 * Command::restrict() is deprecated. Instead use the new separate accessors.
+* WatchedItem::getUser hard-deprecated in favor of ::getUserIdentity since 1.36
+* LogEntry::getPerformer and its implementations have been hard-deprecated in
+  favor of ::getPerformerIdentity
 * …
 
 === Other changes in 1.36 ===
@@ -583,7 +595,8 @@ because of Phabricator reports.
   service instead.
 
 == Compatibility ==
-MediaWiki 1.36 requires PHP 7.2.22 or later, and the following PHP extensions:
+MediaWiki 1.36 requires PHP 7.2.22 or later, avoiding PHP 7.4.0–7.4.8, and the
+following PHP extensions:
 
 * ctype
 * dom
