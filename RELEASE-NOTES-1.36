@@ -262,6 +262,7 @@ because of Phabricator reports.
 * The global variable $wgMemc, deprecated since 1.35, has been removed.
   Usage should generally be migrated to WANObjectCache, or if you really need
   the internal object, use ObjectCache::getLocalClusterInstance instead.
+* The preprocessDump.php maintenance script was removed.
 * CategoryFinder, which was deprecated in 1.31 and hard-deprecated in 1.35,
   has been removed.
 * GenderCache::singleton(), which was deprecated in 1.28 and hard-deprecated
@@ -400,8 +401,6 @@ because of Phabricator reports.
 === Deprecations in 1.36 ===
 * (T245963) User::getGrantName() is now hard deprecated and will be removed in
   a subsequent release. Use MWGrants::grantName() instead.
-* (T260933) UserIdentity::getId() is now deprecated. Use
-  UserIdentity::getUserId() instead.
 * wfIncrStats() is now deprecated. Use MediaWikiServices::getInstance()
   ->getStatsdDataFactory()->updateCount() instead.
 * WikiPage::doEditContent() is now deprecated. Use

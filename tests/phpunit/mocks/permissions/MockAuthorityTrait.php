@@ -71,6 +71,62 @@ trait MockAuthorityTrait {
 	}
 
 	/**
+	 * Create a mock Authority for a $user with $permissions.
+	 *
+	 * @param UserIdentity $user
+	 * @param array $permissions
+	 * @return Authority
+	 */
+	private function mockUserAuthorityWithPermissions(
+		UserIdentity $user,
+		array $permissions
+	): Authority {
+		return new SimpleAuthority( $user, $permissions );
+	}
+
+	/**
+	 * Create a mock Authority for an anon user with all but $permissions
+	 * @param array $permissions
+	 * @return Authority
+	 */
+	private function mockAnonAuthorityWithoutPermissions( array $permissions ): Authority {
+		return $this->mockUserAuthorityWithoutPermissions(
+			new UserIdentityValue( 0, '127.0.0.1', 0 ),
+			$permissions
+		);
+	}
+
+	/**
+	 * Create a mock Authority for a registered user with all but $permissions
+	 * @param array $permissions
+	 * @return Authority
+	 */
+	private function mockRegisteredAuthorityWithoutPermissions( array $permissions ): Authority {
+		return $this->mockUserAuthorityWithoutPermissions(
+			new UserIdentityValue( 42, 'Petr', 24 ),
+			$permissions
+		);
+	}
+
+	/**
+	 * Create a mock Authority for a $user with all but $permissions
+	 * @param UserIdentity $user
+	 * @param array $permissions
+	 * @return Authority
+	 */
+	private function mockUserAuthorityWithoutPermissions(
+		UserIdentity $user,
+		array $permissions
+	): Authority {
+		return $this->mockAuthority(
+			$user,
+			function ( $permission ) use ( $permissions ) {
+				return !in_array( $permission, $permissions );
+			}
+		);
+	}
+
+	/**
 	 * Create mock Authority for anon user where permissions are determined by $callback.
 	 *
 	 * @param callable $permissionCallback
@@ -97,15 +153,15 @@ trait MockAuthorityTrait {
 	}
 
 	/**
-	 * Create mock Authority for $performer where permissions are determined by $callback.
+	 * Create mock Authority for $user where permissions are determined by $callback.
 	 *
-	 * @param UserIdentity $performer
+	 * @param UserIdentity $user
 	 * @param callable $permissionCallback ( string $permission, ?PageIdentity $page )
 	 * @return Authority
 	 */
-	private function mockAuthority( UserIdentity $performer, callable $permissionCallback ): Authority {
+	private function mockAuthority( UserIdentity $user, callable $permissionCallback ): Authority {
 		$mock = $this->createMock( Authority::class );
-		$mock->method( 'getPerformer' )->willReturn( $performer );
+		$mock->method( 'getUser' )->willReturn( $user );
 		$methods = [ 'isAllowed', 'probablyCan', 'definitelyCan', 'authorizeRead', 'authorizeWrite' ];
 		foreach ( $methods as $method ) {
 			$mock->method( $method )->willReturnCallback( $permissionCallback );

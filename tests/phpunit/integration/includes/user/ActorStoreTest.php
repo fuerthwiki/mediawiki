@@ -132,52 +132,11 @@ class ActorStoreTest extends ActorStoreTestBase {
 		$this->assertNotNull( $cached );
 		$this->assertSameActors( $expected, $cached );
 
-		$userId = $expected->getUserId();
+		$userId = $expected->getId();
 		if ( $userId ) {
 			$cached = $this->getStore()->getUserIdentityByUserId( $userId );
 			$this->assertNotNull( $cached );
 			$this->assertSameActors( $expected, $cached );
-		}
-	}
-
-	public function providegetUserIdentityByAnyId() {
-		yield 'by name' => [
-			24, // $userId
-			null, // $name
-			new UserIdentityValue( 24, 'TestUser', 42 ), // $expected
-		];
-		yield 'by user, name wrong' => [
-			24, // $userId
-			'TestUser_blblblba', // $name
-			new UserIdentityValue( 24, 'TestUser', 42 ), // $expected
-		];
-		yield 'by name, user nonexistent' => [
-			141312, // $userId
-			'TestUser', // $name
-			new UserIdentityValue( 24, 'TestUser', 42 ), // $expected
-		];
-		yield 'non-existent' => [
-			2423121, // $userId
-			'TestUser_blblblba', // $name
-			null, // $expected
-		];
-	}
-
-	/**
-	 * @dataProvider providegetUserIdentityByAnyId
-	 * @covers ::getUserIdentityByAnyId
-	 */
-	public function testgetUserIdentityByAnyId( $userId, $name, ?UserIdentity $expected ) {
-		$actor = $this->getStore()->getUserIdentityByAnyId( $userId, $name );
-		if ( $expected ) {
-			$this->assertNotNull( $actor );
-			$this->assertSameActors( $expected, $actor );
-
-			// test caching
-			$cachedActor = $this->getStore()->getUserIdentityByAnyId( $userId, $name );
-			$this->assertSame( $actor, $cachedActor );
-		} else {
-			$this->assertNull( $actor );
 		}
 	}
 
@@ -204,7 +163,7 @@ class ActorStoreTest extends ActorStoreTestBase {
 	 */
 	public function testGetUserIdentityByUserIdRealUser() {
 		$user = $this->getTestUser()->getUser();
-		$actor = $this->getStore()->getUserIdentityByUserId( $user->getUserId() );
+		$actor = $this->getStore()->getUserIdentityByUserId( $user->getId() );
 		$this->assertSameActors( $user, $actor );
 	}
 
@@ -534,11 +493,6 @@ class ActorStoreTest extends ActorStoreTestBase {
 		} ];
 		yield 'registered' => [ static function () {
 			return new UserIdentityValue( 15, 'MyUser', 0, 'acmewiki' );
-		} ];
-		// This is backwards-compatibility test case, this can be removed when we deprecate
-		// and drop support for passing User object with foreign DB connections.
-		yield 'User object' => [ static function ( $serviceContainer ) {
-			return $serviceContainer->getUserFactory()->newAnonymous( '127.4.3.2' );
 		} ];
 	}
 

@@ -1,14 +1,15 @@
 {
-	"comment": "Set unsigned true for rc_id in recentchanges table (T62962)",
+	"comment": "Renaming new_name_timestamp index on recentchanges to rc_new_name_timestamp (T270033)",
 	"before": {
 		"name": "recentchanges",
-		"comment": "Primarily a summary table for Special:RecentChanges, this table contains some additional info on edits from the last few days",
+		"comment": "Primarily a summary table for Special:Recentchanges, this table contains some additional info on edits from the last few days, see Article::editUpdates()",
 		"columns": [
 			{
 				"name": "rc_id",
 				"type": "integer",
 				"options": {
 					"autoincrement": true,
+					"unsigned": true,
 					"notnull": true
 				}
 			},
@@ -310,7 +311,7 @@
 	},
 	"after": {
 		"name": "recentchanges",
-		"comment": "Primarily a summary table for Special:Recentchanges, this table contains some additional info on edits from the last few days, see Article::editUpdates()",
+		"comment": "Primarily a summary table for Special:RecentChanges, this table contains some additional info on edits from the last few days",
 		"columns": [
 			{
 				"name": "rc_id",
@@ -558,7 +559,7 @@
 				"unique": false
 			},
 			{
-				"name": "new_name_timestamp",
+				"name": "rc_new_name_timestamp",
 				"comment": "Special:Newpages",
 				"columns": [
 					"rc_new",
