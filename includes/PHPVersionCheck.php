@@ -94,7 +94,7 @@ class PHPVersionCheck {
 		 * Remember to drop irrelevant ranges when bumping $minimumVersion.
 		 */
 		$knownBad = array(
-			'T270228' => '7.4.0 - 7.4.8',
+			'T270228' => '7.5.0 - 7.5.8',
 		);
 
 		$passes = version_compare( PHP_VERSION, $minimumVersion, '>=' );
