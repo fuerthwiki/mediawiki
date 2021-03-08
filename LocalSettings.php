@@ -90,7 +90,6 @@ $wgMainCacheType    = CACHE_NONE; # Do not cache anything by default
 $wgMemCachedServers = array();
 $wgSessionCacheType = CACHE_DB; # Especially store the sessions at db
 $wgCacheDirectory = "{$IP}/cache";
-#echo "$wgCacheDirectory";
 
 ## Shared memory settings
 # $wgMainCacheType = CACHE_NONE;
@@ -176,7 +175,6 @@ $wgDefaultSkin = "vector";
 wfLoadSkin( 'Timeless' );
 wfLoadSkin( 'Vector' );
 
-
 # Extra Namespaces at FürthWiki
 $wgExtraNamespaces =
 	array(100 => "Portal",
@@ -213,7 +211,11 @@ wfLoadExtension( 'OATHAuth' );
 wfLoadExtension( 'ParserFunctions' );
 wfLoadExtension( 'PdfHandler' );
 wfLoadExtension( 'Poem' );
+
+# An own server with 5min cron should handle that with ease (rr)
 wfLoadExtension( 'Renameuser' );
+$wgReplaceTextResultsLimit = 2500;
+
 wfLoadExtension( 'ReplaceText' );
 wfLoadExtension( 'SpamBlacklist' );
 wfLoadExtension( 'SyntaxHighlight_GeSHi' );
