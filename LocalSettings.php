@@ -260,6 +260,9 @@ wfLoadExtension( 'SemanticCompoundQueries' );
 wfLoadExtension( 'ExternalData' );
 wfLoadExtension( 'RevisionSlider' );
 
+# That next line is only a documentation extension!
+wfLoadExtension( 'examples' );
+
 # Enable VisualEditor but don't make it default
 wfLoadExtension( 'VisualEditor' );
 $wgDefaultUserOptions['visualeditor-enable'] = 0;

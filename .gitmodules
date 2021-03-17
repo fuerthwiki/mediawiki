@@ -218,3 +218,6 @@
 [submodule "extensions/RevisionSlider"]
 	path = extensions/RevisionSlider
 	url = git@github.com:wikimedia/mediawiki-extensions-RevisionSlider.git
+[submodule "extensions/examples"]
+	path = extensions/examples
+	url = git@github.com:wikimedia/mediawiki-extensions-examples.git
