@@ -127,7 +127,7 @@
 	url = git@github.com:SemanticMediaWiki/SemanticMediaWiki.git
 [submodule "extensions/PageForms"]
 	path = extensions/PageForms
-	url = https://gerrit.wikimedia.org/r/mediawiki/extensions/PageForms.git
+	url = git@github.com:fuerthwiki/mediawiki-extensions-PageForms.git
 [submodule "extensions/Maps"]
 	path = extensions/Maps
 	url = git@github.com:JeroenDeDauw/Maps.git
