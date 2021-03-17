@@ -259,6 +259,7 @@ wfLoadExtension( 'Mermaid' );
 wfLoadExtension( 'SemanticCompoundQueries' );
 wfLoadExtension( 'ExternalData' );
 wfLoadExtension( 'RevisionSlider' );
+wfLoadExtension( 'UploadWizard' );
 
 # Enable VisualEditor but don't make it default
 wfLoadExtension( 'VisualEditor' );
