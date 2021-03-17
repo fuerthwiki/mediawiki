@@ -215,3 +215,6 @@
 [submodule "extensions/SemanticCompoundQueries"]
 	path = extensions/SemanticCompoundQueries
 	url = https://github.com/SemanticMediaWiki/SemanticCompoundQueries.git
+[submodule "extensions/RevisionSlider"]
+	path = extensions/RevisionSlider
+	url = git@github.com:wikimedia/mediawiki-extensions-RevisionSlider.git

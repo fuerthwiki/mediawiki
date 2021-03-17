@@ -258,6 +258,7 @@ wfLoadExtension( 'SemanticScribunto' );
 wfLoadExtension( 'Mermaid' );
 wfLoadExtension( 'SemanticCompoundQueries' );
 wfLoadExtension( 'ExternalData' );
+wfLoadExtension( 'RevisionSlider' );
 
 # Enable VisualEditor but don't make it default
 wfLoadExtension( 'VisualEditor' );
