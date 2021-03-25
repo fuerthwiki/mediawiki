@@ -259,7 +259,8 @@ abstract class Maintenance {
 	}
 
 	/**
-	 * Checks to see if a particular option exists.
+	 * Checks to see if a particular option was set.
+	 *
 	 * @param string $name The name of the option
 	 * @return bool
 	 */
@@ -282,10 +283,7 @@ abstract class Maintenance {
 		if ( $this->hasOption( $name ) ) {
 			return $this->mOptions[$name];
 		} else {
-			// Set it so we don't have to provide the default again
-			$this->mOptions[$name] = $default;
-
-			return $this->mOptions[$name];
+			return $default;
 		}
 	}
 
@@ -1407,7 +1405,7 @@ abstract class Maintenance {
 	}
 
 	/**
-	 * Begin a transcation on a DB
+	 * Begin a transaction on a DB
 	 *
 	 * This method makes it clear that begin() is called from a maintenance script,
 	 * which has outermost scope. This is safe, unlike $dbw->begin() called in other places.
@@ -1421,7 +1419,7 @@ abstract class Maintenance {
 	}
 
 	/**
-	 * Commit the transcation on a DB handle and wait for replica DBs to catch up
+	 * Commit the transaction on a DB handle and wait for replica DBs to catch up
 	 *
 	 * This method makes it clear that commit() is called from a maintenance script,
 	 * which has outermost scope. This is safe, unlike $dbw->commit() called in other places.
@@ -1433,6 +1431,16 @@ abstract class Maintenance {
 	 */
 	protected function commitTransaction( IDatabase $dbw, $fname ) {
 		$dbw->commit( $fname );
+		return $this->waitForReplication();
+	}
+
+	/**
+	 * Wait for replica DBs to catch up
+	 *
+	 * @return bool Whether the replica DB wait succeeded
+	 * @since 1.36
+	 */
+	protected function waitForReplication() {
 		$lbFactory = MediaWikiServices::getInstance()->getDBLoadBalancerFactory();
 		$waitSucceeded = $lbFactory->waitForReplication(
 			[ 'timeout' => 30, 'ifWritesSince' => $this->lastReplicationWait ]
@@ -1442,7 +1450,7 @@ abstract class Maintenance {
 	}
 
 	/**
-	 * Rollback the transcation on a DB handle
+	 * Rollback the transaction on a DB handle
 	 *
 	 * This method makes it clear that rollback() is called from a maintenance script,
 	 * which has outermost scope. This is safe, unlike $dbw->rollback() called in other places.

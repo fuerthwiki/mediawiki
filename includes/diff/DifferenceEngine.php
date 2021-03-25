@@ -333,9 +333,9 @@ class DifferenceEngine extends ContextSource {
 			return [];
 		}
 
-		$newSlots = $this->mNewRevisionRecord->getSlots()->getSlots();
+		$newSlots = $this->mNewRevisionRecord->getPrimarySlots()->getSlots();
 		if ( $this->mOldRevisionRecord ) {
-			$oldSlots = $this->mOldRevisionRecord->getSlots()->getSlots();
+			$oldSlots = $this->mOldRevisionRecord->getPrimarySlots()->getSlots();
 		} else {
 			$oldSlots = [];
 		}
@@ -597,12 +597,12 @@ class DifferenceEngine extends ContextSource {
 	 * Checks whether the diff should be hidden from the current user
 	 * This is based on whether the user is allowed to see it and has specifically asked to see it.
 	 *
-	 * @param User $user
+	 * @param Authority $performer
 	 * @return bool
 	 */
-	public function shouldBeHiddenFromUser( $user ) {
+	public function shouldBeHiddenFromUser( Authority $performer ) {
 		return $this->hasDeletedRevision() && ( !$this->unhide ||
-			!$this->isUserAllowedToSeeRevisions( $user ) );
+			!$this->isUserAllowedToSeeRevisions( $performer ) );
 	}
 
 	/**
@@ -850,7 +850,7 @@ class DifferenceEngine extends ContextSource {
 
 		# If the diff cannot be shown due to a deleted revision, then output
 		# the diff header and links to unhide (if available)...
-		if ( $this->shouldBeHiddenFromUser( $user ) ) {
+		if ( $this->shouldBeHiddenFromUser( $this->getAuthority() ) ) {
 			$this->showDiffStyle();
 			$multi = $this->getMultiNotice();
 			$out->addHTML( $this->addHeader( '', $oldHeader, $newHeader, $multi ) );

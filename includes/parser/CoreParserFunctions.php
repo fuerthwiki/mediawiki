@@ -26,7 +26,7 @@ use MediaWiki\Revision\RevisionAccessException;
 use MediaWiki\Revision\RevisionRecord;
 
 /**
- * Various core parser functions, registered in Parser::firstCallInit()
+ * Various core parser functions, registered in every Parser
  * @ingroup Parser
  */
 class CoreParserFunctions {
@@ -361,7 +361,8 @@ class CoreParserFunctions {
 
 		$username = trim( $username );
 
-		$gender = User::getDefaultOption( 'gender' );
+		$userOptionsLookup = MediaWikiServices::getInstance()->getUserOptionsLookup();
+		$gender = $userOptionsLookup->getDefaultOption( 'gender' );
 
 		// allow prefix and normalize (e.g. "&#42;foo" -> "*foo" ).
 		$title = Title::newFromText( $username, NS_USER );
@@ -481,9 +482,9 @@ class CoreParserFunctions {
 			&& !$title->hasFragment()
 			&& $title->equals( $parser->getTitle() ) )
 		) {
-			$old = $parser->mOutput->getProperty( 'displaytitle' );
+			$old = $parser->getOutput()->getProperty( 'displaytitle' );
 			if ( $old === false || $arg !== 'displaytitle_noreplace' ) {
-				$parser->mOutput->setDisplayTitle( $text );
+				$parser->getOutput()->setDisplayTitle( $text );
 			}
 			if ( $old !== false && $old !== $text && !$arg ) {
 

@@ -357,7 +357,8 @@ class Linker {
 				global $wgThumbLimits, $wgThumbUpright;
 
 				if ( $widthOption === null || !isset( $wgThumbLimits[$widthOption] ) ) {
-					$widthOption = User::getDefaultOption( 'thumbsize' );
+					$userOptionsLookup = MediaWikiServices::getInstance()->getUserOptionsLookup();
+					$widthOption = $userOptionsLookup->getDefaultOption( 'thumbsize' );
 				}
 
 				// Reduce width for upright images when parameter 'upright' is used
@@ -979,13 +980,12 @@ class Linker {
 
 			$items[] = self::link( $contribsPage, wfMessage( 'contribslink' )->escaped(), $attribs );
 		}
-		$user = RequestContext::getMain()->getUser();
-		$userCanBlock = MediaWikiServices::getInstance()->getPermissionManager()
-			->userHasRight( $user, 'block' );
+		$userCanBlock = RequestContext::getMain()->getAuthority()->isAllowed( 'block' );
 		if ( $blockable && $userCanBlock ) {
 			$items[] = self::blockLink( $userId, $userText );
 		}
 
+		$user = RequestContext::getMain()->getUser();
 		if ( $addEmailLink && $user->canSendEmail() ) {
 			$items[] = self::emailLink( $userId, $userText );
 		}

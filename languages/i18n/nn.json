@@ -2105,6 +2105,7 @@
 	"namespace_association": "Tilknytt namnerom",
 	"tooltip-namespace_association": "Hak av boksen for at diskusjonssida eller emnenamnerommet knytt til det valde namnerommet skal vera med òg",
 	"blanknamespace": "(hovud)",
+	"contributions": "Brukarbidrag",
 	"tool-link-contributions": "{{GENDER:$1|Brukarbidrag}}",
 	"contributions-title": "Bidrag av $1",
 	"mycontris": "Bidrag",
@@ -3107,6 +3108,5 @@
 	"mute-preferences": "Demp brukar",
 	"revid": "versjon $1",
 	"passwordpolicies-policy-passwordcannotmatchusername": "Passordet kan ikkje vera det same som brukarnamnet",
-	"passwordpolicies-policy-passwordcannotmatchblacklist": "Passordet kan ikkje passa med svartelista passord",
 	"userlogout-continue": "Ynskjer du å logga ut?"
 }

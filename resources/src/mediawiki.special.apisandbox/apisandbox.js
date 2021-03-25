@@ -16,6 +16,9 @@
 		ParamLabelWidget = require( './ParamLabelWidget.js' ),
 		BooleanToggleSwitchParamWidget = require( './BooleanToggleSwitchParamWidget.js' ),
 		DateTimeParamWidget = require( './DateTimeParamWidget.js' ),
+		IntegerParamWidget = require( './IntegerParamWidget.js' ),
+		LimitParamWidget = require( './LimitParamWidget.js' ),
+		PasswordParamWidget = require( './PasswordParamWidget.js' ),
 		UploadSelectFileParamWidget = require( './UploadSelectFileParamWidget.js' );
 
 	WidgetMethods = {
@@ -69,12 +72,6 @@
 				if ( v === '123ABC' ) {
 					this.fetchToken();
 				}
-			}
-		},
-
-		passwordWidget: {
-			getApiValueForDisplay: function () {
-				return '';
 			}
 		},
 
@@ -334,53 +331,32 @@
 					break;
 
 				case 'password':
-					widget = new OO.ui.TextInputWidget( {
-						type: 'password',
+					widget = new PasswordParamWidget( {
 						required: Util.apiBool( pi.required )
 					} );
 					widget.paramInfo = pi;
-					$.extend( widget, WidgetMethods.textInputWidget );
-					$.extend( widget, WidgetMethods.passwordWidget );
 					widget.setValidation( Validators.generic );
 					multiModeAllowed = true;
 					multiModeInput = widget;
 					break;
 
 				case 'integer':
-					widget = new OO.ui.NumberInputWidget( {
-						required: Util.apiBool( pi.required ),
-						isInteger: true
+					widget = new IntegerParamWidget( {
+						required: Util.apiBool( pi.required )
 					} );
-					widget.setIcon = widget.input.setIcon.bind( widget.input );
-					widget.setTitle = widget.input.setTitle.bind( widget.input );
-					widget.getValidity = widget.input.getValidity.bind( widget.input );
 					widget.paramInfo = pi;
-					$.extend( widget, WidgetMethods.textInputWidget );
 					widget.setRange( pi.min || -Infinity, pi.max || Infinity );
 					multiModeAllowed = true;
 					multiModeInput = widget;
 					break;
 
 				case 'limit':
-					widget = new OO.ui.TextInputWidget( {
+					widget = new LimitParamWidget( {
 						required: Util.apiBool( pi.required )
-					} );
-					widget.setValidation( function ( value ) {
-						var n, info = this.paramInfo;
-
-						if ( value === 'max' ) {
-							return true;
-						} else {
-							n = +value;
-							return !isNaN( n ) && isFinite( n ) &&
-								Math.floor( n ) === n &&
-								n >= info.min && n <= info.apiSandboxMax;
-						}
 					} );
 					pi.min = pi.min || 0;
 					pi.apiSandboxMax = ( mw.config.get( 'apihighlimits' ) ? pi.highmax : pi.max ) || pi.max;
 					widget.paramInfo = pi;
-					$.extend( widget, WidgetMethods.textInputWidget );
 					multiModeAllowed = true;
 					multiModeInput = widget;
 					break;
@@ -390,7 +366,6 @@
 						required: Util.apiBool( pi.required )
 					} );
 					widget.paramInfo = pi;
-					$.extend( widget, WidgetMethods.textInputWidget );
 					multiModeAllowed = true;
 					break;
 

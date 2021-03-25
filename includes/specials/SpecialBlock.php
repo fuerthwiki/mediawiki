@@ -30,6 +30,7 @@ use MediaWiki\Block\DatabaseBlock;
 use MediaWiki\Block\Restriction\NamespaceRestriction;
 use MediaWiki\Block\Restriction\PageRestriction;
 use MediaWiki\MediaWikiServices;
+use MediaWiki\Permissions\Authority;
 use MediaWiki\User\UserIdentity;
 use MediaWiki\User\UserNamePrefixSearch;
 use MediaWiki\User\UserNameUtils;
@@ -148,8 +149,8 @@ class SpecialBlock extends FormSpecialPage {
 			$this->getSkin()->setRelevantUser( $this->target );
 		}
 
-		list( $this->previousTarget, /*...*/ ) =
-			DatabaseBlock::parseTarget( $request->getVal( 'wpPreviousTarget' ) );
+		list( $this->previousTarget, /*...*/ ) = $this->blockUtils
+			->parseBlockTarget( $request->getVal( 'wpPreviousTarget' ) );
 		$this->requestedHideUser = $request->getBool( 'wpHideUser' );
 	}
 
@@ -680,7 +681,7 @@ class SpecialBlock extends FormSpecialPage {
 	 */
 	public static function getTargetAndType( ?string $par, WebRequest $request = null ) {
 		if ( !$request instanceof WebRequest ) {
-			return AbstractBlock::parseTarget( $par );
+			return MediaWikiServices::getInstance()->getBlockUtils()->parseBlockTarget( $par );
 		}
 
 		$possibleTargets = [
@@ -691,7 +692,9 @@ class SpecialBlock extends FormSpecialPage {
 			$request->getVal( 'wpBlockAddress', null ),
 		];
 		foreach ( $possibleTargets as $possibleTarget ) {
-			$targetAndType = AbstractBlock::parseTarget( $possibleTarget );
+			$targetAndType = MediaWikiServices::getInstance()
+				->getBlockUtils()
+				->parseBlockTarget( $possibleTarget );
 			// If type is not null then target is valid
 			if ( $targetAndType[ 1 ] !== null ) {
 				break;
@@ -740,7 +743,7 @@ class SpecialBlock extends FormSpecialPage {
 		$services = MediaWikiServices::getInstance();
 		return self::processFormInternal(
 			$data,
-			$context->getUser(),
+			$context->getAuthority(),
 			$services->getBlockUserFactory(),
 			$services->getBlockUtils()
 		);
@@ -751,14 +754,14 @@ class SpecialBlock extends FormSpecialPage {
 	 * Own function to allow sharing the deprecated code with non-deprecated and service code
 	 *
 	 * @param array $data
-	 * @param User $performer
+	 * @param Authority $performer
 	 * @param BlockUserFactory $blockUserFactory
 	 * @param BlockUtils $blockUtils
 	 * @return bool|array
 	 */
 	private static function processFormInternal(
 		array $data,
-		User $performer,
+		Authority $performer,
 		BlockUserFactory $blockUserFactory,
 		BlockUtils $blockUtils
 	) {
@@ -789,7 +792,7 @@ class SpecialBlock extends FormSpecialPage {
 			# since both $data['PreviousTarget'] and $target are normalized
 			# but $data['target'] gets overridden by (non-normalized) request variable
 			# from previous request.
-			if ( $target === $performer->getName() &&
+			if ( $target === $performer->getUser()->getName() &&
 				( $data['PreviousTarget'] !== $target || !$data['Confirm'] )
 			) {
 				return [ 'ipb-blockingself', 'ipb-confirmaction' ];
@@ -957,10 +960,10 @@ class SpecialBlock extends FormSpecialPage {
 	 * @param User|string|null $target Target to block or unblock; could be a User object,
 	 *   or username/IP address, or null when the target is not known yet (e.g. when
 	 *   displaying Special:Block)
-	 * @param User $performer User doing the request
+	 * @param Authority $performer User doing the request
 	 * @return bool|string True or error message key
 	 */
-	public static function checkUnblockSelf( $target, User $performer ) {
+	public static function checkUnblockSelf( $target, Authority $performer ) {
 		return MediaWikiServices::getInstance()
 			->getBlockPermissionCheckerFactory()
 			->newBlockPermissionChecker( $target, $performer )
@@ -983,7 +986,7 @@ class SpecialBlock extends FormSpecialPage {
 		}
 		return self::processFormInternal(
 			$data,
-			$this->getUser(),
+			$this->getAuthority(),
 			$this->blockUserFactory,
 			$this->blockUtils
 		);

@@ -1251,7 +1251,6 @@ class ParserTestRunner {
 		// In addition the ParserFactory needs to be recreated as well.
 		$lang = MediaWikiServices::getInstance()->getLanguageFactory()->getLanguage( $langCode );
 		$lang->resetNamespaces();
-		$setup['wgContLang'] = $lang;
 		$setup[] = static function () use ( $lang ) {
 			MediaWikiServices::getInstance()->disableService( 'ContentLanguage' );
 			MediaWikiServices::getInstance()->redefineService(
@@ -1310,7 +1309,6 @@ class ParserTestRunner {
 
 			// Reset context to the restored globals
 			$context->setUser( $GLOBALS['wgUser'] );
-			$context->setLanguage( $GLOBALS['wgContLang'] );
 			$context->setSkin( $oldSkin );
 			$context->setOutput( $GLOBALS['wgOut'] );
 		};
@@ -1707,7 +1705,6 @@ class ParserTestRunner {
 		if ( $services->getContentLanguage()->getCode() !== 'en' ) {
 			$setup['wgLanguageCode'] = 'en';
 			$lang = $services->getLanguageFactory()->getLanguage( 'en' );
-			$setup['wgContLang'] = $lang;
 			$setup[] = static function () use ( $lang ) {
 				$services = MediaWikiServices::getInstance();
 				$services->disableService( 'ContentLanguage' );
@@ -1852,7 +1849,6 @@ class ParserTestRunner {
 	public function requireHook( $name ) {
 		$parser = MediaWikiServices::getInstance()->getParser();
 
-		$parser->firstCallInit(); // make sure hooks are loaded.
 		if ( preg_match( '/^[Ee]xtension:(.*)$/', $name, $matches ) ) {
 			$extName = $matches[1];
 			if ( ExtensionRegistry::getInstance()->isLoaded( $extName ) ) {
@@ -1863,7 +1859,7 @@ class ParserTestRunner {
 				return false;
 			}
 		}
-		if ( isset( $parser->mTagHooks[$name] ) ) {
+		if ( in_array( $name, $parser->getTags(), true ) ) {
 			return true;
 		} else {
 			$this->recorder->warning( "   Skipping this test suite because it requires the '$name' hook, " .
@@ -1881,9 +1877,7 @@ class ParserTestRunner {
 	public function requireFunctionHook( $name ) {
 		$parser = MediaWikiServices::getInstance()->getParser();
 
-		$parser->firstCallInit(); // make sure hooks are loaded.
-
-		if ( isset( $parser->mFunctionHooks[$name] ) ) {
+		if ( in_array( $name, $parser->getFunctionHooks(), true ) ) {
 			return true;
 		} else {
 			$this->recorder->warning( "   This test suite requires the '$name' function " .

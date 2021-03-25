@@ -36,9 +36,11 @@ use MediaWiki\Revision\RevisionAccessException;
 use MediaWiki\Revision\RevisionRecord;
 use MediaWiki\Revision\SlotRecord;
 use MediaWiki\SpecialPage\SpecialPageFactory;
-use MediaWiki\Tidy\RemexDriver;
+use MediaWiki\Tidy\TidyDriverBase;
+use MediaWiki\User\UserFactory;
+use MediaWiki\User\UserIdentity;
+use MediaWiki\User\UserOptionsLookup;
 use Psr\Log\LoggerInterface;
-use Psr\Log\NullLogger;
 use Wikimedia\IPUtils;
 use Wikimedia\ScopedCallback;
 
@@ -146,10 +148,8 @@ class Parser {
 	public const TOC_END = '</mw:toc>';
 
 	# Persistent:
-	/** @deprecated since 1.35; use Parser::getTags() */
-	public $mTagHooks = [];
-	/** @deprecated since 1.35; use Parser::getFunctionHooks() */
-	public $mFunctionHooks = [];
+	private $mTagHooks = [];
+	private $mFunctionHooks = [];
 	private $mFunctionSynonyms = [ 0 => [], 1 => [] ];
 	private $mStripList = [];
 	private $mVarCache = [];
@@ -159,9 +159,9 @@ class Parser {
 	public $mMarkerIndex = 0;
 	/**
 	 * @var bool Whether firstCallInit still needs to be called
-	 * @deprecated since 1.35
+	 * @deprecated since 1.35; always false
 	 */
-	public $mFirstCall = true;
+	public $mFirstCall = false;
 
 	# Initialised by initializeVariables()
 
@@ -175,28 +175,20 @@ class Parser {
 	 */
 	private $mSubstWords;
 
-	/**
-	 * @deprecated since 1.34, there should be no need to use this
-	 * @var array
-	 */
-	private $mConf;
-
 	# Initialised in constructor
 	private $mExtLinkBracketedRegex, $mUrlProtocols;
 
-	# Initialized in getPreprocessor()
+	# Initialized in constructor
 	/**
 	 * @var Preprocessor
-	 * @deprecated since 1.35
 	 */
-	public $mPreprocessor;
+	private $mPreprocessor;
 
 	# Cleared with clearState():
 	/**
 	 * @var ParserOutput
-	 * @deprecated since 1.35; use Parser::getOutput()
 	 */
-	public $mOutput;
+	private $mOutput;
 	private $mAutonumber;
 
 	/**
@@ -355,15 +347,19 @@ class Parser {
 	/** @var HookRunner */
 	private $hookRunner;
 
-	/** @var RemexDriver */
-	private $remexDriver;
+	/** @var TidyDriverBase */
+	private $tidy;
+
+	/** @var UserOptionsLookup */
+	private $userOptionsLookup;
+
+	/** @var UserFactory */
+	private $userFactory;
 
 	/**
 	 * @internal For use by ServiceWiring
 	 */
 	public const CONSTRUCTOR_OPTIONS = [
-		// Deprecated and unused; from $wgParserConf
-		'class',
 		// See documentation for the corresponding config options
 		'ArticlePath',
 		'EnableScaryTranscluding',
@@ -383,103 +379,97 @@ class Parser {
 		'TranscludeCacheExpiry',
 		'PreprocessorCacheThreshold',
 		'DisableLangConversion',
-		'TidyConfig',
 	];
 
 	/**
-	 * Constructing parsers directly is deprecated! Use a ParserFactory.
+	 * Constructing parsers directly is not allowed! Use a ParserFactory.
 	 * @internal
 	 *
-	 * @param ServiceOptions|null $svcOptions
-	 * @param MagicWordFactory|null $magicWordFactory
-	 * @param Language|null $contLang Content language
-	 * @param ParserFactory|null $factory
-	 * @param string|null $urlProtocols As returned from wfUrlProtocols()
-	 * @param SpecialPageFactory|null $spFactory
-	 * @param LinkRendererFactory|null $linkRendererFactory
-	 * @param NamespaceInfo|null $nsInfo
-	 * @param LoggerInterface|null $logger
-	 * @param BadFileLookup|null $badFileLookup
-	 * @param LanguageConverterFactory|null $languageConverterFactory
-	 * @param HookContainer|null $hookContainer
+	 * @param ServiceOptions $svcOptions
+	 * @param MagicWordFactory $magicWordFactory
+	 * @param Language $contLang Content language
+	 * @param ParserFactory $factory
+	 * @param string $urlProtocols As returned from wfUrlProtocols()
+	 * @param SpecialPageFactory $spFactory
+	 * @param LinkRendererFactory $linkRendererFactory
+	 * @param NamespaceInfo $nsInfo
+	 * @param LoggerInterface $logger
+	 * @param BadFileLookup $badFileLookup
+	 * @param LanguageConverterFactory $languageConverterFactory
+	 * @param HookContainer $hookContainer
+	 * @param TidyDriverBase $tidy
+	 * @param WANObjectCache $wanCache
+	 * @param UserOptionsLookup $userOptionsLookup
+	 * @param UserFactory $userFactory
 	 */
 	public function __construct(
-		$svcOptions = null,
-		MagicWordFactory $magicWordFactory = null,
-		Language $contLang = null,
-		ParserFactory $factory = null,
-		$urlProtocols = null,
-		SpecialPageFactory $spFactory = null,
-		$linkRendererFactory = null,
-		$nsInfo = null,
-		$logger = null,
-		BadFileLookup $badFileLookup = null,
-		LanguageConverterFactory $languageConverterFactory = null,
-		HookContainer $hookContainer = null
+		ServiceOptions $svcOptions,
+		MagicWordFactory $magicWordFactory,
+		Language $contLang,
+		ParserFactory $factory,
+		string $urlProtocols,
+		SpecialPageFactory $spFactory,
+		LinkRendererFactory $linkRendererFactory,
+		NamespaceInfo $nsInfo,
+		LoggerInterface $logger,
+		BadFileLookup $badFileLookup,
+		LanguageConverterFactory $languageConverterFactory,
+		HookContainer $hookContainer,
+		TidyDriverBase $tidy,
+		WANObjectCache $wanCache,
+		UserOptionsLookup $userOptionsLookup,
+		UserFactory $userFactory
 	) {
 		if ( ParserFactory::$inParserFactory === 0 ) {
-			// Direct construction of Parser is deprecated; use a ParserFactory
-			wfDeprecated( __METHOD__, '1.34' );
+			// Direct construction of Parser was deprecated in 1.34 and
+			// removed in 1.36; use a ParserFactory instead.
+			throw new MWException( 'Direct construction of Parser not allowed' );
 		}
-		if ( !$svcOptions || is_array( $svcOptions ) ) {
-			wfDeprecated( 'old calling convention for ' . __METHOD__, '1.34' );
-			// Pre-1.34 calling convention is the first parameter is just ParserConf, the seventh is
-			// Config, and the eighth is LinkRendererFactory.
-			$this->mConf = (array)$svcOptions;
-			if ( empty( $this->mConf['class'] ) ) {
-				$this->mConf['class'] = self::class;
-			}
-			$this->svcOptions = new ServiceOptions( self::CONSTRUCTOR_OPTIONS,
-				$this->mConf, func_num_args() > 6
-					? func_get_arg( 6 ) : MediaWikiServices::getInstance()->getMainConfig()
-			);
-			$linkRendererFactory = func_num_args() > 7 ? func_get_arg( 7 ) : null;
-			$nsInfo = func_num_args() > 8 ? func_get_arg( 8 ) : null;
-		} else {
-			// New calling convention
-			$svcOptions->assertRequiredOptions( self::CONSTRUCTOR_OPTIONS );
-			// $this->mConf is public, so we'll keep the option there for
-			// compatibility until it's removed
-			$this->mConf = [
-				'class' => $svcOptions->get( 'class' ),
-			];
-			$this->svcOptions = $svcOptions;
-		}
+		$svcOptions->assertRequiredOptions( self::CONSTRUCTOR_OPTIONS );
+		$this->svcOptions = $svcOptions;
 
-		$this->mUrlProtocols = $urlProtocols ?? wfUrlProtocols();
+		$this->mUrlProtocols = $urlProtocols;
 		$this->mExtLinkBracketedRegex = '/\[(((?i)' . $this->mUrlProtocols . ')' .
 			self::EXT_LINK_ADDR .
 			self::EXT_LINK_URL_CLASS . '*)\p{Zs}*([^\]\\x00-\\x08\\x0a-\\x1F\\x{FFFD}]*?)\]/Su';
 
-		$this->magicWordFactory = $magicWordFactory ??
-			MediaWikiServices::getInstance()->getMagicWordFactory();
+		$this->magicWordFactory = $magicWordFactory;
 
-		$this->contLang = $contLang ?? MediaWikiServices::getInstance()->getContentLanguage();
+		$this->contLang = $contLang;
 
-		$this->factory = $factory ?? MediaWikiServices::getInstance()->getParserFactory();
-		$this->specialPageFactory = $spFactory ??
-			MediaWikiServices::getInstance()->getSpecialPageFactory();
-		$this->linkRendererFactory = $linkRendererFactory ??
-			MediaWikiServices::getInstance()->getLinkRendererFactory();
-		$this->nsInfo = $nsInfo ?? MediaWikiServices::getInstance()->getNamespaceInfo();
-		$this->logger = $logger ?: new NullLogger();
-		$this->badFileLookup = $badFileLookup ??
-			MediaWikiServices::getInstance()->getBadFileLookup();
+		$this->factory = $factory;
+		$this->specialPageFactory = $spFactory;
+		$this->linkRendererFactory = $linkRendererFactory;
+		$this->nsInfo = $nsInfo;
+		$this->logger = $logger;
+		$this->badFileLookup = $badFileLookup;
 
-		$this->languageConverterFactory = $languageConverterFactory ??
-			MediaWikiServices::getInstance()->getLanguageConverterFactory();
+		$this->languageConverterFactory = $languageConverterFactory;
 
-		$this->hookContainer = $hookContainer ??
-			MediaWikiServices::getInstance()->getHookContainer();
-		$this->hookRunner = new HookRunner( $this->hookContainer );
+		$this->hookContainer = $hookContainer;
+		$this->hookRunner = new HookRunner( $hookContainer );
 
-		$this->remexDriver = new RemexDriver(
-			$this->svcOptions->get( 'TidyConfig' ) ?? []
+		$this->tidy = $tidy;
+
+		$this->mPreprocessor = new Preprocessor_Hash(
+			$this,
+			$wanCache,
+			[
+				'cacheThreshold' => $svcOptions->get( 'PreprocessorCacheThreshold' ),
+				'disableLangConversion' => $svcOptions->get( 'DisableLangConversion' ),
+			]
 		);
 
-		// T250444: This will eventually be inlined here and the
-		// standalone method removed.
-		$this->firstCallInit();
+		$this->userOptionsLookup = $userOptionsLookup;
+		$this->userFactory = $userFactory;
+
+		// These steps used to be done in "::firstCallInit()"
+		// (if you're chasing a reference from some old code)
+		CoreParserFunctions::register( $this );
+		CoreTagHooks::register( $this );
+		$this->initializeVariables();
+
+		$this->hookRunner->onParserFirstCallInit( $this );
 	}
 
 	/**
@@ -516,25 +506,23 @@ class Parser {
 			unset( $tmp );
 		}
 
+		$this->mPreprocessor = clone $this->mPreprocessor;
+		$this->mPreprocessor->resetParser( $this );
+
 		$this->hookRunner->onParserCloned( $this );
 	}
 
 	/**
-	 * Do various kinds of initialisation on the first call of the parser
+	 * Used to do various kinds of initialisation on the first call of the
+	 * parser.
 	 * @deprecated since 1.35, this initialization is done in the constructor
 	 *  and manual calls to ::firstCallInit() have no effect.
 	 */
 	public function firstCallInit() {
-		if ( !$this->mFirstCall ) {
-			return;
-		}
-		$this->mFirstCall = false;
-
-		CoreParserFunctions::register( $this );
-		CoreTagHooks::register( $this );
-		$this->initializeVariables();
-
-		$this->hookRunner->onParserFirstCallInit( $this );
+		/*
+		 * This method should be hard-deprecated once remaining calls are
+		 * removed; it no longer does anything.
+		 */
 	}
 
 	/**
@@ -543,7 +531,6 @@ class Parser {
 	 * @internal
 	 */
 	public function clearState() {
-		$this->firstCallInit();
 		$this->resetOutput();
 		$this->mAutonumber = 0;
 		$this->mLinkHolders = new LinkHolderArray(
@@ -552,8 +539,11 @@ class Parser {
 			$this->getHookContainer()
 		);
 		$this->mLinkID = 0;
-		$this->mRevisionObject = $this->mRevisionTimestamp =
-			$this->mRevisionId = $this->mRevisionUser = $this->mRevisionSize = null;
+		$this->mRevisionObject = null;
+		$this->mRevisionTimestamp = null;
+		$this->mRevisionId = null;
+		$this->mRevisionUser = null;
+		$this->mRevisionSize = null;
 		$this->mRevisionRecordObject = null;
 		$this->mVarCache = [];
 		$this->mUser = null;
@@ -563,7 +553,8 @@ class Parser {
 		$this->mStripState = new StripState( $this );
 
 		# Clear these on every parse, T6549
-		$this->mTplRedirCache = $this->mTplDomCache = [];
+		$this->mTplRedirCache = [];
+		$this->mTplDomCache = [];
 
 		$this->mShowToc = true;
 		$this->mForceTocPosition = false;
@@ -578,11 +569,6 @@ class Parser {
 		$this->mHeadings = [];
 		$this->mDoubleUnderscores = [];
 		$this->mExpensiveFunctionCount = 0;
-
-		# Fix cloning
-		if ( isset( $this->mPreprocessor ) && $this->mPreprocessor->parser !== $this ) {
-			$this->mPreprocessor = null;
-		}
 
 		$this->mProfiler = new SectionProfiler();
 
@@ -974,10 +960,14 @@ class Parser {
 	 * Set the current user.
 	 * Should only be used when doing pre-save transform.
 	 *
-	 * @param User|null $user User object or null (to reset)
+	 * @param UserIdentity|null $user user identity or null (to reset)
 	 */
-	public function setUser( ?User $user ) {
-		$this->mUser = $user;
+	public function setUser( ?UserIdentity $user ) {
+		if ( $user ) {
+			$this->mUser = $this->userFactory->newFromUserIdentity( $user );
+		} else {
+			$this->mUser = $user;
+		}
 	}
 
 	/**
@@ -1055,6 +1045,7 @@ class Parser {
 
 	/**
 	 * @return ParserOutput
+	 * @since 1.12.2
 	 */
 	public function getOutput() {
 		return $this->mOutput;
@@ -1133,7 +1124,7 @@ class Parser {
 	/**
 	 * Get a User object either from $this->mUser, if set, or from the
 	 * ParserOptions object otherwise
-	 *
+	 * @deprecated since 1.36. Use ::getUserIdentity instead.
 	 * @return User
 	 */
 	public function getUser() {
@@ -1144,22 +1135,20 @@ class Parser {
 	}
 
 	/**
+	 * Get an identity of the user for whom the parse is being made, if set.
+	 * @return UserIdentity
+	 */
+	public function getUserIdentity(): UserIdentity {
+		return $this->getUser();
+	}
+
+	/**
 	 * Get a preprocessor object
 	 *
 	 * @return Preprocessor
+	 * @since 1.12.0
 	 */
 	public function getPreprocessor() {
-		if ( !isset( $this->mPreprocessor ) ) {
-			$this->mPreprocessor = new Preprocessor_Hash(
-				$this,
-				MediaWikiServices::getInstance()->getMainWANObjectCache(),
-				[
-					'cacheThreshold' => $this->svcOptions->get( 'PreprocessorCacheThreshold' ),
-					'disableLangConversion' => $this->svcOptions->get( 'DisableLangConversion' )
-				]
-			);
-		}
-
 		return $this->mPreprocessor;
 	}
 
@@ -1682,9 +1671,7 @@ class Parser {
 
 		$text = $this->mStripState->unstripGeneral( $text );
 
-		$text = Sanitizer::normalizeCharReferences( $text );
-
-		$text = $this->remexDriver->tidy( $text, [ Sanitizer::class, 'armorFrenchSpaces' ] );
+		$text = $this->tidy->tidy( $text, [ Sanitizer::class, 'armorFrenchSpaces' ] );
 
 		if ( $isMain ) {
 			$this->hookRunner->onParserAfterTidy( $this, $text );
@@ -1725,7 +1712,10 @@ class Parser {
 					(?: [0-9]  $spdash? ){9} #  9 digits with opt. delimiters
 					[0-9Xx]                  #  check digit
 				)\b
-			)!xu", [ $this, 'magicLinkCallback' ], $text );
+			)!xu",
+			[ $this, 'magicLinkCallback' ],
+			$text
+		);
 		return $text;
 	}
 
@@ -1765,6 +1755,7 @@ class Parser {
 				$trackingCat = 'magiclink-tracking-pmid';
 				$id = $m[5];
 			} else {
+				// Should never happen
 				throw new MWException( __METHOD__ . ': unrecognised match type "' .
 					substr( $m[0], 0, 20 ) . '"' );
 			}
@@ -1869,10 +1860,14 @@ class Parser {
 		$text = $this->maybeMakeExternalImage( $url );
 		if ( $text === false ) {
 			# Not an image, make a link
-			$text = Linker::makeExternalLink( $url,
+			$text = Linker::makeExternalLink(
+				$url,
 				$this->getTargetLanguageConverter()->markNoConversion( $url ),
-				true, 'free',
-				$this->getExternalLinkAttribs( $url ), $this->getTitle() );
+				true,
+				'free',
+				$this->getExternalLinkAttribs( $url ),
+				$this->getTitle()
+			);
 			# Register it in the output object...
 			$this->mOutput->addExternalLink( $url );
 		}
@@ -2019,6 +2014,7 @@ class Parser {
 			} else {
 				$thislen = strlen( $r );
 				if ( $thislen == 2 ) {
+					// two quotes - open or close italics
 					if ( $state === 'i' ) {
 						$output .= '</i>';
 						$state = '';
@@ -2036,6 +2032,7 @@ class Parser {
 						$state .= 'i';
 					}
 				} elseif ( $thislen == 3 ) {
+					// three quotes - open or close bold
 					if ( $state === 'b' ) {
 						$output .= '</b>';
 						$state = '';
@@ -2053,6 +2050,7 @@ class Parser {
 						$state .= 'b';
 					}
 				} elseif ( $thislen == 5 ) {
+					// five quotes - open or close both separately
 					if ( $state === 'b' ) {
 						$output .= '</b><i>';
 						$state = 'i';
@@ -2251,7 +2249,8 @@ class Parser {
 		}
 
 		# Make sure unsafe characters are encoded
-		$url = preg_replace_callback( '/[\x00-\x20"<>\[\\\\\]^`{|}\x7F-\xFF]/',
+		$url = preg_replace_callback(
+			'/[\x00-\x20"<>\[\\\\\]^`{|}\x7F-\xFF]/',
 			static function ( $m ) {
 				return rawurlencode( $m[0] );
 			},
@@ -3694,9 +3693,12 @@ class Parser {
 					$finalTitle = $title;
 					continue;
 				}
-				$content = $revRecord->getContent( SlotRecord::MAIN );
-				$text = $content ? $content->getWikitextForTransclusion() : null;
-
+				if ( $revRecord->hasSlot( SlotRecord::MAIN ) ) { // T276476
+					$content = $revRecord->getContent( SlotRecord::MAIN );
+					$text = $content ? $content->getWikitextForTransclusion() : null;
+				} else {
+					$text = false;
+				}
 				// Hook is hard deprecated since 1.35
 				if ( Hooks::isRegistered( 'ParserFetchTemplate' ) ) {
 					// Only create the Revision object if needed
@@ -4372,8 +4374,13 @@ class Parser {
 			}
 
 			if ( $enoughToc && ( !isset( $maxTocLevel ) || $toclevel < $maxTocLevel ) ) {
-				$toc .= Linker::tocLine( $linkAnchor, $tocline,
-					$numbering, $toclevel, ( $isTemplate ? false : $sectionIndex ) );
+				$toc .= Linker::tocLine(
+					$linkAnchor,
+					$tocline,
+					$numbering,
+					$toclevel,
+					( $isTemplate ? false : $sectionIndex )
+				);
 			}
 
 			# Add the section to the section tree
@@ -4386,8 +4393,11 @@ class Parser {
 						break;
 					}
 				}
-				$byteOffset += mb_strlen( $this->mStripState->unstripBoth(
-					$frame->expand( $node, PPFrame::RECOVER_ORIG ) ) );
+				$byteOffset += mb_strlen(
+					$this->mStripState->unstripBoth(
+						$frame->expand( $node, PPFrame::RECOVER_ORIG )
+					)
+				);
 				$node = $node->getNextSibling();
 			}
 			$tocraw[] = [
@@ -4437,9 +4447,14 @@ class Parser {
 			} else {
 				$editlink = '';
 			}
-			$head[$headlineCount] = Linker::makeHeadline( $level,
-				$matches['attrib'][$headlineCount], $anchor, $headline,
-				$editlink, $fallbackAnchor );
+			$head[$headlineCount] = Linker::makeHeadline(
+				$level,
+				$matches['attrib'][$headlineCount],
+				$anchor,
+				$headline,
+				$editlink,
+				$fallbackAnchor
+			);
 
 			$headlineCount++;
 		}
@@ -4514,12 +4529,12 @@ class Parser {
 	 *
 	 * @param string $text The text to transform
 	 * @param Title $title The Title object for the current article
-	 * @param User $user The User object describing the current user
+	 * @param UserIdentity $user The User object describing the current user
 	 * @param ParserOptions $options Parsing options
 	 * @param bool $clearState Whether to clear the parser state first
 	 * @return string The altered wiki markup
 	 */
-	public function preSaveTransform( $text, Title $title, User $user,
+	public function preSaveTransform( $text, Title $title, UserIdentity $user,
 		ParserOptions $options, $clearState = true
 	) {
 		if ( $clearState ) {
@@ -4552,11 +4567,11 @@ class Parser {
 	 * Pre-save transform helper function
 	 *
 	 * @param string $text
-	 * @param User $user
+	 * @param UserIdentity $user
 	 *
 	 * @return string
 	 */
-	private function pstPass2( $text, User $user ) {
+	private function pstPass2( $text, UserIdentity $user ) {
 		# Note: This is the timestamp saved as hardcoded wikitext to the database, we use
 		# $this->contLang here in order to give everyone the same signature and use the default one
 		# rather than the one selected in each user's preferences.  (see also T14815)
@@ -4626,22 +4641,22 @@ class Parser {
 	 * Do not reuse this parser instance after calling getUserSig(),
 	 * as it may have changed.
 	 *
-	 * @param User $user
+	 * @param UserIdentity $user
 	 * @param string|false $nickname Nickname to use or false to use user's default nickname
 	 * @param bool|null $fancySig whether the nicknname is the complete signature
 	 *    or null to use default value
 	 * @return string
 	 */
-	public function getUserSig( User $user, $nickname = false, $fancySig = null ) {
+	public function getUserSig( UserIdentity $user, $nickname = false, $fancySig = null ) {
 		$username = $user->getName();
 
 		# If not given, retrieve from the user object.
 		if ( $nickname === false ) {
-			$nickname = $user->getOption( 'nickname' );
+			$nickname = $this->userOptionsLookup->getOption( $user, 'nickname' );
 		}
 
 		if ( $fancySig === null ) {
-			$fancySig = $user->getBoolOption( 'fancysig' );
+			$fancySig = $this->userOptionsLookup->getBoolOption( $user, 'fancysig' );
 		}
 
 		if ( $nickname === null || $nickname === '' ) {
@@ -4680,7 +4695,7 @@ class Parser {
 		# If we're still here, make it a link to the user page
 		$userText = wfEscapeWikiText( $username );
 		$nickText = wfEscapeWikiText( $nickname );
-		$msgName = $user->isAnon() ? 'signature-anon' : 'signature';
+		$msgName = $user->isRegistered() ? 'signature' : 'signature-anon';
 
 		return wfMessage( $msgName, $userText, $nickText )->inContentLanguage()
 			->title( $this->getTitle() )->text();
@@ -4941,9 +4956,9 @@ class Parser {
 	 * Get all registered function hook identifiers
 	 *
 	 * @return array
+	 * @since 1.10.0
 	 */
 	public function getFunctionHooks() {
-		$this->firstCallInit();
 		return array_keys( $this->mFunctionHooks );
 	}
 
@@ -5099,49 +5114,51 @@ class Parser {
 				$matches[3] = $this->recursiveTagParse( trim( $matches[3] ) );
 				// Protect LanguageConverter markup
 				$parameterMatches = StringUtils::delimiterExplode(
-					'-{', '}-', '|', $matches[3], true /* nested */
+					'-{', '}-',
+					'|',
+					$matches[3],
+					true /* nested */
 				);
 
 				foreach ( $parameterMatches as $parameterMatch ) {
 					list( $magicName, $match ) = $mwArray->matchVariableStartToEnd( $parameterMatch );
-					if ( $magicName ) {
-						$paramName = $paramMap[$magicName];
-
-						switch ( $paramName ) {
-							case 'gallery-internal-alt':
-								$alt = $this->stripAltText( $match, false );
-								break;
-							case 'gallery-internal-link':
-								$linkValue = $this->stripAltText( $match, false );
-								if ( preg_match( '/^-{R|(.*)}-$/', $linkValue ) ) {
-									// Result of LanguageConverter::markNoConversion
-									// invoked on an external link.
-									$linkValue = substr( $linkValue, 4, -2 );
-								}
-								list( $type, $target ) = $this->parseLinkParameter( $linkValue );
-								if ( $type === 'link-url' ) {
-									$link = $target;
-									$this->mOutput->addExternalLink( $target );
-								} elseif ( $type === 'link-title' ) {
-									$link = $target->getLinkURL();
-									$this->mOutput->addLink( $target );
-								}
-								break;
-							default:
-								// Must be a handler specific parameter.
-								if ( $handler->validateParam( $paramName, $match ) ) {
-									$handlerOptions[$paramName] = $match;
-								} else {
-									// Guess not, consider it as caption.
-									$this->logger->debug(
-										"$parameterMatch failed parameter validation" );
-									$label = $parameterMatch;
-								}
-						}
-
-					} else {
+					if ( !$magicName ) {
 						// Last pipe wins.
 						$label = $parameterMatch;
+						continue;
+					}
+
+					$paramName = $paramMap[$magicName];
+					switch ( $paramName ) {
+						case 'gallery-internal-alt':
+							$alt = $this->stripAltText( $match, false );
+							break;
+						case 'gallery-internal-link':
+							$linkValue = $this->stripAltText( $match, false );
+							if ( preg_match( '/^-{R|(.*)}-$/', $linkValue ) ) {
+								// Result of LanguageConverter::markNoConversion
+								// invoked on an external link.
+								$linkValue = substr( $linkValue, 4, -2 );
+							}
+							list( $type, $target ) = $this->parseLinkParameter( $linkValue );
+							if ( $type === 'link-url' ) {
+								$link = $target;
+								$this->mOutput->addExternalLink( $target );
+							} elseif ( $type === 'link-title' ) {
+								$link = $target->getLinkURL();
+								$this->mOutput->addLink( $target );
+							}
+							break;
+						default:
+							// Must be a handler specific parameter.
+							if ( $handler->validateParam( $paramName, $match ) ) {
+								$handlerOptions[$paramName] = $match;
+							} else {
+								// Guess not, consider it as caption.
+								$this->logger->debug(
+									"$parameterMatch failed parameter validation" );
+								$label = $parameterMatch;
+							}
 					}
 				}
 			}
@@ -5536,9 +5553,9 @@ class Parser {
 	 * Accessor
 	 *
 	 * @return array
+	 * @since before 1.11
 	 */
 	public function getTags() {
-		$this->firstCallInit();
 		return array_keys( $this->mTagHooks );
 	}
 
@@ -5547,7 +5564,6 @@ class Parser {
 	 * @return array
 	 */
 	public function getFunctionSynonyms() {
-		$this->firstCallInit();
 		return $this->mFunctionSynonyms;
 	}
 

@@ -98,7 +98,7 @@ abstract class AbstractBlock {
 	 * Create a new block with specified parameters on a user, IP or IP range.
 	 *
 	 * @param array $options Parameters of the block, with supported options:
-	 *  - address: (string|User) Target user name, User object, IP address or IP range
+	 *  - address: (string|UserIdentity) Target user name, user identity object, IP address or IP range
 	 *  - reason: (string|Message|CommentStoreComment) Reason for the block
 	 *  - timestamp: (string) The time at which the block comes into effect
 	 *  - hideName: (bool) Hide the target user name
@@ -334,10 +334,12 @@ abstract class AbstractBlock {
 	 *
 	 * If the type is not null, it will be an AbstractBlock::TYPE_ constant.
 	 *
+	 * @deprecated since 1.36. Use BlockUtils service instead.
 	 * @param string|UserIdentity|null $target
-	 * @return array [ User|String|null, int|null ]
+	 * @return array [ User|string|null, int|null ]
 	 */
 	public static function parseTarget( $target ) {
+		wfDeprecated( __METHOD__, '1.36' );
 		return MediaWikiServices::getInstance()
 			->getBlockUtils()
 			->parseBlockTarget( $target );
@@ -417,10 +419,12 @@ abstract class AbstractBlock {
 
 	/**
 	 * Set the target for this block, and update $this->type accordingly
-	 * @param mixed $target
+	 * @param string|UserIdentity|null $target
 	 */
 	public function setTarget( $target ) {
-		list( $this->target, $this->type ) = static::parseTarget( $target );
+		list( $this->target, $this->type ) = MediaWikiServices::getInstance()
+			->getBlockUtils()
+			->parseBlockTarget( $target );
 	}
 
 	/**

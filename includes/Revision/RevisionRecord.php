@@ -107,6 +107,22 @@ abstract class RevisionRecord implements WikiAwareEntity {
 		$this->mSlots = $slots;
 		$this->wikiId = $wikiId;
 		$this->mPageId = $this->getArticleId( $page );
+
+		if ( $page->getWikiId() !== $wikiId ) {
+			$expected = $wikiId ?: 'local';
+			$actual = $page->getWikiId() ?: 'local';
+			wfDeprecatedMsg(
+				"Invalid cross-wiki page {$page}. Expected: {$expected}, got {$actual}",
+				'1.36'
+			);
+		}
+
+		if ( !$page->canExist() ) {
+			wfDeprecatedMsg(
+				"Constructing RevisionRecord for a page that can't exist: {$page}",
+				'1.36'
+			);
+		}
 	}
 
 	/**
@@ -254,6 +270,16 @@ abstract class RevisionRecord implements WikiAwareEntity {
 	 */
 	public function getInheritedSlots() {
 		return new RevisionSlots( $this->mSlots->getInheritedSlots() );
+	}
+
+	/**
+	 * Returns primary slots (those that are not derived).
+	 *
+	 * @return RevisionSlots
+	 * @since 1.36
+	 */
+	public function getPrimarySlots() : RevisionSlots {
+		return new RevisionSlots( $this->mSlots->getPrimarySlots() );
 	}
 
 	/**

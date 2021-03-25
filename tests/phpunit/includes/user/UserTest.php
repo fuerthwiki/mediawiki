@@ -1120,7 +1120,7 @@ class UserTest extends MediaWikiIntegrationTestCase {
 		// Anon user. Can't load by only user ID when that's 0.
 		$user = User::newFromName( '192.168.12.34', false );
 		// Make sure an actor ID exists
-		MediaWikiServices::getInstance()->getActorNormalization()->acquireActorId( $user );
+		MediaWikiServices::getInstance()->getActorNormalization()->acquireActorId( $user, $this->db );
 
 		$test = User::newFromAnyId( null, '192.168.12.34', null );
 		$this->assertSame( $user->getId(), $test->getId() );
@@ -1186,14 +1186,6 @@ class UserTest extends MediaWikiIntegrationTestCase {
 
 		// Name only
 		$identity = new UserIdentityValue( 0, $user->getName(), 0 );
-		$result = User::newFromIdentity( $identity );
-		$this->assertInstanceOf( User::class, $result );
-		$this->assertSame( $user->getId(), $result->getId(), 'ID' );
-		$this->assertSame( $user->getName(), $result->getName(), 'Name' );
-		$this->assertSame( $user->getActorId(), $result->getActorId(), 'Actor' );
-
-		// Actor only
-		$identity = new UserIdentityValue( 0, '', $user->getActorId() );
 		$result = User::newFromIdentity( $identity );
 		$this->assertInstanceOf( User::class, $result );
 		$this->assertSame( $user->getId(), $result->getId(), 'ID' );
@@ -1603,6 +1595,8 @@ class UserTest extends MediaWikiIntegrationTestCase {
 	 * @covers User::getLatestEditTimestamp
 	 */
 	public function testGetFirstLatestEditTimestamp() {
+		$this->hideDeprecated( 'User::getFirstEditTimestamp' );
+		$this->hideDeprecated( 'User::getLatestEditTimestamp' );
 		$clock = MWTimestamp::convert( TS_UNIX, '20100101000000' );
 		MWTimestamp::setFakeTime( static function () use ( &$clock ) {
 			return $clock += 1000;
@@ -1786,6 +1780,8 @@ class UserTest extends MediaWikiIntegrationTestCase {
 	 * @covers User::getDefaultOptions
 	 */
 	public function testGetDefaultOptions() {
+		$this->hideDeprecated( 'User::getDefaultOption' );
+		$this->hideDeprecated( 'User::getDefaultOptions' );
 		$this->resetServices();
 
 		$this->setTemporaryHook( 'UserGetDefaultOptions', static function ( &$defaults ) {
@@ -1798,6 +1794,22 @@ class UserTest extends MediaWikiIntegrationTestCase {
 
 		$extraOption = User::getDefaultOption( 'extraoption' );
 		$this->assertSame( 42, $extraOption );
+	}
+
+	/**
+	 * @covers User::getDefaultOption
+	 */
+	public function testGetDefaultOption_deprecated() {
+		$this->expectDeprecation();
+		User::getDefaultOption( 'extraoption' );
+	}
+
+	/**
+	 * @covers User::getDefaultOptions
+	 */
+	public function testGetDefaultOptions_deprecated() {
+		$this->expectDeprecation();
+		User::getDefaultOptions();
 	}
 
 	/**

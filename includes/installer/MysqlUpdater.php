@@ -20,7 +20,6 @@
  * @file
  * @ingroup Installer
  */
-use MediaWiki\MediaWikiServices;
 use Wikimedia\Rdbms\MySQLField;
 
 /**
@@ -33,18 +32,8 @@ use Wikimedia\Rdbms\MySQLField;
 class MysqlUpdater extends DatabaseUpdater {
 	protected function getCoreUpdateList() {
 		return [
-			// 1.2
+			// 1.2; T273080
 			[ 'doInterwikiUpdate' ],
-
-			// 1.27
-			[ 'dropTable', 'msg_resource_links' ],
-			[ 'dropTable', 'msg_resource' ],
-			[ 'addTable', 'bot_passwords', 'patch-bot_passwords.sql' ],
-			[ 'addField', 'watchlist', 'wl_id', 'patch-watchlist-wl_id.sql' ],
-			[ 'dropIndex', 'categorylinks', 'cl_collation', 'patch-kill-cl_collation_index.sql' ],
-			[ 'addIndex', 'categorylinks', 'cl_collation_ext',
-				'patch-add-cl_collation_ext_index.sql' ],
-			[ 'doCollationUpdate' ],
 
 			// 1.28
 			[ 'addIndex', 'recentchanges', 'rc_name_type_patrolled_timestamp',
@@ -259,6 +248,10 @@ class MysqlUpdater extends DatabaseUpdater {
 			[ 'modifyField', 'recentchanges', 'rc_id', 'patch-recentchanges-rc_id.sql' ],
 			[ 'renameIndex', 'recentchanges', 'new_name_timestamp', 'rc_new_name_timestamp', false,
 				'patch-recentchanges-rc_new_name_timestamp.sql' ],
+			[ 'dropDefault', 'archive', 'ar_timestamp' ],
+			[ 'modifyField', 'archive', 'ar_title', 'patch-archive-ar_title-varbinary.sql' ],
+			[ 'modifyField', 'page', 'page_title', 'patch-page-page_title-varbinary.sql' ],
+			[ 'dropDefault', 'page', 'page_touched' ],
 		];
 	}
 
@@ -330,11 +323,6 @@ class MysqlUpdater extends DatabaseUpdater {
 			true,
 			'Adding default interwiki definitions'
 		);
-	}
-
-	protected function doOldLinksUpdate() {
-		$cl = $this->maintenance->runChild( ConvertLinks::class );
-		$cl->execute();
 	}
 
 	/**
@@ -411,288 +399,6 @@ class MysqlUpdater extends DatabaseUpdater {
 		$this->output( "done.\n" );
 	}
 
-	protected function doNamespaceSize() {
-		$tables = [
-			'page' => 'page',
-			'archive' => 'ar',
-			'recentchanges' => 'rc',
-			'watchlist' => 'wl',
-			'querycache' => 'qc',
-			'logging' => 'log',
-		];
-		foreach ( $tables as $table => $prefix ) {
-			$field = $prefix . '_namespace';
-
-			$tablename = $this->db->tableName( $table );
-			$result = $this->db->query( "SHOW COLUMNS FROM $tablename LIKE '$field'", __METHOD__ );
-			$info = $this->db->fetchObject( $result );
-
-			if ( substr( $info->Type, 0, 3 ) == 'int' ) {
-				$this->output( "...$field is already a full int ($info->Type).\n" );
-			} else {
-				$this->output( "Promoting $field from $info->Type to int... " );
-				$this->db->query( "ALTER TABLE $tablename MODIFY $field int NOT NULL", __METHOD__ );
-				$this->output( "done.\n" );
-			}
-		}
-	}
-
-	protected function doPagelinksUpdate() {
-		if ( $this->db->tableExists( 'pagelinks', __METHOD__ ) ) {
-			$this->output( "...already have pagelinks table.\n" );
-
-			return;
-		}
-
-		$this->applyPatch(
-			'patch-pagelinks.sql',
-			false,
-			'Converting links and brokenlinks tables to pagelinks'
-		);
-
-		foreach (
-			MediaWikiServices::getInstance()->getContentLanguage()->getNamespaces() as $ns => $name
-		) {
-			if ( $ns == 0 ) {
-				continue;
-			}
-
-			$this->output( "Cleaning up broken links for namespace $ns... " );
-			$this->db->update( 'pagelinks',
-				[
-					'pl_namespace' => $ns,
-					"pl_title = TRIM(LEADING {$this->db->addQuotes( "$name:" )} FROM pl_title)",
-				],
-				[
-					'pl_namespace' => 0,
-					'pl_title' . $this->db->buildLike( "$name:", $this->db->anyString() ),
-				],
-				__METHOD__
-			);
-			$this->output( "done.\n" );
-		}
-	}
-
-	protected function doUserUniqueUpdate() {
-		if ( !$this->doTable( 'user' ) ) {
-			return true;
-		}
-
-		$duper = new UserDupes( $this->db, [ $this, 'output' ] );
-		if ( $duper->hasUniqueIndex() ) {
-			$this->output( "...already have unique user_name index.\n" );
-
-			return;
-		}
-
-		if ( !$duper->clearDupes() ) {
-			$this->output( "WARNING: This next step will probably fail due to unfixed duplicates...\n" );
-		}
-		$this->applyPatch( 'patch-user_nameindex.sql', false, "Adding unique index on user_name" );
-	}
-
-	protected function doUserGroupsUpdate() {
-		if ( !$this->doTable( 'user_groups' ) ) {
-			return true;
-		}
-
-		if ( $this->db->tableExists( 'user_groups', __METHOD__ ) ) {
-			$info = $this->db->fieldInfo( 'user_groups', 'ug_group' );
-			if ( $info->type() == 'int' ) {
-				$oldug = $this->db->tableName( 'user_groups' );
-				$newug = $this->db->tableName( 'user_groups_bogus' );
-				$this->output( "user_groups table exists but is in bogus intermediate " .
-					"format. Renaming to $newug... " );
-				$this->db->query( "ALTER TABLE $oldug RENAME TO $newug", __METHOD__ );
-				$this->output( "done.\n" );
-
-				$this->applyPatch( 'patch-user_groups.sql', false, "Re-adding fresh user_groups table" );
-
-				$this->output( "***\n" );
-				$this->output( "*** WARNING: You will need to manually fix up user " .
-					"permissions in the user_groups\n" );
-				$this->output( "*** table. Old 1.5 alpha versions did some pretty funky stuff...\n" );
-				$this->output( "***\n" );
-			} else {
-				$this->output( "...user_groups table exists and is in current format.\n" );
-			}
-
-			return;
-		}
-
-		$this->applyPatch( 'patch-user_groups.sql', false, "Adding user_groups table" );
-
-		if ( !$this->db->tableExists( 'user_rights', __METHOD__ ) ) {
-			if ( $this->db->fieldExists( 'user', 'user_rights', __METHOD__ ) ) {
-				$this->applyPatch(
-					'patch-user_rights.sql',
-					false,
-					'Upgrading from a 1.3 or older database? Breaking out user_rights for conversion'
-				);
-			} else {
-				$this->output( "*** WARNING: couldn't locate user_rights table or field for upgrade.\n" );
-				$this->output( "*** You may need to manually configure some sysops by manipulating\n" );
-				$this->output( "*** the user_groups table.\n" );
-
-				return;
-			}
-		}
-
-		$this->output( "Converting user_rights table to user_groups... " );
-		$result = $this->db->select( 'user_rights',
-			[ 'ur_user', 'ur_rights' ],
-			[ "ur_rights != ''" ],
-			__METHOD__ );
-
-		foreach ( $result as $row ) {
-			$groups = array_unique(
-				array_map( 'trim',
-					explode( ',', $row->ur_rights ) ) );
-
-			foreach ( $groups as $group ) {
-				$this->db->insert( 'user_groups',
-					[
-						'ug_user' => $row->ur_user,
-						'ug_group' => $group ],
-					__METHOD__ );
-			}
-		}
-		$this->output( "done.\n" );
-	}
-
-	/**
-	 * Make sure wl_notificationtimestamp can be NULL,
-	 * and update old broken items.
-	 */
-	protected function doWatchlistNull() {
-		$info = $this->db->fieldInfo( 'watchlist', 'wl_notificationtimestamp' );
-		if ( !$info ) {
-			return;
-		}
-		if ( $info->isNullable() ) {
-			$this->output( "...wl_notificationtimestamp is already nullable.\n" );
-
-			return;
-		}
-
-		$this->applyPatch(
-			'patch-watchlist-null.sql',
-			false,
-			'Making wl_notificationtimestamp nullable'
-		);
-	}
-
-	/**
-	 * Set page_random field to a random value where it is equals to 0.
-	 *
-	 * @see T5946
-	 */
-	protected function doPageRandomUpdate() {
-		$page = $this->db->tableName( 'page' );
-		$this->db->query( "UPDATE $page SET page_random = RAND() WHERE page_random = 0", __METHOD__ );
-		$rows = $this->db->affectedRows();
-
-		if ( $rows ) {
-			$this->output( "Set page_random to a random value on $rows rows where it was set to 0\n" );
-		} else {
-			$this->output( "...no page_random rows needed to be set\n" );
-		}
-	}
-
-	protected function doTemplatelinksUpdate() {
-		if ( $this->db->tableExists( 'templatelinks', __METHOD__ ) ) {
-			$this->output( "...templatelinks table already exists\n" );
-
-			return;
-		}
-
-		$this->applyPatch( 'patch-templatelinks.sql', false, "Creating templatelinks table" );
-
-		$this->output( "Populating...\n" );
-		$services = MediaWikiServices::getInstance();
-		if ( $services->getDBLoadBalancer()->getServerCount() > 1 ) {
-			// Slow, replication-friendly update
-			$res = $this->db->select( 'pagelinks', [ 'pl_from', 'pl_namespace', 'pl_title' ],
-				[ 'pl_namespace' => NS_TEMPLATE ], __METHOD__ );
-			$count = 0;
-			foreach ( $res as $row ) {
-				$count = ( $count + 1 ) % 100;
-				if ( $count == 0 ) {
-					$lbFactory = $services->getDBLoadBalancerFactory();
-					$lbFactory->waitForReplication( [
-						'domain' => $lbFactory->getLocalDomainID(),
-						'timeout' => self::REPLICATION_WAIT_TIMEOUT
-					] );
-				}
-				$this->db->insert( 'templatelinks',
-					[
-						'tl_from' => $row->pl_from,
-						'tl_namespace' => $row->pl_namespace,
-						'tl_title' => $row->pl_title,
-					], __METHOD__
-				);
-			}
-		} else {
-			// Fast update
-			$this->db->insertSelect( 'templatelinks', 'pagelinks',
-				[
-					'tl_from' => 'pl_from',
-					'tl_namespace' => 'pl_namespace',
-					'tl_title' => 'pl_title'
-				], [
-					'pl_namespace' => 10
-				], __METHOD__,
-				[ 'NO_AUTO_COLUMNS' ] // There's no "tl_id" auto-increment field
-			);
-		}
-		$this->output( "Done. Please run maintenance/refreshLinks.php for a more " .
-			"thorough templatelinks update.\n" );
-	}
-
-	protected function doBacklinkingIndicesUpdate() {
-		if ( !$this->indexHasField( 'pagelinks', 'pl_namespace', 'pl_from' ) ||
-			!$this->indexHasField( 'templatelinks', 'tl_namespace', 'tl_from' ) ||
-			!$this->indexHasField( 'imagelinks', 'il_to', 'il_from' )
-		) {
-			$this->applyPatch( 'patch-backlinkindexes.sql', false, "Updating backlinking indices" );
-		}
-	}
-
-	/**
-	 * Adding page_restrictions table, obsoleting page.page_restrictions.
-	 * Migrating old restrictions to new table
-	 * -- Andrew Garrett, January 2007.
-	 */
-	protected function doRestrictionsUpdate() {
-		if ( $this->db->tableExists( 'page_restrictions', __METHOD__ ) ) {
-			$this->output( "...page_restrictions table already exists.\n" );
-
-			return;
-		}
-
-		$this->applyPatch(
-			'patch-page_restrictions.sql',
-			false,
-			'Creating page_restrictions table (1/2)'
-		);
-		$this->applyPatch(
-			'patch-page_restrictions_sortkey.sql',
-			false,
-			'Creating page_restrictions table (2/2)'
-		);
-		$this->output( "done.\n" );
-
-		$this->output( "Migrating old restrictions to new table...\n" );
-		$task = $this->maintenance->runChild( UpdateRestrictions::class );
-		$task->execute();
-	}
-
-	protected function doCategorylinksIndicesUpdate() {
-		if ( !$this->indexHasField( 'categorylinks', 'cl_sortkey', 'cl_from' ) ) {
-			$this->applyPatch( 'patch-categorylinksindex.sql', false, "Updating categorylinks Indices" );
-		}
-	}
-
 	protected function doCategoryPopulation() {
 		if ( $this->updateRowExists( 'populate category' ) ) {
 			$this->output( "...category table already populated.\n" );
@@ -723,15 +429,6 @@ class MysqlUpdater extends DatabaseUpdater {
 		}
 	}
 
-	protected function doFilearchiveIndicesUpdate() {
-		$info = $this->db->indexInfo( 'filearchive', 'fa_user_timestamp', __METHOD__ );
-		if ( !$info ) {
-			$this->applyPatch( 'patch-filearchive-user-index.sql', false, "Updating filearchive indices" );
-		}
-
-		return true;
-	}
-
 	protected function doNonUniquePlTlIl() {
 		$info = $this->db->indexInfo( 'pagelinks', 'pl_namespace', __METHOD__ );
 		if ( is_array( $info ) && $info[0]->Non_unique ) {
@@ -750,34 +447,6 @@ class MysqlUpdater extends DatabaseUpdater {
 			'patch-pl-tl-il-nonunique.sql',
 			false,
 			'Making pl_namespace, tl_namespace and il_to indices non-UNIQUE'
-		);
-	}
-
-	protected function doUpdateMimeMinorField() {
-		if ( $this->updateRowExists( 'mime_minor_length' ) ) {
-			$this->output( "...*_mime_minor fields are already long enough.\n" );
-
-			return;
-		}
-
-		$this->applyPatch(
-			'patch-mime_minor_length.sql',
-			false,
-			'Altering all *_mime_minor fields to 100 bytes in size'
-		);
-	}
-
-	protected function doClFieldsUpdate() {
-		if ( $this->updateRowExists( 'cl_fields_update' ) ) {
-			$this->output( "...categorylinks up-to-date.\n" );
-
-			return;
-		}
-
-		$this->applyPatch(
-			'patch-categorylinks-better-collation2.sql',
-			false,
-			'Updating categorylinks (again)'
 		);
 	}
 
@@ -820,48 +489,6 @@ class MysqlUpdater extends DatabaseUpdater {
 			'patch-ipblocks-fix-ipb_address_unique.sql',
 			false,
 			'Removing ipb_anon_only column from ipb_address_unique index'
-		);
-	}
-
-	protected function doUserNewTalkTimestampNotNull() {
-		if ( !$this->doTable( 'user_newtalk' ) ) {
-			return true;
-		}
-
-		$info = $this->db->fieldInfo( 'user_newtalk', 'user_last_timestamp' );
-		if ( $info === false ) {
-			return;
-		}
-		if ( $info->isNullable() ) {
-			$this->output( "...user_last_timestamp is already nullable.\n" );
-
-			return;
-		}
-
-		$this->applyPatch(
-			'patch-user-newtalk-timestamp-null.sql',
-			false,
-			'Making user_last_timestamp nullable'
-		);
-	}
-
-	protected function doIwlinksIndexNonUnique() {
-		$info = $this->db->indexInfo( 'iwlinks', 'iwl_prefix_title_from', __METHOD__ );
-		if ( is_array( $info ) && $info[0]->Non_unique ) {
-			$this->output( "...iwl_prefix_title_from index is already non-UNIQUE.\n" );
-
-			return true;
-		}
-		if ( $this->skipSchema ) {
-			$this->output( "...skipping schema change (making iwl_prefix_title_from index non-UNIQUE).\n" );
-
-			return false;
-		}
-
-		return $this->applyPatch(
-			'patch-iwl_prefix_title_from-non-unique.sql',
-			false,
-			'Making iwl_prefix_title_from index non-UNIQUE'
 		);
 	}
 
@@ -922,22 +549,6 @@ class MysqlUpdater extends DatabaseUpdater {
 			false,
 			'Making rev_page_id index non-unique'
 		);
-	}
-
-	protected function doExtendCommentLengths() {
-		$table = $this->db->tableName( 'revision' );
-		$res = $this->db->query( "SHOW COLUMNS FROM $table LIKE 'rev_comment'", __METHOD__ );
-		$row = $this->db->fetchObject( $res );
-
-		if ( $row && ( $row->Type !== "varbinary(767)" || $row->Default !== "" ) ) {
-			$this->applyPatch(
-				'patch-editsummary-length.sql',
-				false,
-				'Extending edit summary lengths (and setting defaults)'
-			);
-		} else {
-			$this->output( "...comment fields are up to date.\n" );
-		}
 	}
 
 	public function getSchemaVars() {

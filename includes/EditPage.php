@@ -25,10 +25,14 @@ use MediaWiki\Content\IContentHandlerFactory;
 use MediaWiki\EditPage\Constraint\AccidentalRecreationConstraint;
 use MediaWiki\EditPage\Constraint\AutoSummaryMissingSummaryConstraint;
 use MediaWiki\EditPage\Constraint\ChangeTagsConstraint;
+use MediaWiki\EditPage\Constraint\ContentModelChangeConstraint;
+use MediaWiki\EditPage\Constraint\CreationPermissionConstraint;
 use MediaWiki\EditPage\Constraint\DefaultTextConstraint;
 use MediaWiki\EditPage\Constraint\EditConstraintRunner;
 use MediaWiki\EditPage\Constraint\EditFilterMergedContentHookConstraint;
+use MediaWiki\EditPage\Constraint\EditRightConstraint;
 use MediaWiki\EditPage\Constraint\IEditConstraint;
+use MediaWiki\EditPage\Constraint\ImageRedirectConstraint;
 use MediaWiki\EditPage\Constraint\MissingCommentConstraint;
 use MediaWiki\EditPage\Constraint\NewSectionMissingSummaryConstraint;
 use MediaWiki\EditPage\Constraint\PageSizeConstraint;
@@ -43,12 +47,15 @@ use MediaWiki\EditPage\TextConflictHelper;
 use MediaWiki\HookContainer\ProtectedHookAccessorTrait;
 use MediaWiki\Logger\LoggerFactory;
 use MediaWiki\MediaWikiServices;
+use MediaWiki\Page\PageIdentity;
 use MediaWiki\Page\WikiPageFactory;
+use MediaWiki\Permissions\Authority;
 use MediaWiki\Permissions\PermissionManager;
 use MediaWiki\Revision\RevisionRecord;
 use MediaWiki\Revision\RevisionStore;
 use MediaWiki\Revision\RevisionStoreRecord;
 use MediaWiki\Revision\SlotRecord;
+use MediaWiki\User\UserIdentity;
 use OOUI\CheckboxInputWidget;
 use OOUI\DropdownInputWidget;
 use OOUI\FieldLayout;
@@ -1484,10 +1491,10 @@ class EditPage implements IEditObject {
 	 * 'missing-revision' message.
 	 *
 	 * @since 1.19
-	 * @param User $user The user to get the revision for
+	 * @param Authority $performer to get the revision for
 	 * @return Content|null
 	 */
-	private function getOriginalContent( User $user ) {
+	private function getOriginalContent( Authority $performer ) {
 		if ( $this->section == 'new' ) {
 			return $this->getCurrentContent();
 		}
@@ -1497,7 +1504,7 @@ class EditPage implements IEditObject {
 				->getContentHandler( $this->contentModel )
 				->makeEmptyContent();
 		}
-		return $revRecord->getContent( SlotRecord::MAIN, RevisionRecord::FOR_THIS_USER, $user );
+		return $revRecord->getContent( SlotRecord::MAIN, RevisionRecord::FOR_THIS_USER, $performer );
 	}
 
 	/**
@@ -1570,7 +1577,7 @@ class EditPage implements IEditObject {
 		$title = Title::newFromText( $preload );
 
 		# Check for existence to avoid getting MediaWiki:Noarticletext
-		if ( !$this->isPageExistingAndViewable( $title, $user ) ) {
+		if ( !$this->isPageExistingAndViewable( $title, $this->getContext()->getAuthority() ) ) {
 			// TODO: somehow show a warning to the user!
 			return $handler->makeEmptyContent();
 		}
@@ -1579,7 +1586,7 @@ class EditPage implements IEditObject {
 		if ( $page->isRedirect() ) {
 			$title = $page->getRedirectTarget();
 			# Same as before
-			if ( !$this->isPageExistingAndViewable( $title, $user ) ) {
+			if ( !$this->isPageExistingAndViewable( $title, $this->getContext()->getAuthority() ) ) {
 				// TODO: somehow show a warning to the user!
 				return $handler->makeEmptyContent();
 			}
@@ -1616,13 +1623,13 @@ class EditPage implements IEditObject {
 	 * Verify if a given title exists and the given user is allowed to view it
 	 *
 	 * @see EditPage::getPreloadedContent()
-	 * @param Title|null $title
-	 * @param User $user
+	 * @param PageIdentity|null $page
+	 * @param Authority $performer
 	 * @return bool
 	 * @throws Exception
 	 */
-	private function isPageExistingAndViewable( $title, User $user ) {
-		return $title && $title->exists() && $this->permManager->userCan( 'read', $user, $title );
+	private function isPageExistingAndViewable( ?PageIdentity $page, Authority $performer ) {
+		return $page && $page->exists() && $performer->authorizeRead( 'read', $page );
 	}
 
 	/**
@@ -1985,10 +1992,10 @@ class EditPage implements IEditObject {
 			)
 		);
 		$constraintRunner->addConstraint(
-			$constraintFactory->newEditRightConstraint( $user )
+			new EditRightConstraint( $user )
 		);
 		$constraintRunner->addConstraint(
-			$constraintFactory->newImageRedirectConstraint(
+			new ImageRedirectConstraint(
 				$textbox_content,
 				$this->mTitle,
 				$user
@@ -1998,7 +2005,7 @@ class EditPage implements IEditObject {
 			$constraintFactory->newUserBlockConstraint( $this->mTitle, $user )
 		);
 		$constraintRunner->addConstraint(
-			$constraintFactory->newContentModelChangeConstraint(
+			new ContentModelChangeConstraint(
 				$user,
 				$this->mTitle,
 				$this->contentModel
@@ -2059,7 +2066,7 @@ class EditPage implements IEditObject {
 			$constraintRunner = new EditConstraintRunner();
 			// Late check for create permission, just in case *PARANOIA*
 			$constraintRunner->addConstraint(
-				$constraintFactory->newCreationPermissionConstraint( $user, $this->mTitle )
+				new CreationPermissionConstraint( $user, $this->mTitle )
 			);
 
 			// Don't save a new page if it's blank or if it's a MediaWiki:
@@ -2281,7 +2288,7 @@ class EditPage implements IEditObject {
 			} elseif ( $this->section != '' ) {
 				# Try to get a section anchor from the section source, redirect
 				# to edited section if header found.
-				# XXX: Might be better to integrate this into Article::replaceSectionAtRev
+				# XXX: Might be better to integrate this into WikiPage::replaceSectionAtRev
 				# for duplicate heading checking and maybe parsing.
 				$hasmatch = preg_match( "/^ *([=]{1,6})(.*?)(\\1) *\\n/i", $this->textbox1, $matches );
 				# We can't deal with anchors, includes, html etc in the header for now,
@@ -2479,12 +2486,12 @@ class EditPage implements IEditObject {
 	}
 
 	/**
-	 * @param User $user
+	 * @param UserIdentity $user
 	 * @param string|false $oldModel false if the page is being newly created
 	 * @param string $newModel
 	 * @param string $reason
 	 */
-	protected function addContentModelChangeLogEntry( User $user, $oldModel, $newModel, $reason ) {
+	protected function addContentModelChangeLogEntry( UserIdentity $user, $oldModel, $newModel, $reason ) {
 		$new = $oldModel === false;
 		$log = new ManualLogEntry( 'contentmodel', $new ? 'new' : 'change' );
 		$log->setPerformer( $user );

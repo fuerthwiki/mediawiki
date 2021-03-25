@@ -59,11 +59,11 @@ $wgAutoloadClasses += [
 	'MediaWikiCliOptions' => "$testDir/phpunit/MediaWikiCliOptions.php",
 	'MediaWikiCoversValidator' => "$testDir/phpunit/MediaWikiCoversValidator.php",
 	'MediaWikiGroupValidator' => "$testDir/phpunit/MediaWikiGroupValidator.php",
+	'MediaWikiHooksPHPUnitExtension' => "$testDir/phpunit/MediaWikiHooksPHPUnitExtension.php",
 	'MediaWikiLangTestCase' => "$testDir/phpunit/MediaWikiLangTestCase.php",
 	'MediaWikiLoggerPHPUnitExtension' => "$testDir/phpunit/MediaWikiLoggerPHPUnitExtension.php",
 	'MediaWikiPHPUnitCommand' => "$testDir/phpunit/MediaWikiPHPUnitCommand.php",
 	'MediaWikiPHPUnitResultPrinter' => "$testDir/phpunit/MediaWikiPHPUnitResultPrinter.php",
-	'MediaWikiPHPUnitTestListener' => "$testDir/phpunit/MediaWikiPHPUnitTestListener.php",
 	'MediaWikiTestCase' => "$testDir/phpunit/MediaWikiIntegrationTestCase.php",
 	'MediaWikiTestCaseTrait' => "$testDir/phpunit/MediaWikiTestCaseTrait.php",
 	'MediaWikiUnitTestCase' => "$testDir/phpunit/MediaWikiUnitTestCase.php",
@@ -115,8 +115,6 @@ $wgAutoloadClasses += [
 	'DummyNonTextContent' => "$testDir/phpunit/mocks/content/DummyNonTextContent.php",
 	'DummySerializeErrorContentHandler' =>
 		"$testDir/phpunit/mocks/content/DummySerializeErrorContentHandler.php",
-	'ContentHandlerTest' => "$testDir/phpunit/includes/content/ContentHandlerTest.php",
-	'JavaScriptContentTest' => "$testDir/phpunit/includes/content/JavaScriptContentTest.php",
 	'ObjectFactoryMakeContentHandlerWithSpecsToTest' => "$testDir/phpunit/includes/content/ObjectFactoryMakeContentHandlerWithSpecsToTest.php",
 	'TextContentTest' => "$testDir/phpunit/includes/content/TextContentTest.php",
 	'WikitextContentTest' => "$testDir/phpunit/includes/content/WikitextContentTest.php",
@@ -175,7 +173,6 @@ $wgAutoloadClasses += [
 	'SpecialPageExecutor' => "$testDir/phpunit/includes/specials/SpecialPageExecutor.php",
 
 	# tests/phpunit/includes/Revision
-	'MediaWiki\Tests\Revision\RevisionSlotsTest' => "$testDir/phpunit/includes/Revision/RevisionSlotsTest.php",
 	'MediaWiki\Tests\Revision\RevisionStoreDbTestBase' => "$testDir/phpunit/includes/Revision/RevisionStoreDbTestBase.php",
 
 	# test/phpunit/includes/user
@@ -214,9 +211,10 @@ $wgAutoloadClasses += [
 	'MockChangesListFilter' => "$testDir/phpunit/mocks/MockChangesListFilter.php",
 	'MockChangesListFilterGroup' => "$testDir/phpunit/mocks/MockChangesListFilterGroup.php",
 	'MockTitleTrait' => "$testDir/phpunit/mocks/MockTitleTrait.php",
-	'MockWebRequest' => "$testDir/phpunit/mocks/MockWebRequest.php",
 	'NullHttpRequestFactory' => "$testDir/phpunit/mocks/NullHttpRequestFactory.php",
 	'NullMultiHttpClient' => "$testDir/phpunit/mocks/NullMultiHttpClient.php",
+	'MediaWiki\\Tests\\Unit\\MockServiceDependenciesTrait'
+		=> "$testDir/phpunit/mocks/MockServiceDependenciesTrait.php",
 	'MediaWiki\\Session\\DummySessionBackend'
 		=> "$testDir/phpunit/mocks/session/DummySessionBackend.php",
 	'DummySessionProvider' => "$testDir/phpunit/mocks/session/DummySessionProvider.php",
@@ -227,7 +225,6 @@ $wgAutoloadClasses += [
 	'MockSearchResult' => "$testDir/phpunit/mocks/search/MockSearchResult.php",
 
 	# tests/phpunit/unit/includes
-	'BadFileLookupTest' => "$testDir/phpunit/unit/includes/BadFileLookupTest.php",
 	'Wikimedia\\Reflection\\GhostFieldTestClass' => "$testDir/phpunit/mocks/GhostFieldTestClass.php",
 
 	# tests/phpunit/unit/includes/editpage/Constraint and tests/phpunit/integration/includes/editpage/Constraint
@@ -265,6 +262,7 @@ $wgAutoloadClasses += [
 
 	# tests/phpunit/unit/includes/Revision
 	'MediaWiki\Tests\Unit\Revision\RevisionRecordTests' => "$testDir/phpunit/unit/includes/Revision/RevisionRecordTests.php",
+	'MediaWiki\Tests\Unit\Revision\RevisionSlotsTest' => "$testDir/phpunit/unit/includes/Revision/RevisionSlotsTest.php",
 	'MediaWiki\Tests\Unit\Revision\RevisionStoreRecordTest' => "$testDir/phpunit/unit/includes/Revision/RevisionStoreRecordTest.php",
 
 	# tests/suites

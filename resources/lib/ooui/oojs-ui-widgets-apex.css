@@ -1,12 +1,12 @@
 /*!
- * OOUI v0.41.1
+ * OOUI v0.41.3
  * https://www.mediawiki.org/wiki/OOUI
  *
  * Copyright 2011–2021 OOUI Team and other contributors.
  * Released under the MIT license
  * http://oojs.mit-license.org
  *
- * Date: 2021-01-26T22:57:09Z
+ * Date: 2021-03-12T21:47:58Z
  */
 /* stylelint-disable selector-no-vendor-prefix */
 /* stylelint-enable selector-no-vendor-prefix */
@@ -743,7 +743,7 @@
 .oo-ui-tagMultiselectWidget.oo-ui-widget-enabled.oo-ui-tagMultiselectWidget-inlined .oo-ui-tagMultiselectWidget-handle {
   cursor: text;
 }
-.oo-ui-tagMultiselectWidget.oo-ui-widget-disabled .oo-ui-tagMultiselectWidget-content > input {
+.oo-ui-tagMultiselectWidget.oo-ui-widget-disabled .oo-ui-tagMultiselectWidget-group > input {
   display: none;
 }
 .oo-ui-tagMultiselectWidget-focusTrap {
@@ -768,7 +768,7 @@
 .oo-ui-tagMultiselectWidget-handle:last-child {
   margin-right: 0;
 }
-.oo-ui-tagMultiselectWidget-handle > .oo-ui-tagMultiselectWidget-content > input {
+.oo-ui-tagMultiselectWidget-handle .oo-ui-tagMultiselectWidget-group > input {
   border: 0;
   line-height: 1.675em;
   margin: 0;
@@ -780,27 +780,27 @@
   color: #000;
   vertical-align: middle;
 }
-.oo-ui-tagMultiselectWidget-handle > .oo-ui-tagMultiselectWidget-content > input::-webkit-input-placeholder {
+.oo-ui-tagMultiselectWidget-handle .oo-ui-tagMultiselectWidget-group > input::-webkit-input-placeholder {
   color: #767676;
   opacity: 1;
 }
-.oo-ui-tagMultiselectWidget-handle > .oo-ui-tagMultiselectWidget-content > input:-ms-input-placeholder {
+.oo-ui-tagMultiselectWidget-handle .oo-ui-tagMultiselectWidget-group > input:-ms-input-placeholder {
   color: #767676;
   opacity: 1;
 }
-.oo-ui-tagMultiselectWidget-handle > .oo-ui-tagMultiselectWidget-content > input::-moz-placeholder {
+.oo-ui-tagMultiselectWidget-handle .oo-ui-tagMultiselectWidget-group > input::-moz-placeholder {
   color: #767676;
   opacity: 1;
 }
-.oo-ui-tagMultiselectWidget-handle > .oo-ui-tagMultiselectWidget-content > input:-moz-placeholder {
+.oo-ui-tagMultiselectWidget-handle .oo-ui-tagMultiselectWidget-group > input:-moz-placeholder {
   color: #767676;
   opacity: 1;
 }
-.oo-ui-tagMultiselectWidget-handle > .oo-ui-tagMultiselectWidget-content > input::placeholder {
+.oo-ui-tagMultiselectWidget-handle .oo-ui-tagMultiselectWidget-group > input::placeholder {
   color: #767676;
   opacity: 1;
 }
-.oo-ui-tagMultiselectWidget-handle > .oo-ui-tagMultiselectWidget-content > input:focus {
+.oo-ui-tagMultiselectWidget-handle .oo-ui-tagMultiselectWidget-group > input:focus {
   outline: 0;
 }
 .oo-ui-tagMultiselectWidget.oo-ui-iconElement .oo-ui-tagMultiselectWidget-handle {
@@ -817,6 +817,15 @@
   right: 0;
   margin: 0 0.775em;
 }
+.oo-ui-tagMultiselectWidget.oo-ui-tagMultiselectWidget-outlined .oo-ui-tagMultiselectWidget-handle {
+  border-bottom: 0;
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+}
+.oo-ui-tagMultiselectWidget.oo-ui-tagMultiselectWidget-outlined .oo-ui-inputWidget-input {
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+}
 .oo-ui-tagMultiselectWidget.oo-ui-widget-enabled {
   background-color: #fff;
 }
@@ -832,17 +841,8 @@
 .oo-ui-tagMultiselectWidget.oo-ui-widget-enabled.oo-ui-tagMultiselectWidget-inlined.oo-ui-flaggedElement-invalid:hover .oo-ui-tagMultiselectWidget-handle {
   border-color: #d45353;
 }
-.oo-ui-tagMultiselectWidget.oo-ui-widget-enabled.oo-ui-tagMultiselectWidget-outlined .oo-ui-tagMultiselectWidget-handle {
-  border-bottom: 0;
-  border-bottom-left-radius: 0;
-  border-bottom-right-radius: 0;
-}
 .oo-ui-tagMultiselectWidget.oo-ui-widget-enabled.oo-ui-tagMultiselectWidget-outlined .oo-ui-tagItemWidget.oo-ui-widget-enabled {
   background-color: #fff;
-}
-.oo-ui-tagMultiselectWidget.oo-ui-widget-enabled.oo-ui-tagMultiselectWidget-outlined .oo-ui-inputWidget-input {
-  border-top-left-radius: 0;
-  border-top-right-radius: 0;
 }
 .oo-ui-tagMultiselectWidget.oo-ui-widget-enabled.oo-ui-tagMultiselectWidget-outlined.oo-ui-flaggedElement-invalid .oo-ui-inputWidget-input {
   border-color: #d45353;
@@ -949,6 +949,9 @@
   color: #333;
   background: #eee;
   border-color: #ccc;
+}
+.oo-ui-tagItemWidget.oo-ui-widget-disabled > .oo-ui-buttonElement {
+  display: none;
 }
 
 /* stylelint-disable selector-no-vendor-prefix */

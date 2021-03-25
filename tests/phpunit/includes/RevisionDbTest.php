@@ -19,14 +19,15 @@ use MediaWiki\Revision\SlotRecord;
  * @group medium
  */
 class RevisionDbTest extends MediaWikiIntegrationTestCase {
+	use MockTitleTrait;
 
 	/**
 	 * @var WikiPage
 	 */
 	private $testPage;
 
-	public function __construct( $name = null, array $data = [], $dataName = '' ) {
-		parent::__construct( $name, $data, $dataName );
+	protected function setUp() : void {
+		parent::setUp();
 
 		$this->tablesUsed = array_merge( $this->tablesUsed,
 			[
@@ -55,10 +56,6 @@ class RevisionDbTest extends MediaWikiIntegrationTestCase {
 				'iwlinks'
 			]
 		);
-	}
-
-	protected function setUp() : void {
-		parent::setUp();
 
 		$this->mergeMwGlobalArrayValue(
 			'wgExtraNamespaces',
@@ -97,29 +94,6 @@ class RevisionDbTest extends MediaWikiIntegrationTestCase {
 		$this->hideDeprecated( 'Revision::getTitle' );
 		$this->hideDeprecated( 'Revision::getUser' );
 		$this->hideDeprecated( 'Revision::__construct' );
-	}
-
-	/**
-	 * @return Title
-	 */
-	protected function getMockTitle() {
-		$mock = $this->getMockBuilder( Title::class )
-			->disableOriginalConstructor()
-			->getMock();
-		$mock->expects( $this->any() )
-			->method( 'getNamespace' )
-			->will( $this->returnValue( $this->getDefaultWikitextNS() ) );
-		$mock->expects( $this->any() )
-			->method( 'getPrefixedText' )
-			->will( $this->returnValue( __CLASS__ ) );
-		$mock->expects( $this->any() )
-			->method( 'getDBkey' )
-			->will( $this->returnValue( __CLASS__ ) );
-		$mock->expects( $this->any() )
-			->method( 'getArticleID' )
-			->will( $this->returnValue( 23 ) );
-
-		return $mock;
 	}
 
 	private function makeRevisionWithProps( $props = null ) {
@@ -490,6 +464,7 @@ class RevisionDbTest extends MediaWikiIntegrationTestCase {
 			$services->getActorMigration(),
 			$services->getActorStore(),
 			$services->getContentHandlerFactory(),
+			$services->getTitleFactory(),
 			$services->getHookContainer()
 		);
 
@@ -1834,7 +1809,7 @@ class RevisionDbTest extends MediaWikiIntegrationTestCase {
 		$this->hideDeprecated( 'Revision::__construct' );
 		$this->hideDeprecated( 'MediaWiki\Revision\RevisionStore::newMutableRevisionFromArray' );
 
-		$title = $this->getMockTitle();
+		$title = $this->makeMockTitle( __CLASS__, [ 'id' => 23 ] );
 
 		$rev = new Revision( [], 0, $title );
 		yield [ $rev, null ];
@@ -1866,7 +1841,7 @@ class RevisionDbTest extends MediaWikiIntegrationTestCase {
 	}
 
 	public function provideGetSerializedData() {
-		$title = $this->getMockTitle();
+		$title = $this->makeMockTitle( __CLASS__, [ 'id' => 23 ] );
 
 		$rev = new Revision( [], 0, $title );
 		yield [ $rev, '' ];

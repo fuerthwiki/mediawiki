@@ -43,18 +43,36 @@ trait MockTitleTrait {
 		$title->method( 'getArticleID' )->willReturn( $id );
 		$title->method( 'getId' )->willReturn( $id );
 		$title->method( 'getNamespace' )->willReturn( $ns );
+		$title->method( 'getFragment' )->willReturn( $props['fragment'] ?? '' );
+		$title->method( 'hasFragment' )->willReturn( !empty( $props['fragment'] ) );
+		$title->method( 'getInterwiki' )->willReturn( $props['interwiki'] ?? '' );
 		$title->method( 'exists' )->willReturn( $id > 0 );
 		$title->method( 'getTouched' )->willReturn( $id ? '20200101223344' : false );
 		$title->method( 'getPageLanguage' )->willReturn( $props['language'] ?? 'qqx' );
 		$title->method( 'getContentModel' )
 			->willReturn( $props['contentModel'] ?? CONTENT_MODEL_WIKITEXT );
 		$title->method( 'getRestrictions' )->willReturn( [] );
+		$title->method( 'getTitleProtection' )->willReturn( false );
+		$title->method( 'canExist' )
+			->willReturn( $ns >= 0 && empty( $props['interwiki'] ) && $text !== '' );
+		$title->method( 'getWikiId' )->willReturn( Title::LOCAL );
+		if ( isset( $props['revision'] ) ) {
+			$title->method( 'getLatestRevId' )->willReturn( $props['revision'] );
+		} else {
+			$title->method( 'getLatestRevId' )->willReturn( $id === 0 ? 0 : 43 );
+		}
+		$title->method( 'getContentModel' )->willReturn( CONTENT_MODEL_WIKITEXT );
+		$title->method( 'isContentPage' )->willReturn( true );
 		$title->method( 'isSamePageAs' )->willReturnCallback( static function ( $other ) use ( $id ) {
 			return $other && $id === $other->getArticleId();
 		} );
 		$title->method( 'isSameLinkAs' )->willReturnCallback( static function ( $other ) use ( $ns, $text ) {
 			return $other && $text === $other->getDBkey() && $ns === $other->getNamespace();
 		} );
+		$title->method( 'equals' )->willReturnCallback( static function ( $other ) use ( $preText ) {
+			return $other->getPrefixedDBkey() === str_replace( ' ', '_', $preText );
+		} );
+		$title->method( '__toString' )->willReturn( "MockTitle:{$preText}" );
 
 		return $title;
 	}
@@ -87,23 +105,4 @@ trait MockTitleTrait {
 
 		return $titleCodec;
 	}
-
-	/**
-	 * Expected to be provided by the class, probably inherited from TestCase.
-	 *
-	 * @param string $originalClassName
-	 *
-	 * @return MockObject
-	 */
-	abstract protected function createMock( $originalClassName ): MockObject;
-
-	/**
-	 * Expected to be provided by the class, probably MediaWikiTestCaseTrait.
-	 *
-	 * @param string $type
-	 * @param string[] $allow methods to allow
-	 *
-	 * @return MockObject
-	 */
-	abstract protected function createNoOpMock( $type, $allow = [] );
 }

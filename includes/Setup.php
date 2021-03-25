@@ -456,7 +456,7 @@ if ( $wgEnableEmail ) {
  */
 $wgCanonicalNamespaceNames = NamespaceInfo::CANONICAL_NAMES;
 
-/// @todo UGLY UGLY
+// @todo UGLY UGLY
 if ( is_array( $wgExtraNamespaces ) ) {
 	$wgCanonicalNamespaceNames += $wgExtraNamespaces;
 }
@@ -481,6 +481,37 @@ foreach ( LanguageCode::getNonstandardLanguageCodeMapping() as $code => $bcp47 )
 }
 unset( $code ); // no global pollution; destroy reference
 unset( $bcp47 ); // no global pollution; destroy reference
+
+// Temporary backwards-compatibility reading of old replica lag settings as of MediaWiki 1.36,
+// to support sysadmins who fail to update their settings immediately:
+
+if ( isset( $wgSlaveLagWarning ) ) {
+	// If the old value is set to something other than the default, use it.
+	if ( $wgDatabaseReplicaLagWarning === 10 && $wgSlaveLagWarning !== 10 ) {
+		$wgDatabaseReplicaLagWarning = $wgSlaveLagWarning;
+		wfDeprecated(
+			'$wgSlaveLagWarning set but $wgDatabaseReplicaLagWarning unchanged; using $wgSlaveLagWarning',
+			'1.36'
+		);
+	}
+} else {
+	// Backwards-compatibility for extensions that read this value.
+	$wgSlaveLagWarning = $wgDatabaseReplicaLagWarning;
+}
+
+if ( isset( $wgSlaveLagCritical ) ) {
+	// If the old value is set to something other than the default, use it.
+	if ( $wgDatabaseReplicaLagCritical === 30 && $wgSlaveLagCritical !== 30 ) {
+		$wgDatabaseReplicaLagCritical = $wgSlaveLagCritical;
+		wfDeprecated(
+			'$wgSlaveLagCritical set but $wgDatabaseReplicaLagCritical unchanged; using $wgSlaveLagCritical',
+			'1.36'
+		);
+	}
+} else {
+	// Backwards-compatibility for extensions that read this value.
+	$wgSlaveLagCritical = $wgDatabaseReplicaLagCritical;
+}
 
 if ( $wgInvalidateCacheOnLocalSettingsChange ) {
 	Wikimedia\suppressWarnings();
@@ -695,12 +726,6 @@ if ( $wgRequest->getCookie( 'UseDC', '' ) === 'master' ) {
 // Most of the config is out, some might want to run hooks here.
 Hooks::runner()->onSetupAfterCache();
 
-/**
- * @var Language $wgContLang
- * @deprecated since 1.32, use the ContentLanguage service directly
- */
-$wgContLang = MediaWikiServices::getInstance()->getContentLanguage();
-
 // Now that variant lists may be available...
 $wgRequest->interpolateTitle();
 
@@ -723,6 +748,8 @@ if ( !defined( 'MW_NO_SESSION' ) && !$wgCommandLineMode ) {
 		);
 	}
 
+	$contLang = MediaWikiServices::getInstance()->getContentLanguage();
+
 	// Initialize the session
 	try {
 		$session = MediaWiki\Session\SessionManager::getGlobalSession();
@@ -731,13 +758,15 @@ if ( !defined( 'MW_NO_SESSION' ) && !$wgCommandLineMode ) {
 		// sessions tied for top priority. Report this to the user.
 		$list = [];
 		foreach ( $ex->getSessionInfos() as $info ) {
-			$list[] = $info->getProvider()->describe( $wgContLang );
+			$list[] = $info->getProvider()->describe( $contLang );
 		}
-		$list = $wgContLang->listToText( $list );
+		$list = $contLang->listToText( $list );
 		throw new HttpError( 400,
-			Message::newFromKey( 'sessionmanager-tie', $list )->inLanguage( $wgContLang )
+			Message::newFromKey( 'sessionmanager-tie', $list )->inLanguage( $contLang )
 		);
 	}
+
+	unset( $contLang );
 
 	if ( $session->isPersistent() ) {
 		$wgInitialSessionId = $session->getSessionId();

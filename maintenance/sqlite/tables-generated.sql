@@ -789,3 +789,52 @@ CREATE INDEX rc_name_type_patrolled_timestamp ON /*_*/recentchanges (
 );
 
 CREATE INDEX rc_this_oldid ON /*_*/recentchanges (rc_this_oldid);
+
+
+CREATE TABLE /*_*/archive (
+  ar_id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+  ar_namespace INTEGER DEFAULT 0 NOT NULL,
+  ar_title BLOB DEFAULT '' NOT NULL, ar_comment_id BIGINT UNSIGNED NOT NULL,
+  ar_actor BIGINT UNSIGNED NOT NULL,
+  ar_timestamp BLOB NOT NULL, ar_minor_edit SMALLINT DEFAULT 0 NOT NULL,
+  ar_rev_id INTEGER UNSIGNED NOT NULL,
+  ar_deleted SMALLINT UNSIGNED DEFAULT 0 NOT NULL,
+  ar_len INTEGER UNSIGNED DEFAULT NULL,
+  ar_page_id INTEGER UNSIGNED DEFAULT NULL,
+  ar_parent_id INTEGER UNSIGNED DEFAULT NULL,
+  ar_sha1 BLOB DEFAULT '' NOT NULL
+);
+
+CREATE INDEX ar_name_title_timestamp ON /*_*/archive (
+  ar_namespace, ar_title, ar_timestamp
+);
+
+CREATE INDEX ar_actor_timestamp ON /*_*/archive (ar_actor, ar_timestamp);
+
+CREATE UNIQUE INDEX ar_revid_uniq ON /*_*/archive (ar_rev_id);
+
+
+CREATE TABLE /*_*/page (
+  page_id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+  page_namespace INTEGER NOT NULL, page_title BLOB NOT NULL,
+  page_restrictions BLOB DEFAULT NULL,
+  page_is_redirect SMALLINT DEFAULT 0 NOT NULL,
+  page_is_new SMALLINT DEFAULT 0 NOT NULL,
+  page_random DOUBLE PRECISION NOT NULL,
+  page_touched BLOB NOT NULL, page_links_updated BLOB DEFAULT NULL,
+  page_latest INTEGER UNSIGNED NOT NULL,
+  page_len INTEGER UNSIGNED NOT NULL,
+  page_content_model BLOB DEFAULT NULL,
+  page_lang BLOB DEFAULT NULL
+);
+
+CREATE UNIQUE INDEX name_title ON /*_*/page (page_namespace, page_title);
+
+CREATE INDEX page_random ON /*_*/page (page_random);
+
+CREATE INDEX page_len ON /*_*/page (page_len);
+
+CREATE INDEX page_redirect_namespace_len ON /*_*/page (
+  page_is_redirect, page_namespace,
+  page_len
+);

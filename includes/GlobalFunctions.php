@@ -775,7 +775,7 @@ function wfUrlProtocolsWithoutProtRel() {
  * 1) Handles protocols that don't use :// (e.g., mailto: and news:, as well as
  *    protocol-relative URLs) correctly.
  * 2) Adds a "delimiter" element to the array (see (2)).
- * 3) Verifies that the protocol is on the $wgUrlProtocols whitelist.
+ * 3) Verifies that the protocol is on the $wgUrlProtocols allowed list.
  * 4) Rejects some invalid URLs that parse_url doesn't, e.g. the empty string or URLs starting with
  *    a line feed character.
  *
@@ -1028,14 +1028,14 @@ function wfLogDBError( $text, array $context = [] ) {
  *    caller. 2 = function that called the function that called
  *    wfDeprecated (Added in 1.20).
  *
- * @throws Exception If the MediaWiki version number specified by $version is neither a string nor
- *    false, an exception is thrown to indicate invalid arguments.
+ * @throws InvalidArgumentException If the MediaWiki version
+ *     number specified by $version is neither a string nor false.
  */
 function wfDeprecated( $function, $version = false, $component = false, $callerOffset = 2 ) {
 	if ( is_string( $version ) || $version === false ) {
 		MWDebug::deprecated( $function, $version, $component, $callerOffset + 1 );
 	} else {
-		throw new Exception(
+		throw new InvalidArgumentException(
 			"MediaWiki version must either be a string or false. " .
 			"Example valid version: '1.33'"
 		);

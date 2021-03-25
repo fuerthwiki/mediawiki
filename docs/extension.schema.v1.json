@@ -307,6 +307,10 @@
 									"items": {
 										"type": ["string", "object"]
 									}
+								},
+								"es6": {
+									"type": "boolean",
+									"description": "Whether this module requires an ES6-capable browser. If set to true, loading this module in a non-ES6 browser will cause an error. Using ES6 syntax in modules is not yet supported, but will be in the near future. Default is false."
 								}
 							}
 						},
@@ -590,6 +594,11 @@
 						"type": "boolean",
 						"description": "Whether the namespace is conditional upon configuration and should not be registered (requires separate registration via a hook)",
 						"default": false
+					},
+					"movable": {
+						"type": "boolean",
+						"description": "Whether it is possible to move pages in this namespace",
+						"default": true
 					}
 				},
 				"required": ["id", "constant", "name"]

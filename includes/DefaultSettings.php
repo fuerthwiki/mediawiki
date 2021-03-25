@@ -1069,8 +1069,8 @@ $wgFileExtensions = [ 'png', 'gif', 'jpg', 'jpeg', 'webp' ];
 
 /**
  * Files with these extensions will never be allowed as uploads.
- * An array of file extensions to blacklist. You should append to this array
- * if you want to blacklist additional files.
+ * An array of file extensions to prevent being uploaded. You should
+ * append to this array if you want to prevent additional file extensions.
  */
 $wgFileBlacklist = [
 	# HTML may contain cookie-stealing JavaScript and web bugs
@@ -2326,16 +2326,20 @@ $wgDBerrorLogTZ = false;
 $wgLocalDatabases = [];
 
 /**
- * If lag is higher than $wgSlaveLagWarning, show a warning in some special
- * pages (like watchlist).  If the lag is higher than $wgSlaveLagCritical,
+ * If lag is higher than $wgDatabaseReplicaLagWarning, show a warning in some special
+ * pages (like watchlist). If the lag is higher than $wgDatabaseReplicaLagCritical,
  * show a more obvious warning.
+ *
+ * @since 1.36
  */
-$wgSlaveLagWarning = 10;
+$wgDatabaseReplicaLagWarning = 10;
 
 /**
- * @see $wgSlaveLagWarning
+ * @see $wgDatabaseReplicaLagWarning
+ *
+ * @since 1.36
  */
-$wgSlaveLagCritical = 30;
+$wgDatabaseReplicaLagCritical = 30;
 
 // endregion -- End of DB settings
 
@@ -2704,7 +2708,7 @@ $wgEnableWANCacheReaper = false;
  * and violations of linearizability (e.g. during timeouts). Modules that can never handle these
  * kind of anamolies should use other storage mediums.
  *
- * Valid options are the keys of $wgObjectCaches, e.g. CACHE_* constants.
+ * Valid options are the keys of {@link $wgObjectCaches}, e.g. CACHE_* constants.
  *
  * @see BagOStuff
  * @since 1.26
@@ -2712,16 +2716,18 @@ $wgEnableWANCacheReaper = false;
 $wgMainStash = 'db-replicated';
 
 /**
- * The object store type of the ChronologyProtector position store.
+ * The object store type for the {@link Wikimedia::Rdbms::ChronologyProtector ChronologyProtector} store.
  *
  * This should be a fast storage system optimized for lightweight ephemeral data.
- * The dataset access scope should include all application servers in the local datacenter.
- * A set of single-key operations should maintain "best effort" linearizability (e.g. they
- * observe linearizability unless connectivity/latency/disk problems arise).
+ * Data stored should be readable by all application servers in the local datacenter.
  *
- * Valid options are the keys of $wgObjectCaches, e.g. CACHE_* constants.
+ * See [ChronologyProtector requirements](@ref ChronologyProtector-storage-requirements)
+ * for more detailed system administrator requirements (especially for multi-dc operations).
  *
- * @see BagOStuff
+ * Valid options are the keys of {@link $wgObjectCaches}, e.g. CACHE_* constants.
+ * Defaults to {@link $wgMainCacheType} (in ServiceWiring.php).
+ *
+ * @var string|null
  * @since 1.36
  */
 $wgChronologyProtectorStash = null;
@@ -3965,6 +3971,16 @@ $wgMangleFlashPolicy = true;
  *
  *   Default: `[]`
  *
+ *  - es6 `{bool}`:
+ *    If true, this module will only be executed in browsers that support ES6. You should set this
+ *    flag for modules that use ES6 in their JavaScript. Only use this for modules that provide
+ *    progressive enhancements that are safe to not load in browsers that are not modern but still
+ *    have a substantial user base, like IE11.
+ *
+ *    Since: **MW 1.36**
+ *
+ *    Default: `false`
+ *
  * ## Examples
  *
  * @par Example: Using an alternate subclass
@@ -4623,25 +4639,6 @@ $wgInvalidRedirectTargets = [ 'Filepath', 'Mypage', 'Mytalk', 'Redirect' ];
  */
 
 /**
- * Parser configuration. Associative array with the following members:
- *
- *  class             The class name
- *
- * The entire associative array will be passed through to the constructor as
- * the first parameter. Note that only Setup.php can use this variable --
- * the configuration will change at runtime via Parser member functions, so
- * the contents of this variable will be out-of-date. The variable can only be
- * changed during LocalSettings.php, in particular, it can't be changed during
- * an extension setup function.
- * @deprecated since 1.35.  This has been effectively a constant for a long
- *  time.  Configuring the ParserFactory service is the modern way to tweak
- *  the default parser.
- */
-$wgParserConf = [
-	'class' => Parser::class,
-];
-
-/**
  * Maximum indent level of toc.
  */
 $wgMaxTocLevel = 999;
@@ -4951,15 +4948,8 @@ $wgCentralIdLookupProvider = 'local';
  *	- PasswordCannotMatchUsername - Password cannot match the username.
  *	- PasswordCannotBeSubstringInUsername - Password cannot be a substring
  *		(contained within) the username.
- *	- PasswordCannotMatchBlacklist - Username/password combination cannot
- *		match a list of default passwords used by MediaWiki in the past.
- *		Deprecated since 1.35, use PasswordCannotMatchDefaults instead.
  *	- PasswordCannotMatchDefaults - Username/password combination cannot
  *		match a list of default passwords used by MediaWiki in the past.
- *	- PasswordNotInLargeBlacklist - Password not in best practices list of
- *		100,000 commonly used passwords. Due to the size of the list this
- *		is a probabilistic test.
- *		Deprecated since 1.35, use PasswordNotInCommonList instead.
  *	- PasswordNotInCommonList - Password not in best practices list of
  *		100,000 commonly used passwords. Due to the size of the list this
  *		is a probabilistic test.
@@ -5011,10 +5001,8 @@ $wgPasswordPolicy = [
 		'PasswordCannotMatchUsername' => 'PasswordPolicyChecks::checkPasswordCannotMatchUsername',
 		'PasswordCannotBeSubstringInUsername' =>
 			'PasswordPolicyChecks::checkPasswordCannotBeSubstringInUsername',
-		'PasswordCannotMatchBlacklist' => 'PasswordPolicyChecks::checkPasswordCannotMatchDefaults',
 		'PasswordCannotMatchDefaults' => 'PasswordPolicyChecks::checkPasswordCannotMatchDefaults',
 		'MaximalPasswordLength' => 'PasswordPolicyChecks::checkMaximalPasswordLength',
-		'PasswordNotInLargeBlacklist' => 'PasswordPolicyChecks::checkPasswordNotInCommonList',
 		'PasswordNotInCommonList' => 'PasswordPolicyChecks::checkPasswordNotInCommonList',
 	],
 ];
@@ -5099,6 +5087,16 @@ $wgAuthManagerAutoConfig = [
 		],
 	],
 ];
+
+/**
+ * Configures RememberMe authentication request added by AuthManager. It can show a "remember
+ * me" checkbox that, when checked, will cause it to take more time for the authenticated session
+ * to expire. It can also be configured to always or to never extend the authentication session.
+ * Valid values are listed in RememberMeAuthenticationRequest::ALLOWED_FLAGS.
+ * @since 1.36
+ * @var string
+ */
+$wgRememberMe = 'choose'; // RememberMeAuthenticationRequest::CHOOSE_REMEMBER
 
 /**
  * Time frame for re-authentication.
@@ -7566,6 +7564,9 @@ $wgUseTagFilter = true;
  * @see ChangeTags::TAG_UNDO
  * @see ChangeTags::TAG_MANUAL_REVERT
  * @see ChangeTags::TAG_REVERTED
+ * @see ChangeTags::TAG_CHANGE_MEDIA
+ * @see ChangeTags::TAG_ADD_MEDIA
+ * @see ChangeTags::TAG_REMOVE_MEDIA
  */
 $wgSoftwareTags = [
 	'mw-contentmodelchange' => true,
@@ -7578,6 +7579,9 @@ $wgSoftwareTags = [
 	'mw-undo' => true,
 	'mw-manual-revert' => true,
 	'mw-reverted' => true,
+	'mw-change-media' => false,
+	'mw-add-media' => false,
+	'mw-remove-media' => false,
 ];
 
 /**
@@ -8822,14 +8826,6 @@ $wgAllowedCorsHeaders = [
 ];
 
 /**
- * Enable the experimental REST API.
- *
- * @deprecated Since 1.35, defaults to true and is ignored by MediaWiki core itself.
- *             No longer functions as a setting. Will be removed in 1.36.
- */
-$wgEnableRestAPI = true;
-
-/**
  * Additional REST API Route files.
  *
  * A common usage is to enable development/experimental endpoints only on test wikis.
@@ -9170,7 +9166,7 @@ $wgRedirectOnLogin = null;
  * @par Example using C daemon from https://www.mediawiki.org/wiki/Extension:PoolCounter:
  * @code
  *   $wgPoolCounterConf = [ 'ArticleView' => [
- *     'class' => PoolCounter_Client::class,
+ *     'class' => MediaWiki\Extension\PoolCounter\Client::class,
  *     'timeout' => 15, // wait timeout in seconds
  *     'workers' => 5, // maximum number of active threads in each pool
  *     'maxqueue' => 50, // maximum number of total threads in each pool
@@ -9234,13 +9230,6 @@ $wgTextModelsToParse = [
 $wgSiteTypes = [
 	'mediawiki' => MediaWikiSite::class,
 ];
-
-/**
- * Whether the page_props table has a pp_sortkey column. Set to false in case
- * the respective database schema change was not applied.
- * @since 1.23
- */
-$wgPagePropsHaveSortkey = true;
 
 /**
  * Secret for session storage.

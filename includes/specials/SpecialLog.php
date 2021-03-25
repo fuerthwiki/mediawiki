@@ -23,7 +23,7 @@
 
 use MediaWiki\Cache\LinkBatchFactory;
 use MediaWiki\HookContainer\HookRunner;
-use MediaWiki\Permissions\PermissionManager;
+use MediaWiki\User\ActorNormalization;
 use Wikimedia\Rdbms\ILoadBalancer;
 use Wikimedia\Timestamp\TimestampException;
 
@@ -34,35 +34,29 @@ use Wikimedia\Timestamp\TimestampException;
  */
 class SpecialLog extends SpecialPage {
 
-	/** @var PermissionManager */
-	private $permissionManager;
-
 	/** @var LinkBatchFactory */
 	private $linkBatchFactory;
 
 	/** @var ILoadBalancer */
 	private $loadBalancer;
 
-	/** @var ActorMigration */
-	private $actorMigration;
+	/** @var ActorNormalization */
+	private $actorNormalization;
 
 	/**
-	 * @param PermissionManager $permissionManager
 	 * @param LinkBatchFactory $linkBatchFactory
 	 * @param ILoadBalancer $loadBalancer
-	 * @param ActorMigration $actorMigration
+	 * @param ActorNormalization $actorNormalization
 	 */
 	public function __construct(
-		PermissionManager $permissionManager,
 		LinkBatchFactory $linkBatchFactory,
 		ILoadBalancer $loadBalancer,
-		ActorMigration $actorMigration
+		ActorNormalization $actorNormalization
 	) {
 		parent::__construct( 'Log' );
-		$this->permissionManager = $permissionManager;
 		$this->linkBatchFactory = $linkBatchFactory;
 		$this->loadBalancer = $loadBalancer;
-		$this->actorMigration = $actorMigration;
+		$this->actorNormalization = $actorNormalization;
 	}
 
 	public function execute( $par ) {
@@ -125,7 +119,7 @@ class SpecialLog extends SpecialPage {
 		if ( !LogPage::isLogType( $type ) ) {
 			$opts->setValue( 'type', '' );
 		} elseif ( isset( $logRestrictions[$type] )
-			&& !$this->permissionManager->userHasRight( $this->getUser(), $logRestrictions[$type] )
+			&& !$this->getAuthority()->isAllowed( $logRestrictions[$type] )
 		) {
 			throw new PermissionsError( $logRestrictions[$type] );
 		}
@@ -133,10 +127,11 @@ class SpecialLog extends SpecialPage {
 		# Handle type-specific inputs
 		$qc = [];
 		if ( $opts->getValue( 'type' ) == 'suppress' ) {
+			$dbr = $this->loadBalancer->getConnectionRef( DB_REPLICA );
 			$offenderName = $opts->getValue( 'offender' );
-			$offender = empty( $offenderName ) ? null : User::newFromName( $offenderName, false );
-			if ( $offender ) {
-				$qc = [ 'ls_field' => 'target_author_actor', 'ls_value' => (string)$offender->getActorId() ];
+			$offenderId = $this->actorNormalization->findActorIdByName( $offenderName, $dbr );
+			if ( $offenderId ) {
+				$qc = [ 'ls_field' => 'target_author_actor', 'ls_value' => $offenderId ];
 			}
 		} else {
 			// Allow extensions to add relations to their search types
@@ -248,7 +243,7 @@ class SpecialLog extends SpecialPage {
 			$opts->getValue( 'logid' ),
 			$this->linkBatchFactory,
 			$this->loadBalancer,
-			$this->actorMigration
+			$this->actorNormalization
 		);
 
 		$this->addHeader( $opts->getValue( 'type' ) );
@@ -256,7 +251,9 @@ class SpecialLog extends SpecialPage {
 		# Set relevant user
 		if ( $pager->getPerformer() ) {
 			$performerUser = User::newFromName( $pager->getPerformer(), false );
-			$this->getSkin()->setRelevantUser( $performerUser );
+			if ( $performerUser ) {
+				$this->getSkin()->setRelevantUser( $performerUser );
+			}
 		}
 
 		# Show form options
@@ -291,9 +288,9 @@ class SpecialLog extends SpecialPage {
 	}
 
 	private function getActionButtons( $formcontents ) {
-		$user = $this->getUser();
-		$canRevDelete = $this->permissionManager->userHasAllRights( $user, 'deletedhistory', 'deletelogentry' );
-		$showTagEditUI = ChangeTags::showTagEditingUI( $user );
+		$canRevDelete = $this->getAuthority()
+			->isAllowedAll( 'deletedhistory', 'deletelogentry' );
+		$showTagEditUI = ChangeTags::showTagEditingUI( $this->getAuthority() );
 		# If the user doesn't have the ability to delete log entries nor edit tags,
 		# don't bother showing them the button(s).
 		if ( !$canRevDelete && !$showTagEditUI ) {

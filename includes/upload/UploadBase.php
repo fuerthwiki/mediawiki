@@ -47,7 +47,7 @@ use MediaWiki\User\UserIdentity;
 abstract class UploadBase {
 	use ProtectedHookAccessorTrait;
 
-	/** @var string Local file system path to the file to upload (or a local copy) */
+	/** @var string|null Local file system path to the file to upload (or a local copy) */
 	protected $mTempPath;
 	/** @var TempFSFile|null Wrapper to handle deleting the temp file */
 	protected $tempFileObj;
@@ -2161,7 +2161,7 @@ abstract class UploadBase {
 	 * @return string[] List of prefixes
 	 */
 	public static function getFilenamePrefixBlacklist() {
-		$blacklist = [];
+		$list = [];
 		$message = wfMessage( 'filename-prefix-blacklist' )->inContentLanguage();
 		if ( !$message->isDisabled() ) {
 			$lines = explode( "\n", $message->plain() );
@@ -2176,11 +2176,11 @@ abstract class UploadBase {
 				if ( $comment > 0 ) {
 					$line = substr( $line, 0, $comment - 1 );
 				}
-				$blacklist[] = trim( $line );
+				$list[] = trim( $line );
 			}
 		}
 
-		return $blacklist;
+		return $list;
 	}
 
 	/**

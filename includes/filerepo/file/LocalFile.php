@@ -336,7 +336,6 @@ class LocalFile extends File {
 				}
 				$cacheVal['user'] = $this->user ? $this->user->getId() : 0;
 				$cacheVal['user_text'] = $this->user ? $this->user->getName() : '';
-				$cacheVal['actor'] = $this->user ? $this->user->getActorId() : null;
 
 				// Strip off excessive entries from the subset of fields that can become large.
 				// If the cache value gets to large it will not fit in memcached and nothing will
@@ -1087,22 +1086,22 @@ class LocalFile extends File {
 	 * @param string $archiveName Name of the archived file
 	 */
 	public function purgeOldThumbnails( $archiveName ) {
-		// Get a list of old thumbnails and URLs
-		$files = $this->getThumbnails( $archiveName );
+		// Get a list of old thumbnails
+		$thumbs = $this->getThumbnails( $archiveName );
 
-		// Purge any custom thumbnail caches
-		$this->hookRunner->onLocalFilePurgeThumbnails( $this, $archiveName );
+		// Delete thumbnails from storage, and prevent the directory itself from being purged
+		$dir = array_shift( $thumbs );
+		$this->purgeThumbList( $dir, $thumbs );
 
-		// Delete thumbnails
-		$dir = array_shift( $files );
-		$this->purgeThumbList( $dir, $files );
-
-		// Purge the CDN
 		$urls = [];
-		foreach ( $files as $file ) {
-			$urls[] = $this->getArchiveThumbUrl( $archiveName, $file );
+		foreach ( $thumbs as $thumb ) {
+			$urls[] = $this->getArchiveThumbUrl( $archiveName, $thumb );
 		}
 
+		// Purge any custom thumbnail caches
+		$this->hookRunner->onLocalFilePurgeThumbnails( $this, $archiveName, $urls );
+
+		// Purge the CDN
 		$hcu = MediaWikiServices::getInstance()->getHtmlCacheUpdater();
 		$hcu->purgeUrls( $urls, $hcu::PURGE_PRESEND );
 	}
@@ -1114,28 +1113,28 @@ class LocalFile extends File {
 	 * @phan-param array{forThumbRefresh?:bool} $options
 	 */
 	public function purgeThumbnails( $options = [] ) {
-		$files = $this->getThumbnails();
+		$thumbs = $this->getThumbnails();
+
+		// Delete thumbnails from storage, and prevent the directory itself from being purged
+		$dir = array_shift( $thumbs );
+		$this->purgeThumbList( $dir, $thumbs );
+
 		// Always purge all files from CDN regardless of handler filters
 		$urls = [];
-		foreach ( $files as $file ) {
-			$urls[] = $this->getThumbUrl( $file );
+		foreach ( $thumbs as $thumb ) {
+			$urls[] = $this->getThumbUrl( $thumb );
 		}
-		array_shift( $urls ); // don't purge directory
 
-		// Give media handler a chance to filter the file purge list
+		// Give the media handler a chance to filter the file purge list
 		if ( !empty( $options['forThumbRefresh'] ) ) {
 			$handler = $this->getHandler();
 			if ( $handler ) {
-				$handler->filterThumbnailPurgeList( $files, $options );
+				$handler->filterThumbnailPurgeList( $thumbs, $options );
 			}
 		}
 
 		// Purge any custom thumbnail caches
-		$this->getHookRunner()->onLocalFilePurgeThumbnails( $this, false );
-
-		// Delete thumbnails
-		$dir = array_shift( $files );
-		$this->purgeThumbList( $dir, $files );
+		$this->getHookRunner()->onLocalFilePurgeThumbnails( $this, false, $urls );
 
 		// Purge the CDN
 		$hcu = MediaWikiServices::getInstance()->getHtmlCacheUpdater();
@@ -1538,7 +1537,7 @@ class LocalFile extends File {
 
 		$dbw->startAtomic( __METHOD__ );
 
-		$actorId = $actorNormalizaton->acquireActorId( $user );
+		$actorId = $actorNormalizaton->acquireActorId( $user, $dbw );
 		$this->user = $user;
 
 		# Test to see if the row exists using INSERT IGNORE
@@ -1728,135 +1727,144 @@ class LocalFile extends File {
 			$newPageContent = ContentHandler::makeContent( $pageText, $descTitle );
 		}
 
-		# Defer purges, page creation, and link updates in case they error out.
-		# The most important thing is that files and the DB registry stay synced.
+		// NOTE: Even after ending this atomic section, we are probably still in the transaction
+		//       started by the call to lock() in publishTo(). We cannot yet safely schedule jobs,
+		//       see T263301.
 		$dbw->endAtomic( __METHOD__ );
 		$fname = __METHOD__;
 
 		# Do some cache purges after final commit so that:
 		# a) Changes are more likely to be seen post-purge
 		# b) They won't cause rollback of the log publish/update above
-		DeferredUpdates::addUpdate(
-			new AutoCommitUpdate(
-				$dbw,
-				__METHOD__,
-				/** @suppress PhanTypeArraySuspiciousNullable False positives with $this->status->value */
-				function () use (
-					$reupload, $wikiPage, $newPageContent, $comment, $user,
-					$logEntry, $logId, $descId, $tags, $fname
-				) {
-					# Update memcache after the commit
-					$this->invalidateCache();
+		$purgeUpdate = new AutoCommitUpdate(
+			$dbw,
+			__METHOD__,
+			/** @suppress PhanTypeArraySuspiciousNullable False positives with $this->status->value */
+			function () use (
+				$reupload, $wikiPage, $newPageContent, $comment, $user,
+				$logEntry, $logId, $descId, $tags, $fname
+			) {
+				# Update memcache after the commit
+				$this->invalidateCache();
 
-					$updateLogPage = false;
-					if ( $newPageContent ) {
-						# New file page; create the description page.
-						# There's already a log entry, so don't make a second RC entry
-						# CDN and file cache for the description page are purged by doEditContent.
-						$status = $wikiPage->doEditContent(
-							$newPageContent,
-							$comment,
-							EDIT_NEW | EDIT_SUPPRESS_RC,
-							false,
-							$user
-						);
-
-						if ( isset( $status->value['revision-record'] ) ) {
-							/** @var RevisionRecord $revRecord */
-							$revRecord = $status->value['revision-record'];
-							// Associate new page revision id
-							$logEntry->setAssociatedRevId( $revRecord->getId() );
-						}
-						// This relies on the resetArticleID() call in WikiPage::insertOn(),
-						// which is triggered on $descTitle by doEditContent() above.
-						if ( isset( $status->value['revision-record'] ) ) {
-							/** @var RevisionRecord $revRecord */
-							$revRecord = $status->value['revision-record'];
-							$updateLogPage = $revRecord->getPageId();
-						}
-					} else {
-						# Existing file page: invalidate description page cache
-						$title = $wikiPage->getTitle();
-						$title->invalidateCache();
-						$hcu = MediaWikiServices::getInstance()->getHtmlCacheUpdater();
-						$hcu->purgeTitleUrls( $title, $hcu::PURGE_INTENT_TXROUND_REFLECTED );
-						# Allow the new file version to be patrolled from the page footer
-						Article::purgePatrolFooterCache( $descId );
-					}
-
-					# Update associated rev id. This should be done by $logEntry->insert() earlier,
-					# but setAssociatedRevId() wasn't called at that point yet...
-					$logParams = $logEntry->getParameters();
-					$logParams['associated_rev_id'] = $logEntry->getAssociatedRevId();
-					$update = [ 'log_params' => LogEntryBase::makeParamBlob( $logParams ) ];
-					if ( $updateLogPage ) {
-						# Also log page, in case where we just created it above
-						$update['log_page'] = $updateLogPage;
-					}
-					$this->getRepo()->getMasterDB()->update(
-						'logging',
-						$update,
-						[ 'log_id' => $logId ],
-						$fname
-					);
-					$this->getRepo()->getMasterDB()->insert(
-						'log_search',
-						[
-							'ls_field' => 'associated_rev_id',
-							'ls_value' => (string)$logEntry->getAssociatedRevId(),
-							'ls_log_id' => $logId,
-						],
-						$fname
+				$updateLogPage = false;
+				if ( $newPageContent ) {
+					# New file page; create the description page.
+					# There's already a log entry, so don't make a second RC entry
+					# CDN and file cache for the description page are purged by doEditContent.
+					$status = $wikiPage->doEditContent(
+						$newPageContent,
+						$comment,
+						EDIT_NEW | EDIT_SUPPRESS_RC,
+						false,
+						$user
 					);
 
-					# Add change tags, if any
-					if ( $tags ) {
-						$logEntry->addTags( $tags );
+					if ( isset( $status->value['revision-record'] ) ) {
+						/** @var RevisionRecord $revRecord */
+						$revRecord = $status->value['revision-record'];
+						// Associate new page revision id
+						$logEntry->setAssociatedRevId( $revRecord->getId() );
 					}
-
-					# Uploads can be patrolled
-					$logEntry->setIsPatrollable( true );
-
-					# Now that the log entry is up-to-date, make an RC entry.
-					$logEntry->publish( $logId );
-
-					# Run hook for other updates (typically more cache purging)
-					$this->getHookRunner()->onFileUpload( $this, $reupload, !$newPageContent );
-
-					if ( $reupload ) {
-						# Delete old thumbnails
-						$this->purgeThumbnails();
-						# Remove the old file from the CDN cache
-						$hcu = MediaWikiServices::getInstance()->getHtmlCacheUpdater();
-						$hcu->purgeUrls( $this->getUrl(), $hcu::PURGE_INTENT_TXROUND_REFLECTED );
-					} else {
-						# Update backlink pages pointing to this title if created
-						LinksUpdate::queueRecursiveJobsForTable(
-							$this->getTitle(),
-							'imagelinks',
-							'upload-image',
-							$user->getName()
-						);
+					// This relies on the resetArticleID() call in WikiPage::insertOn(),
+					// which is triggered on $descTitle by doEditContent() above.
+					if ( isset( $status->value['revision-record'] ) ) {
+						/** @var RevisionRecord $revRecord */
+						$revRecord = $status->value['revision-record'];
+						$updateLogPage = $revRecord->getPageId();
 					}
-
-					$this->prerenderThumbnails();
+				} else {
+					# Existing file page: invalidate description page cache
+					$title = $wikiPage->getTitle();
+					$title->invalidateCache();
+					$hcu = MediaWikiServices::getInstance()->getHtmlCacheUpdater();
+					$hcu->purgeTitleUrls( $title, $hcu::PURGE_INTENT_TXROUND_REFLECTED );
+					# Allow the new file version to be patrolled from the page footer
+					Article::purgePatrolFooterCache( $descId );
 				}
-			),
-			DeferredUpdates::PRESEND
+
+				# Update associated rev id. This should be done by $logEntry->insert() earlier,
+				# but setAssociatedRevId() wasn't called at that point yet...
+				$logParams = $logEntry->getParameters();
+				$logParams['associated_rev_id'] = $logEntry->getAssociatedRevId();
+				$update = [ 'log_params' => LogEntryBase::makeParamBlob( $logParams ) ];
+				if ( $updateLogPage ) {
+					# Also log page, in case where we just created it above
+					$update['log_page'] = $updateLogPage;
+				}
+				$this->getRepo()->getMasterDB()->update(
+					'logging',
+					$update,
+					[ 'log_id' => $logId ],
+					$fname
+				);
+				$this->getRepo()->getMasterDB()->insert(
+					'log_search',
+					[
+						'ls_field' => 'associated_rev_id',
+						'ls_value' => (string)$logEntry->getAssociatedRevId(),
+						'ls_log_id' => $logId,
+					],
+					$fname
+				);
+
+				# Add change tags, if any
+				if ( $tags ) {
+					$logEntry->addTags( $tags );
+				}
+
+				# Uploads can be patrolled
+				$logEntry->setIsPatrollable( true );
+
+				# Now that the log entry is up-to-date, make an RC entry.
+				$logEntry->publish( $logId );
+
+				# Run hook for other updates (typically more cache purging)
+				$this->getHookRunner()->onFileUpload( $this, $reupload, !$newPageContent );
+
+				if ( $reupload ) {
+					# Delete old thumbnails
+					$this->purgeThumbnails();
+					# Remove the old file from the CDN cache
+					$hcu = MediaWikiServices::getInstance()->getHtmlCacheUpdater();
+					$hcu->purgeUrls( $this->getUrl(), $hcu::PURGE_INTENT_TXROUND_REFLECTED );
+				} else {
+					# Update backlink pages pointing to this title if created
+					LinksUpdate::queueRecursiveJobsForTable(
+						$this->getTitle(),
+						'imagelinks',
+						'upload-image',
+						$user->getName()
+					);
+				}
+
+				$this->prerenderThumbnails();
+			}
 		);
 
-		if ( !$reupload ) {
-			# This is a new file, so update the image count
-			DeferredUpdates::addUpdate( SiteStatsUpdate::factory( [ 'images' => 1 ] ) );
-		}
-
 		# Invalidate cache for all pages using this file
-		$job = HTMLCacheUpdateJob::newForBacklinks(
+		$cacheUpdateJob = HTMLCacheUpdateJob::newForBacklinks(
 			$this->getTitle(),
 			'imagelinks',
 			[ 'causeAction' => 'file-upload', 'causeAgent' => $user->getName() ]
 		);
-		JobQueueGroup::singleton()->lazyPush( $job );
+
+		// NOTE: We are probably still in the transaction started by the call to lock() in
+		//       publishTo(). We should only schedule jobs after that transaction was committed,
+		//       so a job queue failure doesn't cause the upload to fail (T263301).
+		//       Also, we should generally not schedule any Jobs or the DeferredUpdates that
+		//       assume the update is complete until after the transaction has been committed and
+		//       we are sure that the upload was indeed successful.
+		$dbw->onTransactionCommitOrIdle( function () use ( $reupload, $purgeUpdate, $cacheUpdateJob ) {
+			DeferredUpdates::addUpdate( $purgeUpdate, DeferredUpdates::PRESEND );
+
+			if ( !$reupload ) {
+				// This is a new file, so update the image count
+				DeferredUpdates::addUpdate( SiteStatsUpdate::factory( [ 'images' => 1 ] ) );
+			}
+
+			JobQueueGroup::singleton()->lazyPush( $cacheUpdateJob );
+		} );
 
 		return Status::newGood();
 	}

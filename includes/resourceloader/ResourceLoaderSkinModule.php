@@ -69,11 +69,17 @@ class ResourceLoaderSkinModule extends ResourceLoaderLessVarFileModule {
 	 * "content-links":
 	 *     The skin will apply optional styling rules to links to provide icons for different file types.
 	 *
+	 * "content-parser-output":
+	 *     Styles for the mw-parser-output class.
+	 *
 	 * "interface":
 	 *     The highest level, this stylesheet contains extra common styles for classes like
 	 *     .firstHeading, #contentSub, et cetera which are not outputted by MediaWiki but are common
 	 *     to skins like MonoBook, Vector, etc... Essentially this level is for styles that are
 	 *     common to MonoBook clones.
+	 *
+	 * "interface-message-box":
+	 *     Styles for message boxes.
 	 *
 	 * "i18n-ordered-lists":
 	 *     Styles for ordered lists elements that support mixed language content.
@@ -87,7 +93,8 @@ class ResourceLoaderSkinModule extends ResourceLoaderLessVarFileModule {
 	 * "legacy":
 	 *     For backwards compatibility a legacy feature is provided.
 	 *     New skins should not use this if they can avoid doing so.
-	 *     This feature also contains all `i18n-` prefixed features.
+	 *     This feature also contains `interface-message-box` and
+	 *     all `i18n-` prefixed features.
 	 *
 	 * "toc"
 	 *     Styling rules for the table of contents.
@@ -113,8 +120,14 @@ class ResourceLoaderSkinModule extends ResourceLoaderLessVarFileModule {
 		'content-links' => [
 			'screen' => [ 'resources/src/mediawiki.skinning/content.externallinks.less' ]
 		],
+		'content-parser-output' => [
+			'screen' => [ 'resources/src/mediawiki.skinning/content.parser-output.less' ]
+		],
 		'interface' => [
 			'screen' => [ 'resources/src/mediawiki.skinning/interface.less' ],
+		],
+		'interface-message-box' => [
+			'all' => [ 'resources/src/mediawiki.skinning/messageBoxes.less' ],
 		],
 		'elements' => [
 			'screen' => [ 'resources/src/mediawiki.skinning/elements.css' ],
@@ -148,11 +161,13 @@ class ResourceLoaderSkinModule extends ResourceLoaderLessVarFileModule {
 		'content' => false,
 		'content-links' => false,
 		'content-media' => false,  // Will default to `true` when $wgUseNewMediaStructure is enabled everywhere
+		'content-parser-output' => true,
 		'elements' => false,
 		'i18n-all-lists-margins' => false,
 		'i18n-headings' => false,
 		'i18n-ordered-lists' => false,
 		'interface' => false,
+		'interface-message-box' => false,
 		'legacy' => false,
 		'logo' => false,
 		'normalize' => false,

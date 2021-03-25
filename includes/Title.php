@@ -27,8 +27,10 @@ use MediaWiki\Interwiki\InterwikiLookup;
 use MediaWiki\Linker\LinkTarget;
 use MediaWiki\Logger\LoggerFactory;
 use MediaWiki\MediaWikiServices;
+use MediaWiki\Page\ExistingPageRecord;
 use MediaWiki\Page\PageIdentity;
 use MediaWiki\Page\PageIdentityValue;
+use MediaWiki\Page\PageStoreRecord;
 use MediaWiki\Page\ProperPageIdentity;
 use Wikimedia\Assert\Assert;
 use Wikimedia\Assert\PreconditionException;
@@ -479,22 +481,12 @@ class Title implements LinkTarget, PageIdentity, IDBAccessObject {
 	 * Returns a list of fields that are to be selected for initializing Title
 	 * objects or LinkCache entries.
 	 *
+	 * @deprecated since 1.36, use PageStore::newSelectQueryBuilder() instead.
+	 *
 	 * @return array
 	 */
 	protected static function getSelectFields() {
-		global $wgPageLanguageUseDB;
-
-		$fields = [
-			'page_namespace', 'page_title', 'page_id',
-			'page_len', 'page_is_redirect', 'page_latest',
-			'page_content_model',
-		];
-
-		if ( $wgPageLanguageUseDB ) {
-			$fields[] = 'page_lang';
-		}
-
-		return $fields;
+		return MediaWikiServices::getInstance()->getPageStore()->getSelectFields();
 	}
 
 	/**
@@ -3085,21 +3077,19 @@ class Title implements LinkTarget, PageIdentity, IDBAccessObject {
 			return [];
 		}
 
-		$dbr = wfGetDB( DB_REPLICA );
-		$conds = [ 'page_namespace' => $this->mNamespace ];
-		$conds[] = 'page_title ' . $dbr->buildLike( $this->mDbkeyform . '/', $dbr->anyString() );
 		$options = [];
 		if ( $limit > -1 ) {
 			$options['LIMIT'] = $limit;
 		}
-		return TitleArray::newFromResult(
-			$dbr->select( 'page',
-				[ 'page_id', 'page_namespace', 'page_title', 'page_is_redirect' ],
-				$conds,
-				__METHOD__,
-				$options
-			)
-		);
+
+		$pageStore = MediaWikiServices::getInstance()->getPageStore();
+		$query = $pageStore->newSelectQueryBuilder()
+			->fields( $pageStore->getSelectFields() )
+			->whereTitlePrefix( $this->getNamespace(), $this->getDBkey() . '/' )
+			->options( $options )
+			->caller( __METHOD__ );
+
+		return TitleArray::newFromResult( $query->fetchResultSet() );
 	}
 
 	/**
@@ -3208,7 +3198,14 @@ class Title implements LinkTarget, PageIdentity, IDBAccessObject {
 
 	/**
 	 * Is this an article that is a redirect page?
-	 * Uses link cache, adding it if necessary
+	 * Uses link cache, adding it if necessary.
+	 *
+	 * This is intended to provide fast access to page_is_redirect for linking.
+	 * In rare cases, there might not be a valid target in the redirect table
+	 * even though this function returns true.
+	 *
+	 * To find a redirect target, just call WikiPage::getRedirectTarget() and
+	 * check if it returns null, there's no need to call this first.
 	 *
 	 * @param int $flags Either a bitfield of class READ_* constants or GAID_FOR_UPDATE
 	 * @return bool
@@ -4304,9 +4301,14 @@ class Title implements LinkTarget, PageIdentity, IDBAccessObject {
 					return false;
 				}
 			}
+
+			return true;
+		} elseif ( $this->getDBkey() === '' ) {
+			// relative section links are not valid redirect targets (T278367)
+			return false;
 		}
 
-		return true;
+		return $this->isValid();
 	}
 
 	/**
@@ -4672,6 +4674,46 @@ class Title implements LinkTarget, PageIdentity, IDBAccessObject {
 			$this->getNamespace(),
 			$this->getDBkey(),
 			self::LOCAL
+		);
+	}
+
+	/**
+	 * Returns the page represented by this Title as a ProperPageRecord.
+	 * The PageRecord returned by this method is guaranteed to be immutable,
+	 * the page is guaranteed to exist.
+	 *
+	 * @note For now, this method queries the database on every call.
+	 * @since 1.36
+	 *
+	 * @param int $flags Either a bitfield of class READ_* constants or GAID_FOR_UPDATE
+	 *
+	 * @return ExistingPageRecord
+	 * @throws PreconditionException if the page does not exist, or is not a proper page,
+	 *         that is, if it is a section link, interwiki link, link to a special page, or such.
+	 */
+	public function toPageRecord( $flags = 0 ): ExistingPageRecord {
+		// TODO: Cache this? Construct is more efficiently?
+
+		$this->assertProperPage();
+
+		Assert::precondition(
+			$this->exists(),
+			'This Title instance does not represent an existing page: ' . $this
+		);
+
+		return new PageStoreRecord(
+			(object)[
+				'page_id' => $this->getArticleID( $flags ),
+				'page_namespace' => $this->getNamespace(),
+				'page_title' => $this->getDBkey(),
+				'page_wiki_id' => $this->getWikiId(),
+				'page_latest' => $this->getLatestRevID( $flags ),
+				'page_is_new' => $this->isNewPage(), // no flags?
+				'page_is_redirect' => $this->isRedirect( $flags ),
+				'page_touched' => $this->getTouched(), // no flags?
+				'page_lang' => $this->getPageLanguage()->getCode(),
+			],
+			PageIdentity::LOCAL
 		);
 	}
 

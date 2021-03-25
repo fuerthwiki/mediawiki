@@ -267,7 +267,7 @@ return [
 	'jquery.tablesorter' => [
 		'targets' => [ 'desktop', 'mobile' ],
 		'scripts' => 'resources/src/jquery.tablesorter/jquery.tablesorter.js',
-		'messages' => [ 'sort-descending', 'sort-ascending', 'sort-initial' ],
+		'messages' => [ 'sort-descending', 'sort-ascending', 'sort-initial', 'sort-rowspan-error' ],
 		'dependencies' => [
 			'jquery.tablesorter.styles',
 			'mediawiki.util',
@@ -770,12 +770,18 @@ return [
 		'targets' => [ 'desktop', 'mobile' ],
 	],
 	'mediawiki.hlist' => [
+		'class' => ResourceLoaderLessVarFileModule::class,
+		'lessMessages' => [
+			'colon-separator',
+			'parentheses-start',
+			'parentheses-end',
+		],
 		'targets' => [ 'desktop', 'mobile' ],
 		'styles' => [
 			'resources/src/mediawiki.hlist/hlist.less',
 		],
 		'skinStyles' => [
-			'default' => 'resources/src/mediawiki.hlist/default.css',
+			'default' => 'resources/src/mediawiki.hlist/default.less',
 		],
 	],
 	'mediawiki.htmlform' => [
@@ -1219,6 +1225,7 @@ return [
 		],
 		'styles' => 'resources/src/mediawiki.action/mediawiki.action.edit.preview.css',
 		'dependencies' => [
+			'jquery.makeCollapsible',
 			'jquery.spinner',
 			'jquery.textSelection',
 			'mediawiki.api',
@@ -1866,7 +1873,11 @@ return [
 			'ParamLabelWidget.js',
 			'BooleanToggleSwitchParamWidget.js',
 			'DateTimeParamWidget.js',
+			'IntegerParamWidget.js',
+			'LimitParamWidget.js',
+			'PasswordParamWidget.js',
 			'UploadSelectFileParamWidget.js',
+			'TextParamMixin.js',
 			'UtilMixin.js',
 		],
 		'targets' => [ 'desktop', 'mobile' ],

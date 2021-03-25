@@ -902,6 +902,28 @@ abstract class ContentHandler {
 			return 'contentmodelchange';
 		}
 
+		$oldImages = [];
+		if ( $oldContent ) {
+			// using main page because page title isn't known, but that context is irrelevant here
+			$oldImages = $oldContent->getParserOutput( Title::newMainPage(), null, null, false )->getImages();
+		}
+		$newImages = [];
+		if ( $newContent ) {
+			// using main page because page title isn't known, but that context is irrelevant here
+			$newImages = $newContent->getParserOutput( Title::newMainPage(), null, null, false )->getImages();
+		}
+		$addedImages = array_diff_key( $newImages, $oldImages );
+		$removedImages = array_diff_key( $oldImages, $newImages );
+		if ( $addedImages && $removedImages ) {
+			return 'change-media';
+		}
+		if ( $addedImages ) {
+			return 'add-media';
+		}
+		if ( $removedImages ) {
+			return 'remove-media';
+		}
+
 		return null;
 	}
 
@@ -1038,8 +1060,7 @@ abstract class ContentHandler {
 	 * @return mixed String containing deletion reason or empty string, or
 	 *    boolean false if no revision occurred
 	 *
-	 * @todo &$hasHistory is extremely ugly, it's here because
-	 * WikiPage::getAutoDeleteReason() and Article::generateReason()
+	 * @todo &$hasHistory is extremely ugly, it's here because WikiPage::getAutoDeleteReason()
 	 * have it / want it.
 	 */
 	public function getAutoDeleteReason( Title $title, &$hasHistory ) {
@@ -1280,7 +1301,7 @@ abstract class ContentHandler {
 	 *
 	 * @stable to override
 	 *
-	 * @return bool Default is false, and true for TextContent and it's derivatives.
+	 * @return bool Default is false, and true for TextContent and its derivatives.
 	 */
 	public function supportsDirectEditing() {
 		return false;

@@ -51,39 +51,10 @@ class PostgresUpdater extends DatabaseUpdater {
 			'CREATE UNIQUE INDEX ipb_address_unique ' .
 				'ON ipblocks (ipb_address,ipb_user,ipb_auto)' ],
 
-			# r81574
-			[ 'addInterwikiType' ],
 			# end
 			[ 'tsearchFixes' ],
 
-			// 1.23
-			[ 'addPgField', 'recentchanges', 'rc_source', "TEXT NOT NULL DEFAULT ''" ],
-			[ 'addPgField', 'page', 'page_links_updated', "TIMESTAMPTZ NULL" ],
-			[ 'addPgField', 'mwuser', 'user_password_expires', 'TIMESTAMPTZ NULL' ],
-			[ 'changeFieldPurgeTable', 'l10n_cache', 'lc_value', 'bytea',
-				"replace(lc_value,'\','\\\\')::bytea" ],
-			// 1.23.9
-			[ 'rebuildTextSearch' ],
-
-			// 1.24
-			[ 'addPgField', 'page_props', 'pp_sortkey', 'float NULL' ],
-			[ 'addPgIndex', 'page_props', 'pp_propname_sortkey_page',
-					'( pp_propname, pp_sortkey, pp_page ) WHERE ( pp_sortkey IS NOT NULL )' ],
-			[ 'addPgField', 'page', 'page_lang', 'TEXT default NULL' ],
-			[ 'addPgField', 'pagelinks', 'pl_from_namespace', 'INTEGER NOT NULL DEFAULT 0' ],
-			[ 'addPgField', 'templatelinks', 'tl_from_namespace', 'INTEGER NOT NULL DEFAULT 0' ],
-			[ 'addPgField', 'imagelinks', 'il_from_namespace', 'INTEGER NOT NULL DEFAULT 0' ],
-
 			// **** T272199 MARKER ****
-
-			// 1.27
-			[ 'dropTable', 'msg_resource_links' ],
-			[ 'dropTable', 'msg_resource' ],
-			[
-				'addPgField', 'watchlist', 'wl_id',
-				"INTEGER NOT NULL PRIMARY KEY DEFAULT nextval('watchlist_wl_id_seq')"
-			],
-			[ 'addTable', 'bot_passwords', 'patch-bot_passwords.sql' ],
 
 			// 1.28
 			[ 'addPgIndex', 'recentchanges', 'rc_name_type_patrolled_timestamp',
@@ -412,7 +383,6 @@ class PostgresUpdater extends DatabaseUpdater {
 			[ 'addPgIndex', 'page_restrictions', 'pr_level', '(pr_level)' ],
 			[ 'addPgIndex', 'page_restrictions', 'pr_cascade', '(pr_cascade)' ],
 			[ 'changePrimaryKey', 'page_restrictions', [ 'pr_id' ], 'page_restrictions_pk' ] ,
-			[ 'dropPgIndex', 'page_restrictions', 'page_restrictions_pr_id_key' ],
 			[ 'changeNullableField', 'page_restrictions', 'pr_page', 'NOT NULL', true ],
 			[ 'dropFkey', 'user_groups', 'ug_user' ],
 			[ 'setDefault', 'user_groups', 'ug_user', 0 ],
@@ -469,7 +439,7 @@ class PostgresUpdater extends DatabaseUpdater {
 			[ 'changeNullableField', 'revision_actor_temp', 'revactor_page', 'NOT NULL', true ],
 			[ 'renameIndex', 'watchlist', 'namespace_title', 'wl_namespace_title' ],
 			[ 'dropFkey', 'page_props', 'pp_page' ],
-			// Moved from the Schema SQL file to here in 1.36
+			// page_props primary key change moved from the Schema SQL file to here in 1.36
 			[ 'changePrimaryKey', 'page_props', [ 'pp_page', 'pp_propname' ], 'page_props_pk' ],
 			[ 'setDefault','job', 'job_cmd', '' ],
 			[ 'changeField', 'job', 'job_namespace', 'INTEGER', '' ],
@@ -612,7 +582,6 @@ class PostgresUpdater extends DatabaseUpdater {
 			[ 'changeNullableField', 'image', 'img_major_mime', 'NOT NULL', true ],
 			[ 'changeNullableField', 'image', 'img_minor_mime', 'NOT NULL', true ],
 			[ 'changeNullableField', 'image', 'img_timestamp', 'NOT NULL', true ],
-			[ 'addPgIndex', 'image', 'img_actor_timestamp', '(oi_actor, oi_timestamp)' ],
 			[ 'renameIndex', 'image', 'img_size_idx', 'img_size' ],
 			[ 'renameIndex', 'image', 'img_timestamp_idx', 'img_timestamp' ],
 			[ 'addPgIndex', 'image', 'img_actor_timestamp', '(img_actor, img_timestamp)' ],
@@ -634,6 +603,20 @@ class PostgresUpdater extends DatabaseUpdater {
 			[ 'changeNullableField', 'recentchanges', 'rc_ip', 'NOT NULL', true ],
 			[ 'renameIndex', 'recentchanges', 'new_name_timestamp', 'rc_new_name_timestamp', false,
 				'patch-recentchanges-rc_new_name_timestamp.sql' ],
+			[ 'changeField', 'archive', 'ar_namespace', 'INTEGER', '' ],
+			[ 'setDefault', 'archive', 'ar_namespace', 0 ],
+			[ 'setDefault', 'archive', 'ar_title', '' ],
+			[ 'changeField', 'archive', 'ar_comment_id', 'BIGINT', '' ],
+			[ 'changeField', 'archive', 'ar_actor', 'BIGINT', '' ],
+			[ 'renameIndex', 'mwuser', 'user_email_token_idx', 'user_email_token' ],
+			[ 'addPgIndex', 'mwuser', 'user_email', '(user_email)' ],
+			[ 'addPgIndex', 'mwuser', 'user_name', '(user_name)', true ],
+			[ 'changeField', 'page', 'page_namespace', 'INTEGER', '' ],
+			[ 'changeNullableField', 'page', 'page_touched', 'NOT NULL', true ],
+			[ 'changeField', 'page', 'page_random', 'FLOAT', '' ],
+			[ 'renameIndex', 'revision', 'revision_unique', 'rev_page_id' ],
+			[ 'renameIndex', 'revision', 'rev_timestamp_idx', 'rev_timestamp' ],
+			[ 'addPgIndex', 'revision', 'rev_page_timestamp', '(rev_page,rev_timestamp)' ],
 		];
 	}
 
@@ -882,7 +865,7 @@ END;
 			exit( 1 );
 		}
 
-		if ( $fi->type() === $newtype ) {
+		if ( $fi->type() === strtolower( $newtype ) ) {
 			$this->output( "...column '$table.$field' is already of type '$newtype'\n" );
 		} else {
 			$this->output( "Changing column type of '$table.$field' from '{$fi->type()}' to '$newtype'\n" );
@@ -1229,24 +1212,11 @@ END;
 		}
 	}
 
-	protected function addInterwikiType() {
-		$this->applyPatch( 'patch-add_interwiki.sql', false, "Refreshing add_interwiki()" );
-	}
-
 	protected function tsearchFixes() {
 		# Tweak the page_title tsearch2 trigger to filter out slashes
 		# This is create or replace, so harmless to call if not needed
 		$this->applyPatch( 'patch-ts2pagetitle.sql', false, "Refreshing ts2_page_title()" );
 
 		$this->applyPatch( 'patch-tsearch2funcs.sql', false, "Rewriting tsearch2 triggers" );
-	}
-
-	protected function rebuildTextSearch() {
-		if ( $this->updateRowExists( 'patch-textsearch_bug66650.sql' ) ) {
-			$this->output( "...T68650 already fixed or not applicable.\n" );
-			return;
-		}
-		$this->applyPatch( 'patch-textsearch_bug66650.sql', false,
-			'Rebuilding text search for T68650' );
 	}
 }

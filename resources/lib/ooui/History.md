@@ -1,4 +1,29 @@
 # OOUI Release History
+## v0.41.3 / 2021-03-12
+### Styles
+* TagMultiselectWidget: Fix appearance when disabled (Ed Sanders)
+
+### Code
+* SearchWidget: Fix exception when there are no results (Bartosz Dziewoński)
+* TagMultiselectWidget: Don't fire blur event while changing, and restore focus (Ed Sanders)
+* TagMultiselectWidget: Fix typo in disable logic (Ed Sanders)
+* build: Updating eslint-config-wikimedia to 0.19.0 (libraryupgrader)
+
+## v0.41.2 / 2021-03-08
+### Styles
+* Apex: Hide close button on disabled tagItemWidget (Ed Sanders)
+* icons: Amend 'search' size on canvas slightly (Volker E.)
+* icons: Optimize several icons with lower path precision (Volker E.)
+
+### Code
+* DropdownInputWidget: Fix index error (Thiemo Kreuz)
+* SelectFileInputWidget: Fix height change when infusing (Ed Sanders)
+* TagMultiselectWidget: Fix position of input (Ed Sanders)
+* build: Updating dependencies (libraryupgrader)
+* build: Updating eslint-config-wikimedia to 0.18.2 (libraryupgrader)
+* build: Updating prismjs to 1.23.0 (libraryupgrader)
+
+
 ## v0.41.1 / 2021-01-26
 ### Features
 * Create RequiredElement mixin and use (Ed Sanders)

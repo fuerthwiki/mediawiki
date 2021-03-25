@@ -37,8 +37,12 @@ class PageArchiveTest extends MediaWikiIntegrationTestCase {
 	 */
 	protected $ipRev;
 
-	public function __construct( $name = null, array $data = [], $dataName = '' ) {
-		parent::__construct( $name, $data, $dataName );
+	protected function addCoreDBData() {
+		// Blanked out to keep auto-increment values stable.
+	}
+
+	protected function setUp() : void {
+		parent::setUp();
 
 		$this->tablesUsed = array_merge(
 			$this->tablesUsed,
@@ -59,14 +63,6 @@ class PageArchiveTest extends MediaWikiIntegrationTestCase {
 				'slot_roles',
 			]
 		);
-	}
-
-	protected function addCoreDBData() {
-		// Blanked out to keep auto-increment values stable.
-	}
-
-	protected function setUp() : void {
-		parent::setUp();
 
 		$this->hideDeprecated( 'MediaWiki\Revision\RevisionStore::newMutableRevisionFromArray' );
 
@@ -170,7 +166,7 @@ class PageArchiveTest extends MediaWikiIntegrationTestCase {
 				'ar_user' => null,
 				'ar_user_text' => $this->ipEditor,
 				'ar_actor' => (string)$this->getServiceContainer()->getActorNormalization()
-					->acquireActorId( new UserIdentityValue( 0, $this->ipEditor, 0 ) ),
+					->acquireActorId( new UserIdentityValue( 0, $this->ipEditor, 0 ), $this->db ),
 				'ar_len' => '11',
 				'ar_deleted' => '0',
 				'ar_rev_id' => strval( $this->ipRev->getId() ),

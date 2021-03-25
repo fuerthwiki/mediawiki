@@ -21,14 +21,14 @@
  * @ingroup Parser
  */
 
+use MediaWiki\MediaWikiServices;
+
 /**
  * Class to interact with and configure Remex tidy
  *
  * @ingroup Parser
  */
 class MWTidy {
-	private static $instance;
-
 	/**
 	 * Interface with Remex tidy.
 	 * If tidy isn't able to correct the markup, the original will be
@@ -38,12 +38,9 @@ class MWTidy {
 	 *                     <body> or <html> tag.
 	 * @return string Corrected HTML output
 	 * @throws MWException
+	 * @deprecated since 1.36; use MediaWikiServices::getTidy()->tidy() instead
 	 */
 	public static function tidy( $text ) {
-		if ( self::$instance === null ) {
-			global $wgTidyConfig;
-			self::$instance = new MediaWiki\Tidy\RemexDriver( $wgTidyConfig ?? [] );
-		}
-		return self::$instance->tidy( $text );
+		return MediaWikiServices::getInstance()->getTidy()->tidy( $text );
 	}
 }

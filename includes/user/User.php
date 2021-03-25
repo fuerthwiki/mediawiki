@@ -369,7 +369,7 @@ class User implements Authority, IDBAccessObject, UserIdentity {
 
 		// If this is called too early, things are likely to break.
 		if ( !$wgFullyInitialised && $this->mFrom === 'session' ) {
-			\MediaWiki\Logger\LoggerFactory::getInstance( 'session' )
+			LoggerFactory::getInstance( 'session' )
 				->warning( 'User::loadFromSession called before the end of Setup.php', [
 					'exception' => new Exception( 'User::loadFromSession called before the end of Setup.php' ),
 				] );
@@ -568,6 +568,8 @@ class User implements Authority, IDBAccessObject, UserIdentity {
 	/**
 	 * @see UserFactory::newFromName
 	 *
+	 * @deprecated since 1.36, use a UserFactory instead
+	 *
 	 * This is slightly less efficient than newFromId(), so use newFromId() if
 	 * you have both an ID and a name handy.
 	 *
@@ -617,6 +619,8 @@ class User implements Authority, IDBAccessObject, UserIdentity {
 	 *
 	 * @see UserFactory::newFromId
 	 *
+	 * @deprecated since 1.36, use a UserFactory instead
+	 *
 	 * @param int $id Valid user ID
 	 * @return User The corresponding User object
 	 */
@@ -630,6 +634,8 @@ class User implements Authority, IDBAccessObject, UserIdentity {
 	 * Static factory method for creation from a given actor ID.
 	 *
 	 * @see UserFactory::newFromActorId
+	 *
+	 * @deprecated since 1.36, use a UserFactory instead
 	 *
 	 * @since 1.31
 	 * @param int $id Valid actor ID
@@ -645,6 +651,8 @@ class User implements Authority, IDBAccessObject, UserIdentity {
 	 * Returns a User object corresponding to the given UserIdentity.
 	 *
 	 * @see UserFactory::newFromUserIdentity
+	 *
+	 * @deprecated since 1.36, use a UserFactory instead
 	 *
 	 * @since 1.32
 	 *
@@ -672,6 +680,8 @@ class User implements Authority, IDBAccessObject, UserIdentity {
 	 *
 	 * @see UserFactory::newFromAnyId
 	 *
+	 * @deprecated since 1.36, use a UserFactory instead
+	 *
 	 * @since 1.31
 	 * @param int|null $userId User ID, if known
 	 * @param string|null $userName User name, if known
@@ -693,6 +703,8 @@ class User implements Authority, IDBAccessObject, UserIdentity {
 	 * If the code is invalid or has expired, returns NULL.
 	 *
 	 * @see UserFactory::newFromConfirmationCode
+	 *
+	 * @deprecated since 1.36, use a UserFactory instead
 	 *
 	 * @param string $code Confirmation code
 	 * @param int $flags User::READ_* bitfield
@@ -1005,11 +1017,14 @@ class User implements Authority, IDBAccessObject, UserIdentity {
 	/**
 	 * Is the user an IP range?
 	 *
-	 * @deprecated since 1.35, use the UserNameUtils service or IPUtils directly
+	 * @deprecated since 1.35, hard deprecated since 1.36
+	 * Use the UserNameUtils service or IPUtils directly
+	 *
 	 * @since 1.30
 	 * @return bool
 	 */
 	public function isIPRange() {
+		wfDeprecated( __METHOD__, '1.35' );
 		return IPUtils::isValidRange( $this->mName );
 	}
 
@@ -1053,7 +1068,7 @@ class User implements Authority, IDBAccessObject, UserIdentity {
 	 * @param int $limit Max number of users to return. The actual limit will never exceed 5000
 	 *   records; larger values are ignored.
 	 * @param int|null $after ID the user to start after
-	 * @return UserArrayFromResult
+	 * @return UserArrayFromResult|ArrayIterator
 	 */
 	public static function findUsersByGroup( $groups, $limit = 5000, $after = null ) {
 		if ( $groups === [] ) {
@@ -1089,7 +1104,7 @@ class User implements Authority, IDBAccessObject, UserIdentity {
 	 * either by batch processes or by user accounts which have
 	 * already been created.
 	 *
-	 * Additional blacklisting may be added here rather than in
+	 * Additional preventions may be added here rather than in
 	 * isValidUserName() to avoid disrupting existing accounts.
 	 *
 	 * @deprecated since 1.35, use the UserNameUtils service
@@ -1579,6 +1594,7 @@ class User implements Authority, IDBAccessObject, UserIdentity {
 	 * @return array Array of options; typically strings, possibly booleans
 	 */
 	public static function getDefaultOptions() {
+		wfDeprecated( __METHOD__, '1.35' );
 		return MediaWikiServices::getInstance()
 			->getUserOptionsLookup()
 			->getDefaultOptions();
@@ -1592,6 +1608,7 @@ class User implements Authority, IDBAccessObject, UserIdentity {
 	 * @return string|null Default option value
 	 */
 	public static function getDefaultOption( $opt ) {
+		wfDeprecated( __METHOD__, '1.35' );
 		return MediaWikiServices::getInstance()
 			->getUserOptionsLookup()
 			->getDefaultOption( $opt );
@@ -1690,7 +1707,7 @@ class User implements Authority, IDBAccessObject, UserIdentity {
 	 * @throws MWException
 	 */
 	public function pingLimiter( $action = 'edit', $incrBy = 1 ) {
-		$logger = \MediaWiki\Logger\LoggerFactory::getInstance( 'ratelimit' );
+		$logger = LoggerFactory::getInstance( 'ratelimit' );
 
 		// Call the 'PingLimiter' hook
 		$result = false;
@@ -2084,15 +2101,6 @@ class User implements Authority, IDBAccessObject, UserIdentity {
 	}
 
 	/**
-	 * @deprecated since 1.36
-	 * @param bool $wikiId
-	 * @return int
-	 */
-	public function getUserId( $wikiId = self::LOCAL ): int {
-		return $this->getId( $wikiId );
-	}
-
-	/**
 	 * Set the user and reload all fields according to a given ID
 	 * @param int $v User ID to reload
 	 */
@@ -2141,10 +2149,13 @@ class User implements Authority, IDBAccessObject, UserIdentity {
 	/**
 	 * Get the user's actor ID.
 	 * @since 1.31
-	 * @param IDatabase|string|false $dbwOrWikiId wiki ID, if provided, must be self::LOCAL
-	 *        Will assign a new actor ID if none exists and if IDatabase is passed.
-	 *        Passing IDatabase is deprecated since 1.36. Use ActorNormalization()::acquireActorId()
-	 *        instead.
+	 * @note This method is deprecated in the UserIdentity interface since 1.36,
+	 *       but remains supported in the User class for now.
+	 *       New code should use ActorNormalization::findActorId() or
+	 *       ActorNormalization::acquireActorId() instead.
+	 * @param IDatabase|string|false $dbwOrWikiId Assign a new actor ID, using this DB handle,
+	 *        if none exists; wiki ID, if provided, must be self::LOCAL; Usage with IDatabase is
+	 *        deprecated since 1.36
 	 * @return int The actor's ID, or 0 if no actor ID exists and $dbw was null
 	 * @throws PreconditionException if $dbwOrWikiId is a string and does not match the local wiki
 	 */
@@ -2517,7 +2528,7 @@ class User implements Authority, IDBAccessObject, UserIdentity {
 	public function setToken( $token = false ) {
 		$this->load();
 		if ( $this->mToken === self::INVALID_TOKEN ) {
-			\MediaWiki\Logger\LoggerFactory::getInstance( 'session' )
+			LoggerFactory::getInstance( 'session' )
 				->debug( __METHOD__ . ": Ignoring attempt to set token for system user \"$this\"" );
 		} elseif ( !$token ) {
 			$this->mToken = MWCryptRand::generateHex( self::TOKEN_LENGTH );
@@ -3254,32 +3265,18 @@ class User implements Authority, IDBAccessObject, UserIdentity {
 	 * If e-notif e-mails are on, they will receive notification mails on
 	 * the next change of the page if it's watched etc.
 	 *
-	 * @deprecated since 1.35
+	 * @deprecated since 1.35, hard deprecated since 1.36
+	 * Use WatchlistNotificationManager::clearTitleUserNotification() instead.
 	 *
 	 * @note If the user doesn't have 'editmywatchlist', this will do nothing.
 	 * @param Title &$title Title of the article to look at
 	 * @param int $oldid The revision id being viewed. If not given or 0, latest revision is assumed.
 	 */
 	public function clearNotification( &$title, $oldid = 0 ) {
-		MediaWikiServices::getInstance()
-			->getWatchlistNotificationManager()
-			->clearTitleUserNotifications( $this, $title, $oldid );
-	}
-
-	/**
-	 * Resets all of the given user's page-change notification timestamps.
-	 * If e-notif e-mails are on, they will receive notification mails on
-	 * the next change of any watched page.
-	 *
-	 * @deprecated since 1.35
-	 *
-	 * @note If the user doesn't have 'editmywatchlist', this will do nothing.
-	 */
-	public function clearAllNotifications() {
 		wfDeprecated( __METHOD__, '1.35' );
 		MediaWikiServices::getInstance()
 			->getWatchlistNotificationManager()
-			->clearAllUserNotifications( $this );
+			->clearTitleUserNotifications( $this, $title, $oldid );
 	}
 
 	/**
@@ -3344,7 +3341,7 @@ class User implements Authority, IDBAccessObject, UserIdentity {
 
 		if ( !$session->getUser()->equals( $this ) ) {
 			if ( !$session->canSetUser() ) {
-				\MediaWiki\Logger\LoggerFactory::getInstance( 'session' )
+				LoggerFactory::getInstance( 'session' )
 					->warning( __METHOD__ .
 						": Cannot save user \"$this\" to a user \"{$session->getUser()}\"'s immutable session"
 					);
@@ -3381,11 +3378,11 @@ class User implements Authority, IDBAccessObject, UserIdentity {
 	public function doLogout() {
 		$session = $this->getRequest()->getSession();
 		if ( !$session->canSetUser() ) {
-			\MediaWiki\Logger\LoggerFactory::getInstance( 'session' )
+			LoggerFactory::getInstance( 'session' )
 				->warning( __METHOD__ . ": Cannot log out of an immutable session" );
 			$error = 'immutable';
 		} elseif ( !$session->getUser()->equals( $this ) ) {
-			\MediaWiki\Logger\LoggerFactory::getInstance( 'session' )
+			LoggerFactory::getInstance( 'session' )
 				->warning( __METHOD__ .
 					": Cannot log user \"$this\" out of a user \"{$session->getUser()}\"'s session"
 				);
@@ -3403,7 +3400,7 @@ class User implements Authority, IDBAccessObject, UserIdentity {
 			ScopedCallback::consume( $delay );
 			$error = false;
 		}
-		\MediaWiki\Logger\LoggerFactory::getInstance( 'authevents' )->info( 'Logout', [
+		LoggerFactory::getInstance( 'authevents' )->info( 'Logout', [
 			'event' => 'logout',
 			'successful' => $error === false,
 			'status' => $error ?: 'success',
@@ -4053,9 +4050,9 @@ class User implements Authority, IDBAccessObject, UserIdentity {
 		if ( !$wgEnableEmail || !$wgEnableUserEmail || !$this->isAllowed( 'sendemail' ) ) {
 			return false;
 		}
-		$canSend = $this->isEmailConfirmed();
-		$this->getHookRunner()->onUserCanSendEmail( $this, $canSend );
-		return $canSend;
+		$hookErr = $this->isEmailConfirmed();
+		$this->getHookRunner()->onUserCanSendEmail( $this, $hookErr );
+		return $hookErr;
 	}
 
 	/**
@@ -4129,10 +4126,13 @@ class User implements Authority, IDBAccessObject, UserIdentity {
 	/**
 	 * Get the timestamp of the first edit
 	 *
+	 * @deprecated since 1.36, use a UserEditTracker instead
+	 *
 	 * @return string|bool Timestamp of first edit, or false for
 	 *  non-existent/anonymous user accounts.
 	 */
 	public function getFirstEditTimestamp() {
+		wfDeprecated( __METHOD__, '1.36' );
 		return MediaWikiServices::getInstance()
 			->getUserEditTracker()
 			->getFirstEditTimestamp( $this );
@@ -4141,11 +4141,14 @@ class User implements Authority, IDBAccessObject, UserIdentity {
 	/**
 	 * Get the timestamp of the latest edit
 	 *
+	 * @deprecated since 1.36, use a UserEditTracker instead
+	 *
 	 * @since 1.33
 	 * @return string|bool Timestamp of first edit, or false for
 	 *  non-existent/anonymous user accounts.
 	 */
 	public function getLatestEditTimestamp() {
+		wfDeprecated( __METHOD__, '1.36' );
 		return MediaWikiServices::getInstance()
 			->getUserEditTracker()
 			->getLatestEditTimestamp( $this );

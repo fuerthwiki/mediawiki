@@ -188,6 +188,7 @@ class Names {
 		'got' => '𐌲𐌿𐍄𐌹𐍃𐌺', # Gothic
 		'grc' => 'Ἀρχαία ἑλληνικὴ', # Ancient Greek
 		'gsw' => 'Alemannisch', # Alemannic
+		'guc' => 'wayuunaiki', # Wayuu
 		'gu' => 'ગુજરાતી', # Gujarati
 		'gv' => 'Gaelg', # Manx
 		'ha' => 'Hausa', # Hausa
@@ -401,6 +402,7 @@ class Names {
 		'shi-tfng' => 'ⵜⴰⵛⵍⵃⵉⵜ', # Tachelhit (Tifinagh script)
 		'shi-latn' => 'Taclḥit', # Tachelhit (Latin script)
 		'shn' => 'ၽႃႇသႃႇတႆး ', # Shan
+		'shy' => 'tacawit', # Shawiya (Multiple scripts - defaults to Latin)
 		'shy-latn' => 'tacawit', # Shawiya (Latin script) - T194047
 		'si' => 'සිංහල', # Sinhalese
 		'simple' => 'Simple English', # Simple English

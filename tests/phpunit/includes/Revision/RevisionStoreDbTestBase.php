@@ -15,6 +15,7 @@ use MediaWiki\Content\IContentHandlerFactory;
 use MediaWiki\Linker\LinkTarget;
 use MediaWiki\MediaWikiServices;
 use MediaWiki\Page\PageIdentity;
+use MediaWiki\Page\PageIdentityValue;
 use MediaWiki\Revision\IncompleteRevisionException;
 use MediaWiki\Revision\MutableRevisionRecord;
 use MediaWiki\Revision\RevisionArchiveRecord;
@@ -33,7 +34,7 @@ use Psr\Log\NullLogger;
 use Revision;
 use TestUserRegistry;
 use Title;
-use TitleValue;
+use TitleFactory;
 use User;
 use WANObjectCache;
 use Wikimedia\Assert\PreconditionException;
@@ -234,6 +235,7 @@ abstract class RevisionStoreDbTestBase extends MediaWikiIntegrationTestCase {
 			MediaWikiServices::getInstance()->getActorMigration(),
 			MediaWikiServices::getInstance()->getActorStoreFactory()->getActorStore( $dbDomain ),
 			MediaWikiServices::getInstance()->getContentHandlerFactory(),
+			MediaWikiServices::getInstance()->getTitleFactory(),
 			MediaWikiServices::getInstance()->getHookContainer(),
 			$dbDomain
 		);
@@ -760,6 +762,66 @@ abstract class RevisionStoreDbTestBase extends MediaWikiIntegrationTestCase {
 	/**
 	 * @covers \MediaWiki\Revision\RevisionStore::getRevisionById
 	 */
+	public function testGetRevisionById_crossWiki_withPage() {
+		$page = $this->getTestPage();
+		$content = new WikitextContent( __METHOD__ );
+		$status = $page->doEditContent( $content, __METHOD__ );
+		/** @var RevisionRecord $revRecord */
+		$revRecord = $status->value['revision-record'];
+		$revId = $revRecord->getId();
+
+		// Pretend the local test DB is a sister site
+		$wikiId = $this->db->getDomainID();
+		$store = MediaWikiServices::getInstance()->getRevisionStoreFactory()
+			->getRevisionStore( $wikiId );
+
+		// Construct a ProperPageIdentity with the sister site's wiki Id
+		$pageIdentity = new PageIdentityValue(
+			$page->getId(), $page->getNamespace(), $page->getDBkey(), $wikiId
+		);
+		$storeRecord = $store->getRevisionById( $revId, 0, $pageIdentity );
+
+		$this->assertSame( $wikiId, $storeRecord->getWikiId() );
+		$this->assertSame( $revId, $storeRecord->getId( $wikiId ) );
+		$this->assertTrue( $storeRecord->getSlot( SlotRecord::MAIN )->getContent()->equals( $content ) );
+		$this->assertSame( __METHOD__, $storeRecord->getComment()->text );
+	}
+
+	/**
+	 * @covers \MediaWiki\Revision\RevisionStore::getRevisionById
+	 */
+	public function testGetRevisionById_crossWiki() {
+		$page = $this->getTestPage();
+		$content = new WikitextContent( __METHOD__ );
+		$status = $page->doEditContent( $content, __METHOD__ );
+		/** @var RevisionRecord $revRecord */
+		$revRecord = $status->value['revision-record'];
+		$revId = $revRecord->getId();
+		$pageId = $revRecord->getPageId();
+
+		// Make TitleFactory always fail, since it should not be used for the cross-wiki case.
+		$noOpTitleFactory = $this->createNoOpMock( TitleFactory::class );
+		$this->setService( 'TitleFactory', $noOpTitleFactory );
+
+		// Pretend the local test DB is a sister site
+		$wikiId = $this->db->getDomainID();
+		$store = MediaWikiServices::getInstance()->getRevisionStoreFactory()
+			->getRevisionStore( $wikiId );
+
+		$storeRecord = $store->getRevisionById( $revId );
+
+		$this->assertSame( $wikiId, $storeRecord->getWikiId() );
+		$this->assertSame( $wikiId, $storeRecord->getPage()->getWikiId() );
+		$this->assertNotInstanceOf( Title::class, $storeRecord->getPage() );
+		$this->assertSame( $revId, $storeRecord->getId( $wikiId ) );
+		$this->assertSame( $pageId, $storeRecord->getPage()->getId( $wikiId ) );
+		$this->assertTrue( $storeRecord->getSlot( SlotRecord::MAIN )->getContent()->equals( $content ) );
+		$this->assertSame( __METHOD__, $storeRecord->getComment()->text );
+	}
+
+	/**
+	 * @covers \MediaWiki\Revision\RevisionStore::getRevisionById
+	 */
 	public function testGetRevisionById_undefinedContentModel() {
 		$page = $this->getTestPage();
 		$content = new WikitextContent( __METHOD__ );
@@ -848,6 +910,7 @@ abstract class RevisionStoreDbTestBase extends MediaWikiIntegrationTestCase {
 			$services->getActorMigration(),
 			$services->getActorStoreFactory()->getActorStore( $dbDomain ),
 			$services->getContentHandlerFactory(),
+			$services->getTitleFactory(),
 			$services->getHookContainer(),
 			$dbDomain
 		);
@@ -862,7 +925,12 @@ abstract class RevisionStoreDbTestBase extends MediaWikiIntegrationTestCase {
 			$this->setService( 'DBLoadBalancer', $localLoadBalancerMock );
 
 			$storeRecord = $store->getRevisionByTitle(
-				new TitleValue( $page->getTitle()->getNamespace(), $page->getTitle()->getDBkey() )
+				new PageIdentityValue(
+					$page->getId(),
+					$page->getTitle()->getNamespace(),
+					$page->getTitle()->getDBkey(),
+					$dbDomain
+				)
 			);
 			$this->assertSame( $revRecord->getId(), $storeRecord->getId( $dbDomain ) );
 			$this->assertTrue( $storeRecord->getSlot( SlotRecord::MAIN )->getContent()->equals( $content ) );
@@ -1446,6 +1514,71 @@ abstract class RevisionStoreDbTestBase extends MediaWikiIntegrationTestCase {
 		$this->assertNotNull( $record );
 		$this->assertNotNull( $record->getUser() );
 		$this->assertNotEmpty( $record->getUser()->getName() );
+	}
+
+	/**
+	 * @covers \MediaWiki\Revision\RevisionStore::newRevisionFromRow
+	 * @covers \MediaWiki\Revision\RevisionStore::getPage
+	 * @covers \MediaWiki\Revision\RevisionStore::newPageFromRow
+	 */
+	public function testNewRevisionFromRow_noPage() {
+		$store = MediaWikiServices::getInstance()->getRevisionStore();
+		$page = $this->getExistingTestPage();
+
+		$info = $store->getQueryInfo();
+		$row = $this->db->selectRow(
+			$info['tables'],
+			$info['fields'],
+			[ 'rev_page' => $page->getId(), 'rev_id' => $page->getLatest() ],
+			__METHOD__,
+			[],
+			$info['joins']
+		);
+
+		$record = $store->newRevisionFromRow( $row );
+
+		$this->assertNotNull( $record );
+		$this->assertTrue( $page->isSamePageAs( $record->getPage() ) );
+
+		// NOTE: This should return a Title object for now, until we no longer have a need
+		//       to frequently convert to Title.
+		$this->assertInstanceOf( Title::class, $record->getPage() );
+	}
+
+	/**
+	 * @covers \MediaWiki\Revision\RevisionStore::newRevisionFromRow
+	 * @covers \MediaWiki\Revision\RevisionStore::getPage
+	 * @covers \MediaWiki\Revision\RevisionStore::newPageFromRow
+	 */
+	public function testNewRevisionFromRow_noPage_crossWiki() {
+		// Make TitleFactory always fail, since it should not be used for the cross-wiki case.
+		$noOpTitleFactory = $this->createNoOpMock( TitleFactory::class );
+		$this->setService( 'TitleFactory', $noOpTitleFactory );
+
+		// Pretend the local test DB is a sister site
+		$wikiId = $this->db->getDomainID();
+		$store = MediaWikiServices::getInstance()->getRevisionStoreFactory()
+			->getRevisionStore( $wikiId );
+
+		$page = $this->getExistingTestPage();
+
+		$info = $store->getQueryInfo();
+		$row = $this->db->selectRow(
+			$info['tables'],
+			$info['fields'],
+			[ 'rev_page' => $page->getId(), 'rev_id' => $page->getLatest() ],
+			__METHOD__,
+			[],
+			$info['joins']
+		);
+
+		$record = $store->newRevisionFromRow( $row );
+
+		$this->assertNotNull( $record );
+		$this->assertSame( $page->getLatest(), $record->getId( $wikiId ) );
+
+		$this->assertNotInstanceOf( Title::class, $record->getPage() );
+		$this->assertSame( $page->getId(), $record->getPage()->getId( $wikiId ) );
 	}
 
 	/**

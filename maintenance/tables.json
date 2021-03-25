@@ -3152,5 +3152,288 @@
 		"pk": [
 			"rc_id"
 		]
+	},
+	{
+		"name": "archive",
+		"comment": "Archive area for deleted pages and their revisions. These may be viewed (and restored) by admins through the Special:Undelete interface.",
+		"columns": [
+			{
+				"name": "ar_id",
+				"comment": "Primary key",
+				"type": "integer",
+				"options": {
+					"autoincrement": true,
+					"unsigned": true,
+					"notnull": true
+				}
+			},
+			{
+				"name": "ar_namespace",
+				"comment": "Copied from page_namespace",
+				"type": "integer",
+				"options": {
+					"notnull": true,
+					"default": 0
+				}
+			},
+			{
+				"name": "ar_title",
+				"comment": "Copied from page_title",
+				"type": "binary",
+				"options": {
+					"notnull": true,
+					"default": "",
+					"length": 255
+				}
+			},
+			{
+				"name": "ar_comment_id",
+				"comment": "Basic revision stuff.",
+				"type": "bigint",
+				"options": {
+					"unsigned": true,
+					"notnull": true
+				}
+			},
+			{
+				"name": "ar_actor",
+				"comment": "Basic revision stuff.",
+				"type": "bigint",
+				"options": {
+					"unsigned": true,
+					"notnull": true
+				}
+			},
+			{
+				"name": "ar_timestamp",
+				"comment": "Basic revision stuff.",
+				"type": "mwtimestamp",
+				"options": {
+					"notnull": true,
+					"length": 14
+				}
+			},
+			{
+				"name": "ar_minor_edit",
+				"comment": "Basic revision stuff.",
+				"type": "mwtinyint",
+				"options": {
+					"notnull": true,
+					"default": 0
+				}
+			},
+			{
+				"name": "ar_rev_id",
+				"comment": "Copied from rev_id. @since 1.5 Entries from 1.4 will be NULL here. When restoring archive rows from before 1.5, a new rev_id is created.",
+				"type": "integer",
+				"options": {
+					"unsigned": true,
+					"notnull": true
+				}
+			},
+			{
+				"name": "ar_deleted",
+				"comment": "Copied from rev_deleted. Although this may be raised during deletion. Users with the \"suppressrevision\" right may \"archive\" and \"suppress\" content in a single action. @since 1.10",
+				"type": "mwtinyint",
+				"options": {
+					"unsigned": true,
+					"notnull": true,
+					"default": 0
+				}
+			},
+			{
+				"name": "ar_len",
+				"comment": "Copied from rev_len, length of this revision in bytes. @since 1.10",
+				"type": "integer",
+				"options": {
+					"unsigned": true,
+					"notnull": false
+				}
+			},
+			{
+				"name": "ar_page_id",
+				"comment": "Copied from page_id. Restoration will attempt to use this as page ID if no current page with the same name exists. Otherwise, the revisions will be restored under the current page. Can be used for manual undeletion by developers if multiple pages by the same name were archived. @since 1.11 Older entries will have NULL.",
+				"type": "integer",
+				"options": {
+					"unsigned": true,
+					"notnull": false
+				}
+			},
+			{
+				"name": "ar_parent_id",
+				"comment": "Copied from rev_parent_id. @since 1.13",
+				"type": "integer",
+				"options": {
+					"unsigned": true,
+					"notnull": false,
+					"default": null
+				}
+			},
+			{
+				"name": "ar_sha1",
+				"comment": "Copied from rev_sha1, SHA-1 text content hash in base-36 @since 1.19",
+				"type": "binary",
+				"options": {
+					"notnull": true,
+					"default": "",
+					"length": 32
+				}
+			}
+		],
+		"indexes": [
+			{
+				"name": "ar_name_title_timestamp",
+				"comment": "Index for Special:Undelete to page through deleted revisions",
+				"columns": [
+					"ar_namespace",
+					"ar_title",
+					"ar_timestamp"
+				],
+				"unique": false
+			},
+			{
+				"name": "ar_actor_timestamp",
+				"comment": "Index for Special:DeletedContributions",
+				"columns": [
+					"ar_actor",
+					"ar_timestamp"
+				],
+				"unique": false
+			},
+			{
+				"name": "ar_revid_uniq",
+				"comment": "Index for linking archive rows with tables that normally link with revision rows, such as change_tag.",
+				"columns": [
+					"ar_rev_id"
+				],
+				"unique": true
+			}
+		],
+		"pk": [
+			"ar_id"
+		]
+	},
+	{
+		"name": "page",
+		"comment": "Core of the wiki: each page has an entry here which identifies it by title and contains some essential metadata.",
+		"columns": [
+			{
+				"name": "page_id",
+				"comment": "Unique identifier number. The page_id will be preserved across edits and rename operations, but not deletions and recreations.",
+				"type": "integer",
+				"options": { "unsigned": true, "notnull": true, "autoincrement": true }
+			},
+			{
+				"name": "page_namespace",
+				"comment": "A page name is broken into a namespace and a title. The namespace keys are UI-language-independent constants, defined in includes/Defines.php",
+				"type": "integer",
+				"options": { "notnull": true }
+			},
+			{
+				"name": "page_title",
+				"comment": "The rest of the title, as text. Spaces are transformed into underscores in title storage.",
+				"type": "binary",
+				"options": { "notnull": true, "length": 255 }
+			},
+			{
+				"name": " page_restrictions",
+				"comment": "Comma-separated set of permission keys indicating who can move or edit the page.",
+				"type": "blob",
+				"options": { "notnull": false, "length": 255 }
+			},
+			{
+				"name": "page_is_redirect",
+				"comment": "1 indicates the article is a redirect.",
+				"type": "mwtinyint",
+				"options": { "notnull": true, "default": 0 }
+			},
+			{
+				"name": "page_is_new",
+				"comment": "1 indicates this is a new entry, with only one edit. Not all pages with one edit are new pages.",
+				"type": "mwtinyint",
+				"options": { "notnull": true, "default": 0 }
+			},
+			{
+				"name": "page_random",
+				"comment": "Random value between 0 and 1, used for Special:Randompage",
+				"type": "float",
+				"options": {
+					"notnull": true,
+					"unsigned": true,
+					"CustomSchemaOptions": {
+						"doublePrecision": true
+					}
+				}
+			},
+			{
+				"name": "page_touched",
+				"comment": "This timestamp is updated whenever the page changes in a way requiring it to be re-rendered, invalidating caches. Aside from editing this includes permission changes, creation or deletion of linked pages, and alteration of contained templates.",
+				"type": "mwtimestamp",
+				"options": { "notnull": true }
+			},
+			{
+				"name": "page_links_updated",
+				"comment": "This timestamp is updated whenever a page is re-parsed and it has all the link tracking tables updated for it. This is useful for de-duplicating expensive backlink update jobs.",
+				"type": "mwtimestamp",
+				"options": {
+					"notnull": false,
+					"default": null,
+					"CustomSchemaOptions": {
+						"allowInfinite": true
+					}
+				}
+			},
+			{
+				"name": "page_latest",
+				"comment": "Handy key to revision.rev_id of the current revision. This may be 0 during page creation, but that shouldn't happen outside of a transaction... hopefully.",
+				"type": "integer",
+				"options": { "unsigned": true, "notnull": true }
+			},
+			{
+				"name": "page_len",
+				"comment": "Uncompressed length in bytes of the page's current source text.",
+				"type": "integer",
+				"options": { "unsigned": true, "notnull": true }
+			},
+			{
+				"name": "page_content_model",
+				"comment": "content model, see CONTENT_MODEL_XXX constants",
+				"type": "binary",
+				"options": { "length": 32, "notnull": false }
+			},
+			{
+				"name": "page_lang",
+				"comment": "Page content language",
+				"type": "binary",
+				"options": { "length": 35, "notnull": false }
+			}
+		],
+		"indexes": [
+			{
+				"name": "name_title",
+				"columns": [ "page_namespace", "page_title" ],
+				"comment": "The title index. Care must be taken to always specify a namespace when by title, so that the index is used. Even listing all known namespaces with IN() is better than omitting page_namespace from the WHERE clause.",
+				"unique": true
+			},
+			{
+				"name": "page_random",
+				"columns": [ "page_random" ],
+				"comment": "Index for Special:Random",
+				"unique": false
+			},
+			{
+				"name": "page_len",
+				"columns": [ "page_len" ],
+				"comment": "Questionable utility, used by ProofreadPage, possibly DynamicPageList. ApiQueryAllPages unconditionally filters on namespace and so hopefully does not use it.",
+				"unique": false
+			},
+			{
+				"name": "page_redirect_namespace_len",
+				"columns": [ "page_is_redirect", "page_namespace", "page_len" ],
+				"comment": "The index for Special:Shortpages and Special:Longpages. Also SiteStats::articles() in 'comma' counting mode, MessageCache::loadFromDB().",
+				"unique": false
+			}
+		],
+		"pk": [ "page_id" ]
 	}
 ]

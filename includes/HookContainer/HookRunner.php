@@ -241,6 +241,7 @@ class HookRunner implements
 	\MediaWiki\Hook\LonelyPagesQueryHook,
 	\MediaWiki\Hook\MagicWordwgVariableIDsHook,
 	\MediaWiki\Hook\MaintenanceRefreshLinksInitHook,
+	\MediaWiki\Hook\MaintenanceShellStartHook,
 	\MediaWiki\Hook\MaintenanceUpdateAddParamsHook,
 	\MediaWiki\Hook\MakeGlobalVariablesScriptHook,
 	\MediaWiki\Hook\ManualLogEntryBeforePublishHook,
@@ -2423,10 +2424,10 @@ class HookRunner implements
 		);
 	}
 
-	public function onLocalFilePurgeThumbnails( $file, $archiveName ) {
+	public function onLocalFilePurgeThumbnails( $file, $archiveName, $urls ) {
 		return $this->container->run(
 			'LocalFilePurgeThumbnails',
-			[ $file, $archiveName ]
+			[ $file, $archiveName, $urls ]
 		);
 	}
 
@@ -2539,10 +2540,11 @@ class HookRunner implements
 		);
 	}
 
-	public function onMakeGlobalVariablesScript( &$vars, $out ) {
-		return $this->container->run(
+	public function onMakeGlobalVariablesScript( &$vars, $out ) : void {
+		$this->container->run(
 			'MakeGlobalVariablesScript',
-			[ &$vars, $out ]
+			[ &$vars, $out ],
+			[ 'abortable' => false ]
 		);
 	}
 
@@ -4234,10 +4236,10 @@ class HookRunner implements
 		);
 	}
 
-	public function onUserCanSendEmail( $user, &$canSend ) {
+	public function onUserCanSendEmail( $user, &$hookErr ) {
 		return $this->container->run(
 			'UserCanSendEmail',
-			[ $user, &$canSend ]
+			[ $user, &$hookErr ]
 		);
 	}
 
@@ -4655,6 +4657,14 @@ class HookRunner implements
 		return $this->container->run(
 			'XmlDumpWriterWriteRevision',
 			[ $obj, &$out, $row, $text, $rev ]
+		);
+	}
+
+	public function onMaintenanceShellStart() : void {
+		$this->container->run(
+			'MaintenanceShellStart',
+			[],
+			[ 'abortable' => false ]
 		);
 	}
 }

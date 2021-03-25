@@ -31,10 +31,12 @@ use MediaWiki\Block\Restriction\PageRestriction;
 use MediaWiki\Block\Restriction\Restriction;
 use MediaWiki\Logger\LoggerFactory;
 use MediaWiki\MediaWikiServices;
+use MediaWiki\User\UserFactory;
+use MediaWiki\User\UserIdentity;
+use MediaWiki\User\UserIdentityValue;
 use MWException;
 use stdClass;
 use Title;
-use User;
 use Wikimedia\IPUtils;
 use Wikimedia\Rdbms\Database;
 use Wikimedia\Rdbms\IDatabase;
@@ -75,7 +77,7 @@ class DatabaseBlock extends AbstractBlock {
 	/** @var Restriction[] */
 	private $restrictions;
 
-	/** @var User */
+	/** @var UserIdentity|null */
 	private $blocker;
 
 	/**
@@ -93,8 +95,10 @@ class DatabaseBlock extends AbstractBlock {
 	 *  - allowUsertalk: (bool) Allow the target to edit its own talk page
 	 *  - sitewide: (bool) Disallow editing all pages and all contribution actions,
 	 *    except those specifically allowed by other block flags
-	 *  - by: (int) User ID of the blocker
+	 *  - by: (int|UserIdentity) UserIdentity object or an ID of the blocker.
+	 *      Calling with ID is deprecated since 1.36
 	 *  - byText: (string) Username of the blocker (for foreign users)
+	 *      Deprecated since 1.36. Use 'by' parameter instead.
 	 *
 	 * @since 1.26 $options array
 	 */
@@ -116,17 +120,36 @@ class DatabaseBlock extends AbstractBlock {
 
 		$options += $defaults;
 
-		if ( $this->target instanceof User && $options['user'] ) {
+		if ( $this->target instanceof UserIdentity && $options['user'] ) {
 			# Needed for foreign users
 			$this->forcedTargetID = $options['user'];
 		}
 
 		if ( $options['by'] ) {
-			# Local user
-			$this->setBlocker( User::newFromId( $options['by'] ) );
-		} else {
-			# Foreign user
-			$this->setBlocker( $options['byText'] );
+			if ( $options['by'] instanceof UserIdentity ) {
+				$this->setBlocker( $options['by'] );
+			} else {
+				// Local user, passed by ID. Deprecated case,
+				// callers should provide UserIdentity in the 'by'
+				// option.
+				$localBlocker = MediaWikiServices::getInstance()
+					->getUserFactory()
+					->newFromId( $options['by'] );
+				$this->setBlocker( $localBlocker );
+			}
+		} elseif ( $options['byText'] ) {
+			// Foreign user. Deprecated case, callers should
+			// provide UserIdentity in the 'by' option.
+			$foreignBlocker = MediaWikiServices::getInstance()
+				->getActorStore()
+				->getUserIdentityByName( $options['byText'] );
+			if ( !$foreignBlocker ) {
+				// An actor for an interwiki user might not exist on this wiki,
+				// so it's ok to create one. Interwiki actors are still local actors.
+				$foreignBlocker = new UserIdentityValue(
+					0, $options['byText'], 0, UserIdentity::LOCAL );
+			}
+			$this->setBlocker( $foreignBlocker );
 		}
 
 		$this->setExpiry( wfGetDB( DB_REPLICA )->decodeExpiry( $options['expiry'] ) );
@@ -232,11 +255,11 @@ class DatabaseBlock extends AbstractBlock {
 	 * Load blocks from the database which target the specific target exactly, or which cover the
 	 * vague target.
 	 *
-	 * @param User|string|null $specificTarget
+	 * @param UserIdentity|string|null $specificTarget
 	 * @param int|null $specificType
 	 * @param bool $fromMaster
-	 * @param User|string|null $vagueTarget Also search for blocks affecting this target.  Doesn't
-	 *     make any sense to use TYPE_AUTO / TYPE_ID here. Leave blank to skip IP lookups.
+	 * @param UserIdentity|string|null $vagueTarget Also search for blocks affecting this target.
+	 *     Doesn't make any sense to use TYPE_AUTO / TYPE_ID here. Leave blank to skip IP lookups.
 	 * @throws MWException
 	 * @return DatabaseBlock[] Any relevant blocks
 	 */
@@ -257,7 +280,9 @@ class DatabaseBlock extends AbstractBlock {
 		# Be aware that the != '' check is explicit, since empty values will be
 		# passed by some callers (T31116)
 		if ( $vagueTarget != '' ) {
-			list( $target, $type ) = self::parseTarget( $vagueTarget );
+			list( $target, $type ) = MediaWikiServices::getInstance()
+				->getBlockUtils()
+				->parseBlockTarget( $vagueTarget );
 			switch ( $type ) {
 				case self::TYPE_USER:
 					# Slightly weird, but who are we to argue?
@@ -438,9 +463,9 @@ class DatabaseBlock extends AbstractBlock {
 		$this->mId = (int)$row->ipb_id;
 		$this->mParentBlockId = (int)$row->ipb_parent_block_id;
 
-		$this->setBlocker( User::newFromAnyId(
-			$row->ipb_by, $row->ipb_by_text, $row->ipb_by_actor ?? null
-		) );
+		$this->setBlocker( MediaWikiServices::getInstance()
+			->getActorNormalization()
+			->newActorFromRowFields( $row->ipb_by, $row->ipb_by_text, $row->ipb_by_actor ) );
 
 		// I wish I didn't have to do this
 		$db = wfGetDB( DB_REPLICA );
@@ -514,28 +539,45 @@ class DatabaseBlock extends AbstractBlock {
 	}
 
 	/**
-	 * Checks whether a given IP is on the autoblock whitelist.
-	 * TODO: this probably belongs somewhere else, but not sure where...
+	 * Checks whether a given IP is on the autoblock exemption list.
+	 *
+	 * @deprecated since 1.36; use DatabaseBlock::isExemptedFromAutoblocks()
 	 *
 	 * @param string $ip The IP to check
 	 * @return bool
 	 */
 	public static function isWhitelistedFromAutoblocks( $ip ) {
-		// Try to get the autoblock_whitelist from the cache, as it's faster
+		return self::isExemptedFromAutoblocks( $ip );
+	}
+
+	/**
+	 * Checks whether a given IP is on the autoblock exemption list.
+	 * TODO: this probably belongs somewhere else, but not sure where...
+	 *
+	 * @since 1.36
+	 *
+	 * @param string $ip The IP to check
+	 * @return bool
+	 */
+	public static function isExemptedFromAutoblocks( $ip ) {
+		// Try to get the ip-autoblock_exemption from the cache, as it's faster
 		// than getting the msg raw and explode()'ing it.
 		$cache = MediaWikiServices::getInstance()->getMainWANObjectCache();
 		$lines = $cache->getWithSetCallback(
-			$cache->makeKey( 'ip-autoblock', 'whitelist' ),
+			$cache->makeKey( 'ip-autoblock', 'exemption' ),
 			$cache::TTL_DAY,
 			static function ( $curValue, &$ttl, array &$setOpts ) {
 				$setOpts += Database::getCacheSetOptions( wfGetDB( DB_REPLICA ) );
 
 				return explode( "\n",
-					wfMessage( 'autoblock_whitelist' )->inContentLanguage()->plain() );
+					wfMessage( 'block-autoblock-exemptionlist' )->inContentLanguage()->plain()
+					// Temporarily still load the old Message
+					. "\n" . wfMessage( 'autoblock_whitelist' )->inContentLanguage()->plain()
+				);
 			}
 		);
 
-		wfDebug( "Checking the autoblock whitelist.." );
+		wfDebug( "Checking the autoblock exemption list.." );
 
 		foreach ( $lines as $line ) {
 			# List items only
@@ -572,8 +614,8 @@ class DatabaseBlock extends AbstractBlock {
 			return false;
 		}
 
-		# Check for presence on the autoblock whitelist.
-		if ( self::isWhitelistedFromAutoblocks( $autoblockIP ) ) {
+		# Check if autoblock exempt.
+		if ( self::isExemptedFromAutoblocks( $autoblockIP ) ) {
 			return false;
 		}
 
@@ -828,7 +870,7 @@ class DatabaseBlock extends AbstractBlock {
 
 	/**
 	 * Given a target and the target's type, get an existing block object if possible.
-	 * @param string|User|int|null $specificTarget A block target, which may be one of several types:
+	 * @param string|UserIdentity|int|null $specificTarget A block target, which may be one of several types:
 	 *     * A user to block, in which case $target will be a User
 	 *     * An IP to block, in which case $target will be a User generated by using
 	 *       User::newFromName( $ip, false ) to turn off name validation
@@ -838,7 +880,7 @@ class DatabaseBlock extends AbstractBlock {
 	 *     Calling this with a user, IP address or range will not select autoblocks, and will
 	 *     only select a block where the targets match exactly (so looking for blocks on
 	 *     1.2.3.4 will not select 1.2.0.0/16 or even 1.2.3.4/32)
-	 * @param string|User|int|null $vagueTarget As above, but we will search for *any* block which
+	 * @param string|UserIdentity|int|null $vagueTarget As above, but we will search for *any* block which
 	 *     affects that target (so for an IP address, get ranges containing that IP; and also
 	 *     get any relevant autoblocks). Leave empty or blank to skip IP-based lookups.
 	 * @param bool $fromMaster Whether to use the DB_MASTER database
@@ -855,8 +897,8 @@ class DatabaseBlock extends AbstractBlock {
 	 * This is similar to DatabaseBlock::newFromTarget, but it returns all the relevant blocks.
 	 *
 	 * @since 1.34
-	 * @param string|User|int|null $specificTarget
-	 * @param string|User|int|null $vagueTarget
+	 * @param string|UserIdentity|int|null $specificTarget
+	 * @param string|UserIdentity|int|null $vagueTarget
 	 * @param bool $fromMaster
 	 * @return DatabaseBlock[] Any relevant blocks
 	 */
@@ -865,7 +907,9 @@ class DatabaseBlock extends AbstractBlock {
 		$vagueTarget = null,
 		$fromMaster = false
 	) {
-		list( $target, $type ) = self::parseTarget( $specificTarget );
+		list( $target, $type ) = MediaWikiServices::getInstance()
+			->getBlockUtils()
+			->parseBlockTarget( $specificTarget );
 		if ( $type == self::TYPE_ID || $type == self::TYPE_AUTO ) {
 			$block = self::newFromID( $target );
 			return $block ? [ $block ] : [];
@@ -1233,9 +1277,9 @@ class DatabaseBlock extends AbstractBlock {
 	/**
 	 * Get the user who implemented this block
 	 *
-	 * @return User|null User object or null. May name a foreign user.
+	 * @return UserIdentity|null user object or null. May be a foreign user.
 	 */
-	public function getBlocker() {
+	public function getBlocker(): ?UserIdentity {
 		return $this->blocker;
 	}
 
@@ -1252,14 +1296,18 @@ class DatabaseBlock extends AbstractBlock {
 	/**
 	 * Set the user who implemented (or will implement) this block
 	 *
-	 * @param User|string $user Local User object or username string
+	 * @param UserIdentity|string $user Local user object or username string.
+	 *   Calling with string is deprecated since 1.36
 	 */
 	public function setBlocker( $user ) {
 		if ( is_string( $user ) ) {
-			$user = User::newFromName( $user, false );
+			wfDeprecatedMsg( 'Calling ' . __METHOD__ . ' with string as $user', '1.36' );
+			$user = MediaWikiServices::getInstance()
+				->getUserFactory()
+				->newFromName( $user, UserFactory::RIGOR_NONE );
 		}
 
-		if ( $user->isAnon() &&
+		if ( !$user->isRegistered() &&
 			MediaWikiServices::getInstance()->getUserNameUtils()->isUsable( $user->getName() )
 		) {
 			// Temporarily log some block details to debug T192964

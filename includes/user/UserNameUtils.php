@@ -150,9 +150,9 @@ class UserNameUtils implements UserRigorOptions {
 			return false;
 		}
 
-		// Check an additional blacklist of troublemaker characters.
+		// Check an additional list of troublemaker characters.
 		// Should these be merged into the title char list?
-		$unicodeBlacklist = '/[' .
+		$unicodeList = '/[' .
 			'\x{0080}-\x{009f}' . # iso-8859-1 control chars
 			'\x{00a0}' . # non-breaking space
 			'\x{2000}-\x{200f}' . # various whitespace
@@ -160,7 +160,7 @@ class UserNameUtils implements UserRigorOptions {
 			'\x{3000}' . # ideographic space
 			'\x{e000}-\x{f8ff}' . # private use
 			']/u';
-		if ( preg_match( $unicodeBlacklist, $name ) ) {
+		if ( preg_match( $unicodeList, $name ) ) {
 			return false;
 		}
 
@@ -210,7 +210,7 @@ class UserNameUtils implements UserRigorOptions {
 	 * either by batch processes or by user accounts which have
 	 * already been created.
 	 *
-	 * Additional blacklisting may be added here rather than in
+	 * Additional preventions may be added here rather than in
 	 * isValidUserName() to avoid disrupting existing accounts.
 	 *
 	 * @param string $name String to match

@@ -25,6 +25,7 @@ use MediaWiki\Linker\LinkTarget;
 use MediaWiki\MediaWikiServices;
 use MediaWiki\Page\PageIdentity;
 use MediaWiki\Permissions\Authority;
+use MediaWiki\Permissions\PermissionStatus;
 use MediaWiki\Session\SessionManager;
 use Wikimedia\Rdbms\IResultWrapper;
 use Wikimedia\RelPath;
@@ -2808,8 +2809,23 @@ class OutputPage extends ContextSource {
 	}
 
 	/**
+	 * Format permission $status obtained from Authority for display.
+	 *
+	 * @param PermissionStatus $status
+	 * @param string|null $action that was denied or null if unknown
+	 * @return string
+	 */
+	public function formatPermissionStatus( PermissionStatus $status, string $action = null ): string {
+		if ( $status->isGood() ) {
+			return '';
+		}
+		return $this->formatPermissionsErrorMessage( $status->toLegacyErrorArray(), $action );
+	}
+
+	/**
 	 * Format a list of error messages
 	 *
+	 * @deprecated since 1.36. Use ::formatPermissionStatus instead
 	 * @param array $errors Array of arrays returned by PermissionManager::getPermissionErrors
 	 * @param string|null $action Action that was denied or null if unknown
 	 * @return string The wikitext error-messages, formatted into a list.
@@ -2847,17 +2863,17 @@ class OutputPage extends ContextSource {
 	/**
 	 * Show a warning about replica DB lag
 	 *
-	 * If the lag is higher than $wgSlaveLagCritical seconds,
+	 * If the lag is higher than $wgDatabaseReplicaLagCritical seconds,
 	 * then the warning is a bit more obvious. If the lag is
-	 * lower than $wgSlaveLagWarning, then no warning is shown.
+	 * lower than $wgDatabaseReplicaLagWarning, then no warning is shown.
 	 *
 	 * @param int $lag Replica lag
 	 */
 	public function showLagWarning( $lag ) {
 		$config = $this->getConfig();
-		if ( $lag >= $config->get( 'SlaveLagWarning' ) ) {
+		if ( $lag >= $config->get( 'DatabaseReplicaLagWarning' ) ) {
 			$lag = floor( $lag ); // floor to avoid nano seconds to display
-			$message = $lag < $config->get( 'SlaveLagCritical' )
+			$message = $lag < $config->get( 'DatabaseReplicaLagCritical' )
 				? 'lag-warn-normal'
 				: 'lag-warn-high';
 			// For grep: mw-lag-warn-normal, mw-lag-warn-high
@@ -3278,7 +3294,6 @@ class OutputPage extends ContextSource {
 		// Get the relevant title so that AJAX features can use the correct page name
 		// when making API requests from certain special pages (T36972).
 		$relevantTitle = $sk->getRelevantTitle();
-		$relevantUser = $sk->getRelevantUser();
 
 		if ( $ns === NS_SPECIAL ) {
 			list( $canonicalSpecialPageName, /*...*/ ) =
@@ -3379,11 +3394,9 @@ class OutputPage extends ContextSource {
 		if ( $title->isMainPage() ) {
 			$vars['wgIsMainPage'] = true;
 		}
-		if ( $relevantUser && ( !$relevantUser->isHidden() ||
-				$this->getAuthority()->isAllowed( 'hideuser' ) )
-		) {
-			// T120883 if the user is hidden and the viewer cannot see
-			// hidden users, pretend like it does not exist at all.
+
+		$relevantUser = $sk->getRelevantUser();
+		if ( $relevantUser ) {
 			$vars['wgRelevantUserName'] = $relevantUser->getName();
 		}
 		// End of stable config vars

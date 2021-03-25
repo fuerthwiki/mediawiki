@@ -16,6 +16,7 @@ use Wikimedia\TestingAccessWrapper;
  * @author Katie Filbert < aude.wiki@gmail.com >
  */
 class DifferenceEngineTest extends MediaWikiIntegrationTestCase {
+	use MockTitleTrait;
 
 	protected $context;
 
@@ -34,6 +35,17 @@ class DifferenceEngineTest extends MediaWikiIntegrationTestCase {
 		}
 
 		$this->setMwGlobals( [ 'wgDiffEngine' => 'php' ] );
+
+		$slotRoleRegistry = $this->getServiceContainer()->getSlotRoleRegistry();
+
+		if ( !$slotRoleRegistry->isDefinedRole( 'derivedslot' ) ) {
+			$slotRoleRegistry->defineRoleWithModel(
+				'derivedslot',
+				CONTENT_MODEL_WIKITEXT,
+				[],
+				true
+			);
+		}
 	}
 
 	/**
@@ -246,6 +258,10 @@ class DifferenceEngineTest extends MediaWikiIntegrationTestCase {
 			ContentHandler::makeContent( 'aaa', null, CONTENT_MODEL_TEXT ) );
 		$slot2 = SlotRecord::newUnsaved( 'slot',
 			ContentHandler::makeContent( 'bbb', null, CONTENT_MODEL_TEXT ) );
+		$slot3 = SlotRecord::newDerived( 'derivedslot',
+			ContentHandler::makeContent( 'aaa', null, CONTENT_MODEL_TEXT ) );
+		$slot4 = SlotRecord::newDerived( 'derivedslot',
+			ContentHandler::makeContent( 'bbb', null, CONTENT_MODEL_TEXT ) );
 
 		return [
 			'revision vs. null' => [
@@ -272,6 +288,11 @@ class DifferenceEngineTest extends MediaWikiIntegrationTestCase {
 				$this->getRevisionRecord( $main1 ),
 				$this->getRevisionRecord( $main1, $slot1 ),
 				"slotLine 1:\nLine 1:\n- +aaa",
+			],
+			'ignored difference in derived slot' => [
+				$this->getRevisionRecord( $main1, $slot3 ),
+				$this->getRevisionRecord( $main1, $slot4 ),
+				'',
 			],
 		];
 	}
@@ -328,29 +349,11 @@ class DifferenceEngineTest extends MediaWikiIntegrationTestCase {
 	}
 
 	/**
-	 * @param int $id
-	 * @return Title
-	 */
-	private function getMockTitle( $id = 23 ) {
-		$mock = $this->getMockBuilder( Title::class )
-			->disableOriginalConstructor()
-			->getMock();
-		$mock->expects( $this->any() )
-			->method( 'getDBkey' )
-			->will( $this->returnValue( __CLASS__ ) );
-		$mock->expects( $this->any() )
-			->method( 'getArticleID' )
-			->will( $this->returnValue( $id ) );
-
-		return $mock;
-	}
-
-	/**
 	 * @param SlotRecord ...$slots
 	 * @return MutableRevisionRecord
 	 */
 	private function getRevisionRecord( ...$slots ) {
-		$title = $this->getMockTitle();
+		$title = $this->makeMockTitle( __CLASS__ );
 		$revision = new MutableRevisionRecord( $title );
 		foreach ( $slots as $slot ) {
 			$revision->setSlot( $slot );

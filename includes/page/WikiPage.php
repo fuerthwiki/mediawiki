@@ -29,7 +29,10 @@ use MediaWiki\Edit\PreparedEdit;
 use MediaWiki\HookContainer\ProtectedHookAccessorTrait;
 use MediaWiki\Logger\LoggerFactory;
 use MediaWiki\MediaWikiServices;
+use MediaWiki\Page\ExistingPageRecord;
 use MediaWiki\Page\PageIdentity;
+use MediaWiki\Page\PageRecord;
+use MediaWiki\Page\PageStoreRecord;
 use MediaWiki\Page\ParserOutputAccess;
 use MediaWiki\Permissions\Authority;
 use MediaWiki\Permissions\PermissionStatus;
@@ -58,7 +61,7 @@ use Wikimedia\Rdbms\LoadBalancer;
  * Some fields are public only for backwards-compatibility. Use accessors.
  * In the past, this class was part of Article.php and everything was public.
  */
-class WikiPage implements Page, IDBAccessObject, PageIdentity {
+class WikiPage implements Page, IDBAccessObject, PageRecord {
 	use NonSerializableTrait;
 	use ProtectedHookAccessorTrait;
 	use WikiAwareEntityTrait;
@@ -80,11 +83,35 @@ class WikiPage implements Page, IDBAccessObject, PageIdentity {
 	public $mDataLoaded = false;
 
 	/**
+	 * A cache of the page_is_redirect field, loaded with page data
 	 * @var bool
-	 * @todo make protected
-	 * @note for access by subclasses only
 	 */
-	public $mIsRedirect = false;
+	private $mPageIsRedirectField = false;
+
+	/**
+	 * Boolean if the redirect status is definitively known.
+	 * If this is true, getRedirectTarget() must return non-null.
+	 *
+	 * @var bool|null
+	 */
+	private $mHasRedirectTarget = null;
+
+	/**
+	 * The cache of the redirect target
+	 *
+	 * @var Title
+	 */
+	protected $mRedirectTarget = null;
+
+	/**
+	 * @var bool
+	 */
+	private $mIsNew = false;
+
+	/**
+	 * @var bool
+	 */
+	private $mIsRedirect = false;
 
 	/**
 	 * @var int|false False means "not loaded"
@@ -111,11 +138,6 @@ class WikiPage implements Page, IDBAccessObject, PageIdentity {
 	protected $mDataLoadedFrom = self::READ_NONE;
 
 	/**
-	 * @var Title
-	 */
-	protected $mRedirectTarget = null;
-
-	/**
 	 * @var RevisionRecord
 	 */
 	private $mLastRevision = null;
@@ -129,6 +151,11 @@ class WikiPage implements Page, IDBAccessObject, PageIdentity {
 	 * @var string
 	 */
 	protected $mTouched = '19700101000000';
+
+	/**
+	 * @var string|null
+	 */
+	protected $mLanguage = null;
 
 	/**
 	 * @var string
@@ -327,10 +354,14 @@ class WikiPage implements Page, IDBAccessObject, PageIdentity {
 	protected function clearCacheFields() {
 		$this->mId = null;
 		$this->mRedirectTarget = null; // Title object if set
+		$this->mHasRedirectTarget = null;
+		$this->mPageIsRedirectField = false;
 		$this->mLastRevision = null; // Latest revision
 		$this->mTouched = '19700101000000';
+		$this->mLanguage = null;
 		$this->mLinksUpdated = '19700101000000';
 		$this->mTimestamp = '';
+		$this->mIsNew = false;
 		$this->mIsRedirect = false;
 		$this->mLatest = false;
 		// T59026: do not clear $this->derivedDataUpdater since getDerivedDataUpdater() already
@@ -551,12 +582,17 @@ class WikiPage implements Page, IDBAccessObject, PageIdentity {
 			// Old-fashioned restrictions
 			$this->mTitle->loadRestrictions( $data->page_restrictions );
 
+			$contLang = MediaWikiServices::getInstance()->getContentLanguage();
+
 			$this->mId = intval( $data->page_id );
 			$this->mTouched = MWTimestamp::convert( TS_MW, $data->page_touched );
+			$this->mLanguage = $data->page_lang ?? $contLang->getCode();
 			$this->mLinksUpdated = $data->page_links_updated === null
 				? null
 				: MWTimestamp::convert( TS_MW, $data->page_links_updated );
-			$this->mIsRedirect = intval( $data->page_is_redirect );
+			$this->mPageIsRedirectField = (bool)$data->page_is_redirect;
+			$this->mIsNew = intval( $data->page_is_new ?? 0 );
+			$this->mIsRedirect = intval( $data->page_is_redirect ?? 0 );
 			$this->mLatest = intval( $data->page_latest );
 			// T39225: $latest may no longer match the cached latest RevisionRecord object.
 			// Double-check the ID of any cached latest RevisionRecord object for consistency.
@@ -634,7 +670,8 @@ class WikiPage implements Page, IDBAccessObject, PageIdentity {
 	}
 
 	/**
-	 * Tests if the article content represents a redirect
+	 * Is the page a redirect, according to secondary tracking tables?
+	 * If this is true, getRedirectTarget() will return a Title.
 	 *
 	 * @return bool
 	 */
@@ -644,6 +681,38 @@ class WikiPage implements Page, IDBAccessObject, PageIdentity {
 		}
 
 		return (bool)$this->mIsRedirect;
+	}
+
+	/**
+	 * Get the value of the page_is_redirect field in the DB. This is probably
+	 * not what you want. Use WikiPage::isRedirect() to test if the page is a
+	 * redirect. Use Title::isRedirect() for a fast check for the purposes of
+	 * linking to a page.
+	 *
+	 * @since 1.36
+	 * @return bool
+	 */
+	public function getPageIsRedirectField() {
+		if ( !$this->mDataLoaded ) {
+			$this->loadPageData();
+		}
+		return $this->mPageIsRedirectField;
+	}
+
+	/**
+	 * Tests if the page is new (only has one revision).
+	 * May produce false negatives for some old pages.
+	 *
+	 * @since 1.36
+	 *
+	 * @return bool
+	 */
+	public function isNew() {
+		if ( !$this->mDataLoaded ) {
+			$this->loadPageData();
+		}
+
+		return (bool)$this->mIsNew;
 	}
 
 	/**
@@ -696,10 +765,7 @@ class WikiPage implements Page, IDBAccessObject, PageIdentity {
 	 * @return bool True if this page exists and is not a redirect
 	 */
 	public function checkTouched() {
-		if ( !$this->mDataLoaded ) {
-			$this->loadPageData();
-		}
-		return ( $this->mId && !$this->mIsRedirect );
+		return ( $this->exists() && !$this->isRedirect() );
 	}
 
 	/**
@@ -711,6 +777,17 @@ class WikiPage implements Page, IDBAccessObject, PageIdentity {
 			$this->loadPageData();
 		}
 		return $this->mTouched;
+	}
+
+	/**
+	 * @return string language code for the page
+	 */
+	public function getLanguage() {
+		if ( !$this->mDataLoaded ) {
+			$this->loadLastEdit();
+		}
+
+		return $this->mLanguage ?: MediaWikiServices::getInstance()->getContentLanguage()->getCode();
 	}
 
 	/**
@@ -726,9 +803,12 @@ class WikiPage implements Page, IDBAccessObject, PageIdentity {
 
 	/**
 	 * Get the page_latest field
+	 * @param bool $wikiId
 	 * @return int The rev_id of current revision
 	 */
-	public function getLatest() {
+	public function getLatest( $wikiId = self::LOCAL ) {
+		$this->assertWiki( $wikiId );
+
 		if ( !$this->mDataLoaded ) {
 			$this->loadPageData();
 		}
@@ -804,7 +884,9 @@ class WikiPage implements Page, IDBAccessObject, PageIdentity {
 	 */
 	private function setLastEdit( RevisionRecord $revRecord ) {
 		$this->mLastRevision = $revRecord;
+		$this->mLatest = $revRecord->getId();
 		$this->mTimestamp = $revRecord->getTimestamp();
+		$this->mTouched = max( $this->mTouched, $revRecord->getTimestamp() );
 	}
 
 	/**
@@ -1030,15 +1112,16 @@ class WikiPage implements Page, IDBAccessObject, PageIdentity {
 	 *
 	 * The target will be fetched from the redirect table if possible.
 	 * If this page doesn't have an entry there, call insertRedirect()
+	 *
 	 * @return Title|null Title object, or null if this page is not a redirect
 	 */
 	public function getRedirectTarget() {
-		if ( !$this->mTitle->isRedirect() ) {
-			return null;
-		}
-
 		if ( $this->mRedirectTarget !== null ) {
 			return $this->mRedirectTarget;
+		}
+
+		if ( $this->mHasRedirectTarget === false || !$this->getPageIsRedirectField() ) {
+			return null;
 		}
 
 		// Query the redirect table
@@ -1059,15 +1142,21 @@ class WikiPage implements Page, IDBAccessObject, PageIdentity {
 			} else {
 				$namespace = $row->rd_namespace;
 			}
-			$this->mRedirectTarget = Title::makeTitle(
+			// T261347: be defensive when fetching data from the redirect table.
+			// Use Title::makeTitleSafe(), and if that returns null, ignore the
+			// row. In an ideal world, the DB would be cleaned up after a
+			// namespace change, but nobody could be bothered to do that.
+			$this->mRedirectTarget = Title::makeTitleSafe(
 				$namespace, $row->rd_title,
 				$row->rd_fragment, $row->rd_interwiki
 			);
+			$this->mHasRedirectTarget = $this->mRedirectTarget !== null;
 			return $this->mRedirectTarget;
 		}
 
 		// This page doesn't have an entry in the redirect table
 		$this->mRedirectTarget = $this->insertRedirect();
+		$this->mHasRedirectTarget = $this->mRedirectTarget !== null;
 		return $this->mRedirectTarget;
 	}
 
@@ -1106,6 +1195,11 @@ class WikiPage implements Page, IDBAccessObject, PageIdentity {
 	 * @return bool Success
 	 */
 	public function insertRedirectEntry( Title $rt, $oldLatest = null ) {
+		if ( !$rt->isValidRedirectTarget() ) {
+			// Don't put a bad redirect into the database (T278367)
+			return false;
+		}
+
 		$dbw = wfGetDB( DB_MASTER );
 		$dbw->startAtomic( __METHOD__ );
 
@@ -1184,6 +1278,9 @@ class WikiPage implements Page, IDBAccessObject, PageIdentity {
 			} else {
 				return false;
 			}
+		} elseif ( !$rt->isValidRedirectTarget() ) {
+			// We somehow got a bad redirect target into the database (T278367)
+			return false;
 		}
 
 		return $rt;
@@ -1291,10 +1388,10 @@ class WikiPage implements Page, IDBAccessObject, PageIdentity {
 
 	/**
 	 * Do standard deferred updates after page view (existing or missing page)
-	 * @param User $user The relevant user
+	 * @param Authority $performer The viewing user
 	 * @param int $oldid Revision id being viewed; if not given or 0, latest revision is assumed
 	 */
-	public function doViewUpdates( User $user, $oldid = 0 ) {
+	public function doViewUpdates( Authority $performer, $oldid = 0 ) {
 		if ( wfReadOnly() ) {
 			return;
 		}
@@ -1302,10 +1399,16 @@ class WikiPage implements Page, IDBAccessObject, PageIdentity {
 		// Update newtalk / watchlist notification status;
 		// Avoid outage if the master is not reachable by using a deferred updated
 		DeferredUpdates::addCallableUpdate(
-			function () use ( $user, $oldid ) {
-				$this->getHookRunner()->onPageViewUpdates( $this, $user );
+			function () use ( $performer, $oldid ) {
+				$legacyUser = MediaWikiServices::getInstance()
+					->getUserFactory()
+					->newFromAuthority( $performer );
+				$this->getHookRunner()->onPageViewUpdates( $this, $legacyUser );
 
-				$user->clearNotification( $this->mTitle, $oldid );
+				// TODO: watchlist manager needs to take Authority and PageIdentity.
+				MediaWikiServices::getInstance()
+					->getWatchlistNotificationManager()
+					->clearTitleUserNotifications( $performer->getUser(), $this->mTitle, $oldid );
 			},
 			DeferredUpdates::PRESEND
 		);
@@ -1421,6 +1524,8 @@ class WikiPage implements Page, IDBAccessObject, PageIdentity {
 		$content = $revision->getContent( SlotRecord::MAIN );
 		$len = $content ? $content->getSize() : 0;
 		$rt = $content ? $content->getUltimateRedirectTarget() : null;
+		$isNew = ( $lastRevision === 0 ) ? 1 : 0;
+		$isRedirect = $rt !== null ? 1 : 0;
 
 		$conditions = [ 'page_id' => $this->getId() ];
 
@@ -1437,8 +1542,8 @@ class WikiPage implements Page, IDBAccessObject, PageIdentity {
 		$row = [ /* SET */
 			'page_latest'        => $revId,
 			'page_touched'       => $dbw->timestamp( $revision->getTimestamp() ),
-			'page_is_new'        => ( $lastRevision === 0 ) ? 1 : 0,
-			'page_is_redirect'   => $rt !== null ? 1 : 0,
+			'page_is_new'        => $isNew,
+			'page_is_redirect'   => $isRedirect,
 			'page_len'           => $len,
 			'page_content_model' => $model,
 		];
@@ -1452,15 +1557,18 @@ class WikiPage implements Page, IDBAccessObject, PageIdentity {
 		if ( $result ) {
 			$this->updateRedirectOn( $dbw, $rt, $lastRevIsRedirect );
 			$this->setLastEdit( $revision );
-			$this->mLatest = $revision->getId();
-			$this->mIsRedirect = (bool)$rt;
+			$this->mRedirectTarget = null;
+			$this->mHasRedirectTarget = null;
+			$this->mPageIsRedirectField = (bool)$rt;
+			$this->mIsNew = (bool)$isNew;
+			$this->mIsRedirect = (bool)$isRedirect;
 			// Update the LinkCache.
 			$linkCache = MediaWikiServices::getInstance()->getLinkCache();
 			$linkCache->addGoodLinkObj(
 				$this->getId(),
 				$this->mTitle,
 				$len,
-				$this->mIsRedirect,
+				$this->mPageIsRedirectField,
 				$this->mLatest,
 				$model
 			);
@@ -1794,7 +1902,7 @@ class WikiPage implements Page, IDBAccessObject, PageIdentity {
 	 *
 	 * @since 1.32
 	 *
-	 * @param User|null $forUser The user that will be used for, or was used for, PST.
+	 * @param UserIdentity|null $forUser The user that will be used for, or was used for, PST.
 	 * @param RevisionRecord|null $forRevision The revision created by the edit for which
 	 *        to perform updates, if the edit was already saved.
 	 * @param RevisionSlotsUpdate|null $forUpdate The new content to be saved by the edit (pre PST),
@@ -1806,7 +1914,7 @@ class WikiPage implements Page, IDBAccessObject, PageIdentity {
 	 * @return DerivedPageDataUpdater
 	 */
 	private function getDerivedDataUpdater(
-		User $forUser = null,
+		UserIdentity $forUser = null,
 		RevisionRecord $forRevision = null,
 		RevisionSlotsUpdate $forUpdate = null,
 		$forEdit = false
@@ -1855,21 +1963,21 @@ class WikiPage implements Page, IDBAccessObject, PageIdentity {
 	 *
 	 * @since 1.32
 	 *
-	 * @param User $user
+	 * @param Authority $performer
 	 * @param RevisionSlotsUpdate|null $forUpdate If given, allows any cached ParserOutput
 	 *        that may already have been returned via getDerivedDataUpdater to be re-used.
 	 *
 	 * @return PageUpdater
 	 */
-	public function newPageUpdater( User $user, RevisionSlotsUpdate $forUpdate = null ) {
+	public function newPageUpdater( Authority $performer, RevisionSlotsUpdate $forUpdate = null ) {
 		$this->assertProperPage();
 
 		$config = MediaWikiServices::getInstance()->getMainConfig();
 
 		$pageUpdater = new PageUpdater(
-			$user,
+			$performer,
 			$this, // NOTE: eventually, PageUpdater should not know about WikiPage
-			$this->getDerivedDataUpdater( $user, null, $forUpdate, true ),
+			$this->getDerivedDataUpdater( $performer->getUser(), null, $forUpdate, true ),
 			$this->getDBLoadBalancer(),
 			$this->getRevisionStore(),
 			$this->getSlotRoleRegistry(),
@@ -2125,7 +2233,6 @@ class WikiPage implements Page, IDBAccessObject, PageIdentity {
 			// TODO: this is currently redundant to what is done in updateRevisionOn.
 			// But updateRevisionOn() should move into PageStore, and then this will be needed.
 			$this->setLastEdit( $revRec );
-			$this->mLatest = $revRec->getId();
 		}
 
 		return $updater->getStatus();
@@ -2168,7 +2275,7 @@ class WikiPage implements Page, IDBAccessObject, PageIdentity {
 	 * @param Revision|RevisionRecord|null $revision
 	 *        Used with vary-revision or vary-revision-id. Passing a Revision object
 	 *        is hard deprecated since 1.35;
-	 * @param User|null $user
+	 * @param UserIdentity|null $user
 	 * @param string|null $serialFormat IGNORED
 	 * @param bool $useCache Check shared prepared edit cache
 	 *
@@ -2179,7 +2286,7 @@ class WikiPage implements Page, IDBAccessObject, PageIdentity {
 	public function prepareContentForEdit(
 		Content $content,
 		$revision = null,
-		User $user = null,
+		UserIdentity $user = null,
 		$serialFormat = null,
 		$useCache = true
 	) {
@@ -2229,7 +2336,7 @@ class WikiPage implements Page, IDBAccessObject, PageIdentity {
 	 *
 	 * @param Revision|RevisionRecord $revisionRecord since 1.35, can be a RevisionRecord
 	 *   object, and passing a Revision is hard deprecated
-	 * @param User $user User object that did the revision
+	 * @param UserIdentity $user User object that did the revision
 	 * @param array $options Array of options, following indexes are used:
 	 * - changed: bool, whether the revision changed the content (default true)
 	 * - created: bool, whether the revision created the page (default false)
@@ -2248,7 +2355,7 @@ class WikiPage implements Page, IDBAccessObject, PageIdentity {
 	 *  - causeAgent: name of the user who caused the update. See DataUpdate::getCauseAgent().
 	 *    (string, defaults to the passed user)
 	 */
-	public function doEditUpdates( $revisionRecord, User $user, array $options = [] ) {
+	public function doEditUpdates( $revisionRecord, UserIdentity $user, array $options = [] ) {
 		if ( $revisionRecord instanceof Revision ) {
 			wfDeprecated( __METHOD__ . ' with a Revision object', '1.35' );
 			$revisionRecord = $revisionRecord->getRevisionRecord();
@@ -2355,14 +2462,14 @@ class WikiPage implements Page, IDBAccessObject, PageIdentity {
 	 * @param array $expiry Per restriction type expiration
 	 * @param int &$cascade Set to false if cascading protection isn't allowed.
 	 * @param string $reason
-	 * @param User $user The user updating the restrictions
+	 * @param UserIdentity $user The user updating the restrictions
 	 * @param string|string[]|null $tags Change tags to add to the pages and protection log entries
 	 *   ($user should be able to add the specified tags before this is called)
 	 * @return Status Status object; if action is taken, $status->value is the log_id of the
 	 *   protection log entry.
 	 */
 	public function doUpdateRestrictions( array $limit, array $expiry,
-		&$cascade, $reason, User $user, $tags = null
+		&$cascade, $reason, UserIdentity $user, $tags = null
 	) {
 		global $wgCascadingRestrictionLevels;
 
@@ -2448,7 +2555,8 @@ class WikiPage implements Page, IDBAccessObject, PageIdentity {
 		$nullRevision = null;
 
 		if ( $id ) { // Protection of existing page
-			if ( !$this->getHookRunner()->onArticleProtect( $this, $user, $limit, $reason ) ) {
+			$legacyUser = MediaWikiServices::getInstance()->getUserFactory()->newFromUserIdentity( $user );
+			if ( !$this->getHookRunner()->onArticleProtect( $this, $legacyUser, $limit, $reason ) ) {
 				return Status::newGood();
 			}
 
@@ -2557,10 +2665,10 @@ class WikiPage implements Page, IDBAccessObject, PageIdentity {
 				// Only create the Revision object if neeed
 				$nullRevision = new Revision( $nullRevisionRecord );
 				$this->getHookRunner()->onNewRevisionFromEditComplete(
-					$this, $nullRevision, $latest, $user, $tags );
+					$this, $nullRevision, $latest, $legacyUser, $tags );
 			}
 
-			$this->getHookRunner()->onArticleProtectComplete( $this, $user, $limit, $reason );
+			$this->getHookRunner()->onArticleProtectComplete( $this, $legacyUser, $limit, $reason );
 		} else { // Protection of non-existing page (also known as "title protection")
 			// Cascade protection is meaningless in this case
 			$cascade = false;
@@ -2809,12 +2917,12 @@ class WikiPage implements Page, IDBAccessObject, PageIdentity {
 	 * @since 1.36 User second parameter is required
 	 *
 	 * @param string $reason Delete reason for deletion log
-	 * @param User $deleter The deleting user
+	 * @param UserIdentity $deleter The deleting user
 	 * @param bool $suppress Suppress all revisions and log the deletion in
 	 *   the suppression log instead of the deletion log
 	 * @param bool|null $u1 Unused
 	 * @param array|string &$error Array of errors to append to
-	 * @param User|null $u2 Unused
+	 * @param mixed $u2 Unused
 	 * @param string[] $tags Tags to apply to the deletion action
 	 * @param string $logsubtype
 	 * @param bool $immediate false allows deleting over time via the job queue
@@ -2825,7 +2933,7 @@ class WikiPage implements Page, IDBAccessObject, PageIdentity {
 	 * @throws MWException
 	 */
 	public function doDeleteArticleReal(
-		$reason, User $deleter, $suppress = false, $u1 = null, &$error = '', $u2 = null,
+		$reason, UserIdentity $deleter, $suppress = false, $u1 = null, &$error = '', $u2 = null,
 		$tags = [], $logsubtype = 'delete', $immediate = false
 	) {
 		wfDebug( __METHOD__ );
@@ -2833,8 +2941,11 @@ class WikiPage implements Page, IDBAccessObject, PageIdentity {
 
 		$status = Status::newGood();
 
+		$legacyDeleter = MediaWikiServices::getInstance()
+			->getUserFactory()
+			->newFromUserIdentity( $deleter );
 		if ( !$this->getHookRunner()->onArticleDelete(
-			$this, $deleter, $reason, $error, $status, $suppress )
+			$this, $legacyDeleter, $reason, $error, $status, $suppress )
 		) {
 			if ( $status->isOK() ) {
 				// Hook aborted but didn't set a fatal status
@@ -2856,7 +2967,7 @@ class WikiPage implements Page, IDBAccessObject, PageIdentity {
 	 * Potentially called many times per deletion operation for pages with many revisions.
 	 * @param string $reason
 	 * @param bool $suppress
-	 * @param User $deleter
+	 * @param UserIdentity $deleter
 	 * @param string[] $tags
 	 * @param string $logsubtype
 	 * @param bool $immediate
@@ -2864,7 +2975,7 @@ class WikiPage implements Page, IDBAccessObject, PageIdentity {
 	 * @return Status
 	 */
 	public function doDeleteArticleBatched(
-		$reason, $suppress, User $deleter, $tags,
+		$reason, $suppress, UserIdentity $deleter, $tags,
 		$logsubtype, $immediate = false, $webRequestId = null
 	) {
 		wfDebug( __METHOD__ );
@@ -3006,9 +3117,12 @@ class WikiPage implements Page, IDBAccessObject, PageIdentity {
 				$deleter
 			);
 
+			$legacyDeleter = MediaWikiServices::getInstance()
+				->getUserFactory()
+				->newFromUserIdentity( $deleter );
 			$this->getHookRunner()->onArticleDeleteComplete(
 				$wikiPageBeforeDelete,
-				$deleter,
+				$legacyDeleter,
 				$reason,
 				$id,
 				$content,
@@ -3178,10 +3292,10 @@ class WikiPage implements Page, IDBAccessObject, PageIdentity {
 	 *   deletion, used when determining the required updates. This may be needed because
 	 *   $this->getRevisionRecord() may already return null when the page proper was deleted.
 	 *  Passing a Revision is deprecated since 1.35
-	 * @param User|null $user The user that caused the deletion
+	 * @param UserIdentity|null $user The user that caused the deletion
 	 */
 	public function doDeleteUpdates(
-		$id, Content $content = null, $revRecord = null, User $user = null
+		$id, Content $content = null, $revRecord = null, UserIdentity $user = null
 	) {
 		if ( $revRecord && $revRecord instanceof Revision ) {
 			wfDeprecated( __METHOD__ . ' with a Revision object', '1.35' );
@@ -4179,6 +4293,44 @@ class WikiPage implements Page, IDBAccessObject, PageIdentity {
 		}
 
 		return true;
+	}
+
+	/**
+	 * Returns the page represented by this WikiPage as a PageStoreRecord.
+	 * The PageRecord returned by this method is guaranteed to be immutable.
+	 *
+	 * It is preferred to use this method rather than using the WikiPage as a PageIdentity directly.
+	 * @since 1.36
+	 *
+	 * @throws PreconditionException if the page does not exist.
+	 *
+	 * @return ExistingPageRecord
+	 */
+	public function toPageRecord(): ExistingPageRecord {
+		// TODO: replace individual member fields with a PageRecord instance that is always present
+
+		if ( !$this->mDataLoaded ) {
+			$this->loadPageData();
+		}
+
+		Assert::precondition(
+			$this->exists(),
+			'This WikiPage instance does not represent an existing page: ' . $this->mTitle
+		);
+
+		return new PageStoreRecord(
+			(object)[
+				'page_id' => $this->getId(),
+				'page_namespace' => $this->mTitle->getNamespace(),
+				'page_title' => $this->mTitle->getDBkey(),
+				'page_latest' => $this->mLatest,
+				'page_is_new' => $this->mIsNew,
+				'page_is_redirect' => $this->mIsRedirect,
+				'page_touched' => $this->getTouched(),
+				'page_lang' => $this->getLanguage()
+			],
+			PageIdentity::LOCAL
+		);
 	}
 
 }

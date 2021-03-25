@@ -204,13 +204,29 @@ class ActorStore implements UserIdentityLookup, ActorNormalization {
 	}
 
 	/**
+	 * @param int $actorId
+	 * @param UserIdentity $actor
+	 */
+	private function deleteUserIdentityFromCache( int $actorId, UserIdentity $actor ) {
+		$this->actorsByActorId->clear( $actorId );
+		$userId = $actor->getId( $this->wikiId );
+		if ( $userId ) {
+			$this->actorsByUserId->clear( $userId );
+		}
+		$this->actorsByName->clear( $actor->getName() );
+	}
+
+	/**
 	 * Find an actor by $id.
 	 *
 	 * @param int $actorId
-	 * @param int $queryFlags one of IDBAccessObject constants
+	 * @param IDatabase $db The database connection to operate on.
+	 *        The database must correspond to ActorStore's wiki ID.
 	 * @return UserIdentity|null Returns null if no actor with this $actorId exists in the database.
 	 */
-	public function getActorById( int $actorId, int $queryFlags = self::READ_NORMAL ): ?UserIdentity {
+	public function getActorById( int $actorId, IDatabase $db ): ?UserIdentity {
+		$this->checkDatabaseDomain( $db );
+
 		if ( !$actorId ) {
 			return null;
 		}
@@ -220,10 +236,21 @@ class ActorStore implements UserIdentityLookup, ActorNormalization {
 			return $cachedValue[0];
 		}
 
-		return $this->newSelectQueryBuilder( $queryFlags )
+		$actor = $this->newSelectQueryBuilder( $db )
 			->caller( __METHOD__ )
 			->conds( [ 'actor_id' => $actorId ] )
 			->fetchUserIdentity();
+
+		// The actor ID mostly comes from DB, so if we can't find an actor by ID,
+		// it's most likely due to lagged replica and not cause it doesn't actually exist.
+		// Probably we just inserted it? Try master.
+		if ( !$actor ) {
+			$actor = $this->newSelectQueryBuilderForQueryFlags( self::READ_LATEST )
+				->caller( __METHOD__ )
+				->conds( [ 'actor_id' => $actorId ] )
+				->fetchUserIdentity();
+		}
+		return $actor;
 	}
 
 	/**
@@ -249,7 +276,7 @@ class ActorStore implements UserIdentityLookup, ActorNormalization {
 			return $cachedValue[0];
 		}
 
-		return $this->newSelectQueryBuilder( $queryFlags )
+		return $this->newSelectQueryBuilderForQueryFlags( $queryFlags )
 			->caller( __METHOD__ )
 			->userNames( $name )
 			->fetchUserIdentity();
@@ -272,7 +299,7 @@ class ActorStore implements UserIdentityLookup, ActorNormalization {
 			return $cachedValue[0];
 		}
 
-		return $this->newSelectQueryBuilder( $queryFlags )
+		return $this->newSelectQueryBuilderForQueryFlags( $queryFlags )
 			->caller( __METHOD__ )
 			->userIds( $userId )
 			->fetchUserIdentity();
@@ -295,13 +322,29 @@ class ActorStore implements UserIdentityLookup, ActorNormalization {
 	}
 
 	/**
+	 * Detach the actor ID from $user for backwards compatibility.
+	 *
+	 * @todo remove this method when no longer needed (T273974).
+	 *
+	 * @param UserIdentity $user
+	 */
+	private function detachActorId( UserIdentity $user ) {
+		if ( $user instanceof UserIdentityValue ) {
+			$user->setActorId( 0 );
+		} elseif ( $user instanceof User ) {
+			$user->setActorId( 0 );
+		}
+	}
+
+	/**
 	 * Find the actor_id of the given $user.
 	 *
 	 * @param UserIdentity $user
-	 * @param int $queryFlags
+	 * @param IDatabase $db The database connection to operate on.
+	 *        The database must correspond to ActorStore's wiki ID.
 	 * @return int|null
 	 */
-	public function findActorId( UserIdentity $user, int $queryFlags = self::READ_NORMAL ): ?int {
+	public function findActorId( UserIdentity $user, IDatabase $db ): ?int {
 		// TODO: we want to assert this user belongs to the correct wiki,
 		// but User objects are always local and we used to use them
 		// on a non-local DB connection. We need to first deprecate this
@@ -318,8 +361,7 @@ class ActorStore implements UserIdentityLookup, ActorNormalization {
 			return null;
 		}
 
-		[ $db, $options ] = $this->getDBConnectionRefForQueryFlags( $queryFlags );
-		$id = $this->findActorIdInternal( $name, $db, $options );
+		$id = $this->findActorIdInternal( $name, $db );
 
 		if ( $id ) {
 			$this->attachActorId( $user, $id );
@@ -332,18 +374,18 @@ class ActorStore implements UserIdentityLookup, ActorNormalization {
 	 * Find the actor_id of the given $name.
 	 *
 	 * @param string $name
-	 * @param int $queryFlags
+	 * @param IDatabase $db The database connection to operate on.
+	 *        The database must correspond to ActorStore's wiki ID.
 	 * @return int|null
 	 */
-	public function findActorIdByName( $name, int $queryFlags = self::READ_NORMAL ): ?int {
+	public function findActorIdByName( $name, IDatabase $db ): ?int {
 		// NOTE: $name may be user-supplied, need full normalization
 		$name = $this->normalizeUserName( $name, UserNameUtils::RIGOR_VALID );
 		if ( !$name ) {
 			return null;
 		}
 
-		[ $db, $options ] = $this->getDBConnectionRefForQueryFlags( $queryFlags );
-		$id = $this->findActorIdInternal( $name, $db, $options );
+		$id = $this->findActorIdInternal( $name, $db );
 
 		return $id;
 	}
@@ -352,7 +394,8 @@ class ActorStore implements UserIdentityLookup, ActorNormalization {
 	 * Find actor_id of the given $user using the passed $db connection.
 	 *
 	 * @param string $name
-	 * @param IDatabase $db
+	 * @param IDatabase $db The database connection to operate on.
+	 *        The database must correspond to ActorStore's wiki ID.
 	 * @param array $queryOptions
 	 * @return int|null
 	 */
@@ -395,8 +438,17 @@ class ActorStore implements UserIdentityLookup, ActorNormalization {
 	 * Attempt to assign an actor ID to the given $user
 	 * If it is already assigned, return the existing ID.
 	 *
+	 * @note If called within a transaction, the returned ID might become invalid
+	 * if the transaction is rolled back, so it should not be passed outside of the
+	 * transaction context.
+	 *
 	 * @param UserIdentity $user
-	 * @param IDatabase|null $dbw
+	 * @param IDatabase|null $dbw The database connection to acquire the ID from.
+	 *        The database must correspond to ActorStore's wiki ID.
+	 *        If not given, an appropriate database connection will acquired from the
+	 *        LoadBalancer provided to the constructor.
+	 *        Not providing a database connection triggers a deprecation warning!
+	 *        In the future, this parameter will be required.
 	 * @return int greater then 0
 	 * @throws CannotCreateActorException if no actor ID has been assigned to this $user
 	 */
@@ -404,6 +456,12 @@ class ActorStore implements UserIdentityLookup, ActorNormalization {
 		if ( $dbw ) {
 			$this->checkDatabaseDomain( $dbw );
 		} else {
+			// TODO: Remove after fixing it in all extensions and seeing it live for one train.
+			//       Does not need full deprecation since this method is new in 1.36.
+			wfDeprecatedMsg(
+				'Calling acquireActorId() without the $dbw parameter is deprecated',
+				'1.36'
+			);
 			[ $dbw, ] = $this->getDBConnectionRefForQueryFlags( self::READ_LATEST );
 		}
 		// TODO: we want to assert this user belongs to the correct wiki,
@@ -462,9 +520,21 @@ class ActorStore implements UserIdentityLookup, ActorNormalization {
 			}
 		}
 
-		// Cache row we've just created
-		$this->newActorFromRowFields( $userId, $userName, $actorId );
 		$this->attachActorId( $user, $actorId );
+
+		// Cache row we've just created
+		$cachedUserIdentity = $this->newActorFromRowFields( $userId, $userName, $actorId );
+		if ( $dbw->trxLevel() ) {
+			// If called within a transaction and it was rolled back, the cached actor ID
+			// becomes invalid, so cache needs to be invalidated as well. See T277795.
+			$dbw->onTransactionResolution(
+				function ( int $trigger ) use ( $actorId, $cachedUserIdentity, $user ) {
+					if ( $trigger === IDatabase::TRIGGER_ROLLBACK ) {
+						$this->deleteUserIdentityFromCache( $actorId, $cachedUserIdentity );
+						$this->detachActorId( $user );
+					}
+				} );
+		}
 
 		return $actorId;
 	}
@@ -530,7 +600,9 @@ class ActorStore implements UserIdentityLookup, ActorNormalization {
 			return $actor;
 		}
 		$actor = new UserIdentityValue( 0, self::UNKNOWN_USER_NAME, 0, $this->wikiId );
-		$this->acquireActorId( $actor );
+
+		[ $db, ] = $this->getDBConnectionRefForQueryFlags( self::READ_LATEST );
+		$this->acquireActorId( $actor, $db );
 		return $actor;
 	}
 
@@ -540,8 +612,29 @@ class ActorStore implements UserIdentityLookup, ActorNormalization {
 	 * @param int $queryFlags one of IDBAccessObject constants
 	 * @return UserSelectQueryBuilder
 	 */
-	public function newSelectQueryBuilder( int $queryFlags = self::READ_NORMAL ): UserSelectQueryBuilder {
+	private function newSelectQueryBuilderForQueryFlags( $queryFlags ): UserSelectQueryBuilder {
 		[ $db, $options ] = $this->getDBConnectionRefForQueryFlags( $queryFlags );
-		return ( new UserSelectQueryBuilder( $db, $this ) )->options( $options );
+		$queryBuilder = $this->newSelectQueryBuilder( $db );
+		$queryBuilder->options( $options );
+		return $queryBuilder;
+	}
+
+	/**
+	 * Returns a specialized SelectQueryBuilder for querying the UserIdentity objects.
+	 *
+	 * @param IDatabase|null $db The database connection to perform the query on.
+	 *        The database must correspond to ActorStore's wiki ID.
+	 *        If not given, an appropriate database connection will acquired from the
+	 *        LoadBalancer provided to the constructor.
+	 * @return UserSelectQueryBuilder
+	 */
+	public function newSelectQueryBuilder( IDatabase $db = null ): UserSelectQueryBuilder {
+		if ( $db ) {
+			$this->checkDatabaseDomain( $db );
+		} else {
+			[ $db, ] = $this->getDBConnectionRefForQueryFlags( self::READ_NORMAL );
+		}
+
+		return new UserSelectQueryBuilder( $db, $this );
 	}
 }

@@ -88,6 +88,7 @@ use MediaWiki\Page\ContentModelChangeFactory;
 use MediaWiki\Page\MergeHistoryFactory;
 use MediaWiki\Page\MovePageFactory;
 use MediaWiki\Page\PageCommandFactory;
+use MediaWiki\Page\PageStore;
 use MediaWiki\Page\ParserOutputAccess;
 use MediaWiki\Page\WikiPageFactory;
 use MediaWiki\Parser\ParserCacheFactory;
@@ -114,6 +115,8 @@ use MediaWiki\Storage\NameTableStoreFactory;
 use MediaWiki\Storage\PageEditStash;
 use MediaWiki\Storage\RevertedTagUpdateManager;
 use MediaWiki\Storage\SqlBlobStore;
+use MediaWiki\Tidy\RemexDriver;
+use MediaWiki\Tidy\TidyDriverBase;
 use MediaWiki\User\ActorNormalization;
 use MediaWiki\User\ActorStore;
 use MediaWiki\User\ActorStoreFactory;
@@ -139,11 +142,11 @@ use Wikimedia\RequestTimeout\RequestTimeout;
 use Wikimedia\Services\RecursiveServiceDependencyException;
 use Wikimedia\UUID\GlobalIdGenerator;
 
+/** @phpcs-require-sorted-array */
 return [
 	'ActorMigration' => static function ( MediaWikiServices $services ) : ActorMigration {
 		return new ActorMigration(
 			SCHEMA_COMPAT_NEW,
-			$services->getUserFactory(),
 			$services->getActorStoreFactory()
 		);
 	},
@@ -232,7 +235,8 @@ return [
 				BlockPermissionCheckerFactory::CONSTRUCTOR_OPTIONS,
 				$services->getMainConfig()
 			),
-			$services->getPermissionManager()
+			$services->getBlockUtils(),
+			$services->getUserFactory()
 		);
 	},
 
@@ -950,6 +954,15 @@ return [
 		);
 	},
 
+	'PageStore' => static function ( MediaWikiServices $services ) : PageStore {
+		$options = new ServiceOptions( PageStore::CONSTRUCTOR_OPTIONS, $services->getMainConfig() );
+		return new PageStore(
+			$options,
+			$services->getDBLoadBalancer(),
+			$services->getNamespaceInfo()
+		);
+	},
+
 	'Parser' => static function ( MediaWikiServices $services ) : Parser {
 		return $services->getParserFactory()->create();
 	},
@@ -979,15 +992,6 @@ return [
 
 	'ParserFactory' => static function ( MediaWikiServices $services ) : ParserFactory {
 		$options = new ServiceOptions( Parser::CONSTRUCTOR_OPTIONS,
-			// 'class'
-			// Note that this value is ignored by ParserFactory and is always
-			// Parser::class for legacy reasons; we'll introduce a new
-			// mechanism for selecting an alternate parser in the future
-			// (T236809)
-			$services->getMainConfig()->get( 'ParserConf' ),
-			// Make sure to have defaults in case someone overrode ParserConf with something silly
-			[ 'class' => Parser::class ],
-			// Plus a bunch of actual config options
 			$services->getMainConfig()
 		);
 
@@ -1002,7 +1006,11 @@ return [
 			LoggerFactory::getInstance( 'Parser' ),
 			$services->getBadFileLookup(),
 			$services->getLanguageConverterFactory(),
-			$services->getHookContainer()
+			$services->getHookContainer(),
+			$services->getTidy(),
+			$services->getMainWANObjectCache(),
+			$services->getUserOptionsLookup(),
+			$services->getUserFactory()
 		);
 	},
 
@@ -1077,7 +1085,8 @@ return [
 			$services->getPermissionManager(),
 			$services->getLanguageConverterFactory()->getLanguageConverter(),
 			$services->getLanguageNameUtils(),
-			$services->getHookContainer()
+			$services->getHookContainer(),
+			$services->getUserOptionsLookup()
 		);
 		$factory->setLogger( LoggerFactory::getInstance( 'preferences' ) );
 
@@ -1229,6 +1238,7 @@ return [
 			$services->getActorStoreFactory(),
 			LoggerFactory::getInstance( 'RevisionStore' ),
 			$services->getContentHandlerFactory(),
+			$services->getTitleFactory(),
 			$services->getHookContainer()
 		);
 
@@ -1349,19 +1359,25 @@ return [
 	},
 
 	'SlotRoleRegistry' => static function ( MediaWikiServices $services ) : SlotRoleRegistry {
-		$config = $services->getMainConfig();
-		$contentHandlerFactory = $services->getContentHandlerFactory();
-
 		$registry = new SlotRoleRegistry(
 			$services->getSlotRoleStore()
 		);
 
-		$registry->defineRole( 'main', static function () use ( $config, $contentHandlerFactory ) {
-			return new MainSlotRoleHandler(
-				$config->get( 'NamespaceContentModels' ),
-				$contentHandlerFactory
-			);
-		} );
+		$config = $services->getMainConfig();
+		$contentHandlerFactory = $services->getContentHandlerFactory();
+		$hookContainer = $services->getHookContainer();
+		$titleFactory = $services->getTitleFactory();
+		$registry->defineRole(
+			'main',
+			static function () use ( $config, $contentHandlerFactory, $hookContainer, $titleFactory ) {
+				return new MainSlotRoleHandler(
+					$config->get( 'NamespaceContentModels' ),
+					$contentHandlerFactory,
+					$hookContainer,
+					$titleFactory
+				);
+			}
+		);
 
 		return $registry;
 	},
@@ -1408,6 +1424,14 @@ return [
 
 	'TempFSFileFactory' => static function ( MediaWikiServices $services ) : TempFSFileFactory {
 		return new TempFSFileFactory( $services->getMainConfig()->get( 'TmpDirectory' ) );
+	},
+
+	'Tidy' => static function ( MediaWikiServices $services ) : TidyDriverBase {
+		return new RemexDriver(
+			new ServiceOptions(
+				RemexDriver::CONSTRUCTOR_OPTIONS, $services->getMainConfig()
+			)
+		);
 	},
 
 	'TitleFactory' => static function ( MediaWikiServices $services ) : TitleFactory {
@@ -1568,7 +1592,8 @@ return [
 			$services->getRevisionLookup(),
 			$services->getHookContainer(),
 			$services->getLinkBatchFactory(),
-			$services->getUserFactory()
+			$services->getUserFactory(),
+			$services->getTitleFactory()
 		);
 		$store->setStatsdDataFactory( $services->getStatsdDataFactory() );
 
@@ -1634,6 +1659,8 @@ return [
 				$services->getMainConfig()
 			),
 			LoggerFactory::getProvider(),
+
+			// UserBlockConstraint
 			$services->getPermissionManager(),
 
 			// EditFilterMergedContentHookConstraint
@@ -1663,13 +1690,13 @@ return [
 			$services->getDBLoadBalancer(),
 			$services->getNamespaceInfo(),
 			$services->getWatchedItemStore(),
-			$services->getPermissionManager(),
 			$services->getRepoGroup(),
 			$services->getContentHandlerFactory(),
 			$services->getRevisionStore(),
 			$services->getSpamChecker(),
 			$services->getHookContainer(),
-			$services->getWikiPageFactory()
+			$services->getWikiPageFactory(),
+			$services->getUserFactory()
 		);
 	},
 
@@ -1685,6 +1712,8 @@ return [
 			$services->getBlockUtils(),
 			$services->getDatabaseBlockStore(),
 			$services->getBlockRestrictionStore(),
+			$services->getUserFactory(),
+			$services->getUserEditTracker(),
 			LoggerFactory::getInstance( 'BlockManager' )
 		);
 	},

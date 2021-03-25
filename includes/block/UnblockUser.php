@@ -25,6 +25,9 @@ use ChangeTags;
 use ManualLogEntry;
 use MediaWiki\HookContainer\HookContainer;
 use MediaWiki\HookContainer\HookRunner;
+use MediaWiki\Permissions\Authority;
+use MediaWiki\User\UserFactory;
+use MediaWiki\User\UserIdentity;
 use RevisionDeleteUser;
 use Status;
 use TitleValue;
@@ -42,10 +45,16 @@ class UnblockUser {
 	/** @var DatabaseBlockStore */
 	private $blockStore;
 
+	/** @var BlockUtils */
+	private $blockUtils;
+
+	/** @var UserFactory */
+	private $userFactory;
+
 	/** @var HookRunner */
 	private $hookRunner;
 
-	/** @var User|string */
+	/** @var UserIdentity|string */
 	private $target;
 
 	/** @var int */
@@ -54,7 +63,7 @@ class UnblockUser {
 	/** @var DatabaseBlock|null */
 	private $block;
 
-	/** @var User */
+	/** @var Authority */
 	private $performer;
 
 	/** @var string */
@@ -66,18 +75,22 @@ class UnblockUser {
 	/**
 	 * @param BlockPermissionCheckerFactory $blockPermissionCheckerFactory
 	 * @param DatabaseBlockStore $blockStore
+	 * @param BlockUtils $blockUtils
+	 * @param UserFactory $userFactory
 	 * @param HookContainer $hookContainer
-	 * @param User|string $target
-	 * @param User $performer
+	 * @param UserIdentity|string $target
+	 * @param Authority $performer
 	 * @param string $reason
 	 * @param string[] $tags
 	 */
 	public function __construct(
 		BlockPermissionCheckerFactory $blockPermissionCheckerFactory,
 		DatabaseBlockStore $blockStore,
+		BlockUtils $blockUtils,
+		UserFactory $userFactory,
 		HookContainer $hookContainer,
 		$target,
-		User $performer,
+		Authority $performer,
 		string $reason,
 		array $tags = []
 	) {
@@ -88,10 +101,12 @@ class UnblockUser {
 				$performer
 			);
 		$this->blockStore = $blockStore;
+		$this->blockUtils = $blockUtils;
+		$this->userFactory = $userFactory;
 		$this->hookRunner = new HookRunner( $hookContainer );
 
 		// Process params
-		list( $this->target, $this->targetType ) = AbstractBlock::parseTarget( $target );
+		list( $this->target, $this->targetType ) = $this->blockUtils->parseBlockTarget( $target );
 		if (
 			$this->targetType === AbstractBlock::TYPE_AUTO &&
 			is_numeric( $this->target )
@@ -165,7 +180,8 @@ class UnblockUser {
 		}
 
 		$denyReason = [ 'hookaborted' ];
-		if ( !$this->hookRunner->onUnblockUser( $this->block, $this->performer, $denyReason ) ) {
+		$legacyUser = $this->userFactory->newFromAuthority( $this->performer );
+		if ( !$this->hookRunner->onUnblockUser( $this->block, $legacyUser, $denyReason ) ) {
 			foreach ( $denyReason as $key ) {
 				$status->fatal( $key );
 			}
@@ -178,12 +194,12 @@ class UnblockUser {
 			return $status;
 		}
 
-		$this->hookRunner->onUnblockUserComplete( $this->block, $this->performer );
+		$this->hookRunner->onUnblockUserComplete( $this->block, $legacyUser );
 
 		// Unset _deleted fields as needed
 		if ( $this->block->getHideName() ) {
 			// Something is deeply FUBAR if this is not a User object, but who knows?
-			$id = $this->block->getTarget() instanceof User
+			$id = $this->block->getTarget() instanceof UserIdentity
 				? $this->block->getTarget()->getId()
 				: User::idFromName( $this->block->getTarget() );
 
@@ -204,7 +220,7 @@ class UnblockUser {
 		if ( $this->block->getType() === DatabaseBlock::TYPE_AUTO ) {
 			$page = TitleValue::tryNew( NS_USER, '#' . $this->block->getId() );
 		} else {
-			$page = $this->block->getTarget() instanceof User
+			$page = $this->block->getTarget() instanceof UserIdentity
 				? $this->block->getTarget()->getUserPage()
 				: TitleValue::tryNew( NS_USER, $this->block->getTarget() );
 		}
@@ -215,7 +231,7 @@ class UnblockUser {
 			$logEntry->setTarget( $page );
 		}
 		$logEntry->setComment( $this->reason );
-		$logEntry->setPerformer( $this->performer );
+		$logEntry->setPerformer( $this->performer->getUser() );
 		$logEntry->addTags( $this->tags );
 		$logEntry->setRelations( [ 'ipb_id' => $this->block->getId() ] );
 		$logId = $logEntry->insert();

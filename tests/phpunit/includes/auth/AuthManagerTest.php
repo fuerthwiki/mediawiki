@@ -162,6 +162,7 @@ class AuthManagerTest extends \MediaWikiIntegrationTestCase {
 		$this->config->set( 'AuthManagerConfig', $config );
 		$this->config->set( 'LanguageCode', 'en' );
 		$this->config->set( 'NewUserLog', false );
+		$this->config->set( 'RememberMe', RememberMeAuthenticationRequest::CHOOSE_REMEMBER );
 	}
 
 	/**
@@ -283,6 +284,7 @@ class AuthManagerTest extends \MediaWikiIntegrationTestCase {
 	}
 
 	public function testSingleton() {
+		$this->hideDeprecated( 'MediaWiki\Auth\AuthManager::singleton' );
 		// Temporarily clear out the global singleton, if any, to test creating
 		// one.
 		$rProp = new \ReflectionProperty( AuthManager::class, 'instance' );

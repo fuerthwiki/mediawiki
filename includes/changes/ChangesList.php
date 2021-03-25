@@ -25,6 +25,7 @@
 use MediaWiki\HookContainer\ProtectedHookAccessorTrait;
 use MediaWiki\Linker\LinkRenderer;
 use MediaWiki\MediaWikiServices;
+use MediaWiki\Permissions\Authority;
 use MediaWiki\Revision\MutableRevisionRecord;
 use MediaWiki\Revision\RevisionRecord;
 use MediaWiki\User\UserIdentityValue;
@@ -415,7 +416,7 @@ class ChangesList extends ContextSource {
 	 * Render the date and time of a revision in the current user language
 	 * based on whether the user is able to view this information or not.
 	 * @param RevisionRecord $rev
-	 * @param User $user
+	 * @param Authority $performer
 	 * @param Language $lang
 	 * @param Title|null $title (optional) where Title does not match
 	 *   the Title associated with the Revision
@@ -424,16 +425,13 @@ class ChangesList extends ContextSource {
 	 */
 	public static function revDateLink(
 		RevisionRecord $rev,
-		User $user,
+		Authority $performer,
 		Language $lang,
 		$title = null
 	) {
 		$ts = $rev->getTimestamp();
-		$date = $lang->userTimeAndDate( $ts, $user );
-		if ( $rev->userCan(
-			RevisionRecord::DELETED_TEXT,
-			$user
-		) ) {
+		$date = $lang->userTimeAndDate( $ts, $performer->getUser() );
+		if ( $rev->userCan( RevisionRecord::DELETED_TEXT, $performer ) ) {
 			$link = MediaWikiServices::getInstance()->getLinkRenderer()->makeKnownLink(
 				$title ?? $rev->getPageAsLinkTarget(),
 				$date,
@@ -500,7 +498,7 @@ class ChangesList extends ContextSource {
 			$rc->mAttribs['rc_type'] == RC_CATEGORIZE
 		) {
 			$diffLink = $this->message['diff'];
-		} elseif ( !self::userCan( $rc, RevisionRecord::DELETED_TEXT, $this->getUser() ) ) {
+		} elseif ( !self::userCan( $rc, RevisionRecord::DELETED_TEXT, $this->getAuthority() ) ) {
 			$diffLink = $this->message['diff'];
 		} else {
 			$query = [
@@ -742,20 +740,20 @@ class ChangesList extends ContextSource {
 	 * field of this revision, if it's marked as deleted.
 	 * @param RCCacheEntry|RecentChange $rc
 	 * @param int $field
-	 * @param User|null $user User object to check against. If null, the global RequestContext's
+	 * @param Authority|null $performer to check permissions against. If null, the global RequestContext's
 	 * User is assumed instead.
 	 * @return bool
 	 */
-	public static function userCan( $rc, $field, User $user = null ) {
-		if ( $user === null ) {
-			$user = RequestContext::getMain()->getUser();
+	public static function userCan( $rc, $field, Authority $performer = null ) {
+		if ( $performer === null ) {
+			$performer = RequestContext::getMain()->getAuthority();
 		}
 
 		if ( $rc->mAttribs['rc_type'] == RC_LOG ) {
-			return LogEventsList::userCanBitfield( $rc->mAttribs['rc_deleted'], $field, $user );
+			return LogEventsList::userCanBitfield( $rc->mAttribs['rc_deleted'], $field, $performer );
 		}
 
-		return RevisionRecord::userCanBitfield( $rc->mAttribs['rc_deleted'], $field, $user );
+		return RevisionRecord::userCanBitfield( $rc->mAttribs['rc_deleted'], $field, $performer );
 	}
 
 	/**
@@ -787,9 +785,7 @@ class ChangesList extends ContextSource {
 			/** Check for rollback permissions, disallow special pages, and only
 			 * show a link on the top-most revision
 			 */
-			if ( MediaWikiServices::getInstance()->getPermissionManager()
-				->quickUserCan( 'rollback', $this->getUser(), $title )
-			) {
+			if ( $this->getAuthority()->probablyCan( 'rollback', $title ) ) {
 				$revRecord = new MutableRevisionRecord( $title );
 				$revRecord->setId( (int)$rc->mAttribs['rc_this_oldid'] );
 				$revRecord->setVisibility( (int)$rc->mAttribs['rc_deleted'] );
