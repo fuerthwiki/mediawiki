@@ -264,7 +264,7 @@ wfLoadExtension( 'MatomoAnalytics' );
 # MatomoAnalytics settings
 $wgMatomoAnalyticsServerURL = $SECRET_matomoURL;
 $wgMatomoAnalyticsTokenAuth = $SECRET_matomoToken;
-$wgMatomoAnalyticsSiteID    = $SECRET_matomoSideID;
+$wgMatomoAnalyticsSiteID    = $SECRET_matomoSiteID;
 
 # Enable VisualEditor but don't make it default
 wfLoadExtension( 'VisualEditor' );
