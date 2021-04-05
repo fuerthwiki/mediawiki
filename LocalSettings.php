@@ -151,6 +151,10 @@ $wgSecretKey = $SECRET_wgSecretKey;
 # web installer while LocalSettings.php is in place
 $wgUpgradeKey = $SECRET_wgUpgradeKey;
 
+# Set Default Timezone
+$wgLocaltimezone = "Europe/Berlin";
+#date_default_timezone_set( $wgLocaltimezone );
+
 #=========================================================================================
 #FINE UNTIL HERE!
 #=========================================================================================
