@@ -151,6 +151,10 @@ $wgSecretKey = $SECRET_wgSecretKey;
 # web installer while LocalSettings.php is in place
 $wgUpgradeKey = $SECRET_wgUpgradeKey;
 
+# Set Default Timezone
+$wgLocaltimezone = "Europe/Berlin";
+#date_default_timezone_set( $wgLocaltimezone );
+
 #=========================================================================================
 #FINE UNTIL HERE!
 #=========================================================================================
@@ -259,6 +263,12 @@ wfLoadExtension( 'Mermaid' );
 wfLoadExtension( 'SemanticCompoundQueries' );
 wfLoadExtension( 'ExternalData' );
 wfLoadExtension( 'RevisionSlider' );
+wfLoadExtension( 'MatomoAnalytics' );
+
+# MatomoAnalytics settings
+$wgMatomoAnalyticsServerURL = $SECRET_matomoURL;
+$wgMatomoAnalyticsTokenAuth = $SECRET_matomoToken;
+$wgMatomoAnalyticsSiteID    = $SECRET_matomoSiteID;
 
 # That next line is only a documentation extension!
 wfLoadExtension( 'examples' );
