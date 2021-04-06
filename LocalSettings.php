@@ -354,13 +354,3 @@ function addWebAppManifest( OutputPage &$out, Skin &$skin ) {
 	$out->addLink( $linkarr );
 	return true;
 };
-## Later, this should create the footer link for stats
-#$wgHooks['SkinTemplateOutputPageBeforeExec'][] = function( $sk, &$tpl ) {
-#	    global $wgArticlePath;
-#        $aboutusLink = Html::rawelement( 'a', [ 'href' => 'http://gschmarrie.de/#/statsn'],
-#        'Statistik' );
-#    $tpl->set( 'aboutus', $aboutusLink );
-#    $tpl->data['footerlinks']['places'][] = 'aboutus';
-#    return true;
-#};
-## Maybe there is a better solution...
