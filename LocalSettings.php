@@ -264,9 +264,9 @@ wfLoadExtension( 'SemanticCompoundQueries' );
 wfLoadExtension( 'ExternalData' );
 wfLoadExtension( 'RevisionSlider' );
 wfLoadExtension( 'UploadWizard' );
-wfLoadExtension( 'MatomoAnalytics' );
 
 # MatomoAnalytics settings
+wfLoadExtension( 'MatomoAnalytics' );
 $wgMatomoAnalyticsServerURL = $SECRET_matomoURL;
 $wgMatomoAnalyticsTokenAuth = $SECRET_matomoToken;
 $wgMatomoAnalyticsSiteID    = $SECRET_matomoSiteID;
