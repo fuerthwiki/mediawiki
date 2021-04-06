@@ -218,6 +218,9 @@
 [submodule "extensions/RevisionSlider"]
 	path = extensions/RevisionSlider
 	url = git@github.com:wikimedia/mediawiki-extensions-RevisionSlider.git
+[submodule "extensions/UploadWizard"]
+	path = extensions/UploadWizard
+	url = git@github.com:fuerthwiki/mediawiki-extensions-UploadWizard.git
 [submodule "extensions/MatomoAnalytics"]
 	path = extensions/MatomoAnalytics
 	url = git@github.com:fuerthwiki/MatomoAnalytics.git

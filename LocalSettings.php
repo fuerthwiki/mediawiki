@@ -263,6 +263,7 @@ wfLoadExtension( 'Mermaid' );
 wfLoadExtension( 'SemanticCompoundQueries' );
 wfLoadExtension( 'ExternalData' );
 wfLoadExtension( 'RevisionSlider' );
+wfLoadExtension( 'UploadWizard' );
 wfLoadExtension( 'MatomoAnalytics' );
 
 # MatomoAnalytics settings
