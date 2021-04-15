@@ -92,7 +92,6 @@ abstract class QueryPage extends SpecialPage {
 				[ SpecialBrokenRedirects::class, 'BrokenRedirects' ],
 				[ SpecialDeadendPages::class, 'Deadendpages' ],
 				[ SpecialDoubleRedirects::class, 'DoubleRedirects' ],
-				[ SpecialFileDuplicateSearch::class, 'FileDuplicateSearch' ],
 				[ SpecialListDuplicatedFiles::class, 'ListDuplicatedFiles' ],
 				[ SpecialLinkSearch::class, 'LinkSearch' ],
 				[ SpecialListRedirects::class, 'Listredirects' ],
@@ -369,9 +368,6 @@ abstract class QueryPage extends SpecialPage {
 
 		$fname = static::class . '::recache';
 		$dbw = $this->getDBLoadBalancer()->getConnectionRef( ILoadBalancer::DB_MASTER );
-		if ( !$dbw ) {
-			return false;
-		}
 
 		try {
 			# Do query

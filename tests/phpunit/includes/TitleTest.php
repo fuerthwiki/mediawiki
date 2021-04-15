@@ -6,6 +6,8 @@ use MediaWiki\Linker\LinkTarget;
 use MediaWiki\MediaWikiServices;
 use MediaWiki\Page\PageIdentity;
 use MediaWiki\Page\PageIdentityValue;
+use MediaWiki\Page\PageReference;
+use MediaWiki\Page\PageReferenceValue;
 use MediaWiki\User\UserIdentityValue;
 
 /**
@@ -457,6 +459,8 @@ class TitleTest extends MediaWikiIntegrationTestCase {
 			[ 'User:/', '/' ],
 			[ 'User://', '/' ],
 			[ 'User:/oops/', '/oops' ],
+			[ 'User:/indeed', '/indeed' ],
+			[ 'User://indeed', '/' ],
 			[ 'User:/Ramba/Zamba/Mamba/', '/Ramba/Zamba/Mamba' ],
 			[ 'User://x//y//z//', '//x//y//z/' ],
 		];
@@ -523,6 +527,8 @@ class TitleTest extends MediaWikiIntegrationTestCase {
 			[ 'User:/', '/' ],
 			[ 'User://', '' ],
 			[ 'User:/oops/', '' ],
+			[ 'User:/indeed', '/indeed' ],
+			[ 'User://indeed', 'indeed' ],
 			[ 'User:/Ramba/Zamba/Mamba/', '' ],
 			[ 'User://x//y//z//', '' ],
 			[ 'Template:Foo', 'Foo' ]
@@ -595,6 +601,32 @@ class TitleTest extends MediaWikiIntegrationTestCase {
 			$this->assertSame( $value, $title );
 		} else {
 			$this->assertSame( $value->getId(), $title->getArticleID() );
+			$this->assertSame( $value->getNamespace(), $title->getNamespace() );
+			$this->assertSame( $value->getDBkey(), $title->getDBkey() );
+		}
+	}
+
+	public function provideCastFromPageReference() {
+		$fake = $this->createMock( PageReference::class );
+		$fake->method( 'getNamespace' )->willReturn( NS_MAIN );
+		$fake->method( 'getDBkey' )->willReturn( 'Test' );
+
+		yield [ new PageReferenceValue( NS_MAIN, 'Test', PageReference::LOCAL ) ];
+	}
+
+	/**
+	 * @covers Title::castFromPageReference
+	 * @dataProvider provideCastFromPageIdentity
+	 * @dataProvider provideCastFromPageReference
+	 */
+	public function testCastFromPageReference( ?PageReference $value ) {
+		$title = Title::castFromPageReference( $value );
+
+		if ( $value === null ) {
+			$this->assertNull( $title );
+		} elseif ( $value instanceof Title ) {
+			$this->assertSame( $value, $title );
+		} else {
 			$this->assertSame( $value->getNamespace(), $title->getNamespace() );
 			$this->assertSame( $value->getDBkey(), $title->getDBkey() );
 		}
@@ -949,6 +981,9 @@ class TitleTest extends MediaWikiIntegrationTestCase {
 			'Interwiki link is not watchable' => [
 				Title::makeTitle( NS_MAIN, 'Kittens', '', 'acme' ), false
 			],
+			'Invalid title is not watchable' => [
+				Title::makeTitle( NS_MAIN, '<' ), false
+			]
 		];
 	}
 
@@ -1428,7 +1463,7 @@ class TitleTest extends MediaWikiIntegrationTestCase {
 		];
 		yield '(makeTitle vs UserIdentityValue) name text' => [
 			Title::makeTitle( NS_MAIN, 'Foo' ),
-			new UserIdentityValue( 7, 'Foo', 8 ),
+			new UserIdentityValue( 7, 'Foo' ),
 			false
 		];
 	}

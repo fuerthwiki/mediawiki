@@ -32,6 +32,7 @@ use Psr\Log\NullLogger;
 use RuntimeException;
 use Throwable;
 use WANObjectCache;
+use Wikimedia\RequestTimeout\CriticalSectionProvider;
 use Wikimedia\ScopedCallback;
 
 /**
@@ -41,6 +42,8 @@ use Wikimedia\ScopedCallback;
 abstract class LBFactory implements ILBFactory {
 	/** @var ChronologyProtector */
 	private $chronProt;
+	/** @var CriticalSectionProvider|null */
+	private $csProvider;
 	/**
 	 * @var callable|null An optional callback that returns a ScopedCallback instance,
 	 * meant to profile the actual query execution in {@see Database::doQuery}
@@ -71,8 +74,6 @@ abstract class LBFactory implements ILBFactory {
 	/** @var DatabaseDomain Local domain */
 	protected $localDomain;
 
-	/** @var string Local hostname of the app server */
-	private $hostname;
 	/** @var array Web request information about the client */
 	private $requestInfo;
 	/** @var bool Whether this PHP instance is for a CLI script */
@@ -151,6 +152,8 @@ abstract class LBFactory implements ILBFactory {
 		$this->profiler = $conf['profiler'] ?? null;
 		$this->trxProfiler = $conf['trxProfiler'] ?? new TransactionProfiler();
 
+		$this->csProvider = $conf['criticalSectionProvider'] ?? null;
+
 		$this->requestInfo = [
 			'IPAddress' => $_SERVER[ 'REMOTE_ADDR' ] ?? '',
 			'UserAgent' => $_SERVER['HTTP_USER_AGENT'] ?? '',
@@ -161,7 +164,6 @@ abstract class LBFactory implements ILBFactory {
 		];
 
 		$this->cliMode = $conf['cliMode'] ?? ( PHP_SAPI === 'cli' || PHP_SAPI === 'phpdbg' );
-		$this->hostname = $conf['hostname'] ?? gethostname();
 		$this->agent = $conf['agent'] ?? '';
 		$this->defaultGroup = $conf['defaultGroup'] ?? null;
 		$this->secret = $conf['secret'] ?? '';
@@ -598,7 +600,7 @@ abstract class LBFactory implements ILBFactory {
 			$cp->stageSessionReplicationPosition( $lb );
 		} );
 		// Write the positions to the persistent stash
-		$unsavedPositions = $cp->shutdown( $cpIndex );
+		$unsavedPositions = $cp->persistSessionReplicationPositions( $cpIndex );
 		if ( $unsavedPositions && $workCallback ) {
 			// Invoke callback in case it did not cache the result yet
 			$workCallback();
@@ -642,7 +644,6 @@ abstract class LBFactory implements ILBFactory {
 			'replLogger' => $this->replLogger,
 			'errorLogger' => $this->errorLogger,
 			'deprecationLogger' => $this->deprecationLogger,
-			'hostname' => $this->hostname,
 			'cliMode' => $this->cliMode,
 			'agent' => $this->agent,
 			'maxLag' => $this->maxLag,
@@ -653,7 +654,8 @@ abstract class LBFactory implements ILBFactory {
 				$this->getChronologyProtector()->applySessionReplicationPosition( $lb );
 			},
 			'roundStage' => $initStage,
-			'ownerId' => $owner
+			'ownerId' => $owner,
+			'criticalSectionProvider' => $this->csProvider
 		];
 	}
 
@@ -737,28 +739,40 @@ abstract class LBFactory implements ILBFactory {
 	}
 
 	/**
-	 * @param int $index Write index
+	 * Build a string conveying the client and write index of the chronology protector data
+	 *
+	 * @param int $writeIndex Write index
 	 * @param int $time UNIX timestamp; can be used to detect stale cookies (T190082)
-	 * @param string $clientId Agent ID hash from ILBFactory::shutdown()
-	 * @return string Timestamp-qualified write index of the form "<index>@<timestamp>#<hash>"
+	 * @param string $clientId Client ID hash from ILBFactory::shutdown()
+	 * @return string Value to use for "cpPosIndex" cookie
 	 * @since 1.32
 	 */
-	public static function makeCookieValueFromCPIndex( $index, $time, $clientId ) {
-		return "$index@$time#$clientId";
+	public static function makeCookieValueFromCPIndex(
+		int $writeIndex,
+		int $time,
+		string $clientId
+	) {
+		// Format is "<write index>@<write timestamp>#<client ID hash>"
+		return "{$writeIndex}@{$time}#{$clientId}";
 	}
 
 	/**
-	 * @param string|null $value Possible result of LBFactory::makeCookieValueFromCPIndex()
+	 * Parse a string conveying the client and write index of the chronology protector data
+	 *
+	 * @param string|null $value Value of "cpPosIndex" cookie
 	 * @param int $minTimestamp Lowest UNIX timestamp that a non-expired value can have
 	 * @return array (index: int or null, clientId: string or null)
 	 * @since 1.32
 	 */
-	public static function getCPInfoFromCookieValue( $value, $minTimestamp ) {
+	public static function getCPInfoFromCookieValue( ?string $value, int $minTimestamp ) {
 		static $placeholder = [ 'index' => null, 'clientId' => null ];
 
 		if ( $value === null ) {
 			return $placeholder; // not set
-		} elseif ( !preg_match( '/^(\d+)@(\d+)#([0-9a-f]{32})$/', $value, $m ) ) {
+		}
+
+		// Format is "<write index>@<write timestamp>#<client ID hash>"
+		if ( !preg_match( '/^(\d+)@(\d+)#([0-9a-f]{32})$/', $value, $m ) ) {
 			return $placeholder; // invalid
 		}
 

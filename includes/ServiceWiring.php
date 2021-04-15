@@ -89,7 +89,9 @@ use MediaWiki\Page\MergeHistoryFactory;
 use MediaWiki\Page\MovePageFactory;
 use MediaWiki\Page\PageCommandFactory;
 use MediaWiki\Page\PageStore;
+use MediaWiki\Page\PageStoreFactory;
 use MediaWiki\Page\ParserOutputAccess;
+use MediaWiki\Page\RollbackPageFactory;
 use MediaWiki\Page\WikiPageFactory;
 use MediaWiki\Parser\ParserCacheFactory;
 use MediaWiki\Permissions\GroupPermissionsLookup;
@@ -132,7 +134,7 @@ use MediaWiki\User\UserNamePrefixSearch;
 use MediaWiki\User\UserNameUtils;
 use MediaWiki\User\UserOptionsLookup;
 use MediaWiki\User\UserOptionsManager;
-use MediaWiki\User\WatchlistNotificationManager;
+use MediaWiki\Watchlist\WatchlistManager;
 use Wikimedia\DependencyStore\KeyValueDependencyStore;
 use Wikimedia\DependencyStore\SqlModuleDependencyStore;
 use Wikimedia\Message\IMessageFormatterFactory;
@@ -419,7 +421,8 @@ return [
 			$services->getConfiguredReadOnlyMode(),
 			$cpStash,
 			$srvCache,
-			$wanCache
+			$wanCache,
+			$services->getCriticalSectionProvider()
 		);
 
 		$class = MWLBFactory::getLBFactoryClass( $lbConf );
@@ -506,12 +509,6 @@ return [
 
 		return new GlobalIdGenerator(
 			$mainConfig->get( 'TmpDirectory' ),
-			// Ignore APC-like caches in CLI mode since there is no meaningful persistence.
-			// This avoids having counters restart with each script run. The ID generator
-			// will fallback to using the disk in those cases.
-			$mainConfig->get( 'CommandLineMode' )
-				? new EmptyBagOStuff()
-				: $services->getLocalServerObjectCache(),
 			static function ( $command ) {
 				return wfShellExec( $command );
 			}
@@ -800,6 +797,7 @@ return [
 
 	'MediaHandlerFactory' => static function ( MediaWikiServices $services ) : MediaHandlerFactory {
 		return new MediaHandlerFactory(
+			LoggerFactory::getInstance( 'MediaHandlerFactory' ),
 			$services->getMainConfig()->get( 'MediaHandlers' )
 		);
 	},
@@ -955,10 +953,18 @@ return [
 	},
 
 	'PageStore' => static function ( MediaWikiServices $services ) : PageStore {
-		$options = new ServiceOptions( PageStore::CONSTRUCTOR_OPTIONS, $services->getMainConfig() );
-		return new PageStore(
+		return $services->getPageStoreFactory()->getPageStore();
+	},
+
+	'PageStoreFactory' => static function ( MediaWikiServices $services ) : PageStoreFactory {
+		$options = new ServiceOptions(
+			PageStoreFactory::CONSTRUCTOR_OPTIONS,
+			$services->getMainConfig()
+		);
+
+		return new PageStoreFactory(
 			$options,
-			$services->getDBLoadBalancer(),
+			$services->getDBLoadBalancerFactory(),
 			$services->getNamespaceInfo()
 		);
 	},
@@ -986,7 +992,9 @@ return [
 			$services->getJsonCodec(),
 			$services->getStatsdDataFactory(),
 			LoggerFactory::getInstance( 'ParserCache' ),
-			$options
+			$options,
+			$services->getTitleFactory(),
+			$services->getWikiPageFactory()
 		);
 	},
 
@@ -1018,10 +1026,13 @@ return [
 		return new ParserOutputAccess(
 			$services->getParserCache(),
 			$services->getParserCacheFactory()->getRevisionOutputCache( 'rcache' ),
+			$services->getRevisionLookup(),
 			$services->getRevisionRenderer(),
 			$services->getStatsdDataFactory(),
 			$services->getDBLoadBalancerFactory(),
-			LoggerFactory::getProvider()
+			LoggerFactory::getProvider(),
+			$services->getWikiPageFactory(),
+			$services->getTitleFormatter()
 		);
 	},
 
@@ -1097,7 +1108,8 @@ return [
 		$mainConfig = $services->getMainConfig();
 		return new ProxyLookup(
 			$mainConfig->get( 'CdnServers' ),
-			$mainConfig->get( 'CdnServersNoPurge' )
+			$mainConfig->get( 'CdnServersNoPurge' ),
+			$services->getHookContainer()
 		);
 	},
 
@@ -1238,11 +1250,16 @@ return [
 			$services->getActorStoreFactory(),
 			LoggerFactory::getInstance( 'RevisionStore' ),
 			$services->getContentHandlerFactory(),
+			$services->getPageStoreFactory(),
 			$services->getTitleFactory(),
 			$services->getHookContainer()
 		);
 
 		return $store;
+	},
+
+	'RollbackPageFactory' => static function ( MediaWikiServices $services ) : RollbackPageFactory {
+		return $services->get( '_PageCommandFactory' );
 	},
 
 	'SearchEngineConfig' => static function ( MediaWikiServices $services ) : SearchEngineConfig {
@@ -1399,6 +1416,7 @@ return [
 				SpecialPageFactory::CONSTRUCTOR_OPTIONS, $services->getMainConfig() ),
 			$services->getContentLanguage(),
 			$services->getObjectFactory(),
+			$services->getTitleFactory(),
 			$services->getHookContainer()
 		);
 	},
@@ -1604,19 +1622,18 @@ return [
 		return $store;
 	},
 
-	'WatchlistNotificationManager' =>
-	static function ( MediaWikiServices $services ) : WatchlistNotificationManager {
-		return new WatchlistNotificationManager(
+	'WatchlistManager' => static function ( MediaWikiServices $services ) : WatchlistManager {
+		return new WatchlistManager(
 			new ServiceOptions(
-				WatchlistNotificationManager::CONSTRUCTOR_OPTIONS,
+				WatchlistManager::CONSTRUCTOR_OPTIONS,
 				$services->getMainConfig()
 			),
 			$services->getHookContainer(),
-			$services->getPermissionManager(),
 			$services->getReadOnlyMode(),
 			$services->getRevisionLookup(),
 			$services->getTalkPageNotificationManager(),
-			$services->getWatchedItemStore()
+			$services->getWatchedItemStore(),
+			$services->getUserFactory()
 		);
 	},
 
@@ -1686,17 +1703,20 @@ return [
 
 	'_PageCommandFactory' => static function ( MediaWikiServices $services ) : PageCommandFactory {
 		return new PageCommandFactory(
-			new ServiceOptions( PageCommandFactory::CONSTRUCTOR_OPTIONS, $services->getMainConfig() ),
+			$services->getMainConfig(),
 			$services->getDBLoadBalancer(),
 			$services->getNamespaceInfo(),
 			$services->getWatchedItemStore(),
 			$services->getRepoGroup(),
+			$services->getReadOnlyMode(),
 			$services->getContentHandlerFactory(),
 			$services->getRevisionStore(),
 			$services->getSpamChecker(),
+			$services->getTitleFormatter(),
 			$services->getHookContainer(),
 			$services->getWikiPageFactory(),
-			$services->getUserFactory()
+			$services->getUserFactory(),
+			$services->getActorMigration()
 		);
 	},
 
@@ -1714,7 +1734,8 @@ return [
 			$services->getBlockRestrictionStore(),
 			$services->getUserFactory(),
 			$services->getUserEditTracker(),
-			LoggerFactory::getInstance( 'BlockManager' )
+			LoggerFactory::getInstance( 'BlockManager' ),
+			$services->getTitleFactory()
 		);
 	},
 

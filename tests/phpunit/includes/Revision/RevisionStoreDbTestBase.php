@@ -18,6 +18,7 @@ use MediaWiki\Page\PageIdentity;
 use MediaWiki\Page\PageIdentityValue;
 use MediaWiki\Revision\IncompleteRevisionException;
 use MediaWiki\Revision\MutableRevisionRecord;
+use MediaWiki\Revision\RevisionAccessException;
 use MediaWiki\Revision\RevisionArchiveRecord;
 use MediaWiki\Revision\RevisionRecord;
 use MediaWiki\Revision\RevisionSlots;
@@ -235,6 +236,7 @@ abstract class RevisionStoreDbTestBase extends MediaWikiIntegrationTestCase {
 			MediaWikiServices::getInstance()->getActorMigration(),
 			MediaWikiServices::getInstance()->getActorStoreFactory()->getActorStore( $dbDomain ),
 			MediaWikiServices::getInstance()->getContentHandlerFactory(),
+			MediaWikiServices::getInstance()->getPageStore(),
 			MediaWikiServices::getInstance()->getTitleFactory(),
 			MediaWikiServices::getInstance()->getHookContainer(),
 			$dbDomain
@@ -910,6 +912,7 @@ abstract class RevisionStoreDbTestBase extends MediaWikiIntegrationTestCase {
 			$services->getActorMigration(),
 			$services->getActorStoreFactory()->getActorStore( $dbDomain ),
 			$services->getContentHandlerFactory(),
+			$services->getPageStore(),
 			$services->getTitleFactory(),
 			$services->getHookContainer(),
 			$dbDomain
@@ -1006,12 +1009,14 @@ abstract class RevisionStoreDbTestBase extends MediaWikiIntegrationTestCase {
 		);
 
 		$revUser = $revRecord->getUser();
+		$actorId = $this->getServiceContainer()
+			->getActorNormalization()->findActorId( $revUser, $this->db );
 
 		$fields = [
 			'rev_id' => (string)$revRecord->getId(),
 			'rev_page' => (string)$revRecord->getPageId(),
 			'rev_timestamp' => $this->db->timestamp( $revRecord->getTimestamp() ),
-			'rev_actor' => $revUser ? $revUser->getActorId() : null,
+			'rev_actor' => $actorId,
 			'rev_user_text' => $revUser ? $revUser->getName() : '',
 			'rev_user' => (string)( $revUser ? $revUser->getId() : 0 ) ?: null,
 			'rev_minor_edit' => $revRecord->isMinor() ? '1' : '0',
@@ -1519,7 +1524,7 @@ abstract class RevisionStoreDbTestBase extends MediaWikiIntegrationTestCase {
 	/**
 	 * @covers \MediaWiki\Revision\RevisionStore::newRevisionFromRow
 	 * @covers \MediaWiki\Revision\RevisionStore::getPage
-	 * @covers \MediaWiki\Revision\RevisionStore::newPageFromRow
+	 * @covers \MediaWiki\Revision\RevisionStore::wrapPage
 	 */
 	public function testNewRevisionFromRow_noPage() {
 		$store = MediaWikiServices::getInstance()->getRevisionStore();
@@ -1548,7 +1553,7 @@ abstract class RevisionStoreDbTestBase extends MediaWikiIntegrationTestCase {
 	/**
 	 * @covers \MediaWiki\Revision\RevisionStore::newRevisionFromRow
 	 * @covers \MediaWiki\Revision\RevisionStore::getPage
-	 * @covers \MediaWiki\Revision\RevisionStore::newPageFromRow
+	 * @covers \MediaWiki\Revision\RevisionStore::wrapPage
 	 */
 	public function testNewRevisionFromRow_noPage_crossWiki() {
 		// Make TitleFactory always fail, since it should not be used for the cross-wiki case.
@@ -1818,7 +1823,7 @@ abstract class RevisionStoreDbTestBase extends MediaWikiIntegrationTestCase {
 		$rev = new MutableRevisionRecord( $title );
 		yield [ $rev ];
 
-		$user = new UserIdentityValue( 7, 'Frank', 0 );
+		$user = new UserIdentityValue( 7, 'Frank' );
 		$comment = CommentStoreComment::newUnsavedComment( 'Test' );
 		$row = (object)[
 			'ar_id' => 3,
@@ -3113,7 +3118,7 @@ abstract class RevisionStoreDbTestBase extends MediaWikiIntegrationTestCase {
 			return $services->getUserFactory()->newAnonymous( $ip );
 		} ];
 		yield 'User identity, anon' => [ '127.1.1.1', static function ( MediaWikiServices $services, string $ip ) {
-			return new UserIdentityValue( 0, $ip, 0 );
+			return new UserIdentityValue( 0, $ip );
 		} ];
 	}
 
@@ -3122,7 +3127,10 @@ abstract class RevisionStoreDbTestBase extends MediaWikiIntegrationTestCase {
 	 */
 	public function testInsertRevisionByAnonAssignsNewActor( string $ip, callable $userInitCallback ) {
 		$user = $userInitCallback( $this->getServiceContainer(), $ip );
-		$this->assertSame( 0, $user->getActorId(), 'Sanity, new actor has no actor_id' );
+
+		$actorNormalization = $this->getServiceContainer()->getActorNormalization();
+		$actorId = $actorNormalization->findActorId( $user, $this->db );
+		$this->assertNull( $actorId, 'Sanity, new actor has no actor_id' );
 
 		$page = $this->getTestPage();
 		$rev = new MutableRevisionRecord( $page->getTitle() );
@@ -3134,6 +3142,43 @@ abstract class RevisionStoreDbTestBase extends MediaWikiIntegrationTestCase {
 
 		$return = $this->getServiceContainer()->getRevisionStore()->insertRevisionOn( $rev, $this->db );
 		$this->assertSame( $ip, $return->getUser()->getName() );
-		$this->assertNotSame( 0, $return->getUser()->getActorId() );
+
+		$actorId = $actorNormalization->findActorId( $user, $this->db );
+		$this->assertNotNull( $actorId );
 	}
+
+	/**
+	 * @covers \MediaWiki\Revision\RevisionStore::getTitle
+	 */
+	public function testGetTitle_successFromPageId() {
+		$page = $this->getExistingTestPage();
+
+		$store = $this->getServiceContainer()->getRevisionStore();
+		$title = $store->getTitle( $page->getId(), 0, RevisionStore::READ_NORMAL );
+
+		$this->assertTrue( $page->isSamePageAs( $title ) );
+	}
+
+	/**
+	 * @covers \MediaWiki\Revision\RevisionStore::getTitle
+	 */
+	public function testGetTitle_successFromRevId() {
+		$page = $this->getExistingTestPage();
+
+		$store = $this->getServiceContainer()->getRevisionStore();
+		$title = $store->getTitle( 0, $page->getLatest(), RevisionStore::READ_NORMAL );
+
+		$this->assertTrue( $page->isSamePageAs( $title ) );
+	}
+
+	/**
+	 * @covers \MediaWiki\Revision\RevisionStore::getTitle
+	 */
+	public function testGetTitle_failure() {
+		$store = $this->getServiceContainer()->getRevisionStore();
+
+		$this->expectException( RevisionAccessException::class );
+		$store->getTitle( 113349857, 897234779, RevisionStore::READ_NORMAL );
+	}
+
 }

@@ -10,8 +10,8 @@ for use in production.
 == Upgrading notes for 1.36 ==
 Don't forget to always back up your database before upgrading!
 
-See the file UPGRADE for more detailed upgrade instructions, including important
-information when upgrading from versions prior to 1.11.
+See the file UPGRADE for more detailed per-version upgrade instructions from the
+oldest supported upgrading version, MediaWiki 1.27.
 
 Some specific notes for MediaWiki 1.36 upgrades are below:
 * MediaWiki 1.36 now requires the PHP internationalization extension (commonly
@@ -45,6 +45,8 @@ is no longer recommended and the option has been removed.
 * …
 
 ==== Changed configuration ====
+* $wgLogos – The default value for the site logo, which is shown in an install
+  if you have not set one, will now be the new logo of MediaWiki.
 * (T274695) $wgAjaxEditStash — This setting, to disable the edit stashing
   feature when users start writing an edit summary, has been deprecated. In
   future releases, this feature will always be enabled.
@@ -56,6 +58,12 @@ is no longer recommended and the option has been removed.
   The former configuration variable names are deprecated, but will be used as
   the fall back if they are still set, and remain temporarily available for
   extensions which try to read them.
+* $wgWANObjectCaches - The "coalesceKeys" option was removed without
+  deprecation. A new "coalesceScheme" option takes its place, and is
+  "hash_stop" by default. If you use Dynomite, then set the new "coalesceKeys"
+  option to "hash_tag".
+* $wgWANObjectCaches - The "cluster" and "mcrouterAware" options were removed
+  without deprecation. Use "broadcastRoutingPrefix" instead.
 * …
 
 ==== Removed configuration ====
@@ -83,6 +91,8 @@ is no longer recommended and the option has been removed.
 * …
 
 === New user-facing features in 1.36 ===
+* The logo of MediaWiki has changed. This means that the "Powered By MediaWiki"
+  button shown in the skin footer will be different.
 * All HTML5 named entities are now accepted in wikitext.
 * …
 
@@ -288,6 +298,8 @@ because of Phabricator reports.
   - ::getSummaryInputWidget
   - ::noSuchSectionPage
   - ::initialiseForm
+* EditPage::matchSpamRegex and ::matchSummarySpamRegex, deprecated in 1.35,
+  were removed. Use the SpamChecker service instead.
 * The global function `wfWaitForSlaves`, deprecated in 1.27 and hard-deprecated
   in 1.35, has been removed. Use LBFactory::waitForReplication() instead.
 * Calling Action::factory() with null as the first parameter, rather than a
@@ -331,6 +343,12 @@ because of Phabricator reports.
 * The LinkBegin and LinkEnd hooks, deprecated in 1.28, have been removed. You
   can instead use the HtmlPageLinkRendererBegin and HtmlPageLinkRendererEnd
   hooks, respectively.
+* The EmailUser hook passes its fifth param, $error, by reference, to allow
+  hook handlers to add error messages, indicate that they have sent the email
+  instead of core, etc. Setting the parameter to something other than a
+  Status object, true, false, an empty string, an array, or a MessageSpecifier,
+  object, which had been deprecated in 1.29, is no longer supported, and now
+  results in an MWException being thrown.
 * Skin::getDynamicStylesheetQuery(), deprecated in 1.32, has been removed. You
   should use action=raw&ctype=text/css directly.
 * Skin::makeI18nUrl(), deprecated in 1.35, has been removed.
@@ -415,6 +433,8 @@ because of Phabricator reports.
 * ProcessCacheLRU class, deprecated in 1.32, has been removed.
 * wfForeignMemcKey(), deprecated in 1.35, has been removed.
 * LoadBalancer::safeWaitForMasterPos(), deprecated in 1.34, has been removed.
+* JobQueue::factory() now requires its `idGenerator` option. The optional
+  nature of this option was deprecated in 1.35.
 * ApiFeedRecentChanges::getFeedObject has been changed to private, and appears
   unused outside of MediaWiki core.
 * Skin::subPageSubtitle() has been changed to private method. Callers should
@@ -465,7 +485,7 @@ because of Phabricator reports.
 * The $wgContLang variable, deprecated in 1.32, was removed. You can instead use
   MediaWikiServices::getInstance()->getContentLanguage().
 * User::clearAllNotifications(), hard deprecated in 1.35, was removed. Use
-  WatchlistNotificationManager::clearAllUserNotifications() instead.
+  WatchlistManager::clearAllUserNotifications() instead.
 * DatabaseBlock::getBlocker can return any UserIdentity instance, not just User.
 * MediaWiki::triggerJobs(), deprecated in 1.34, was removed.
 * The following Article methods, deprecated in 1.35, were removed:
@@ -528,6 +548,8 @@ because of Phabricator reports.
 * The monolog-based logging system has dropped the Avro format. Because of this,
   the AvroFormatter class and the AvroValidator utility class have been removed
   without deprecation.
+* AbstractBlock::$mReason, deprecated in 1.34, was removed.
+  Use AbstractBlock::getReasonComment and AbstractBlock::setReason instead.
 * …
 
 === Deprecations in 1.36 ===
@@ -692,19 +714,25 @@ because of Phabricator reports.
 * UserIdentity::getActorId() is deprecated. The actor ID should not be exposed
   to application logic. Storage layer code should use the ActorNormalization
   service for normalizing and denormalizing user names.
+* Constructing a UserIdentityValue with an actor ID as the third parameter is
+  deprecated. The parameter should be omitted. Storage layer code should use
+  the ActorNormalization service for normalizing and denormalizing user names.
 * Command::cgroup() is deprecated and no longer functional. $wgShellCgroup is
   now implemented as an Executor option.
 * Command::restrict() is deprecated. Instead use the new separate accessors.
 * MWTidy::tidy() is deprecated. Use MediaWikiServices::getTidy()-tidy() instead.
 * TidyDriverBase::supportsValidate() is deprecated; it has always returned
   false since 1.33.
-* WatchedItem::getUser hard-deprecated in favor of ::getUserIdentity since 1.36
+* WatchedItem::getUser hard-deprecated in favor of ::getUserIdentity.
+* WatchedItemStoreInterface::enqueueWatchlistExpiryJob was hard deprecated in
+  favor of the new method maybeEnqueueWatchlistExpiryJob that takes care of
+  relevant configuration checks.
 * LogEntry::getPerformer() and its implementations have been hard-deprecated, in
   favor of ::getPerformerIdentity().
 * AuthManager::singleton(), deprecated in 1.35, is hard deprecated. Use
   MediaWikiServices::getAuthManager() instead.
 * User::clearNotification(), deprecated in 1.35, is hard deprecated. Use
-  WatchlistNotificationManager::clearTitleUserNotification() instead.
+  WatchlistManager::clearTitleUserNotification() instead.
 * Passing string to DatabaseBlock::setBlocker was deprecated. Only UserIdentity
   is now allowed.
 * DatabaseBlock constructor 'byText' option was deprecated in favour of 'by'
@@ -720,6 +748,16 @@ because of Phabricator reports.
   basic browser support. Use unprefixed property `box-shadow:` instead.
 * MergeHistory::checkPermissions was deprecated. Use ::probablyCanMerge or
   ::authorizeMerge instead.
+* User::isValidUserName(), deprecated in 1.35, is hard deprecated.
+  Use the UserNameUtils service instead.
+* The TitleArrayFromResult hook has been deprecated.
+* The EditPageBeforeEditToolbar hook has been deprecated; it has become
+  defunct after the classic edit toolbar was removed. Use one of the many
+  other EditPage hooks instead.
+* Deprecated the class name MediaWiki\User\WatchlistNotificationManager; use
+  MediaWiki\Watchlist\WatchlistManager instead. Deprecated the method
+  MediaWikiServices->getWatchlistNotificationManager(); use
+  MediaWikiServices->getWatchlistManager() instead.
 * …
 
 === Other changes in 1.36 ===
@@ -756,6 +794,8 @@ because of Phabricator reports.
 * PermissionManager::groupHasPermission, ::getGroupPermissions and
   ::getGroupsWithPermission were deprecated, use GroupPermissionsLookup
   service instead.
+* WatchedItemStoreInterface now accepts PageIdentity where it accepted
+  LinkTarget, calling with LinkTarget was deprecated.
 * 'movable' attribute has been added to the 'namespaces' property of
   extension.json schema. Extensions that define namespaces can set it to
   `false` to disallow moving pages in the specified namespace. Extensions

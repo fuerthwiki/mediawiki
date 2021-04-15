@@ -6,6 +6,7 @@ use MediaWiki\Logger\LegacySpi;
 use MediaWiki\Logger\LogCapturingSpi;
 use MediaWiki\Logger\LoggerFactory;
 use MediaWiki\MediaWikiServices;
+use MediaWiki\Permissions\Authority;
 use MediaWiki\Revision\RevisionRecord;
 use PHPUnit\Framework\ExpectationFailedException;
 use PHPUnit\Framework\TestResult;
@@ -15,7 +16,6 @@ use SebastianBergmann\Comparator\ComparisonFailure;
 use Wikimedia\Rdbms\Database;
 use Wikimedia\Rdbms\IDatabase;
 use Wikimedia\Rdbms\IMaintainableDatabase;
-use Wikimedia\Timestamp\ConvertibleTimestamp;
 
 /**
  * @since 1.18
@@ -665,8 +665,6 @@ abstract class MediaWikiIntegrationTestCase extends PHPUnit\Framework\TestCase {
 		MediaWiki\Session\SessionManager::resetCache();
 		MediaWiki\Auth\AuthManager::resetCache();
 
-		// If anything faked the time, reset it
-		ConvertibleTimestamp::setFakeTime( false );
 		// If anything changed the content language, we need to
 		// reset the SpecialPageFactory.
 		MediaWikiServices::getInstance()->resetServiceForTesting(
@@ -2302,23 +2300,6 @@ abstract class MediaWikiIntegrationTestCase extends PHPUnit\Framework\TestCase {
 	}
 
 	/**
-	 * Check if $extName is a loaded PHP extension, will skip the
-	 * test whenever it is not loaded.
-	 *
-	 * @since 1.21
-	 * @param string $extName
-	 * @return bool
-	 */
-	protected function checkPHPExtension( $extName ) {
-		$loaded = extension_loaded( $extName );
-		if ( !$loaded ) {
-			$this->markTestSkipped( "PHP extension '$extName' is not loaded, skipping." );
-		}
-
-		return $loaded;
-	}
-
-	/**
 	 * Skip the test if using the specified database type
 	 *
 	 * @param string $type Database type
@@ -2386,7 +2367,7 @@ abstract class MediaWikiIntegrationTestCase extends PHPUnit\Framework\TestCase {
 	 * @param string|Content $content the new content of the page
 	 * @param string $summary Optional summary string for the revision
 	 * @param int $defaultNs Optional namespace id
-	 * @param User|null $user If null, static::getTestUser()->getUser() is used.
+	 * @param Authority|null $performer If null, static::getTestUser()->getUser() is used.
 	 * @return Status Object as returned by WikiPage::doEditContent()
 	 * @throws MWException If this test cases's needsDB() method doesn't return true.
 	 *         Test cases can use "@group Database" to enable database test support,
@@ -2398,7 +2379,7 @@ abstract class MediaWikiIntegrationTestCase extends PHPUnit\Framework\TestCase {
 		$content,
 		$summary = '',
 		$defaultNs = NS_MAIN,
-		User $user = null
+		Authority $performer = null
 	) {
 		if ( !$this->needsDB() ) {
 			throw new MWException( 'When testing with pages, the test cases\'s needsDB()' .
@@ -2415,8 +2396,8 @@ abstract class MediaWikiIntegrationTestCase extends PHPUnit\Framework\TestCase {
 			$page = WikiPage::factory( $title );
 		}
 
-		if ( $user === null ) {
-			$user = static::getTestUser()->getUser();
+		if ( $performer === null ) {
+			$performer = static::getTestUser()->getUser();
 		}
 
 		if ( is_string( $content ) ) {
@@ -2428,7 +2409,7 @@ abstract class MediaWikiIntegrationTestCase extends PHPUnit\Framework\TestCase {
 			$summary,
 			0,
 			false,
-			$user
+			$performer
 		);
 	}
 

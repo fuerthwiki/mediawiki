@@ -80,8 +80,7 @@ use Wikimedia\LightweightObjectStore\StorageAwareness;
  * There are two supported ways to set up broadcasted operations:
  *
  *   - A) Set up mcrouter as the underlying cache backend, using a memcached BagOStuff class
- *        for the 'cache' parameter. The 'region' and 'cluster' parameters must be provided
- *        and 'mcrouterAware' must be set to `true`.
+ *        for the 'cache' parameter. The 'broadcastRoutingPrefix' parameter must be provided.
  *        Configure mcrouter as follows:
  *          - 1) Use Route Prefixing based on region (datacenter) and cache cluster.
  *               See https://github.com/facebook/mcrouter/wiki/Routing-Prefix and
@@ -109,10 +108,15 @@ use Wikimedia\LightweightObjectStore\StorageAwareness;
  * collisions with keys that are not wrapped as metadata arrays. For any given key that
  * a caller uses, there are several "sister" keys that might be involved under the hood.
  * Each "sister" key differs only by a single-character:
- *   - v: used for regular value keys
- *   - i: used for temporarily storing values of tombstoned keys
- *   - t: used for storing timestamp "check" keys
- *   - m: used for temporary mutex keys to avoid cache stampedes
+ *
+ * - `v`: used for storing regular values (or a "tombstone" purge value).
+ * - `f`: used for storing purge values of "flux" keys (copy of a "tombstone", only used
+ *   when the `onHostRoutingPrefix` option is enabled).
+ * - `t`: used for storing purge values of timestamp "check" keys.
+ * - `m`: used for temporary mutex locks to avoid cache stampedes.
+ * - `i`: used for interim storing of values for keys that are tombstoned.
+ * - `c`: used for temporary indicator of a "cool-off" bounce, during which values
+ *    are stored neither regularly nor as interim keys.
  *
  * @ingroup Cache
  * @since 1.26
@@ -134,20 +138,22 @@ class WANObjectCache implements
 	/** @var callable|null Function that takes a WAN cache callback and runs it later */
 	protected $asyncHandler;
 
-	/** @var bool Whether to use mcrouter key prefixing for routing */
-	protected $mcrouterAware;
-	/** @var string Physical region for mcrouter use */
-	protected $region;
-	/** @var string Cache cluster name for mcrouter use */
-	protected $cluster;
+	/**
+	 * Routing prefix for values that should be broadcasted to all data centers.
+	 *
+	 * If null, then a proxy other than mcrouter handles broadcasting or there is only one datacenter.
+	 *
+	 * @var string|null
+	 */
+	protected $broadcastRoute;
+	/** @var string|null Routing prefix for value keys that support use of an on-host tier */
+	protected $onHostRoute;
 	/** @var bool Whether to use "interim" caching while keys are tombstoned */
 	protected $useInterimHoldOffCaching = true;
 	/** @var float Unix timestamp of the oldest possible valid values */
 	protected $epoch;
 	/** @var string Stable secret used for hasing long strings into key components */
 	protected $secret;
-	/** @var string|bool Whether "sister" keys should be coalesced to the same cache server */
-	protected $coalesceKeys;
 	/** @var int Scheme to use for key coalescing (Hash Tags or Hash Stops) */
 	protected $coalesceScheme;
 
@@ -166,127 +172,127 @@ class WANObjectCache implements
 	/** @var float|null */
 	private $wallClockOverride;
 
-	/** @var int Max expected seconds to pass between delete() and DB commit finishing */
+	/** Max expected seconds to pass between delete() and DB commit finishing */
 	private const MAX_COMMIT_DELAY = 3;
-	/** @var int Max expected seconds of combined lag from replication and view snapshots */
+	/** Max expected seconds of combined lag from replication and view snapshots */
 	private const MAX_READ_LAG = 7;
-	/** @var int Seconds to tombstone keys on delete() and treat as volatile after invalidation */
+	/** Seconds to tombstone keys on delete() and treat as volatile after invalidation */
 	public const HOLDOFF_TTL = self::MAX_COMMIT_DELAY + self::MAX_READ_LAG + 1;
 
-	/** @var int Consider regeneration if the key will expire within this many seconds */
+	/** Consider regeneration if the key will expire within this many seconds */
 	private const LOW_TTL = 30;
-	/** @var int Max TTL, in seconds, to store keys when a data sourced is lagged */
+	/** Max TTL, in seconds, to store keys when a data sourced is lagged */
 	public const TTL_LAGGED = 30;
 
-	/** @var int Expected time-till-refresh, in seconds, if the key is accessed once per second */
+	/** Expected time-till-refresh, in seconds, if the key is accessed once per second */
 	private const HOT_TTR = 900;
-	/** @var int Minimum key age, in seconds, for expected time-till-refresh to be considered */
+	/** Minimum key age, in seconds, for expected time-till-refresh to be considered */
 	private const AGE_NEW = 60;
 
-	/** @var int Idiom for getWithSetCallback() meaning "no cache stampede mutex" */
+	/** Idiom for getWithSetCallback() meaning "no cache stampede mutex" */
 	private const TSE_NONE = -1;
 
-	/** @var int Idiom for set()/getWithSetCallback() meaning "no post-expiration persistence" */
+	/** Idiom for set()/getWithSetCallback() meaning "no post-expiration persistence" */
 	public const STALE_TTL_NONE = 0;
-	/** @var int Idiom for set()/getWithSetCallback() meaning "no post-expiration grace period" */
+	/** Idiom for set()/getWithSetCallback() meaning "no post-expiration grace period" */
 	public const GRACE_TTL_NONE = 0;
-	/** @var int Idiom for delete()/touchCheckKey() meaning "no hold-off period" */
+	/** Idiom for delete()/touchCheckKey() meaning "no hold-off period" */
 	public const HOLDOFF_TTL_NONE = 0;
-	/** @var int Alias for HOLDOFF_TTL_NONE (b/c) (deprecated since 1.34) */
-	public const HOLDOFF_NONE = self::HOLDOFF_TTL_NONE;
 
 	/** @var float Idiom for getWithSetCallback() meaning "no minimum required as-of timestamp" */
 	public const MIN_TIMESTAMP_NONE = 0.0;
 
-	/** @var string Default process cache name and max key count */
+	/** Default process cache name and max key count */
 	private const PC_PRIMARY = 'primary:1000';
 
 	/** Idiom for get()/getMulti() to return extra information by reference */
 	public const PASS_BY_REF = [];
 
-	/** @var int Use twemproxy-style Hash Tag key scheme (e.g. "{...}") */
+	/** Use twemproxy-style Hash Tag key scheme (e.g. "{...}") */
 	private const SCHEME_HASH_TAG = 1;
-	/** @var int Use mcrouter-style Hash Stop key scheme (e.g. "...|#|") */
+	/** Use mcrouter-style Hash Stop key scheme (e.g. "...|#|") */
 	private const SCHEME_HASH_STOP = 2;
 
-	/** @var int Seconds to keep dependency purge keys around */
-	private static $CHECK_KEY_TTL = self::TTL_YEAR;
-	/** @var int Seconds to keep interim value keys for tombstoned keys around */
-	private static $INTERIM_KEY_TTL = 1;
+	/** Seconds to keep dependency purge keys around */
+	private const CHECK_KEY_TTL = self::TTL_YEAR;
+	/** Seconds to keep interim value keys for tombstoned keys around */
+	private const INTERIM_KEY_TTL = 1;
 
-	/** @var int Seconds to keep lock keys around */
-	private static $LOCK_TTL = 10;
-	/** @var int Seconds to no-op key set() calls to avoid large blob I/O stampedes */
-	private static $COOLOFF_TTL = 1;
-	/** @var int Seconds to ramp up the chance of regeneration due to expected time-till-refresh */
-	private static $RAMPUP_TTL = 30;
+	/** Seconds to keep lock keys around */
+	private const LOCK_TTL = 10;
+	/** Seconds to no-op key set() calls to avoid large blob I/O stampedes */
+	private const COOLOFF_TTL = 1;
+	/** Seconds to ramp up the chance of regeneration due to expected time-till-refresh */
+	private const RAMPUP_TTL = 30;
 
 	/** @var float Tiny negative float to use when CTL comes up >= 0 due to clock skew */
-	private static $TINY_NEGATIVE = -0.000001;
+	private const TINY_NEGATIVE = -0.000001;
 	/** @var float Tiny positive float to use when using "minTime" to assert an inequality */
-	private static $TINY_POSTIVE = 0.000001;
+	private const TINY_POSTIVE = 0.000001;
 
-	/** @var int Min millisecond set() backoff during hold-off (far less than INTERIM_KEY_TTL) */
-	private static $RECENT_SET_LOW_MS = 50;
-	/** @var int Max millisecond set() backoff during hold-off (far less than INTERIM_KEY_TTL) */
-	private static $RECENT_SET_HIGH_MS = 100;
+	/** Min millisecond set() backoff during hold-off (far less than INTERIM_KEY_TTL) */
+	private const RECENT_SET_LOW_MS = 50;
+	/** Max millisecond set() backoff during hold-off (far less than INTERIM_KEY_TTL) */
+	private const RECENT_SET_HIGH_MS = 100;
 
-	/** @var int Consider value generation slow if it takes more than this many seconds */
-	private static $GENERATION_SLOW_SEC = 3;
+	/** Consider value generation slow if it takes more than this many seconds */
+	private const GENERATION_SLOW_SEC = 3;
 
-	/** @var int Key to the tombstone entry timestamp */
-	private static $PURGE_TIME = 0;
-	/** @var int Key to the tombstone entry hold-off TTL */
-	private static $PURGE_HOLDOFF = 1;
+	/** Key to the tombstone entry timestamp */
+	private const PURGE_TIME = 0;
+	/** Key to the tombstone entry hold-off TTL */
+	private const PURGE_HOLDOFF = 1;
 
-	/** @var int Cache format version number */
-	private static $VERSION = 1;
+	/** Cache format version number */
+	private const VERSION = 1;
 
 	/** The key value component of a fetchMulti() result */
 	private const RES_VALUE = 0;
 	/** The key metadata component of a fetchMulti() result */
 	private const RES_METADATA = 1;
 
-	/** @var string Version number attribute for a key; keep value for b/c (< 1.36) */
+	/** Version number attribute for a key; keep value for b/c (< 1.36) */
 	public const KEY_VERSION = 'version';
-	/** @var string Generation timestamp attribute for a key; keep value for b/c (< 1.36) */
+	/** Generation timestamp attribute for a key; keep value for b/c (< 1.36) */
 	public const KEY_AS_OF = 'asOf';
-	/** @var string Logical TTL attribute for a key */
+	/** Logical TTL attribute for a key */
 	public const KEY_TTL = 'ttl';
-	/** @var string Remaining TTL attribute for a key; keep value for b/c (< 1.36) */
+	/** Remaining TTL attribute for a key; keep value for b/c (< 1.36) */
 	public const KEY_CUR_TTL = 'curTTL';
-	/** @var string Tomstone timestamp attribute for a key; keep value for b/c (< 1.36) */
+	/** Tomstone timestamp attribute for a key; keep value for b/c (< 1.36) */
 	public const KEY_TOMB_AS_OF = 'tombAsOf';
-	/** @var string Highest "check" key timestamp for a key; keep value for b/c (< 1.36) */
+	/** Highest "check" key timestamp for a key; keep value for b/c (< 1.36) */
 	public const KEY_CHECK_AS_OF = 'lastCKPurge';
 
-	/** @var int Key to WAN cache version number */
-	private static $FLD_FORMAT_VERSION = 0;
-	/** @var int Key to the cached value */
-	private static $FLD_VALUE = 1;
-	/** @var int Key to the original TTL */
-	private static $FLD_TTL = 2;
-	/** @var int Key to the cache timestamp */
-	private static $FLD_TIME = 3;
-	/** @var int Key to the flags bit field (reserved number) */
-	private static /** @noinspection PhpUnusedPrivateFieldInspection */ $FLD_FLAGS = 4;
-	/** @var int Key to collection cache version number */
-	private static $FLD_VALUE_VERSION = 5;
-	/** @var int Key to how long it took to generate the value */
-	private static $FLD_GENERATION_TIME = 6;
+	/** Key to WAN cache version number */
+	private const FLD_FORMAT_VERSION = 0;
+	/** Key to the cached value */
+	private const FLD_VALUE = 1;
+	/** Key to the original TTL */
+	private const FLD_TTL = 2;
+	/** Key to the cache timestamp */
+	private const FLD_TIME = 3;
+	/** Key to the flags bit field (reserved number) */
+	private const /** @noinspection PhpUnusedPrivateFieldInspection */ FLD_FLAGS = 4;
+	/** Key to collection cache version number */
+	private const FLD_VALUE_VERSION = 5;
+	/** Key to how long it took to generate the value */
+	private const FLD_GENERATION_TIME = 6;
 
-	/** @var string Single character value mutex key component */
+	/** Single character component for value keys */
 	private const TYPE_VALUE = 'v';
-	/** @var string Single character timestamp key component */
+	/** Single character component for timestamp check keys */
 	private const TYPE_TIMESTAMP = 't';
-	/** @var string Single character mutex key component */
+	/** Single character component for flux keys */
+	private const TYPE_FLUX = 'f';
+	/** Single character component for mutex lock keys */
 	private const TYPE_MUTEX = 'm';
-	/** @var string Single character interium key component */
+	/** Single character component for interium value keys */
 	private const TYPE_INTERIM = 'i';
-	/** @var string Single character cool-off key component */
+	/** Single character component for cool-off bounce keys */
 	private const TYPE_COOLOFF = 'c';
 
-	/** @var string Prefix for tombstone key values */
+	/** Value prefix of purge values */
 	private const PURGE_VAL_PREFIX = 'PURGED:';
 
 	/**
@@ -301,22 +307,29 @@ class WANObjectCache implements
 	 *       callback supplied by the getWithSetCallback() caller. The result will be saved
 	 *       as normal. The handler is expected to call the WAN cache callback at an opportune
 	 *       time (e.g. HTTP post-send), though generally within a few 100ms. [optional]
-	 *   - region: the current physical region. This is required when using mcrouter as the
-	 *       backing store proxy. [optional]
-	 *   - cluster: name of the cache cluster used by this WAN cache. The name must be the
-	 *       same in all datacenters; the ("region","cluster") tuple is what distinguishes
-	 *       the counterpart cache clusters among all the datacenter. The contents of
-	 *       https://github.com/facebook/mcrouter/wiki/Config-Files give background on this.
+	 *   - broadcastRoutingPrefix: a routing prefix used to broadcast "set" and "delete" operations to all
+	 *       datacenters; See also https://github.com/facebook/mcrouter/wiki/Config-Files for background
+	 *       on this.
+	 *       This prefix takes the form `/<datacenter>/<name of wan route>/` where `datacenter` should
+	 *       generally be a wildcard, to select all matching routes (e.g. the WAN cluster in all DCs)
+	 *       See also <https://github.com/facebook/mcrouter/wiki/Multi-cluster-broadcast-setup>.
 	 *       This is required when using mcrouter as the backing store proxy. [optional]
-	 *   - mcrouterAware: set as true if mcrouter is the backing store proxy and mcrouter
-	 *       is configured to interpret /<region>/<cluster>/ key prefixes as routes. This
-	 *       requires that "region" and "cluster" are both set above. [optional]
+	 *   - onHostRoutingPrefix: a routing prefix that considers a server-local cache ("on-host tier")
+	 *       for "value" keys before reading from the main cache cluster in the current data center.
+	 *       The "helper" keys will still be read from the main cache cluster. An on-host tier can help
+	 *       reduce network saturation due to large value transfers yet without needing to explicitly
+	 *       know, opt-in, or measure which values are large.
+	 *       The on-host tier may blindy store and serve values from the main cluster for up to 10
+	 *       seconds (must be less than WANObjectCache::HOLDOFF_TTL, as otherwise WANObjectCache will
+	 *       be unable to apply purges from the main cluster, which don't live longer than that).
+	 *       This prefix takes the form `/<datacenter>/<name of onhost route>/` where `datacenter`
+	 *       may be a wildcard. This can be used with mcrouter. [optional]
 	 *   - epoch: lowest UNIX timestamp a value/tombstone must have to be valid. [optional]
 	 *   - secret: stable secret used for hashing long strings into key components. [optional]
-	 *   - coalesceKeys: whether to use a key scheme that encourages the backend to place any
+	 *   - coalesceScheme: which key scheme to use in order to encourage the backend to place any
 	 *       "helper" keys for a "value" key within the same cache server. This reduces network
 	 *       overhead and reduces the chance the a single downed cache server causes disruption.
-	 *       Set this to "non-global" to only apply the scheme to non-global keys. [default: false]
+	 *       Use "hash_stop" with mcrouter and "hash_tag" with dynomite. [default: "hash_stop"]
 	 *   - keyHighQps: reads/second assumed during a hypothetical cache write stampede for
 	 *       a single key. This is used to decide when the overhead of checking short-lived
 	 *       write throttling keys is worth it.
@@ -327,20 +340,18 @@ class WANObjectCache implements
 	 */
 	public function __construct( array $params ) {
 		$this->cache = $params['cache'];
-		$this->region = $params['region'] ?? 'main';
-		$this->cluster = $params['cluster'] ?? 'wan-main';
-		$this->mcrouterAware = !empty( $params['mcrouterAware'] );
+		$this->broadcastRoute = $params['broadcastRoutingPrefix'] ?? null;
+		$this->onHostRoute = $params['onHostRoutingPrefix'] ?? null;
 		$this->epoch = $params['epoch'] ?? 0;
 		$this->secret = $params['secret'] ?? (string)$this->epoch;
-		$this->coalesceKeys = $params['coalesceKeys'] ?? false;
-		if ( !empty( $params['mcrouterAware'] ) ) {
-			// https://github.com/facebook/mcrouter/wiki/Key-syntax
-			$this->coalesceScheme = self::SCHEME_HASH_STOP;
-		} else {
+		if ( ( $params['coalesceScheme'] ?? '' ) === 'hash_tag' ) {
 			// https://redis.io/topics/cluster-spec
 			// https://github.com/twitter/twemproxy/blob/v0.4.1/notes/recommendation.md#hash-tags
 			// https://github.com/Netflix/dynomite/blob/v0.7.0/notes/recommendation.md#hash-tags
 			$this->coalesceScheme = self::SCHEME_HASH_TAG;
+		} else {
+			// https://github.com/facebook/mcrouter/wiki/Key-syntax
+			$this->coalesceScheme = self::SCHEME_HASH_STOP;
 		}
 
 		$this->keyHighQps = $params['keyHighQps'] ?? 100;
@@ -353,7 +364,7 @@ class WANObjectCache implements
 		$this->cache->registerWrapperInfoForStats(
 			'WANCache',
 			'wanobjectcache',
-			[ __CLASS__, 'getCollectionFromKey' ]
+			[ __CLASS__, 'getCollectionFromSisterKey' ]
 		);
 	}
 
@@ -421,9 +432,10 @@ class WANObjectCache implements
 	 *   - WANObjectCache::KEY_TOMB_AS_OF: tombstone timestamp (UNIX); null if key is not tombstoned
 	 *   - WANObjectCache::KEY_CHECK_AS_OF: highest "check" key timestamp (UNIX); null if none
 	 *
-	 * @param string $key Cache key made from makeKey()/makeGlobalKey()
+	 * @param string $key Cache key made with makeKey()/makeGlobalKey()
 	 * @param float|null &$curTTL Seconds of TTL left [returned]
-	 * @param string[] $checkKeys The "check" keys used to validate the value
+	 * @param string[] $checkKeys Map of (integer or cache key => "check" key(s));
+	 *  "check" keys must also be made with makeKey()/makeGlobalKey()
 	 * @param array &$info Metadata map [returned]
 	 * @return mixed Value of cache key; false on failure
 	 */
@@ -461,7 +473,8 @@ class WANObjectCache implements
 	 *
 	 * @param string[] $keys List/map with makeKey()/makeGlobalKey() cache keys as values
 	 * @param array<string,float> &$curTTLs Map of (key => seconds of TTL left) [returned]
-	 * @param string[]|string[][] $checkKeys Map of (integer or cache key => "check" key(s))
+	 * @param string[]|string[][] $checkKeys Map of (integer or cache key => "check" key(s));
+	 *  "check" keys must also be made with makeKey()/makeGlobalKey()
 	 * @param array<string,array> &$info Map of (key => metadata map) [returned]
 	 * @return array<string,mixed> Map of (key => value) for existing values in order of $keys
 	 */
@@ -511,121 +524,192 @@ class WANObjectCache implements
 	 *  - WANObjectCache::RESULT_ATTRIBUTES: the WANObjectCache::KEY_* metadata map
 	 *
 	 * @param string[] $keys List/map with makeKey()/makeGlobalKey() cache keys as values
-	 * @param string[]|string[][] $checkKeys Map of (integer or cache key => "check" key(s))
+	 * @param string[]|string[][] $checkKeys Map of (integer or cache key => "check" key(s));
+	 *  "check" keys must also be made with makeKey()/makeGlobalKey()
 	 * @return array<string,array{0:mixed,1:array}> Map of (key => result map) in order of $keys
 	 */
 	protected function fetchKeys( array $keys, array $checkKeys ) {
 		$resByKey = [];
 
-		// Order-corresponding list of value keys for the provided base keys
-		$valueKeys = $this->makeSisterKeys( $keys, self::TYPE_VALUE );
+		// List of all sister keys that need to be fetched from cache
+		$allSisterKeys = [];
+		// Order-corresponding value sister key list for the base key list ($keys)
+		$valueSisterKeys = [];
+		// Order-corresponding "flux" sister key list for the base key list ($keys) or []
+		$fluxSisterKeys = [];
+		// List of "check" sister keys to compare all value sister keys against
+		$checkSisterKeysForAll = [];
+		// Map of (base key => additional "check" sister key(s) to compare against)
+		$checkSisterKeysByKey = [];
 
-		$fullKeysNeeded = $valueKeys;
-		$checkKeysForAll = [];
-		$checkKeysByKey = [];
+		foreach ( $keys as $key ) {
+			$sisterKey = $this->makeSisterKey( $key, self::TYPE_VALUE, $this->onHostRoute );
+			$allSisterKeys[] = $sisterKey;
+			$valueSisterKeys[] = $sisterKey;
+			if ( $this->onHostRoute !== null ) {
+				$sisterKey = $this->makeSisterKey( $key, self::TYPE_FLUX );
+				$allSisterKeys[] = $sisterKey;
+				$fluxSisterKeys[] = $sisterKey;
+			}
+		}
+
 		foreach ( $checkKeys as $i => $checkKeyOrKeyGroup ) {
 			// Note: avoid array_merge() inside loop in case there are many keys
 			if ( is_int( $i ) ) {
-				// Single check key that applies to all value keys
-				$fullKey = $this->makeSisterKey( $checkKeyOrKeyGroup, self::TYPE_TIMESTAMP );
-				$fullKeysNeeded[] = $fullKey;
-				$checkKeysForAll[] = $fullKey;
+				// Single "check" key that applies to all base keys
+				$sisterKey = $this->makeSisterKey( $checkKeyOrKeyGroup, self::TYPE_TIMESTAMP );
+				$allSisterKeys[] = $sisterKey;
+				$checkSisterKeysForAll[] = $sisterKey;
 			} else {
-				// List of check keys that apply to a specific value key
+				// List of "check" keys that apply to a specific base key
 				foreach ( (array)$checkKeyOrKeyGroup as $checkKey ) {
-					$fullKey = $this->makeSisterKey( $checkKey, self::TYPE_TIMESTAMP );
-					$fullKeysNeeded[] = $fullKey;
-					$checkKeysByKey[$i][] = $fullKey;
+					$sisterKey = $this->makeSisterKey( $checkKey, self::TYPE_TIMESTAMP );
+					$allSisterKeys[] = $sisterKey;
+					$checkSisterKeysByKey[$i][] = $sisterKey;
 				}
 			}
 		}
 
 		if ( $this->warmupCache ) {
-			// Get the raw values of the keys from the warmup cache
-			$wrappedValues = $this->warmupCache;
-			$fullKeysMissing = array_diff( $fullKeysNeeded, array_keys( $wrappedValues ) );
-			if ( $fullKeysMissing ) { // sanity
-				$this->warmupKeyMisses += count( $fullKeysMissing );
-				$wrappedValues += $this->cache->getMulti( $fullKeysMissing );
+			// Get the wrapped values of the sister keys from the warmup cache
+			$wrappedBySisterKey = $this->warmupCache;
+			$sisterKeysMissing = array_diff( $allSisterKeys, array_keys( $wrappedBySisterKey ) );
+			if ( $sisterKeysMissing ) { // sanity
+				$this->warmupKeyMisses += count( $sisterKeysMissing );
+				$wrappedBySisterKey += $this->cache->getMulti( $sisterKeysMissing );
 			}
 		} else {
-			// Fetch the raw values of the keys from the backend
-			$wrappedValues = $this->cache->getMulti( $fullKeysNeeded );
+			// Fetch the wrapped values of the sister keys from the backend
+			$wrappedBySisterKey = $this->cache->getMulti( $allSisterKeys );
 		}
 
-		// Time used to compare/init "check" keys (derived after getMulti() to be pessimistic)
+		// Pessimistically treat the "current time" as the time when any network I/O finished
 		$now = $this->getCurrentTime();
 
-		// Collect timestamps from all "check" keys
-		$purgeValuesForAll = $this->processCheckKeys( $checkKeysForAll, $wrappedValues, $now );
-		$purgeValuesByKey = [];
-		foreach ( $checkKeysByKey as $cacheKey => $checks ) {
-			$purgeValuesByKey[$cacheKey] = $this->processCheckKeys( $checks, $wrappedValues, $now );
+		// List of "check" sister key purge timestamps to compare all value sister keys against
+		$ckPurgesForAll = $this->processCheckKeys(
+			$checkSisterKeysForAll,
+			$wrappedBySisterKey,
+			$now
+		);
+		// Map of (base key => extra "check" sister key purge timestamp(s) to compare against)
+		$ckPurgesByKey = [];
+		foreach ( $checkSisterKeysByKey as $keyWithCheckKeys => $checkKeysForKey ) {
+			$ckPurgesByKey[$keyWithCheckKeys] = $this->processCheckKeys(
+				$checkKeysForKey,
+				$wrappedBySisterKey,
+				$now
+			);
 		}
 
-		// Get the main cache value for each key and validate them
+		// Map of (base key => "flux" key purge timestamp to compare against)
+		$fkPurgesByKey = $this->processFluxKeys( $keys, $fluxSisterKeys, $wrappedBySisterKey );
+
+		// Unwrap and validate any value found for each base key (under the value sister key)
 		reset( $keys );
-		foreach ( $valueKeys as $i => $vKey ) {
-			// Get the corresponding base key for this value key
+		foreach ( $valueSisterKeys as $valueSisterKey ) {
+			// Get the corresponding base key for this value sister key
 			$key = current( $keys );
 			next( $keys );
 
-			list( $value, $metadata ) = $this->unwrap(
-				array_key_exists( $vKey, $wrappedValues ) ? $wrappedValues[$vKey] : false,
-				$now
-			);
-			// Force dependent keys to be seen as stale for a while after purging
-			// to reduce race conditions involving stale data getting cached
-			$purgeValues = $purgeValuesForAll;
-			if ( isset( $purgeValuesByKey[$key] ) ) {
-				$purgeValues = array_merge( $purgeValues, $purgeValuesByKey[$key] );
+			if ( isset( $fkPurgesByKey[$key] ) ) {
+				// An on-host tier is in use and a "flux" sister key exists for this
+				// Treat the value sister key as if it was a tombstone with this value.
+				$wrapped = $fkPurgesByKey[$key];
+			} elseif ( array_key_exists( $valueSisterKey, $wrappedBySisterKey ) ) {
+				// Key exists as either a live value or tombstone value
+				$wrapped = $wrappedBySisterKey[$valueSisterKey];
+			} else {
+				// Key does not exist
+				$wrapped = false;
 			}
 
-			$lastCKPurge = null; // timestamp of the highest check key
-			foreach ( $purgeValues as $purge ) {
-				$lastCKPurge = max( $purge[self::$PURGE_TIME], $lastCKPurge );
-				$safeTimestamp = $purge[self::$PURGE_TIME] + $purge[self::$PURGE_HOLDOFF];
-				if ( $value !== false && $safeTimestamp >= $metadata[self::KEY_AS_OF] ) {
-					// How long ago this value was invalidated by *this* check key
-					$ago = min( $purge[self::$PURGE_TIME] - $now, self::$TINY_NEGATIVE );
-					// How long ago this value was invalidated by *any* known check key
+			list( $value, $metadata ) = $this->unwrap( $wrapped, $now );
+			// Include the timestamp of the newest "check" key purge/initialization
+			$metadata[self::KEY_CHECK_AS_OF] = null;
+
+			foreach ( array_merge( $ckPurgesForAll, $ckPurgesByKey[$key] ?? [] ) as $ckPurge ) {
+				$metadata[self::KEY_CHECK_AS_OF] = max(
+					$ckPurge[self::PURGE_TIME],
+					$metadata[self::KEY_CHECK_AS_OF]
+				);
+				// Timestamp marking the end of the hold-off period for this purge
+				$holdoffDeadline = $ckPurge[self::PURGE_TIME] + $ckPurge[self::PURGE_HOLDOFF];
+				// Check if the value was generated during the hold-off period
+				if ( $value !== false && $holdoffDeadline >= $metadata[self::KEY_AS_OF] ) {
+					// How long ago this value was invalidated by *this* "check" key
+					$ago = min( $ckPurge[self::PURGE_TIME] - $now, self::TINY_NEGATIVE );
+					// How long ago this value was invalidated by *any* known "check" key
 					$metadata[self::KEY_CUR_TTL] = min( $metadata[self::KEY_CUR_TTL], $ago );
 				}
 			}
-			$metadata[self::KEY_CHECK_AS_OF] = $lastCKPurge;
 
-			$resByKey[$key] = [
-				self::RES_VALUE => $value,
-				self::RES_METADATA => $metadata
-			];
+			$resByKey[$key] = [ self::RES_VALUE => $value, self::RES_METADATA => $metadata ];
 		}
 
 		return $resByKey;
 	}
 
 	/**
-	 * @param string[] $timeKeys List of prefixed time check keys
-	 * @param mixed[] $wrappedValues Preloaded map of (key => value)
-	 * @param float $now
+	 * @param string[] $keys Base key list
+	 * @param string[] $fluxSisterKeys Order-corresponding "flux" key list for base keys or []
+	 * @param mixed[] $wrappedBySisterKey Preloaded map of (sister key => wrapped value)
 	 * @return array[] List of purge value arrays
-	 * @since 1.27
 	 */
-	private function processCheckKeys( array $timeKeys, array $wrappedValues, $now ) {
-		$purgeValues = [];
-		foreach ( $timeKeys as $timeKey ) {
-			$purge = isset( $wrappedValues[$timeKey] )
-				? $this->parsePurgeValue( $wrappedValues[$timeKey] )
+	private function processFluxKeys(
+		array $keys,
+		array $fluxSisterKeys,
+		array $wrappedBySisterKey
+	) {
+		$purges = [];
+
+		reset( $keys );
+		foreach ( $fluxSisterKeys as $fluxKey ) {
+			// Get the corresponding base key for this "flux" key
+			$key = current( $keys );
+			next( $keys );
+
+			$purge = isset( $wrappedBySisterKey[$fluxKey] )
+				? $this->parsePurgeValue( $wrappedBySisterKey[$fluxKey] )
 				: false;
-			if ( $purge === false ) {
-				// Key is not set or malformed; regenerate
-				$newVal = $this->makePurgeValue( $now, self::HOLDOFF_TTL );
-				$this->cache->add( $timeKey, $newVal, self::$CHECK_KEY_TTL );
-				$purge = $this->parsePurgeValue( $newVal );
+
+			if ( $purge !== false ) {
+				$purges[$key] = $purge;
 			}
-			$purgeValues[] = $purge;
 		}
 
-		return $purgeValues;
+		return $purges;
+	}
+
+	/**
+	 * @param string[] $checkSisterKeys List of "check" sister keys
+	 * @param mixed[] $wrappedBySisterKey Preloaded map of (sister key => wrapped value)
+	 * @param float $now UNIX timestamp
+	 * @return array[] List of purge value arrays
+	 */
+	private function processCheckKeys(
+		array $checkSisterKeys,
+		array $wrappedBySisterKey,
+		float $now
+	) {
+		$purges = [];
+
+		foreach ( $checkSisterKeys as $timeKey ) {
+			$purge = isset( $wrappedBySisterKey[$timeKey] )
+				? $this->parsePurgeValue( $wrappedBySisterKey[$timeKey] )
+				: false;
+
+			if ( $purge === false ) {
+				// Key is not set or malformed; regenerate
+				$newVal = $this->makeCheckPurgeValue( $now, self::HOLDOFF_TTL );
+				$this->cache->add( $timeKey, $newVal, self::CHECK_KEY_TTL );
+				$purge = $this->parsePurgeValue( $newVal );
+			}
+
+			$purges[] = $purge;
+		}
+
+		return $purges;
 	}
 
 	/**
@@ -664,7 +748,7 @@ class WANObjectCache implements
 	 *     $cache->set( $key, $row, $cache::TTL_DAY, $setOpts );
 	 * @endcode
 	 *
-	 * @param string $key Cache key
+	 * @param string $key Cache key made with makeKey()/makeGlobalKey()
 	 * @param mixed $value
 	 * @param int $ttl Seconds to live. Special values are:
 	 *   - WANObjectCache::TTL_INDEFINITE: Cache forever (default)
@@ -699,9 +783,8 @@ class WANObjectCache implements
 	 *   - version: Integer version number signifiying the format of the value.
 	 *      Default: null
 	 *   - walltime: How long the value took to generate in seconds. Default: null
-	 * @codingStandardsIgnoreStart
+	 * @phpcs:ignore Generic.Files.LineLength
 	 * @phan-param array{lag?:int,since?:int,pending?:bool,lockTSE?:int,staleTTL?:int,creating?:bool,version?:int,walltime?:int|float} $opts
-	 * @codingStandardsIgnoreEnd
 	 * @note Options added in 1.28: staleTTL
 	 * @note Options added in 1.33: creating
 	 * @note Options added in 1.34: version, walltime
@@ -875,28 +958,57 @@ class WANObjectCache implements
 	 * @endcode
 	 *
 	 * The $ttl parameter can be used when purging values that have not actually changed
-	 * recently. For example, a cleanup script to purge cache entries does not really need
-	 * a hold-off period, so it can use HOLDOFF_TTL_NONE. Likewise for user-requested purge.
+	 * recently. For example, user-requested purges or cache cleanup scripts might not need
+	 * to invoke a hold-off period on cache backfills, so they can use HOLDOFF_TTL_NONE.
+	 *
 	 * Note that $ttl limits the effective range of 'lockTSE' for getWithSetCallback().
 	 *
 	 * If called twice on the same key, then the last hold-off TTL takes precedence. For
 	 * idempotence, the $ttl should not vary for different delete() calls on the same key.
 	 *
-	 * @param string $key Cache key
+	 * @param string $key Cache key made with makeKey()/makeGlobalKey()
 	 * @param int $ttl Tombstone TTL; Default: WANObjectCache::HOLDOFF_TTL
 	 * @return bool True if the item was purged or not found, false on failure
 	 */
 	final public function delete( $key, $ttl = self::HOLDOFF_TTL ) {
+		// Purge values must be stored under the value key so that WANObjectCache::set()
+		// can atomically merge values without accidentally undoing a recent purge and thus
+		// violating the holdoff TTL restriction.
+		$valueSisterKey = $this->makeSisterKey( $key, self::TYPE_VALUE );
+
+		// When an on-host tier is configured, fetchKeys() relies on "flux" keys to determine
+		// whether a value from the on-host tier is still valid. A "flux" key is a short-lived
+		// key that contains the last recent purge due to delete(). This approach avoids having
+		// to purge the on-host cache service on potentially hundreds of application servers.
+
 		if ( $ttl <= 0 ) {
-			// Publish the purge to all datacenters
-			$ok = $this->relayDelete( $this->makeSisterKey( $key, self::TYPE_VALUE ) );
+			// A client or cache cleanup script is requesting a cache purge, so there is no
+			// volatility period due to replica DB lag. Any recent change to an entity cached
+			// in this key should have triggered an appropriate purge event.
+
+			// Remove the key from all datacenters, ignoring any on-host tier. Since on-host
+			// tier caches only use low key TTLs, setting "flux" keys here has little practical
+			// benefit; missed purges should be rare and the on-host tier will quickly correct
+			// itself in those rare cases.
+			$ok = $this->relayNonVolatilePurge( $valueSisterKey );
 		} else {
-			// Publish the purge to all datacenters
-			$ok = $this->relayPurge(
-				$this->makeSisterKey( $key, self::TYPE_VALUE ),
-				$ttl,
-				self::HOLDOFF_TTL_NONE
-			);
+			// A cacheable entity recently changed, so there might be a volatility period due
+			// to replica DB lag. Clients usually expect their actions to be reflected in any
+			// of their subsequent web request. This is attainable if (a) purge relay lag is
+			// lower than the time it takes for subsequent request by the client to arrive,
+			// and, (b) DB replica queries have "read-your-writes" consistency due to DB lag
+			// mitigation systems.
+
+			$now = $this->getCurrentTime();
+			// Set the key to the purge value in all datacenters
+			$purgeBySisterKey = [ $valueSisterKey => $this->makeTombstonePurgeValue( $now ) ];
+			// When an on-host tier is configured, invalidate it by setting "flux" keys
+			if ( $this->onHostRoute !== null ) {
+				$fluxSisterKey = $this->makeSisterKey( $key, self::TYPE_FLUX );
+				$purgeBySisterKey[$fluxSisterKey] = $this->makeTombstonePurgeValue( $now );
+			}
+
+			$ok = $this->relayVolatilePurges( $purgeBySisterKey, $ttl );
 		}
 
 		$kClass = $this->determineKeyClassForStats( $key );
@@ -921,7 +1033,7 @@ class WANObjectCache implements
 	 *
 	 * Note that "check" keys won't collide with other regular keys.
 	 *
-	 * @param string $key
+	 * @param string $key Cache key made with makeKey()/makeGlobalKey()
 	 * @return float UNIX timestamp
 	 */
 	final public function getCheckKeyTime( $key ) {
@@ -985,31 +1097,31 @@ class WANObjectCache implements
 	 * @see WANObjectCache::getCheckKeyTime()
 	 * @see WANObjectCache::getWithSetCallback()
 	 *
-	 * @param string[] $keys
+	 * @param string[] $keys Cache keys made with makeKey()/makeGlobalKey()
 	 * @return float[] Map of (key => UNIX timestamp)
 	 * @since 1.31
 	 */
 	final public function getMultiCheckKeyTime( array $keys ) {
-		$rawKeys = [];
+		$checkSisterKeysByKey = [];
 		foreach ( $keys as $key ) {
-			$rawKeys[$key] = $this->makeSisterKey( $key, self::TYPE_TIMESTAMP );
+			$checkSisterKeysByKey[$key] = $this->makeSisterKey( $key, self::TYPE_TIMESTAMP );
 		}
 
-		$rawValues = $this->cache->getMulti( $rawKeys );
-		$rawValues += array_fill_keys( $rawKeys, false );
+		$wrappedBySisterKey = $this->cache->getMulti( $checkSisterKeysByKey );
+		$wrappedBySisterKey += array_fill_keys( $checkSisterKeysByKey, false );
 
 		$times = [];
-		foreach ( $rawKeys as $key => $rawKey ) {
-			$purge = $this->parsePurgeValue( $rawValues[$rawKey] );
+		foreach ( $checkSisterKeysByKey as $key => $checkSisterKey ) {
+			$purge = $this->parsePurgeValue( $wrappedBySisterKey[$checkSisterKey] );
 			if ( $purge !== false ) {
-				$time = $purge[self::$PURGE_TIME];
+				$time = $purge[self::PURGE_TIME];
 			} else {
 				// Casting assures identical floats for the next getCheckKeyTime() calls
 				$now = (string)$this->getCurrentTime();
 				$this->cache->add(
-					$rawKey,
-					$this->makePurgeValue( $now, self::HOLDOFF_TTL ),
-					self::$CHECK_KEY_TTL
+					$checkSisterKey,
+					$this->makeCheckPurgeValue( $now, self::HOLDOFF_TTL ),
+					self::CHECK_KEY_TTL
 				);
 				$time = (float)$now;
 			}
@@ -1050,16 +1162,15 @@ class WANObjectCache implements
 	 * @see WANObjectCache::getWithSetCallback()
 	 * @see WANObjectCache::resetCheckKey()
 	 *
-	 * @param string $key Cache key
+	 * @param string $key Cache key made with makeKey()/makeGlobalKey()
 	 * @param int $holdoff HOLDOFF_TTL or HOLDOFF_TTL_NONE constant
 	 * @return bool True if the item was purged or not found, false on failure
 	 */
 	final public function touchCheckKey( $key, $holdoff = self::HOLDOFF_TTL ) {
-		// Publish the purge to all datacenters
-		$ok = $this->relayPurge(
-			$this->makeSisterKey( $key, self::TYPE_TIMESTAMP ),
-			self::$CHECK_KEY_TTL,
-			$holdoff
+		$checkSisterKey = $this->makeSisterKey( $key, self::TYPE_TIMESTAMP );
+		$ok = $this->relayVolatilePurges(
+			[ $checkSisterKey => $this->makeCheckPurgeValue( $this->getCurrentTime(), $holdoff ) ],
+			self::CHECK_KEY_TTL
 		);
 
 		$kClass = $this->determineKeyClassForStats( $key );
@@ -1092,12 +1203,12 @@ class WANObjectCache implements
 	 * @see WANObjectCache::getWithSetCallback()
 	 * @see WANObjectCache::touchCheckKey()
 	 *
-	 * @param string $key Cache key
+	 * @param string $key Cache key made with makeKey()/makeGlobalKey()
 	 * @return bool True if the item was purged or not found, false on failure
 	 */
 	final public function resetCheckKey( $key ) {
-		// Publish the purge to all datacenters
-		$ok = $this->relayDelete( $this->makeSisterKey( $key, self::TYPE_TIMESTAMP ) );
+		$checkSisterKey = $this->makeSisterKey( $key, self::TYPE_TIMESTAMP );
+		$ok = $this->relayNonVolatilePurge( $checkSisterKey );
 
 		$kClass = $this->determineKeyClassForStats( $key );
 		$this->stats->increment( "wanobjectcache.$kClass.ck_reset." . ( $ok ? 'ok' : 'error' ) );
@@ -1307,7 +1418,7 @@ class WANObjectCache implements
 	 * @see WANObjectCache::get()
 	 * @see WANObjectCache::set()
 	 *
-	 * @param string $key Cache key made from makeKey()/makeGlobalKey()
+	 * @param string $key Cache key made with makeKey()/makeGlobalKey()
 	 * @param int $ttl Nominal seconds-to-live for newly computed values. Special values are:
 	 *   - WANObjectCache::TTL_INDEFINITE: Cache forever (subject to LRU-style evictions)
 	 *   - WANObjectCache::TTL_UNCACHEABLE: Do not cache (if the key exists, it is not deleted)
@@ -1400,9 +1511,8 @@ class WANObjectCache implements
 	 *      to query for dependency timestamps. The use of "pcTTL" reduces timestamp queries.
 	 *      Default: null.
 	 * @param array $cbParams Custom field/value map to pass to the callback (since 1.35)
-	 * @codingStandardsIgnoreStart
+	 * @phpcs:ignore Generic.Files.LineLength
 	 * @phan-param array{checkKeys?:string[],graceTTL?:int,lockTSE?:int,busyValue?:mixed,pcTTL?:int,pcGroup?:string,version?:int,minAsOf?:float|int,hotTTR?:int,lowTTL?:int,ageNew?:int,staleTTL?:int,touchedCallback?:callable} $opts
-	 * @codingStandardsIgnoreEnd
 	 * @return mixed Value found or written to the key
 	 * @note Options added in 1.28: version, busyValue, hotTTR, ageNew, pcGroup, minAsOf
 	 * @note Options added in 1.31: staleTTL, graceTTL
@@ -1458,7 +1568,7 @@ class WANObjectCache implements
 	 *
 	 * @see WANObjectCache::getWithSetCallback()
 	 *
-	 * @param string $key
+	 * @param string $key Cache key made with makeKey()/makeGlobalKey()
 	 * @param int $ttl
 	 * @param callable $callback
 	 * @param array $opts
@@ -1653,76 +1763,72 @@ class WANObjectCache implements
 	}
 
 	/**
-	 * @param string $key
+	 * @param string $key Cache key made with makeKey()/makeGlobalKey()
 	 * @return bool Success
 	 */
 	private function claimStampedeLock( $key ) {
+		$checkSisterKey = $this->makeSisterKey( $key, self::TYPE_MUTEX );
 		// Note that locking is not bypassed due to I/O errors; this avoids stampedes
-		return $this->cache->add(
-			$this->makeSisterKey( $key, self::TYPE_MUTEX ),
-			1,
-			self::$LOCK_TTL
-		);
+		return $this->cache->add( $checkSisterKey, 1, self::LOCK_TTL );
 	}
 
 	/**
-	 * @param string $key
+	 * @param string $key Cache key made with makeKey()/makeGlobalKey()
 	 * @param bool $hasLock
 	 */
 	private function yieldStampedeLock( $key, $hasLock ) {
 		if ( $hasLock ) {
+			$checkSisterKey = $this->makeSisterKey( $key, self::TYPE_MUTEX );
 			// The backend might be a mcrouter proxy set to broadcast DELETE to *all* the local
 			// datacenter cache servers via OperationSelectorRoute (for increased consistency).
 			// Since that would be excessive for these locks, use TOUCH to expire the key.
-			$this->cache->changeTTL(
-				$this->makeSisterKey( $key, self::TYPE_MUTEX ),
-				$this->getCurrentTime() - 60
-			);
+			$this->cache->changeTTL( $checkSisterKey, $this->getCurrentTime() - 60 );
 		}
 	}
 
 	/**
-	 * Get cache keys that should be collocated with their corresponding base keys
+	 * Get sister keys that should be collocated with their corresponding base cache keys
 	 *
-	 * @param string[] $baseKeys Cache keys made from makeKey()/makeGlobalKey()
+	 * The key will bear the WANCache prefix and use the configured coalescing scheme
+	 *
+	 * @param string[] $baseKeys Cache keys made with makeKey()/makeGlobalKey()
 	 * @param string $type Consistent hashing agnostic suffix character matching [a-zA-Z]
-	 * @return string[] List of cache keys
+	 * @param string|null $route Routing prefix (optional)
+	 * @return string[] Order-corresponding list of sister keys
 	 */
-	private function makeSisterKeys( array $baseKeys, $type ) {
-		$keys = [];
+	private function makeSisterKeys( array $baseKeys, string $type, string $route = null ) {
+		$sisterKeys = [];
 		foreach ( $baseKeys as $baseKey ) {
-			$keys[] = $this->makeSisterKey( $baseKey, $type );
+			$sisterKeys[] = $this->makeSisterKey( $baseKey, $type, $route );
 		}
 
-		return $keys;
+		return $sisterKeys;
 	}
 
 	/**
-	 * Get a cache key that should be collocated with a base key
+	 * Get a sister key that should be collocated with a base cache key
 	 *
-	 * @param string $baseKey Cache key made from makeKey()/makeGlobalKey()
+	 * The keys will bear the WANCache prefix and use the configured coalescing scheme
+	 *
+	 * @param string $baseKey Cache key made with makeKey()/makeGlobalKey()
 	 * @param string $typeChar Consistent hashing agnostic suffix character matching [a-zA-Z]
-	 * @return string Cache key
+	 * @param string|null $route Routing prefix (optional)
+	 * @return string Sister key
 	 */
-	private function makeSisterKey( $baseKey, $typeChar ) {
-		if ( $this->coalesceKeys === 'non-global' ) {
-			$useColocationScheme = ( strncmp( $baseKey, "global:", 7 ) !== 0 );
-		} else {
-			$useColocationScheme = ( $this->coalesceKeys === true );
-		}
-
-		if ( !$useColocationScheme ) {
-			// Old key style: "WANCache:<character>:<base key>"
-			$fullKey = 'WANCache:' . $typeChar . ':' . $baseKey;
-		} elseif ( $this->coalesceScheme === self::SCHEME_HASH_STOP ) {
+	private function makeSisterKey( string $baseKey, string $typeChar, string $route = null ) {
+		if ( $this->coalesceScheme === self::SCHEME_HASH_STOP ) {
 			// Key style: "WANCache:<base key>|#|<character>"
-			$fullKey = 'WANCache:' . $baseKey . '|#|' . $typeChar;
+			$sisterKey = 'WANCache:' . $baseKey . '|#|' . $typeChar;
 		} else {
 			// Key style: "WANCache:{<base key>}:<character>"
-			$fullKey = 'WANCache:{' . $baseKey . '}:' . $typeChar;
+			$sisterKey = 'WANCache:{' . $baseKey . '}:' . $typeChar;
 		}
 
-		return $fullKey;
+		if ( $route !== null ) {
+			$sisterKey = $this->prependRoute( $sisterKey, $route );
+		}
+
+		return $sisterKey;
 	}
 
 	/**
@@ -1731,16 +1837,13 @@ class WANObjectCache implements
 	 * @internal For use by WANObjectCache/BagOStuff only
 	 * @since 1.36
 	 */
-	public static function getCollectionFromKey( string $sisterKey ) {
+	public static function getCollectionFromSisterKey( string $sisterKey ) {
 		if ( substr( $sisterKey, -4 ) === '|#|v' ) {
 			// Key style: "WANCache:<base key>|#|<character>"
 			$collection = substr( $sisterKey, 9, strcspn( $sisterKey, ':|', 9 ) );
 		} elseif ( substr( $sisterKey, -3 ) === '}:v' ) {
 			// Key style: "WANCache:{<base key>}:<character>"
 			$collection = substr( $sisterKey, 10, strcspn( $sisterKey, ':}', 10 ) );
-		} elseif ( substr( $sisterKey, 9, 2 ) === 'v:' ) {
-			// Old key style: "WANCache:<character>:<base key>"
-			$collection = substr( $sisterKey, 11, strcspn( $sisterKey, ':', 11 ) );
 		} else {
 			$collection = 'internal';
 		}
@@ -1753,7 +1856,7 @@ class WANObjectCache implements
 	 * @return bool Whether the age of a volatile value is negligible
 	 */
 	private function isVolatileValueAgeNegligible( $age ) {
-		return ( $age < mt_rand( self::$RECENT_SET_LOW_MS, self::$RECENT_SET_HIGH_MS ) / 1e3 );
+		return ( $age < mt_rand( self::RECENT_SET_LOW_MS, self::RECENT_SET_HIGH_MS ) / 1e3 );
 	}
 
 	/**
@@ -1770,7 +1873,7 @@ class WANObjectCache implements
 	 * the problem is proportionate to the value size and access rate. The duration of the
 	 * problem is proportionate to value regeneration time.
 	 *
-	 * @param string $key
+	 * @param string $key Cache key made with makeKey()/makeGlobalKey()
 	 * @param string $kClass
 	 * @param mixed $value The regenerated value
 	 * @param float $elapsed Seconds spent fetching, validating, and regenerating the value
@@ -1778,8 +1881,10 @@ class WANObjectCache implements
 	 * @return bool Whether it is OK to proceed with a key set operation
 	 */
 	private function checkAndSetCooloff( $key, $kClass, $value, $elapsed, $hasLock ) {
-		$valueKey = $this->makeSisterKey( $key, self::TYPE_VALUE );
-		list( $estimatedSize ) = $this->cache->setNewPreparedValues( [ $valueKey => $value ] );
+		$valueSisterKey = $this->makeSisterKey( $key, self::TYPE_VALUE, $this->onHostRoute );
+		list( $estimatedSize ) = $this->cache->setNewPreparedValues( [
+			$valueSisterKey => $value
+		] );
 
 		if ( !$hasLock ) {
 			// Suppose that this cache key is very popular (KEY_HIGH_QPS reads/second).
@@ -1803,14 +1908,11 @@ class WANObjectCache implements
 			//  - 300 misses (100/s), 10KB value, 1250000 bps limit => 8000000 bps (high risk)
 			//  - 300 misses (100/s), 100KB value, 1250000 bps limit => 80000000 bps (high risk)
 			if ( ( $missesPerSecForHighQPS * $estimatedSize ) >= $this->keyHighUplinkBps ) {
+				$cooloffSisterKey = $this->makeSisterKey( $key, self::TYPE_COOLOFF );
 				$this->cache->clearLastError();
 				if (
-					!$this->cache->add(
-						$this->makeSisterKey( $key, self::TYPE_COOLOFF ),
-						1,
-						self::$COOLOFF_TTL
-					) &&
-					// Don't treat failures due to I/O errors as the key being in cooloff
+					!$this->cache->add( $cooloffSisterKey, 1, self::COOLOFF_TTL ) &&
+					// Don't treat failures due to I/O errors as the key being in cool-off
 					$this->cache->getLastError() === BagOStuff::ERR_NONE
 				) {
 					$this->stats->increment( "wanobjectcache.$kClass.cooloff_bounce" );
@@ -1845,7 +1947,7 @@ class WANObjectCache implements
 
 		$touched = $touchedCallback( $value );
 		if ( $touched !== null && $touched >= $curInfo[self::KEY_AS_OF] ) {
-			$curTTL = min( $curTTL, self::$TINY_NEGATIVE, $curInfo[self::KEY_AS_OF] - $touched );
+			$curTTL = min( $curTTL, self::TINY_NEGATIVE, $curInfo[self::KEY_AS_OF] - $touched );
 		}
 
 		return [
@@ -1855,7 +1957,7 @@ class WANObjectCache implements
 				$curInfo[self::KEY_CHECK_AS_OF],
 				$touched
 			)
-		 ];
+		];
 	}
 
 	/**
@@ -1872,7 +1974,7 @@ class WANObjectCache implements
 	}
 
 	/**
-	 * @param string $key
+	 * @param string $key Cache key made with makeKey()/makeGlobalKey()
 	 * @param float $minAsOf Minimum acceptable "as of" timestamp
 	 * @return array (cached value or false, cache key metadata map)
 	 */
@@ -1894,14 +1996,14 @@ class WANObjectCache implements
 	}
 
 	/**
-	 * @param string $key
+	 * @param string $key Cache key made with makeKey()/makeGlobalKey()
 	 * @param mixed $value
 	 * @param int $ttl
 	 * @param int|null $version Value version number
 	 * @param float $walltime How long it took to generate the value in seconds
 	 */
 	private function setInterimValue( $key, $value, $ttl, $version, $walltime ) {
-		$ttl = max( self::$INTERIM_KEY_TTL, (int)$ttl );
+		$ttl = max( self::INTERIM_KEY_TTL, (int)$ttl );
 
 		$wrapped = $this->wrap( $value, $ttl, $version, $this->getCurrentTime(), $walltime );
 		$this->cache->merge(
@@ -1989,8 +2091,8 @@ class WANObjectCache implements
 	final public function getMultiWithSetCallback(
 		ArrayIterator $keyedIds, $ttl, callable $callback, array $opts = []
 	) {
-		// Load required keys into process cache in one go
-		$this->warmupCache = $this->getRawKeysForWarmup(
+		// Batch load required keys into the in-process warmup cache
+		$this->warmupCache = $this->fetchWrappedValuesForWarmupCache(
 			$this->getNonProcessCachedMultiKeys( $keyedIds, $opts ),
 			$opts['checkKeys'] ?? []
 		);
@@ -2000,7 +2102,9 @@ class WANObjectCache implements
 		// to distinguish different items. To reuse the code in getWithSetCallback(), wrap the
 		// callback with a proxy callback that has the standard getWithSetCallback() signature.
 		// This is defined only once per batch to avoid closure creation overhead.
-		$proxyCb = static function ( $oldValue, &$ttl, &$setOpts, $oldAsOf, $params ) use ( $callback ) {
+		$proxyCb = static function ( $oldValue, &$ttl, &$setOpts, $oldAsOf, $params )
+			use ( $callback )
+		{
 			return $callback( $params['id'], $oldValue, $ttl, $setOpts, $oldAsOf );
 		};
 
@@ -2092,9 +2196,9 @@ class WANObjectCache implements
 		unset( $opts['lockTSE'] ); // incompatible
 		unset( $opts['busyValue'] ); // incompatible
 
-		// Load required keys into process cache in one go
+		// Batch load required keys into the in-process warmup cache
 		$keysByIdGet = $this->getNonProcessCachedMultiKeys( $keyedIds, $opts );
-		$this->warmupCache = $this->getRawKeysForWarmup( $keysByIdGet, $checkKeys );
+		$this->warmupCache = $this->fetchWrappedValuesForWarmupCache( $keysByIdGet, $checkKeys );
 		$this->warmupKeyMisses = 0;
 
 		// IDs of entities known to be in need of regeneration
@@ -2164,23 +2268,22 @@ class WANObjectCache implements
 	 * This sets stale keys' time-to-live at HOLDOFF_TTL seconds, which both avoids
 	 * broadcasting in mcrouter setups and also avoids races with new tombstones.
 	 *
-	 * @param string $key Cache key
+	 * @param string $key Cache key made with makeKey()/makeGlobalKey()
 	 * @param int $purgeTimestamp UNIX timestamp of purge
 	 * @param bool &$isStale Whether the key is stale
 	 * @return bool Success
 	 * @since 1.28
 	 */
 	final public function reap( $key, $purgeTimestamp, &$isStale = false ) {
+		$valueSisterKey = $this->makeSisterKey( $key, self::TYPE_VALUE );
+
 		$minAsOf = $purgeTimestamp + self::HOLDOFF_TTL;
-		$wrapped = $this->cache->get( $this->makeSisterKey( $key, self::TYPE_VALUE ) );
-		if ( is_array( $wrapped ) && $wrapped[self::$FLD_TIME] < $minAsOf ) {
+		$wrapped = $this->cache->get( $valueSisterKey );
+		if ( is_array( $wrapped ) && $wrapped[self::FLD_TIME] < $minAsOf ) {
 			$isStale = true;
 			$this->logger->warning( "Reaping stale value key '$key'." );
 			$ttlReap = self::HOLDOFF_TTL; // avoids races with tombstone creation
-			$ok = $this->cache->changeTTL(
-				$this->makeSisterKey( $key, self::TYPE_VALUE ),
-				$ttlReap
-			);
+			$ok = $this->cache->changeTTL( $valueSisterKey, $ttlReap );
 			if ( !$ok ) {
 				$this->logger->error( "Could not complete reap of key '$key'." );
 			}
@@ -2196,23 +2299,21 @@ class WANObjectCache implements
 	/**
 	 * Set a "check" key to soon expire in the local cluster if it pre-dates $purgeTimestamp
 	 *
-	 * @param string $key Cache key
+	 * @param string $key Cache key made with makeKey()/makeGlobalKey()
 	 * @param int $purgeTimestamp UNIX timestamp of purge
 	 * @param bool &$isStale Whether the key is stale
 	 * @return bool Success
 	 * @since 1.28
 	 */
 	final public function reapCheckKey( $key, $purgeTimestamp, &$isStale = false ) {
-		$purge = $this->parsePurgeValue(
-			$this->cache->get( $this->makeSisterKey( $key, self::TYPE_TIMESTAMP ) )
-		);
-		if ( $purge && $purge[self::$PURGE_TIME] < $purgeTimestamp ) {
+		$checkSisterKey = $this->makeSisterKey( $key, self::TYPE_TIMESTAMP );
+
+		$wrapped = $this->cache->get( $checkSisterKey );
+		$purge = $this->parsePurgeValue( $wrapped );
+		if ( $purge && $purge[self::PURGE_TIME] < $purgeTimestamp ) {
 			$isStale = true;
 			$this->logger->warning( "Reaping stale check key '$key'." );
-			$ok = $this->cache->changeTTL(
-				$this->makeSisterKey( $key, self::TYPE_TIMESTAMP ),
-				self::TTL_SECOND
-			);
+			$ok = $this->cache->changeTTL( $checkSisterKey, self::TTL_SECOND );
 			if ( !$ok ) {
 				$this->logger->error( "Could not complete reap of check key '$key'." );
 			}
@@ -2536,59 +2637,75 @@ class WANObjectCache implements
 	}
 
 	/**
-	 * Do the actual async bus purge of a key
+	 * Set a sister key to a purge value in all datacenters
 	 *
-	 * This must set the key to "PURGED:<UNIX timestamp>:<holdoff>"
+	 * This method should not wait for the operation to complete on remote datacenters
 	 *
-	 * @param string $key Sister cache key
-	 * @param int $ttl Seconds to keep the tombstone around
-	 * @param int $holdoff HOLDOFF_* constant controlling how long to ignore sets for this key
+	 * Since older purge values can sometimes arrive after newer ones, use a relative expiry
+	 * so that even if the older value replaces the newer value, the TTL will greater than the
+	 * remaining TTL on the older value (assuming that all purges for a key use the same TTL).
+	 *
+	 * @param array<string,string> $purgeBySisterKey Map of
+	 *  (sister key => result of makeTombstonePurgeValue()/makeCheckKeyPurgeValue())
+	 * @param int $ttl Seconds to keep the purge value around
 	 * @return bool Success
 	 */
-	protected function relayPurge( $key, $ttl, $holdoff ) {
-		if ( $this->mcrouterAware ) {
-			// See https://github.com/facebook/mcrouter/wiki/Multi-cluster-broadcast-setup
-			// Wildcards select all matching routes, e.g. the WAN cluster on all DCs
-			$ok = $this->cache->set(
-				"/*/{$this->cluster}/{$key}",
-				$this->makePurgeValue( $this->getCurrentTime(), $holdoff ),
-				$ttl
-			);
+	protected function relayVolatilePurges( array $purgeBySisterKey, int $ttl ) {
+		$purgeByRouteKey = [];
+		foreach ( $purgeBySisterKey as $sisterKey => $purge ) {
+			if ( $this->broadcastRoute !== null ) {
+				$routeKey = $this->prependRoute( $sisterKey, $this->broadcastRoute );
+			} else {
+				$routeKey = $sisterKey;
+			}
+			$purgeByRouteKey[$routeKey] = $purge;
+		}
+
+		if ( count( $purgeByRouteKey ) == 1 ) {
+			$purge = reset( $purgeByRouteKey );
+			$ok = $this->cache->set( key( $purgeByRouteKey ), $purge, $ttl );
 		} else {
-			// Some other proxy handles broadcasting or there is only one datacenter
-			$ok = $this->cache->set(
-				$key,
-				$this->makePurgeValue( $this->getCurrentTime(), $holdoff ),
-				$ttl
-			);
+			$ok = $this->cache->setMulti( $purgeByRouteKey, $ttl );
 		}
 
 		return $ok;
 	}
 
 	/**
-	 * Do the actual async bus delete of a key
+	 * Remove a sister key from all datacenters
 	 *
-	 * @param string $key Sister cache key
+	 * This method should not wait for the operation to complete on remote datacenters
+	 *
+	 * @param string $sisterKey A value, "check", or flux sister key
 	 * @return bool Success
 	 */
-	protected function relayDelete( $key ) {
-		if ( $this->mcrouterAware ) {
-			// See https://github.com/facebook/mcrouter/wiki/Multi-cluster-broadcast-setup
-			// Wildcards select all matching routes, e.g. the WAN cluster on all DCs
-			$ok = $this->cache->delete( "/*/{$this->cluster}/{$key}" );
+	protected function relayNonVolatilePurge( string $sisterKey ) {
+		if ( $this->broadcastRoute !== null ) {
+			$routeKey = $this->prependRoute( $sisterKey, $this->broadcastRoute );
 		} else {
-			// Some other proxy handles broadcasting or there is only one datacenter
-			$ok = $this->cache->delete( $key );
+			$routeKey = $sisterKey;
 		}
 
-		return $ok;
+		return $this->cache->delete( $routeKey );
+	}
+
+	/**
+	 * @param string $sisterKey Sister key
+	 * @param string $route Key routing prefix
+	 * @return string
+	 */
+	protected function prependRoute( string $sisterKey, string $route ) {
+		if ( $sisterKey[0] === '/' ) {
+			throw new RuntimeException( "Sister key '$sisterKey' already contains a route." );
+		}
+
+		return $route . $sisterKey;
 	}
 
 	/**
 	 * Schedule a deferred cache regeneration if possible
 	 *
-	 * @param string $key
+	 * @param string $key Cache key made with makeKey()/makeGlobalKey()
 	 * @param int $ttl Seconds to live
 	 * @param callable $callback
 	 * @param array $opts
@@ -2727,13 +2844,13 @@ class WANObjectCache implements
 		// Lifecycle is: new, ramp-up refresh chance, full refresh chance.
 		// Note that the "expected # of refreshes" for the ramp-up time range is half
 		// of what it would be if P(refresh) was at its full value during that time range.
-		$refreshWindowSec = max( $timeTillRefresh - $ageNew - self::$RAMPUP_TTL / 2, 1 );
+		$refreshWindowSec = max( $timeTillRefresh - $ageNew - self::RAMPUP_TTL / 2, 1 );
 		// P(refresh) * (# hits in $refreshWindowSec) = (expected # of refreshes)
 		// P(refresh) * ($refreshWindowSec * $popularHitsPerSec) = 1 (by definition)
 		// P(refresh) = 1/($refreshWindowSec * $popularHitsPerSec)
 		$chance = 1 / ( $popularHitsPerSec * $refreshWindowSec );
 		// Ramp up $chance from 0 to its nominal value over RAMPUP_TTL seconds to avoid stampedes
-		$chance *= ( $timeOld <= self::$RAMPUP_TTL ) ? $timeOld / self::$RAMPUP_TTL : 1;
+		$chance *= ( $timeOld <= self::RAMPUP_TTL ) ? $timeOld / self::RAMPUP_TTL : 1;
 
 		// @phan-suppress-next-line PhanTypeMismatchArgumentInternal
 		$decision = ( mt_rand( 1, 1e9 ) <= 1e9 * $chance );
@@ -2757,7 +2874,7 @@ class WANObjectCache implements
 	 */
 	protected function isValid( $value, $asOf, $minAsOf, $purgeTime = null ) {
 		// Avoid reading any key not generated after the latest delete() or touch
-		$safeMinAsOf = max( $minAsOf, $purgeTime + self::$TINY_POSTIVE );
+		$safeMinAsOf = max( $minAsOf, $purgeTime + self::TINY_POSTIVE );
 
 		if ( $value === false ) {
 			return false;
@@ -2780,16 +2897,16 @@ class WANObjectCache implements
 		// Returns keys in ascending integer order for PHP7 array packing:
 		// https://nikic.github.io/2014/12/22/PHPs-new-hashtable-implementation.html
 		$wrapped = [
-			self::$FLD_FORMAT_VERSION => self::$VERSION,
-			self::$FLD_VALUE => $value,
-			self::$FLD_TTL => $ttl,
-			self::$FLD_TIME => $now
+			self::FLD_FORMAT_VERSION => self::VERSION,
+			self::FLD_VALUE => $value,
+			self::FLD_TTL => $ttl,
+			self::FLD_TIME => $now
 		];
 		if ( $version !== null ) {
-			$wrapped[self::$FLD_VALUE_VERSION] = $version;
+			$wrapped[self::FLD_VALUE_VERSION] = $version;
 		}
-		if ( $walltime >= self::$GENERATION_SLOW_SEC ) {
-			$wrapped[self::$FLD_GENERATION_TIME] = $walltime;
+		if ( $walltime >= self::GENERATION_SLOW_SEC ) {
+			$wrapped[self::FLD_GENERATION_TIME] = $walltime;
 		}
 
 		return $wrapped;
@@ -2814,22 +2931,22 @@ class WANObjectCache implements
 		if ( is_array( $wrapped ) ) {
 			// Entry expected to be a cached value; validate it
 			if (
-				( $wrapped[self::$FLD_FORMAT_VERSION] ?? null ) === self::$VERSION &&
-				$wrapped[self::$FLD_TIME] >= $this->epoch
+				( $wrapped[self::FLD_FORMAT_VERSION] ?? null ) === self::VERSION &&
+				$wrapped[self::FLD_TIME] >= $this->epoch
 			) {
-				if ( $wrapped[self::$FLD_TTL] > 0 ) {
+				if ( $wrapped[self::FLD_TTL] > 0 ) {
 					// Get the approximate time left on the key
-					$age = $now - $wrapped[self::$FLD_TIME];
-					$curTTL = max( $wrapped[self::$FLD_TTL] - $age, 0.0 );
+					$age = $now - $wrapped[self::FLD_TIME];
+					$curTTL = max( $wrapped[self::FLD_TTL] - $age, 0.0 );
 				} else {
 					// Key had no TTL, so the time left is unbounded
 					$curTTL = INF;
 				}
-				$value = $wrapped[self::$FLD_VALUE];
-				$info[self::KEY_VERSION] = $wrapped[self::$FLD_VALUE_VERSION] ?? null;
-				$info[self::KEY_AS_OF] = $wrapped[self::$FLD_TIME];
+				$value = $wrapped[self::FLD_VALUE];
+				$info[self::KEY_VERSION] = $wrapped[self::FLD_VALUE_VERSION] ?? null;
+				$info[self::KEY_AS_OF] = $wrapped[self::FLD_TIME];
 				$info[self::KEY_CUR_TTL] = $curTTL;
-				$info[self::KEY_TTL] = $wrapped[self::$FLD_TTL];
+				$info[self::KEY_TTL] = $wrapped[self::FLD_TTL];
 			}
 		} else {
 			// Entry expected to be a tombstone; parse it
@@ -2837,8 +2954,8 @@ class WANObjectCache implements
 			if ( $purge !== false ) {
 				// Tombstoned keys should always have a negative current $ttl
 				$info[self::KEY_CUR_TTL] =
-					min( $purge[self::$PURGE_TIME] - $now, self::$TINY_NEGATIVE );
-				$info[self::KEY_TOMB_AS_OF] = $purge[self::$PURGE_TIME];
+					min( $purge[self::PURGE_TIME] - $now, self::TINY_NEGATIVE );
+				$info[self::KEY_TOMB_AS_OF] = $purge[self::PURGE_TIME];
 			}
 		}
 
@@ -2870,8 +2987,12 @@ class WANObjectCache implements
 	}
 
 	/**
-	 * @param string|array|bool $value Possible string of the form "PURGED:<timestamp>:<holdoff>"
-	 * @return array|bool Array containing a UNIX timestamp (float) and holdoff period (integer),
+	 * Extract purge metadata from cached value if it is a valid purge value
+	 *
+	 * Valid purge values come from makeTombstonePurgeValue()/makeCheckKeyPurgeValue()
+	 *
+	 * @param mixed $value Cached value
+	 * @return array|bool Array containing a UNIX timestamp (float) and hold-off period (integer),
 	 *  or false if value isn't a valid purge value
 	 */
 	private function parsePurgeValue( $value ) {
@@ -2880,37 +3001,42 @@ class WANObjectCache implements
 		}
 
 		$segments = explode( ':', $value, 3 );
-		if (
-			!isset( $segments[0] ) ||
-			!isset( $segments[1] ) ||
-			"{$segments[0]}:" !== self::PURGE_VAL_PREFIX
-		) {
+		if ( isset( $segments[2] ) ) {
+			$prefix = $segments[0];
+			$timestamp = (float)$segments[1];
+			$holdoff = (int)$segments[2];
+		} elseif ( isset( $segments[1] ) ) {
+			$prefix = $segments[0];
+			$timestamp = (float)$segments[1];
+			// Value tombstones don't store hold-off TTLs
+			$holdoff = self::HOLDOFF_TTL;
+		} else {
 			return false;
 		}
 
-		if ( !isset( $segments[2] ) ) {
-			// Back-compat with old purge values without holdoff
-			$segments[2] = self::HOLDOFF_TTL;
-		}
-
-		if ( $segments[1] < $this->epoch ) {
-			// Values this old are ignored
+		if ( "{$prefix}:" !== self::PURGE_VAL_PREFIX || $timestamp < $this->epoch ) {
+			// Not a purge value or the purge value is too old
 			return false;
 		}
 
-		return [
-			self::$PURGE_TIME => (float)$segments[1],
-			self::$PURGE_HOLDOFF => (int)$segments[2],
-		];
+		return [ self::PURGE_TIME => $timestamp, self::PURGE_HOLDOFF => $holdoff ];
 	}
 
 	/**
-	 * @param float $timestamp
-	 * @param int $holdoff In seconds
-	 * @return string Wrapped purge value
+	 * @param float $timestamp UNIX timestamp
+	 * @return string Wrapped purge value; format is "PURGED:<timestamp>"
 	 */
-	private function makePurgeValue( $timestamp, $holdoff ) {
-		return self::PURGE_VAL_PREFIX . (float)$timestamp . ':' . (int)$holdoff;
+	private function makeTombstonePurgeValue( $timestamp ) {
+		return self::PURGE_VAL_PREFIX . number_format( $timestamp, 4, '.', '' );
+	}
+
+	/**
+	 * @param float $timestamp UNIX timestamp
+	 * @param int $holdoff In seconds
+	 * @return string Wrapped purge value; format is "PURGED:<timestamp>:<holdoff>"
+	 */
+	private function makeCheckPurgeValue( $timestamp, int $holdoff ) {
+		return self::PURGE_VAL_PREFIX . number_format( $timestamp, 4, '.', '' ) . ":$holdoff";
 	}
 
 	/**
@@ -2930,7 +3056,7 @@ class WANObjectCache implements
 	}
 
 	/**
-	 * @param string $key
+	 * @param string $key Cache key made with makeKey()/makeGlobalKey()
 	 * @param int $version
 	 * @return string
 	 */
@@ -2961,35 +3087,42 @@ class WANObjectCache implements
 	}
 
 	/**
-	 * @param string[] $keys
-	 * @param string[]|string[][] $checkKeys
-	 * @return string[] List of cache keys
+	 * @param string[] $keys Cache keys made with makeKey()/makeGlobalKey()
+	 * @param string[]|string[][] $checkKeys Map of (integer or cache key => "check" key(s));
+	 *  "check" keys must also be made with makeKey()/makeGlobalKey()
+	 * @return array<string,mixed> Map of (sister key => value, or, false if not found)
 	 */
-	private function getRawKeysForWarmup( array $keys, array $checkKeys ) {
+	private function fetchWrappedValuesForWarmupCache( array $keys, array $checkKeys ) {
 		if ( !$keys ) {
 			return [];
 		}
 
 		// Get all the value keys to fetch...
-		$keysWarmup = $this->makeSisterKeys( $keys, self::TYPE_VALUE );
-		// Get all the check keys to fetch...
+		$sisterKeys = $this->makeSisterKeys( $keys, self::TYPE_VALUE, $this->onHostRoute );
+		// Get all the flux keys to fetch...
+		if ( $this->onHostRoute !== null ) {
+			foreach ( $keys as $key ) {
+				$sisterKeys[] = $this->makeSisterKey( $key, self::TYPE_FLUX );
+			}
+		}
+		// Get all the "check" keys to fetch...
 		foreach ( $checkKeys as $i => $checkKeyOrKeyGroup ) {
 			// Note: avoid array_merge() inside loop in case there are many keys
 			if ( is_int( $i ) ) {
-				// Single check key that applies to all value keys
-				$keysWarmup[] = $this->makeSisterKey( $checkKeyOrKeyGroup, self::TYPE_TIMESTAMP );
+				// Single "check" key that applies to all value keys
+				$sisterKeys[] = $this->makeSisterKey( $checkKeyOrKeyGroup, self::TYPE_TIMESTAMP );
 			} else {
-				// List of check keys that apply to a specific value key
+				// List of "check" keys that apply to a specific value key
 				foreach ( (array)$checkKeyOrKeyGroup as $checkKey ) {
-					$keysWarmup[] = $this->makeSisterKey( $checkKey, self::TYPE_TIMESTAMP );
+					$sisterKeys[] = $this->makeSisterKey( $checkKey, self::TYPE_TIMESTAMP );
 				}
 			}
 		}
 
-		$warmupCache = $this->cache->getMulti( $keysWarmup );
-		$warmupCache += array_fill_keys( $keysWarmup, false );
+		$wrappedBySisterKey = $this->cache->getMulti( $sisterKeys );
+		$wrappedBySisterKey += array_fill_keys( $sisterKeys, false );
 
-		return $warmupCache;
+		return $wrappedBySisterKey;
 	}
 
 	/**

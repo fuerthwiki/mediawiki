@@ -20,8 +20,6 @@
 
 namespace Wikimedia\UUID;
 
-use BagOStuff;
-use EmptyBagOStuff;
 use InvalidArgumentException;
 use RuntimeException;
 use Wikimedia\Assert\Assert;
@@ -34,8 +32,6 @@ use Wikimedia\Timestamp\ConvertibleTimestamp;
  * @since 1.35
  */
 class GlobalIdGenerator {
-	/** @var BagOStuff Server-local persistent cache instance */
-	protected $srvCache;
 	/** @var callable Callback for running shell commands */
 	protected $shellCallback;
 
@@ -60,7 +56,8 @@ class GlobalIdGenerator {
 	/** @var array Cached file handles */
 	protected $fileHandles = []; // cached file handles
 
-	public const QUICK_VOLATILE = 1; // use an APC like in-memory counter if available
+	/** @var int B/C constant (deprecated since 1.36) */
+	public const QUICK_VOLATILE = 1;
 
 	/**
 	 * Avoid using __CLASS__ so namespace separators aren't interpreted
@@ -68,12 +65,29 @@ class GlobalIdGenerator {
 	 */
 	private const FILE_PREFIX = 'mw-GlobalIdGenerator';
 
+	/** Key used in the serialized clock state map that is stored on disk */
+	private const CLOCK_TIME = 'time';
+	/** Key used in the serialized clock state map that is stored on disk */
+	private const CLOCK_COUNTER = 'counter';
+	/** Key used in the serialized clock state map that is stored on disk */
+	private const CLOCK_SEQUENCE = 'clkSeq';
+	/** Key used in the serialized clock state map that is stored on disk */
+	private const CLOCK_OFFSET = 'offset';
+	/** Key used in the serialized clock state map that is stored on disk */
+	private const CLOCK_OFFSET_COUNTER = 'offsetCounter';
+
 	/**
 	 * @param string $tempDirectory A writable temporary directory
-	 * @param BagOStuff $srvCache A server-local APC-like cache instance
 	 * @param callback $shellCallback A callback that takes a shell command and returns the output
 	 */
-	public function __construct( $tempDirectory, BagOStuff $srvCache, callable $shellCallback ) {
+	public function __construct( $tempDirectory, $shellCallback ) {
+		if ( func_num_args() >= 3 && !is_callable( $shellCallback ) ) {
+			trigger_error(
+				__CLASS__ . ' with a BagOStuff instance was deprecated in MediaWiki 1.37.',
+				E_USER_DEPRECATED
+			);
+			$shellCallback = func_get_arg( 2 );
+		}
 		if ( !strlen( $tempDirectory ) ) {
 			throw new InvalidArgumentException( "No temp directory provided" );
 		}
@@ -85,7 +99,6 @@ class GlobalIdGenerator {
 		$this->lockFile128 = $tempDirectory . '/' . self::FILE_PREFIX . '-UID-128';
 		$this->lockFileUUID = $tempDirectory . '/' . self::FILE_PREFIX . '-UUID-128';
 
-		$this->srvCache = $srvCache;
 		$this->shellCallback = $shellCallback;
 	}
 
@@ -110,24 +123,19 @@ class GlobalIdGenerator {
 		Assert::parameter( $base >= 2, '$base', 'must be >= 2' );
 
 		$info = $this->getTimeAndDelay( 'lockFile88', 1, 1024, 1024 );
-		$info['offsetCounter'] %= 1024;
+		$info[self::CLOCK_OFFSET_COUNTER] %= 1024;
 
 		return \Wikimedia\base_convert( $this->getTimestampedID88( $info ), 2, $base );
 	}
 
 	/**
-	 * @param array $info result of GlobalIdGenerator::getTimeAndDelay(), or
-	 *  for sub classes, a sequential array like (time, offsetCounter).
+	 * @param array $info result of GlobalIdGenerator::getTimeAndDelay()
 	 * @return string 88 bits
 	 * @throws RuntimeException
 	 */
 	protected function getTimestampedID88( array $info ) {
-		if ( isset( $info['time'] ) ) {
-			$time = $info['time'];
-			$counter = $info['offsetCounter'];
-		} else {
-			list( $time, $counter ) = $info;
-		}
+		$time = $info[self::CLOCK_TIME];
+		$counter = $info[self::CLOCK_OFFSET_COUNTER];
 		// Take the 46 LSBs of "milliseconds since epoch"
 		$id_bin = $this->millisecondsSinceEpochBinary( $time );
 		// Add a 10 bit counter resulting in 56 bits total
@@ -162,25 +170,20 @@ class GlobalIdGenerator {
 		Assert::parameter( $base >= 2, '$base', 'must be >= 2' );
 
 		$info = $this->getTimeAndDelay( 'lockFile128', 16384, 1048576, 1048576 );
-		$info['offsetCounter'] %= 1048576;
+		$info[self::CLOCK_OFFSET_COUNTER] %= 1048576;
 
 		return \Wikimedia\base_convert( $this->getTimestampedID128( $info ), 2, $base );
 	}
 
 	/**
-	 * @param array $info The result of GlobalIdGenerator::getTimeAndDelay(),
-	 *  for sub classes, a seqencial array like (time, offsetCounter, clkSeq).
+	 * @param array $info The result of GlobalIdGenerator::getTimeAndDelay()
 	 * @return string 128 bits
 	 * @throws RuntimeException
 	 */
 	protected function getTimestampedID128( array $info ) {
-		if ( isset( $info['time'] ) ) {
-			$time = $info['time'];
-			$counter = $info['offsetCounter'];
-			$clkSeq = $info['clkSeq'];
-		} else {
-			list( $time, $counter, $clkSeq ) = $info;
-		}
+		$time = $info[self::CLOCK_TIME];
+		$counter = $info[self::CLOCK_OFFSET_COUNTER];
+		$clkSeq = $info[self::CLOCK_SEQUENCE];
 		// Take the 46 LSBs of "milliseconds since epoch"
 		$id_bin = $this->millisecondsSinceEpochBinary( $time );
 		// Add a 20 bit counter resulting in 66 bits total
@@ -215,8 +218,11 @@ class GlobalIdGenerator {
 	 * @return string 128 bits
 	 */
 	protected function getUUIDv1( array $info ) {
-		$clkSeq_bin = \Wikimedia\base_convert( $info['clkSeq'], 10, 2, 14 );
-		$time_bin = $this->intervalsSinceGregorianBinary( $info['time'], $info['offsetCounter'] );
+		$clkSeq_bin = \Wikimedia\base_convert( $info[self::CLOCK_SEQUENCE], 10, 2, 14 );
+		$time_bin = $this->intervalsSinceGregorianBinary(
+			$info[self::CLOCK_TIME],
+			$info[self::CLOCK_OFFSET_COUNTER]
+		);
 		// Take the 32 bits of "time low"
 		$id_bin = substr( $time_bin, 28, 32 );
 		// Add 16 bits of "time mid" resulting in 48 bits total
@@ -369,55 +375,39 @@ class GlobalIdGenerator {
 			throw new RuntimeException( "Requested bit size ($bits) is out of range." );
 		}
 
-		$counter = null; // post-increment persistent counter value
-
-		// Use APC/etc if requested, available, and not in CLI mode;
-		// Counter values would not survive across script instances in CLI mode.
-		if (
-			( $flags & self::QUICK_VOLATILE ) &&
-			!( $this->srvCache instanceof EmptyBagOStuff )
-		) {
-			$cache = $this->srvCache;
-			$counter = $cache->incrWithInit( $bucket, $cache::TTL_INDEFINITE, $count, $count );
-			if ( $counter === false ) {
-				throw new RuntimeException( 'Unable to set value to ' . get_class( $cache ) );
-			}
+		$path = $this->tmpDir . '/' . self::FILE_PREFIX . '-' . rawurlencode( $bucket ) . '-48';
+		// Get the UID lock file handle
+		if ( isset( $this->fileHandles[$path] ) ) {
+			$handle = $this->fileHandles[$path];
+		} else {
+			$handle = fopen( $path, 'cb+' );
+			$this->fileHandles[$path] = $handle ?: null; // cache
 		}
-
-		// Note: use of fmod() avoids "division by zero" on 32 bit machines
-		if ( $counter === null ) {
-			$path = $this->tmpDir . '/' . self::FILE_PREFIX . '-' . rawurlencode( $bucket ) . '-48';
-			// Get the UID lock file handle
-			if ( isset( $this->fileHandles[$path] ) ) {
-				$handle = $this->fileHandles[$path];
-			} else {
-				$handle = fopen( $path, 'cb+' );
-				$this->fileHandles[$path] = $handle ?: null; // cache
-			}
-			// Acquire the UID lock file
-			if ( $handle === false ) {
-				throw new RuntimeException( "Could not open '{$path}'." );
-			}
-			if ( !flock( $handle, LOCK_EX ) ) {
-				fclose( $handle );
-				throw new RuntimeException( "Could not acquire '{$path}'." );
-			}
-			// Fetch the counter value and increment it...
-			rewind( $handle );
-			$counter = floor( (float)trim( fgets( $handle ) ) ) + $count; // fetch as float
-			// Write back the new counter value
-			ftruncate( $handle, 0 );
-			rewind( $handle );
-			fwrite( $handle, fmod( $counter, 2 ** 48 ) ); // warp-around as needed
-			fflush( $handle );
-			// Release the UID lock file
-			flock( $handle, LOCK_UN );
+		// Acquire the UID lock file
+		if ( $handle === false ) {
+			throw new RuntimeException( "Could not open '{$path}'." );
 		}
+		if ( !flock( $handle, LOCK_EX ) ) {
+			fclose( $handle );
+			throw new RuntimeException( "Could not acquire '{$path}'." );
+		}
+		// Fetch the counter value and increment it...
+		rewind( $handle );
+		$counter = floor( (float)trim( fgets( $handle ) ) ) + $count; // fetch as float
+		// Write back the new counter value
+		ftruncate( $handle, 0 );
+		rewind( $handle );
+		// Use fmod() to avoid "division by zero" on 32 bit machines
+		fwrite( $handle, fmod( $counter, 2 ** 48 ) ); // warp-around as needed
+		fflush( $handle );
+		// Release the UID lock file
+		flock( $handle, LOCK_UN );
 
 		$ids = [];
 		$divisor = 2 ** $bits;
 		$currentId = floor( $counter - $count ); // pre-increment counter value
 		for ( $i = 0; $i < $count; ++$i ) {
+			// Use fmod() to avoid "division by zero" on 32 bit machines
 			$ids[] = fmod( ++$currentId, $divisor );
 		}
 
@@ -434,11 +424,11 @@ class GlobalIdGenerator {
 	 * @param int $counterSize The number of possible counter values
 	 * @param int $offsetSize The number of possible offset values
 	 * @return array Array with the following keys:
-	 *  - array 'time': array of seconds int and milliseconds int.
-	 *  - int 'counter'.
-	 *  - int 'clkSeq'.
-	 *  - int 'offset': .
-	 *  - int 'offsetCounter'.
+	 *  - GlobalIdGenerator::CLOCK_TIME: (integer seconds, integer milliseconds) array
+	 *  - GlobalIdGenerator::CLOCK_COUNTER: integer millisecond tie-breaking counter
+	 *  - GlobalIdGenerator::CLOCK_SEQUENCE: integer clock identifier that is local to the node
+	 *  - GlobalIdGenerator::CLOCK_OFFSET: integer offset for millisecond tie-breaking counter
+	 *  - GlobalIdGenerator::CLOCK_OFFSET_COUNTER: integer; CLOCK_COUNTER with CLOCK_OFFSET applied
 	 * @throws RuntimeException
 	 */
 	protected function getTimeAndDelay( $lockFile, $clockSeqSize, $counterSize, $offsetSize ) {
@@ -559,11 +549,11 @@ class GlobalIdGenerator {
 		$counter = $msecCounter % 1000;
 
 		return [
-			'time' => [ $sec, $msec ],
-			'counter' => $counter,
-			'clkSeq' => $clkSeq,
-			'offset' => $randOffset,
-			'offsetCounter' => $counter + $randOffset,
+			self::CLOCK_TIME     => [ $sec, $msec ],
+			self::CLOCK_COUNTER  => $counter,
+			self::CLOCK_SEQUENCE => $clkSeq,
+			self::CLOCK_OFFSET   => $randOffset,
+			self::CLOCK_OFFSET_COUNTER => $counter + $randOffset,
 		];
 	}
 

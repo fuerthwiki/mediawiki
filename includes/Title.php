@@ -30,6 +30,7 @@ use MediaWiki\MediaWikiServices;
 use MediaWiki\Page\ExistingPageRecord;
 use MediaWiki\Page\PageIdentity;
 use MediaWiki\Page\PageIdentityValue;
+use MediaWiki\Page\PageReference;
 use MediaWiki\Page\PageStoreRecord;
 use MediaWiki\Page\ProperPageIdentity;
 use Wikimedia\Assert\Assert;
@@ -328,17 +329,33 @@ class Title implements LinkTarget, PageIdentity, IDBAccessObject {
 	 * @return Title|null
 	 */
 	public static function castFromPageIdentity( ?PageIdentity $pageIdentity ) : ?Title {
-		if ( !$pageIdentity ) {
+		return self::castFromPageReference( $pageIdentity );
+	}
+
+	/**
+	 * Return a Title for a given Reference. If $pageReference is a Title,
+	 * that Title is returned unchanged. If $pageReference is null, null
+	 * is returned.
+	 * @since 1.37
+	 *
+	 * @param PageReference|null $pageReference
+	 * @return Title|null
+	 */
+	public static function castFromPageReference( ?PageReference $pageReference ) : ?Title {
+		if ( !$pageReference ) {
 			return null;
 		}
 
-		if ( $pageIdentity instanceof Title ) {
-			return $pageIdentity;
+		if ( $pageReference instanceof Title ) {
+			return $pageReference;
 		}
 
-		$pageIdentity->assertWiki( self::LOCAL );
-		$title = self::makeTitle( $pageIdentity->getNamespace(), $pageIdentity->getDBkey() );
-		$title->resetArticleID( $pageIdentity->getId() );
+		$pageReference->assertWiki( self::LOCAL );
+		$title = self::makeTitle( $pageReference->getNamespace(), $pageReference->getDBkey() );
+
+		if ( $pageReference instanceof PageIdentity ) {
+			$title->resetArticleID( $pageReference->getId() );
+		}
 		return $title;
 	}
 
@@ -906,7 +923,7 @@ class Title implements LinkTarget, PageIdentity, IDBAccessObject {
 			$parts = $titleCodec->splitTitleString( $text, $this->mNamespace );
 
 			// Check that nothing changed!
-			// This ensures that $text was already perperly normalized.
+			// This ensures that $text was already properly normalized.
 			if ( $parts['fragment'] !== $this->mFragment
 				|| $parts['interwiki'] !== $this->mInterwiki
 				|| $parts['local_interwiki'] !== $this->mLocalInterwiki
@@ -1257,8 +1274,7 @@ class Title implements LinkTarget, PageIdentity, IDBAccessObject {
 	 */
 	public function isWatchable() {
 		$nsInfo = MediaWikiServices::getInstance()->getNamespaceInfo();
-		return $this->getText() !== '' && !$this->isExternal() &&
-			$nsInfo->isWatchable( $this->mNamespace );
+		return $this->canExist() && $nsInfo->isWatchable( $this->mNamespace );
 	}
 
 	/**
@@ -1484,13 +1500,18 @@ class Title implements LinkTarget, PageIdentity, IDBAccessObject {
 	 * @since 1.31
 	 */
 	public function getSkinFromConfigSubpage() {
-		$subpage = explode( '/', $this->mTextform );
-		$subpage = $subpage[count( $subpage ) - 1];
-		$lastdot = strrpos( $subpage, '.' );
-		if ( $lastdot === false ) {
-			return $subpage; # Never happens: only called for names ending in '.css'/'.json'/'.js'
+		$text = $this->getText();
+		$lastSlashPos = $this->findSubpageDivider( $text, -1 );
+		if ( $lastSlashPos === false ) {
+			return '';
 		}
-		return substr( $subpage, 0, $lastdot );
+
+		$lastDot = strrpos( $text, '.', $lastSlashPos );
+		if ( $lastDot === false ) {
+			return '';
+		}
+
+		return substr( $text, $lastSlashPos + 1, $lastDot - $lastSlashPos - 1 );
 	}
 
 	/**
@@ -1922,38 +1943,17 @@ class Title implements LinkTarget, PageIdentity, IDBAccessObject {
 	 * @return false|int
 	 */
 	private function findSubpageDivider( $text, $dir ) {
-		$top = strlen( $text ) - 1;
-		$bottom = 0;
-
-		while ( $bottom < $top && $text[$bottom] === '/' ) {
-			$bottom++;
-		}
-
-		if ( $top < $bottom ) {
-			return false;
-		}
-
 		if ( $dir > 0 ) {
-			$idx = $bottom;
-			while ( $idx <= $top && $text[$idx] !== '/' ) {
-				$idx++;
-			}
+			// Skip leading slashes, but keep the last one when there is nothing but slashes
+			$bottom = strspn( $text, '/', 0, -1 );
+			$idx = strpos( $text, '/', $bottom );
 		} else {
-			$idx = $top;
-			while ( $idx > $bottom && $text[$idx] !== '/' ) {
-				$idx--;
-			}
+			// Any slash from the end can be a divider, as subpage names can be empty
+			$idx = strrpos( $text, '/' );
 		}
 
-		if ( $idx < $bottom || $idx > $top ) {
-			return false;
-		}
-
-		if ( $idx < 1 ) {
-			return false;
-		}
-
-		return $idx;
+		// The first character can never be a divider, as that would result in an empty base
+		return $idx === 0 ? false : $idx;
 	}
 
 	/**
@@ -3917,25 +3917,22 @@ class Title implements LinkTarget, PageIdentity, IDBAccessObject {
 	}
 
 	/**
-	 * @see PageIdentity::isSamePageAs()
+	 * @see PageReference::isSamePageAs()
 	 * @since 1.36
 	 *
-	 * @param PageIdentity $other
+	 * @param PageReference $other
 	 * @return bool
 	 */
-	public function isSamePageAs( PageIdentity $other ) {
+	public function isSamePageAs( PageReference $other ): bool {
 		// NOTE: keep in sync with PageIdentityValue::isSamePageAs()!
 
-		if ( $other->getWikiId() !== $this->getWikiId()
-			|| $other->getId() !== $this->getId() ) {
+		if ( $other->getWikiId() !== $this->getWikiId() ) {
 			return false;
 		}
 
-		if ( $this->getId() === 0 ) {
-			if ( $other->getNamespace() !== $this->getNamespace()
-				|| $other->getDBkey() !== $this->getDBkey() ) {
-				return false;
-			}
+		if ( $other->getNamespace() !== $this->getNamespace()
+			|| $other->getDBkey() !== $this->getDBkey() ) {
+			return false;
 		}
 
 		return true;
@@ -4212,7 +4209,7 @@ class Title implements LinkTarget, PageIdentity, IDBAccessObject {
 	 */
 	public function getNotificationTimestamp( User $user ) {
 		return MediaWikiServices::getInstance()
-			->getWatchlistNotificationManager()
+			->getWatchlistManager()
 			->getTitleNotificationTimestamp( $user, $this );
 	}
 
@@ -4711,7 +4708,7 @@ class Title implements LinkTarget, PageIdentity, IDBAccessObject {
 				'page_is_new' => $this->isNewPage(), // no flags?
 				'page_is_redirect' => $this->isRedirect( $flags ),
 				'page_touched' => $this->getTouched(), // no flags?
-				'page_lang' => $this->getPageLanguage()->getCode(),
+				'page_lang' => $this->getDbPageLanguageCode() ?: null,
 			],
 			PageIdentity::LOCAL
 		);

@@ -13,7 +13,7 @@ use Wikimedia\TestingAccessWrapper;
  * @covers WANObjectCache::makeSisterKeys
  * @covers WANObjectCache::getProcessCache
  * @covers WANObjectCache::getNonProcessCachedMultiKeys
- * @covers WANObjectCache::getRawKeysForWarmup
+ * @covers WANObjectCache::fetchWrappedValuesForWarmupCache
  * @covers WANObjectCache::getInterimValue
  * @covers WANObjectCache::setInterimValue
  */
@@ -26,7 +26,7 @@ class WANObjectCacheTest extends PHPUnit\Framework\TestCase {
 	 * @return WANObjectCache[]|HashBagOStuff[] (WANObjectCache, BagOStuff)
 	 */
 	private function newWanCache( array $params = [] ) {
-		if ( !empty( $params['mcrouterAware'] ) ) {
+		if ( isset( $params['broadcastRoutingPrefix'] ) ) {
 			// Convert mcrouter broadcast keys to regular keys in HashBagOStuff::delete() calls
 			$bag = new McrouterHashBagOStuff();
 		} else {
@@ -184,7 +184,7 @@ class WANObjectCacheTest extends PHPUnit\Framework\TestCase {
 		};
 
 		$cache->getWithSetCallback( $key, 100, $callback, [ 'pcTTL' => 5 ] );
-		$cache->delete( $key, $cache::HOLDOFF_NONE ); // clear persistent cache
+		$cache->delete( $key, $cache::HOLDOFF_TTL_NONE ); // clear persistent cache
 		$cache->getWithSetCallback( $key, 100, $callback, [ 'pcTTL' => 5 ] );
 		$this->assertSame( 1, $hits, "Value process cached" );
 
@@ -195,6 +195,7 @@ class WANObjectCacheTest extends PHPUnit\Framework\TestCase {
 
 	/**
 	 * @covers WANObjectCache::getWithSetCallback
+	 * @covers WANObjectCache::makeTombstonePurgeValue
 	 */
 	public function testProcessCacheLruAndDelete() {
 		list( $cache ) = $this->newWanCache();
@@ -304,7 +305,7 @@ class WANObjectCacheTest extends PHPUnit\Framework\TestCase {
 		$cache->getWithSetCallback( $keyInner, 100, $innerFn, [ 'pcTTL' => 5 ] );
 
 		$this->assertSame( 1, $innerHit, "Inner callback value cached" );
-		$cache->delete( $keyInner, $cache::HOLDOFF_NONE );
+		$cache->delete( $keyInner, $cache::HOLDOFF_TTL_NONE );
 		$mockWallClock += 1;
 
 		$cache->getWithSetCallback( $keyInner, 100, $innerFn, [ 'pcTTL' => 5 ] );
@@ -320,8 +321,8 @@ class WANObjectCacheTest extends PHPUnit\Framework\TestCase {
 
 		$this->assertSame( 1, $outerHit, "Outer callback value cached" );
 
-		$cache->delete( $keyInner, $cache::HOLDOFF_NONE );
-		$cache->delete( $keyOuter, $cache::HOLDOFF_NONE );
+		$cache->delete( $keyInner, $cache::HOLDOFF_TTL_NONE );
+		$cache->delete( $keyOuter, $cache::HOLDOFF_TTL_NONE );
 		$mockWallClock += 1;
 		$cache->clearProcessCache();
 		$cache->getWithSetCallback( $keyOuter, 100, $outerFn );
@@ -329,7 +330,7 @@ class WANObjectCacheTest extends PHPUnit\Framework\TestCase {
 		$this->assertSame( 2, $outerHit, "Outer callback value not yet cached" );
 		$this->assertSame( 3, $innerHit, "Inner callback value not yet cached" );
 
-		$cache->delete( $keyInner, $cache::HOLDOFF_NONE );
+		$cache->delete( $keyInner, $cache::HOLDOFF_TTL_NONE );
 		$mockWallClock += 1;
 		$cache->getWithSetCallback( $keyInner, 100, $innerFn, [ 'pcTTL' => 5 ] );
 
@@ -1099,10 +1100,8 @@ class WANObjectCacheTest extends PHPUnit\Framework\TestCase {
 
 	public static function provideCoalesceAndMcrouterSettings() {
 		return [
-			[ [ 'mcrouterAware' => false, 'coalesceKeys' => false ], null ],
-			[ [ 'mcrouterAware' => false, 'coalesceKeys' => true ], '{' ],
-			[ [ 'mcrouterAware' => true, 'cluster' => 'test', 'coalesceKeys' => false ], null ],
-			[ [ 'mcrouterAware' => true, 'cluster' => 'test', 'coalesceKeys' => true ], '|#|' ]
+			[ [ 'coalesceScheme' => 'hash_tag' ], '{' ],
+			[ [ 'broadcastRoutingPrefix' => '/*/test/', 'coalesceScheme' => 'hash_stop' ], '|#|' ],
 		];
 	}
 
@@ -1243,23 +1242,21 @@ class WANObjectCacheTest extends PHPUnit\Framework\TestCase {
 	}
 
 	private function setMutexKey( BagOStuff $bag, $key ) {
-		// Cover all formats for "coalesceKeys"/"mcrouterAware"
+		// Cover all formats for "coalesceScheme"
 		$bag->add( "WANCache:$key|#|m", 1 );
 		$bag->add( "WANCache:{" . $key . "}:m", 1 );
-		$bag->add( "WANCache:m:$key", 1 );
 	}
 
 	private function clearMutexKey( BagOStuff $bag, $key ) {
-		// Cover all formats for "coalesceKeys"/"mcrouterAware"
+		// Cover all formats for "coalesceScheme"
 		$bag->delete( "WANCache:$key|#|m" );
 		$bag->delete( "WANCache:{" . $key . "}:m" );
-		$bag->delete( "WANCache:m:$key" );
 	}
 
 	private function setCheckKey( BagOStuff $bag, $key, $time ) {
+		// Cover all formats for "coalesceScheme"
 		$bag->set( "WANCache:$key|#|t", "PURGED:$time" );
 		$bag->set( "WANCache:{" . $key . "}:t", "PURGED:$time" );
-		$bag->set( "WANCache:t:$key", "PURGED:$time" );
 	}
 
 	/**
@@ -1660,8 +1657,9 @@ class WANObjectCacheTest extends PHPUnit\Framework\TestCase {
 
 	/**
 	 * @covers WANObjectCache::delete
-	 * @covers WANObjectCache::relayDelete
-	 * @covers WANObjectCache::relayPurge
+	 * @covers WANObjectCache::relayNonVolatilePurge
+	 * @covers WANObjectCache::relayVolatilePurges
+	 * @covers WANObjectCache::makeTombstonePurgeValue
 	 */
 	public function testDelete() {
 		list( $cache ) = $this->newWanCache();
@@ -1853,7 +1851,7 @@ class WANObjectCacheTest extends PHPUnit\Framework\TestCase {
 	 * @covers WANObjectCache::resetCheckKey
 	 * @covers WANObjectCache::getCheckKeyTime
 	 * @covers WANObjectCache::getMultiCheckKeyTime
-	 * @covers WANObjectCache::makePurgeValue
+	 * @covers WANObjectCache::makeCheckPurgeValue
 	 * @covers WANObjectCache::parsePurgeValue
 	 */
 	public function testTouchKeys() {
@@ -1940,7 +1938,7 @@ class WANObjectCacheTest extends PHPUnit\Framework\TestCase {
 		$badTime = microtime( true ) - 300;
 
 		$bag->set(
-			'WANCache:v:' . $vKey1,
+			'WANCache:' . $vKey1 . '|#|v',
 			[
 				0 => 1,
 				1 => $value,
@@ -1949,7 +1947,7 @@ class WANObjectCacheTest extends PHPUnit\Framework\TestCase {
 			]
 		);
 		$bag->set(
-			'WANCache:v:' . $vKey2,
+			'WANCache:' . $vKey2 . '|#|v',
 			[
 				0 => 1,
 				1 => $value,
@@ -1958,11 +1956,11 @@ class WANObjectCacheTest extends PHPUnit\Framework\TestCase {
 			]
 		);
 		$bag->set(
-			'WANCache:t:' . $tKey1,
+			'WANCache:' . $tKey1 . '|#|t',
 			'PURGED:' . $goodTime
 		);
 		$bag->set(
-			'WANCache:t:' . $tKey2,
+			'WANCache:' . $tKey2 . '|#|t',
 			'PURGED:' . $badTime
 		);
 
@@ -2067,9 +2065,7 @@ class WANObjectCacheTest extends PHPUnit\Framework\TestCase {
 		$localBag->expects( $this->never() )->method( 'delete' );
 		$wanCache = new WANObjectCache( [
 			'cache' => $localBag,
-			'mcrouterAware' => true,
-			'region' => 'pmtpa',
-			'cluster' => 'mw-wan'
+			'broadcastRoutingPrefix' => '/*/mw-wan/',
 		] );
 		$valFunc = static function () {
 			return 1;
@@ -2091,13 +2087,11 @@ class WANObjectCacheTest extends PHPUnit\Framework\TestCase {
 			->setMethods( [ 'set' ] )->getMock();
 		$wanCache = new WANObjectCache( [
 			'cache' => $localBag,
-			'mcrouterAware' => true,
-			'region' => 'pmtpa',
-			'cluster' => 'mw-wan'
+			'broadcastRoutingPrefix' => '/*/mw-wan/',
 		] );
 
 		$localBag->expects( $this->once() )->method( 'set' )
-			->with( "/*/mw-wan/" . 'WANCache:v:' . "test" );
+			->with( "/*/mw-wan/WANCache:test|#|v" );
 
 		$wanCache->delete( 'test' );
 	}
@@ -2107,13 +2101,11 @@ class WANObjectCacheTest extends PHPUnit\Framework\TestCase {
 			->setMethods( [ 'set' ] )->getMock();
 		$wanCache = new WANObjectCache( [
 			'cache' => $localBag,
-			'mcrouterAware' => true,
-			'region' => 'pmtpa',
-			'cluster' => 'mw-wan'
+			'broadcastRoutingPrefix' => '/*/mw-wan/',
 		] );
 
 		$localBag->expects( $this->once() )->method( 'set' )
-			->with( "/*/mw-wan/" . 'WANCache:t:' . "test" );
+			->with( "/*/mw-wan/WANCache:test|#|t" );
 
 		$wanCache->touchCheckKey( 'test' );
 	}
@@ -2123,13 +2115,11 @@ class WANObjectCacheTest extends PHPUnit\Framework\TestCase {
 			->setMethods( [ 'delete' ] )->getMock();
 		$wanCache = new WANObjectCache( [
 			'cache' => $localBag,
-			'mcrouterAware' => true,
-			'region' => 'pmtpa',
-			'cluster' => 'mw-wan'
+			'broadcastRoutingPrefix' => '/*/mw-wan/',
 		] );
 
 		$localBag->expects( $this->once() )->method( 'delete' )
-			->with( "/*/mw-wan/" . 'WANCache:t:' . "test" );
+			->with( "/*/mw-wan/WANCache:test|#|t" );
 
 		$wanCache->resetCheckKey( 'test' );
 	}
@@ -2463,21 +2453,23 @@ class WANObjectCacheTest extends PHPUnit\Framework\TestCase {
 	/**
 	 * @param string $key
 	 * @param string $expectedCollection
-	 * @covers WANObjectCache::getCollectionFromKey()
+	 * @covers WANObjectCache::getCollectionFromSisterKey()
 	 * @dataProvider provideCollectionKeys
 	 */
-	public function testGetCollectionFromKey( $key, $expectedCollection ) {
-		$this->assertSame( $expectedCollection, WANObjectCache::getCollectionFromKey( $key ) );
+	public function testgetCollectionFromSisterKey( $key, $expectedCollection ) {
+		$this->assertSame(
+			$expectedCollection,
+			WANObjectCache::getCollectionFromSisterKey( $key ),
+			'Correct key collection name'
+		);
 	}
 
 	public static function provideCollectionKeys() {
 		return [
 			[ 'WANCache:collection:a:b|#|v', 'collection' ],
 			[ 'WANCache:{collection:a:b}:v', 'collection' ],
-			[ 'WANCache:v:collection:a:b', 'collection' ],
 			[ 'WANCache:collection:a:b|#|t', 'internal' ],
 			[ 'WANCache:{collection:a:b}:t', 'internal' ],
-			[ 'WANCache:t:collection:a:b', 'internal' ],
 			[ 'WANCache:improper-key', 'internal' ],
 		];
 	}

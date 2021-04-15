@@ -32,9 +32,6 @@ use Wikimedia\Rdbms\MySQLField;
 class MysqlUpdater extends DatabaseUpdater {
 	protected function getCoreUpdateList() {
 		return [
-			// 1.2; T273080
-			[ 'doInterwikiUpdate' ],
-
 			// 1.28
 			[ 'addIndex', 'recentchanges', 'rc_name_type_patrolled_timestamp',
 				'patch-add-rc_name_type_patrolled_timestamp_index.sql' ],
@@ -77,10 +74,6 @@ class MysqlUpdater extends DatabaseUpdater {
 				'patch-user_properties-fix-pk.sql' ],
 			[ 'addTable', 'comment', 'patch-comment-table.sql' ],
 			[ 'addTable', 'revision_comment_temp', 'patch-revision_comment_temp-table.sql' ],
-			// image_comment_temp is no longer needed when upgrading to MW 1.31 or newer,
-			// as it is dropped later in the update process as part of 'migrateImageCommentTemp'.
-			// File kept on disk and the updater entry here for historical purposes.
-			// [ 'addTable', 'image_comment_temp', 'patch-image_comment_temp-table.sql' ],
 			[ 'addField', 'archive', 'ar_comment_id', 'patch-archive-ar_comment_id.sql' ],
 			[ 'addField', 'filearchive', 'fa_description_id', 'patch-filearchive-fa_description_id.sql' ],
 			[ 'modifyField', 'image', 'img_description', 'patch-image-img_description-default.sql' ],
@@ -252,6 +245,7 @@ class MysqlUpdater extends DatabaseUpdater {
 			[ 'modifyField', 'archive', 'ar_title', 'patch-archive-ar_title-varbinary.sql' ],
 			[ 'modifyField', 'page', 'page_title', 'patch-page-page_title-varbinary.sql' ],
 			[ 'dropDefault', 'page', 'page_touched' ],
+			[ 'modifyField', 'user', 'user_name', 'patch-user_table-updates.sql' ],
 		];
 	}
 
@@ -299,134 +293,6 @@ class MysqlUpdater extends DatabaseUpdater {
 		$this->output( "...index $index on table $table has no field $field; added.\n" );
 
 		return false;
-	}
-
-	/**
-	 * Check that interwiki table exists; if it doesn't source it
-	 */
-	protected function doInterwikiUpdate() {
-		global $IP;
-
-		if ( !$this->doTable( 'interwiki' ) ) {
-			return;
-		}
-
-		if ( $this->db->tableExists( "interwiki", __METHOD__ ) ) {
-			$this->output( "...already have interwiki table\n" );
-
-			return;
-		}
-
-		$this->applyPatch( 'patch-interwiki.sql', false, 'Creating interwiki table' );
-		$this->applyPatch(
-			"$IP/maintenance/interwiki.sql",
-			true,
-			'Adding default interwiki definitions'
-		);
-	}
-
-	/**
-	 * Check if we need to add talk page rows to the watchlist
-	 */
-	protected function doWatchlistUpdate() {
-		global $wgUpdateRowsPerQuery;
-
-		$sql = $this->db->unionQueries(
-			[
-				// Missing talk page rows (corresponding subject page row exists)
-				$this->db->selectSQLText(
-					[ 'wlsubject' => 'watchlist', 'wltalk' => 'watchlist' ],
-					[
-						'wl_user' => 'wlsubject.wl_user',
-						'wl_namespace' => 'wlsubject.wl_namespace | 1',
-						'wl_title' => 'wlsubject.wl_title',
-						'wl_notificationtimestamp' => 'wlsubject.wl_notificationtimestamp'
-					],
-					[ 'NOT (wlsubject.wl_namespace & 1)', 'wltalk.wl_namespace IS NULL' ],
-					__METHOD__,
-					[],
-					[
-						'wltalk' => [ 'LEFT JOIN', [
-							'wltalk.wl_user = wlsubject.wl_user',
-							'wltalk.wl_namespace = (wlsubject.wl_namespace | 1)',
-							'wltalk.wl_title = wlsubject.wl_title'
-						] ]
-					]
-				),
-				// Missing subject page rows (corresponding talk page row exists)
-				$this->db->selectSQLText(
-					[ 'wltalk' => 'watchlist', 'wlsubject' => 'watchlist' ],
-					[
-						'wl_user' => 'wltalk.wl_user',
-						'wl_namespace' => 'wltalk.wl_namespace & ~1',
-						'wl_title' => 'wltalk.wl_title',
-						'wl_notificationtimestamp' => 'wltalk.wl_notificationtimestamp'
-					],
-					[ 'wltalk.wl_namespace & 1', 'wlsubject.wl_namespace IS NULL' ],
-					__METHOD__,
-					[],
-					[
-						'wlsubject' => [ 'LEFT JOIN', [
-							'wlsubject.wl_user = wltalk.wl_user',
-							'wlsubject.wl_namespace = (wltalk.wl_namespace & ~1)',
-							'wlsubject.wl_title = wltalk.wl_title'
-						] ]
-					]
-				)
-			],
-			true // use a non-distinct UNION to avoid overhead
-		);
-
-		$res = $this->db->query( $sql, __METHOD__ );
-
-		if ( !$res->numRows() ) {
-			$this->output( "...watchlist talk page rows already present.\n" );
-			return;
-		}
-
-		$this->output( "Adding missing corresponding talk/subject watchlist page rows... " );
-
-		$rowBatch = [];
-		foreach ( $res as $row ) {
-			$rowBatch[] = (array)$row;
-			if ( count( $rowBatch ) >= $wgUpdateRowsPerQuery ) {
-				$this->db->insert( 'watchlist', $rowBatch, __METHOD__, [ 'IGNORE' ] );
-				$rowBatch = [];
-			}
-		}
-		$this->db->insert( 'watchlist', $rowBatch, __METHOD__, [ 'IGNORE' ] );
-
-		$this->output( "done.\n" );
-	}
-
-	protected function doCategoryPopulation() {
-		if ( $this->updateRowExists( 'populate category' ) ) {
-			$this->output( "...category table already populated.\n" );
-
-			return;
-		}
-
-		$this->output(
-			"Populating category table, printing progress markers. " .
-			"For large databases, you\n" .
-			"may want to hit Ctrl-C and do this manually with maintenance/\n" .
-			"populateCategory.php.\n"
-		);
-		$task = $this->maintenance->runChild( PopulateCategory::class );
-		$task->execute();
-		$this->output( "Done populating category table.\n" );
-	}
-
-	protected function doPopulateParentId() {
-		if ( !$this->updateRowExists( 'populate rev_parent_id' ) ) {
-			$this->output(
-				"Populating rev_parent_id fields, printing progress markers. For large\n" .
-				"databases, you may want to hit Ctrl-C and do this manually with\n" .
-				"maintenance/populateParentId.php.\n" );
-
-			$task = $this->maintenance->runChild( PopulateParentId::class );
-			$task->execute();
-		}
 	}
 
 	protected function doNonUniquePlTlIl() {

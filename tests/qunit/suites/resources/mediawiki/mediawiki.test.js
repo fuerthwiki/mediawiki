@@ -155,7 +155,7 @@
 		// Interacting with globals
 		conf.set( 'globalMapChecker', 'Hi' );
 
-		assert.strictEqual( 'globalMapChecker' in window, false, 'Map does not its store values in the window object by default' );
+		assert.notOk( 'globalMapChecker' in window, 'Map does not its store values in the window object by default' );
 
 		globalConf = new mw.Map( true );
 		globalConf.set( 'anotherGlobalMapChecker', 'Hello' );
@@ -181,7 +181,7 @@
 		this.restoreWarnings();
 		assert.strictEqual( globalConf.get( 'anotherGlobalMapChecker' ), 'Again', 'Change in window object not reflected in global Map' );
 
-		// Whitelist this global variable for QUnit's 'noglobal' mode
+		// Allow this global variable for QUnit's 'noglobal' mode
 		if ( QUnit.config.noglobals ) {
 			QUnit.config.pollution.push( 'anotherGlobalMapChecker' );
 		}

@@ -17,6 +17,8 @@ use Wikimedia\Rdbms\SelectQueryBuilder;
 
 /**
  * @since 1.36
+ *
+ * @unstable
  */
 class PageStore implements PageLookup {
 
@@ -36,7 +38,6 @@ class PageStore implements PageLookup {
 	 * @internal for use by service wiring
 	 */
 	public const CONSTRUCTOR_OPTIONS = [
-		'LanguageCode',
 		'PageLanguageUseDB',
 	];
 
@@ -135,29 +136,33 @@ class PageStore implements PageLookup {
 	}
 
 	/**
-	 * @param PageIdentity $page
+	 * @param PageReference $page
 	 * @param int $queryFlags
 	 *
 	 * @return ExistingPageRecord|null The page's PageRecord, or null if the page was not found.
 	 */
-	public function getPageByIdentity(
-		PageIdentity $page,
+	public function getPageByReference(
+		PageReference $page,
 		int $queryFlags = self::READ_NORMAL
 	): ?ExistingPageRecord {
-		Assert::parameter( $page->canExist(), '$page', 'Mut be a proper page' );
-
 		$page->assertWiki( $this->wikiId );
+		Assert::parameter( $page->getNamespace() >= 0, '$page', 'must not be virtual' );
 
 		if ( $page instanceof ExistingPageRecord && $queryFlags === self::READ_NORMAL ) {
 			return $page;
 		}
 
-		if ( !$page->exists() ) {
-			return null;
+		if ( $page instanceof PageIdentity ) {
+			Assert::parameter( $page->canExist(), '$page', 'Mut be a proper page' );
+
+			if ( $page->exists() ) {
+				// if we have a page ID, use it
+				$id = $page->getId( $this->wikiId );
+				return $this->getPageById( $id );
+			}
 		}
 
-		$id = $page->getId( $this->wikiId );
-		return $this->getPageById( $id );
+		return $this->getPageByName( $page->getNamespace(), $page->getDBkey() );
 	}
 
 	/**
@@ -170,11 +175,7 @@ class PageStore implements PageLookup {
 		array $conds,
 		int $queryFlags = self::READ_NORMAL
 	): ?ExistingPageRecord {
-		[ $mode, $options ] = DBAccessObjectUtils::getDBOptions( $queryFlags );
-
-		$dbr = $this->getDBConnectionRef( $mode );
-		$queryBuilder = $this->newSelectQueryBuilder( $dbr )
-			->options( $options )
+		$queryBuilder = $this->newSelectQueryBuilder( $queryFlags )
 			->conds( $conds )
 			->caller( __METHOD__ );
 
@@ -189,10 +190,6 @@ class PageStore implements PageLookup {
 	 * @return ExistingPageRecord
 	 */
 	public function newPageRecordFromRow( stdClass $row ): ExistingPageRecord {
-		if ( empty( $row->page_lang ) ) {
-			$row->page_lang = $this->options->get( 'LanguageCode' );
-		}
-
 		return new PageStoreRecord(
 			$row,
 			$this->wikiId
@@ -228,14 +225,22 @@ class PageStore implements PageLookup {
 	/**
 	 * @unstable
 	 *
-	 * @param IDatabase|null $db
+	 * @param IDatabase|int|null $dbOrFlags The database connection to use, or a READ_XXX constant
+	 *        indicating what kind of database connection to use.
 	 *
 	 * @return PageSelectQueryBuilder
 	 */
-	public function newSelectQueryBuilder( IDatabase $db = null ): SelectQueryBuilder {
-		$db = $db ?: $this->getDBConnectionRef();
+	public function newSelectQueryBuilder( $dbOrFlags = self::READ_NORMAL ): SelectQueryBuilder {
+		if ( $dbOrFlags instanceof IDatabase ) {
+			$db = $dbOrFlags;
+			$options = [];
+		} else {
+			[ $mode, $options ] = DBAccessObjectUtils::getDBOptions( $dbOrFlags );
+			$db = $this->getDBConnectionRef( $mode );
+		}
 
 		$queryBuilder = new PageSelectQueryBuilder( $db, $this );
+		$queryBuilder->options( $options );
 
 		return $queryBuilder;
 	}

@@ -493,6 +493,7 @@ abstract class DatabaseUpdater {
 		$what = array_flip( $what );
 		$this->skipSchema = isset( $what['noschema'] ) || $this->fileHandle !== null;
 		if ( isset( $what['core'] ) ) {
+			$this->doCollationUpdate();
 			$this->runUpdates( $this->getCoreUpdateList(), false );
 		}
 		if ( isset( $what['extensions'] ) ) {
@@ -1161,46 +1162,26 @@ abstract class DatabaseUpdater {
 	# Common updater functions
 
 	/**
-	 * Sets the number of active users in the site_stats table
-	 */
-	protected function doActiveUsersInit() {
-		$activeUsers = $this->db->selectField( 'site_stats', 'ss_active_users', '', __METHOD__ );
-		if ( $activeUsers == -1 ) {
-			$activeUsers = $this->db->selectField( 'recentchanges',
-				'COUNT( DISTINCT rc_user_text )',
-				[ 'rc_user != 0', 'rc_bot' => 0, "rc_log_type != 'newusers'" ], __METHOD__
-			);
-			$this->db->update( 'site_stats',
-				[ 'ss_active_users' => intval( $activeUsers ) ],
-				[ 'ss_row_id' => 1 ], __METHOD__, [ 'LIMIT' => 1 ]
-			);
-		}
-		$this->output( "...ss_active_users user count set...\n" );
-	}
-
-	/**
 	 * Update CategoryLinks collation
 	 */
 	protected function doCollationUpdate() {
 		global $wgCategoryCollation;
-		if ( $this->db->fieldExists( 'categorylinks', 'cl_collation', __METHOD__ ) ) {
-			if ( $this->db->selectField(
+		if ( $this->db->selectField(
 				'categorylinks',
 				'COUNT(*)',
 				'cl_collation != ' . $this->db->addQuotes( $wgCategoryCollation ),
 				__METHOD__
-				) == 0
-			) {
-				$this->output( "...collations up-to-date.\n" );
+			) == 0
+		) {
+			$this->output( "...collations up-to-date.\n" );
 
-				return;
-			}
-
-			$this->output( "Updating category collations..." );
-			$task = $this->maintenance->runChild( UpdateCollation::class );
-			$task->execute();
-			$this->output( "...done.\n" );
+			return;
 		}
+
+		$this->output( "Updating category collations..." );
+		$task = $this->maintenance->runChild( UpdateCollation::class );
+		$task->execute();
+		$this->output( "...done.\n" );
 	}
 
 	/**

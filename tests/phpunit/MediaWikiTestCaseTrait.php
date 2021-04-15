@@ -5,6 +5,7 @@ use PHPUnit\Framework\Constraint\Constraint;
 use PHPUnit\Framework\MockObject\MockObject;
 use Pimple\Psr11\ServiceLocator;
 use Wikimedia\ObjectFactory;
+use Wikimedia\Timestamp\ConvertibleTimestamp;
 
 /**
  * For code common to both MediaWikiUnitTestCase and MediaWikiIntegrationTestCase.
@@ -15,7 +16,7 @@ trait MediaWikiTestCaseTrait {
 
 	/**
 	 * Returns a PHPUnit constraint that matches anything other than a fixed set of values. This can
-	 * be used to whitelist values, e.g.
+	 * be used to list accepted values, e.g.
 	 *   $mock->expects( $this->never() )->method( $this->anythingBut( 'foo', 'bar' ) );
 	 * which will throw if any unexpected method is called.
 	 *
@@ -87,6 +88,24 @@ trait MediaWikiTestCaseTrait {
 			$hookContainer->register( $name, $callback );
 		}
 		return $hookContainer;
+	}
+
+	/**
+	 * Check if $extName is a loaded PHP extension, will skip the
+	 * test whenever it is not loaded.
+	 *
+	 * @since 1.21 added to MediaWikiIntegrationTestCase
+	 * @since 1.37 moved to MediaWikiTestCaseTrait to be available in unit tests
+	 * @param string $extName
+	 * @return bool
+	 */
+	protected function checkPHPExtension( $extName ) {
+		$loaded = extension_loaded( $extName );
+		if ( !$loaded ) {
+			$this->markTestSkipped( "PHP extension '$extName' is not loaded, skipping." );
+		}
+
+		return $loaded;
 	}
 
 	/**
@@ -217,10 +236,23 @@ trait MediaWikiTestCaseTrait {
 	/**
 	 * Re-enable any disabled deprecation warnings and allow same deprecations to be thrown
 	 * multiple times in different tests, so the PHPUnit expectDeprecation() works.
+	 *
 	 * @after
 	 */
 	protected function mwDebugTearDown() {
 		MWDebug::clearLog();
+	}
+
+	/**
+	 * Reset any fake timestamps so that they don't mess with any other tests.
+	 *
+	 * @since 1.37 before that, integration tests had it reset in
+	 * MediaWikiIntegrationTestCase::mediaWikiTearDown, and unit tests didn't at all
+	 *
+	 * @after
+	 */
+	protected function fakeTimestampTearDown() {
+		ConvertibleTimestamp::setFakeTime( null );
 	}
 
 	/**

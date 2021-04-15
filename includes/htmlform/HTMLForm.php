@@ -182,6 +182,7 @@ class HTMLForm extends ContextSource {
 		'url' => HTMLTextField::class,
 		'title' => HTMLTitleTextField::class,
 		'user' => HTMLUserTextField::class,
+		'tagmultiselect' => HTMLTagMultiselectField::class,
 		'usersmultiselect' => HTMLUsersMultiselectField::class,
 		'titlesmultiselect' => HTMLTitlesMultiselectField::class,
 		'namespacesmultiselect' => HTMLNamespacesMultiselectField::class,
@@ -1005,9 +1006,8 @@ class HTMLForm extends ContextSource {
 	 *  - attribs: (array, optional) Additional HTML attributes.
 	 *  - flags: (string|string[], optional) OOUI flags.
 	 *  - framed: (boolean=true, optional) OOUI framed attribute.
-	 * @codingStandardsIgnoreStart
+	 * @phpcs:ignore Generic.Files.LineLength
 	 * @phan-param array{name:string,value:string,label-message?:string|string[]|MessageSpecifier,label?:string,label-raw?:string,id?:string,attribs?:array,flags?:string|string[],framed?:bool} $data
-	 * @codingStandardsIgnoreEnd
 	 * @return HTMLForm $this for chaining calls (since 1.20)
 	 */
 	public function addButton( $data ) {

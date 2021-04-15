@@ -2523,12 +2523,7 @@ class EditPage implements IEditObject {
 		// too large to finish in time (T259564)
 		WatchAction::doWatchOrUnwatch( $watch, $title, $performer, $watchlistExpiry );
 
-		// Add a job to purge expired watchlist items. Jobs will only be added at the rate
-		// specified by $wgWatchlistPurgeRate, which by default is every tenth edit.
-		if ( $this->watchlistExpiryEnabled ) {
-			$purgeRate = $this->getContext()->getConfig()->get( 'WatchlistPurgeRate' );
-			$this->watchedItemStore->enqueueWatchlistExpiryJob( $purgeRate );
-		}
+		$this->watchedItemStore->maybeEnqueueWatchlistExpiryJob();
 	}
 
 	/**
@@ -2629,34 +2624,6 @@ class EditPage implements IEditObject {
 			$this->mExpectedParentRevision = $revRecord;
 		}
 		return $this->mExpectedParentRevision;
-	}
-
-	/**
-	 * Check given input text against $wgSpamRegex, and return the text of the first match.
-	 *
-	 * @deprecated since 1.35, use the new SpamChecker service
-	 *
-	 * @param string $text
-	 *
-	 * @return string|bool Matching string or false
-	 */
-	public static function matchSpamRegex( $text ) {
-		wfDeprecated( __METHOD__, '1.35' );
-		return MediaWikiServices::getInstance()->getSpamChecker()->checkContent( $text );
-	}
-
-	/**
-	 * Check given input text against $wgSummarySpamRegex, and return the text of the first match.
-	 *
-	 * @deprecated since 1.35, use the new SpamChecker service
-	 *
-	 * @param string $text
-	 *
-	 * @return string|bool Matching string or false
-	 */
-	public static function matchSummarySpamRegex( $text ) {
-		wfDeprecated( __METHOD__, '1.35' );
-		return MediaWikiServices::getInstance()->getSpamChecker()->checkSummary( $text );
 	}
 
 	public function setHeaders() {

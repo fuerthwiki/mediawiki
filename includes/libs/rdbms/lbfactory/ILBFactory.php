@@ -51,7 +51,6 @@ interface ILBFactory {
 	 *  - cpStash: BagOStuff object for ChronologyProtector store [optional]
 	 *    See [ChronologyProtector requirements](@ref ChronologyProtector-storage-requirements).
 	 *  - wanCache: WANObjectCache object [optional]
-	 *  - hostname: The name of the current server [optional]
 	 *  - cliMode: Whether the execution context is a CLI script. [optional]
 	 *  - maxLag: Try to avoid DB replicas with lag above this many seconds [optional]
 	 *  - profiler: Class name or instance with profileIn()/profileOut() methods. [optional]
@@ -63,6 +62,7 @@ interface ILBFactory {
 	 *  - errorLogger: Callback that takes an Exception and logs it. [optional]
 	 *  - deprecationLogger: Callback to log a deprecation warning. [optional]
 	 *  - secret: Secret string to use for HMAC hashing [optional]
+	 *  - criticalSectionProvider: CriticalSectionProvider instance [optional]
 	 * @throws InvalidArgumentException
 	 */
 	public function __construct( array $conf );

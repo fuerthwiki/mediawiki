@@ -263,6 +263,8 @@ class ChangesList extends ContextSource {
 	 * Make an "<abbr>" element for a given change flag. The flag indicating a new page, minor edit,
 	 * bot edit, or unpatrolled edit. In English it typically contains "N", "m", "b", or "!".
 	 *
+	 * Styling for these flags is provided through mediawiki.interface.helpers.styles.
+	 *
 	 * @param string $flag One key of $wgRecentChangesFlags
 	 * @param IContextSource|null $context
 	 * @return string HTML
@@ -791,8 +793,7 @@ class ChangesList extends ContextSource {
 				$revRecord->setVisibility( (int)$rc->mAttribs['rc_deleted'] );
 				$user = new UserIdentityValue(
 					(int)$rc->mAttribs['rc_user'],
-					$rc->mAttribs['rc_user_text'],
-					(int)( $rc->mAttribs['rc_actor'] ?? 0 )
+					$rc->mAttribs['rc_user_text']
 				);
 				$revRecord->setUser( $user );
 

@@ -28,6 +28,7 @@ use MediaWiki\Block\SystemBlock;
 use MediaWiki\DAO\WikiAwareEntityTrait;
 use MediaWiki\HookContainer\ProtectedHookAccessorTrait;
 use MediaWiki\Logger\LoggerFactory;
+use MediaWiki\Mail\UserEmailContact;
 use MediaWiki\MediaWikiServices;
 use MediaWiki\Page\PageIdentity;
 use MediaWiki\Permissions\Authority;
@@ -63,7 +64,7 @@ use Wikimedia\ScopedCallback;
  *
  * @newable in 1.35 only, the constructor is @internal since 1.36
  */
-class User implements Authority, IDBAccessObject, UserIdentity {
+class User implements Authority, IDBAccessObject, UserIdentity, UserEmailContact {
 	use ProtectedHookAccessorTrait;
 	use WikiAwareEntityTrait;
 
@@ -1036,11 +1037,14 @@ class User implements Authority, IDBAccessObject, UserIdentity {
 	 * is longer than the maximum allowed username size or doesn't begin with
 	 * a capital letter.
 	 *
-	 * @deprecated since 1.35, use the UserNameUtils service
+	 * @deprecated since 1.35, hard deprecated in 1.36
+	 * Use the UserNameUtils service
+	 *
 	 * @param string $name Name to match
 	 * @return bool
 	 */
 	public static function isValidUserName( $name ) {
+		wfDeprecated( __METHOD__, '1.35' );
 		return MediaWikiServices::getInstance()->getUserNameUtils()->isValid( $name );
 	}
 
@@ -2149,20 +2153,22 @@ class User implements Authority, IDBAccessObject, UserIdentity {
 	/**
 	 * Get the user's actor ID.
 	 * @since 1.31
-	 * @note This method is deprecated in the UserIdentity interface since 1.36,
+	 * @note This method was removed from the UserIdentity interface in 1.36,
 	 *       but remains supported in the User class for now.
 	 *       New code should use ActorNormalization::findActorId() or
 	 *       ActorNormalization::acquireActorId() instead.
-	 * @param IDatabase|string|false $dbwOrWikiId Assign a new actor ID, using this DB handle,
-	 *        if none exists; wiki ID, if provided, must be self::LOCAL; Usage with IDatabase is
-	 *        deprecated since 1.36
+	 * @param IDatabase|string|false $dbwOrWikiId Deprecated since 1.36.
+	 *        If a database connection is passed, a new actor ID is assigned if needed.
+	 *        ActorNormalization::acquireActorId() should be used for that purpose instead.
 	 * @return int The actor's ID, or 0 if no actor ID exists and $dbw was null
 	 * @throws PreconditionException if $dbwOrWikiId is a string and does not match the local wiki
 	 */
 	public function getActorId( $dbwOrWikiId = self::LOCAL ) : int {
-		if ( $dbwOrWikiId instanceof IDatabase ) {
-			wfDeprecatedMsg( 'Passing parameter of type IDatabase', '1.36' );
-		} else {
+		if ( $dbwOrWikiId ) {
+			wfDeprecatedMsg( 'Passing a parameter to getActorId() is deprecated', '1.36' );
+		}
+
+		if ( is_string( $dbwOrWikiId ) ) {
 			$this->assertWiki( $dbwOrWikiId );
 		}
 
@@ -2187,9 +2193,8 @@ class User implements Authority, IDBAccessObject, UserIdentity {
 
 	/**
 	 * Sets the actor id.
-	 *
-	 * This method is deprecated upon introduction. It only exists for transition to ActorStore,
-	 * and will be removed shortly - T274148
+	 * For use by ActorStore only.
+	 * Should be removed once callers of getActorId() have been migrated to using ActorNormalization.
 	 *
 	 * @internal
 	 * @deprecated since 1.36
@@ -2541,7 +2546,7 @@ class User implements Authority, IDBAccessObject, UserIdentity {
 	 * Get the user's e-mail address
 	 * @return string User's email address
 	 */
-	public function getEmail() {
+	public function getEmail(): string {
 		$this->load();
 		$this->getHookRunner()->onUserGetEmail( $this, $this->mEmail );
 		return $this->mEmail;
@@ -2562,7 +2567,7 @@ class User implements Authority, IDBAccessObject, UserIdentity {
 	 * Set the user's e-mail address
 	 * @param string $str New e-mail address
 	 */
-	public function setEmail( $str ) {
+	public function setEmail( string $str ) {
 		$this->load();
 		if ( $str == $this->getEmail() ) {
 			return;
@@ -2579,7 +2584,7 @@ class User implements Authority, IDBAccessObject, UserIdentity {
 	 * @param string $str New e-mail address
 	 * @return Status
 	 */
-	public function setEmailWithConfirmation( $str ) {
+	public function setEmailWithConfirmation( string $str ) {
 		global $wgEnableEmail, $wgEmailAuthentication;
 
 		if ( !$wgEnableEmail ) {
@@ -2632,7 +2637,7 @@ class User implements Authority, IDBAccessObject, UserIdentity {
 	 * Get the user's real name
 	 * @return string User's real name
 	 */
-	public function getRealName() {
+	public function getRealName(): string {
 		if ( !$this->isItemLoaded( 'realname' ) ) {
 			$this->load();
 		}
@@ -2644,7 +2649,7 @@ class User implements Authority, IDBAccessObject, UserIdentity {
 	 * Set the user's real name
 	 * @param string $str New real name
 	 */
-	public function setRealName( $str ) {
+	public function setRealName( string $str ) {
 		$this->load();
 		$this->mRealName = $str;
 	}
@@ -3266,7 +3271,7 @@ class User implements Authority, IDBAccessObject, UserIdentity {
 	 * the next change of the page if it's watched etc.
 	 *
 	 * @deprecated since 1.35, hard deprecated since 1.36
-	 * Use WatchlistNotificationManager::clearTitleUserNotification() instead.
+	 * Use WatchlistManager::clearTitleUserNotification() instead.
 	 *
 	 * @note If the user doesn't have 'editmywatchlist', this will do nothing.
 	 * @param Title &$title Title of the article to look at
@@ -3275,7 +3280,7 @@ class User implements Authority, IDBAccessObject, UserIdentity {
 	public function clearNotification( &$title, $oldid = 0 ) {
 		wfDeprecated( __METHOD__, '1.35' );
 		MediaWikiServices::getInstance()
-			->getWatchlistNotificationManager()
+			->getWatchlistManager()
 			->clearTitleUserNotifications( $this, $title, $oldid );
 	}
 
@@ -4074,7 +4079,7 @@ class User implements Authority, IDBAccessObject, UserIdentity {
 	 *
 	 * @return bool
 	 */
-	public function isEmailConfirmed() {
+	public function isEmailConfirmed(): bool {
 		global $wgEmailAuthentication;
 		$this->load();
 		// Avoid PHP 7.1 warning of passing $this by reference
@@ -4506,15 +4511,16 @@ class User implements Authority, IDBAccessObject, UserIdentity {
 	}
 
 	/**
-	 * @unstable this is a part of the Authority experiment and should not be used yet.
-	 * @return UserIdentity
+	 * @note This is only here for compatibility with the Authority interface.
+	 * @since 1.36
+	 * @return UserIdentity $this
 	 */
 	public function getUser(): UserIdentity {
 		return $this;
 	}
 
 	/**
-	 * @unstable this is a part of the Authority experiment and should not be used yet.
+	 * @since 1.36
 	 * @param string $action
 	 * @param PageIdentity $target
 	 * @param PermissionStatus|null $status
@@ -4525,7 +4531,7 @@ class User implements Authority, IDBAccessObject, UserIdentity {
 	}
 
 	/**
-	 * @unstable this is a part of the Authority experiment and should not be used yet.
+	 * @since 1.36
 	 * @param string $action
 	 * @param PageIdentity $target
 	 * @param PermissionStatus|null $status
@@ -4536,7 +4542,7 @@ class User implements Authority, IDBAccessObject, UserIdentity {
 	}
 
 	/**
-	 * @unstable this is a part of the Authority experiment and should not be used yet.
+	 * @since 1.36
 	 * @param string $action
 	 * @param PageIdentity $target
 	 * @param PermissionStatus|null $status
@@ -4548,7 +4554,7 @@ class User implements Authority, IDBAccessObject, UserIdentity {
 	}
 
 	/**
-	 * @unstable this is a part of the Authority experiment and should not be used yet.
+	 * @since 1.36
 	 * @param string $action
 	 * @param PageIdentity $target
 	 * @param PermissionStatus|null $status

@@ -870,7 +870,10 @@ return [
 		'targets' => [ 'desktop', 'mobile' ],
 	],
 	'mediawiki.pager.tablePager' => [
-		'styles' => 'resources/src/mediawiki.pager.tablePager/TablePager.less',
+		'styles' => [
+			'resources/src/mediawiki.pager.tablePager/TablePager.less',
+			'resources/src/mediawiki.pager.tablePager/DataTable.less',
+		],
 	],
 	'mediawiki.pulsatingdot' => [
 		'styles' => [
@@ -1335,10 +1338,14 @@ return [
 	],
 	'mediawiki.action.view.filepage' => [
 		'styles' => [
-			'resources/src/mediawiki.action/mediawiki.action.view.filepage.print.css' =>
+			'resources/src/mediawiki.action/mediawiki.action.view.filepage.print.less' =>
 				[ 'media' => 'print' ],
 			'resources/src/mediawiki.action/mediawiki.action.view.filepage.css',
 		],
+	],
+	'mediawiki.action.styles' => [
+		'targets' => [ 'desktop', 'mobile' ],
+		'styles' => 'resources/src/mediawiki.action/styles.less',
 	],
 
 	/* MediaWiki Language */
@@ -2189,10 +2196,6 @@ return [
 		'styles' => 'resources/src/mediawiki.special.search.styles.css',
 		'targets' => [ 'desktop', 'mobile' ],
 	],
-	'mediawiki.special.undelete' => [
-		'dependencies' => 'mediawiki.misc-authed-ooui',
-		'deprecated' => 'Use mediawiki.misc-authed-ooui instead',
-	],
 	'mediawiki.special.unwatchedPages' => [
 		'scripts' => 'resources/src/mediawiki.special.unwatchedPages/unwatchedPages.js',
 		'styles' => 'resources/src/mediawiki.special.unwatchedPages/unwatchedPages.css',
@@ -2325,7 +2328,7 @@ return [
 	'mediawiki.legacy.commonPrint' => [
 		'deprecated' => 'Use ResourceLoaderSkinModule',
 		'styles' => [
-			'resources/src/mediawiki.skinning/commonPrint.css' => [ 'media' => 'print' ]
+			'resources/src/mediawiki.skinning/commonPrint.less' => [ 'media' => 'print' ]
 		],
 	],
 	'mediawiki.legacy.protect' => [
@@ -2706,6 +2709,15 @@ return [
 		],
 		'messages' => [
 			'mw-widgets-table-row-delete',
+		],
+		'targets' => [ 'desktop', 'mobile' ],
+	],
+	'mediawiki.widgets.TagMultiselectWidget' => [
+		'scripts' => [
+			'resources/src/mediawiki.widgets/mw.widgets.TagMultiselectWidget.js',
+		],
+		'dependencies' => [
+			'oojs-ui-widgets',
 		],
 		'targets' => [ 'desktop', 'mobile' ],
 	],

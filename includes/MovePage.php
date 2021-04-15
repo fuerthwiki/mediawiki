@@ -117,10 +117,11 @@ class MovePage {
 	private $userFactory;
 
 	/**
-	 * @internal For use by MovePageTest
+	 * @internal For use by PageCommandFactory
 	 */
 	public const CONSTRUCTOR_OPTIONS = [
-		'CategoryCollation'
+		'CategoryCollation',
+		'MaximumMovedPages',
 	];
 
 	/**
@@ -297,7 +298,9 @@ class MovePage {
 
 		if ( $this->oldTitle->equals( $this->newTitle ) ) {
 			$status->fatal( 'selfmove' );
-		} elseif ( $this->newTitle->getArticleID() && !$this->isValidMoveTarget() ) {
+		} elseif ( $this->newTitle->getArticleID( Title::READ_LATEST /* T272386 */ )
+			&& !$this->isValidMoveTarget()
+		) {
 			// The move is allowed only if (1) the target doesn't exist, or (2) the target is a
 			// redirect to the source, and has no history (so we can undo bad moves right after
 			// they're done). If the target is a single revision redirect to a different page,
@@ -561,8 +564,6 @@ class MovePage {
 	 * @throws MWException
 	 */
 	private function moveSubpagesInternal( callable $subpageMoveCallback ) {
-		global $wgMaximumMovedPages;
-
 		// Do the source and target namespaces support subpages?
 		if ( !$this->nsInfo->hasSubpages( $this->oldTitle->getNamespace() ) ) {
 			return Status::newFatal( 'namespace-nosubpages',
@@ -576,14 +577,15 @@ class MovePage {
 		// Return a status for the overall result. Its value will be an array with per-title
 		// status for each subpage. Merge any errors from the per-title statuses into the
 		// top-level status without resetting the overall result.
+		$maximumMovedPages = $this->options->get( 'MaximumMovedPages' );
 		$topStatus = Status::newGood();
 		$perTitleStatus = [];
-		$subpages = $this->oldTitle->getSubpages( $wgMaximumMovedPages + 1 );
+		$subpages = $this->oldTitle->getSubpages( $maximumMovedPages + 1 );
 		$count = 0;
 		foreach ( $subpages as $oldSubpage ) {
 			$count++;
-			if ( $count > $wgMaximumMovedPages ) {
-				$status = Status::newFatal( 'movepage-max-pages', $wgMaximumMovedPages );
+			if ( $count > $maximumMovedPages ) {
+				$status = Status::newFatal( 'movepage-max-pages', $maximumMovedPages );
 				$perTitleStatus[$oldSubpage->getPrefixedText()] = $status;
 				$topStatus->merge( $status );
 				$topStatus->setOK( true );

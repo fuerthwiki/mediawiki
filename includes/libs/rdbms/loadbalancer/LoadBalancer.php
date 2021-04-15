@@ -32,6 +32,7 @@ use RuntimeException;
 use Throwable;
 use UnexpectedValueException;
 use WANObjectCache;
+use Wikimedia\RequestTimeout\CriticalSectionProvider;
 use Wikimedia\ScopedCallback;
 
 /**
@@ -42,6 +43,8 @@ use Wikimedia\ScopedCallback;
 class LoadBalancer implements ILoadBalancer {
 	/** @var ILoadMonitor */
 	private $loadMonitor;
+	/** @var CriticalSectionProvider|null */
+	private $csProvider;
 	/** @var callable|null Callback to run before the first connection attempt */
 	private $chronologyCallback;
 	/** @var BagOStuff */
@@ -91,8 +94,6 @@ class LoadBalancer implements ILoadBalancer {
 	/** @var string|null Default query group to use with getConnection() */
 	private $defaultGroup;
 
-	/** @var string Current server name */
-	private $hostname;
 	/** @var bool Whether this PHP instance is for a CLI script */
 	private $cliMode;
 	/** @var string Agent name for query profiling */
@@ -227,9 +228,6 @@ class LoadBalancer implements ILoadBalancer {
 
 		$this->srvCache = $params['srvCache'] ?? new EmptyBagOStuff();
 		$this->wanCache = $params['wanCache'] ?? WANObjectCache::newEmpty();
-		$this->profiler = $params['profiler'] ?? null;
-		$this->trxProfiler = $params['trxProfiler'] ?? new TransactionProfiler();
-
 		$this->errorLogger = $params['errorLogger'] ?? static function ( Throwable $e ) {
 			trigger_error( get_class( $e ) . ': ' . $e->getMessage(), E_USER_WARNING );
 		};
@@ -241,7 +239,11 @@ class LoadBalancer implements ILoadBalancer {
 		}
 
 		$this->clusterName = $params['clusterName'] ?? null;
-		$this->hostname = $params['hostname'] ?? ( gethostname() ?: 'unknown' );
+		$this->profiler = $params['profiler'] ?? null;
+		$this->trxProfiler = $params['trxProfiler'] ?? new TransactionProfiler();
+
+		$this->csProvider = $params['criticalSectionProvider'] ?? null;
+
 		$this->cliMode = $params['cliMode'] ?? ( PHP_SAPI === 'cli' || PHP_SAPI === 'phpdbg' );
 		$this->agent = $params['agent'] ?? '';
 
@@ -1171,7 +1173,7 @@ class LoadBalancer implements ILoadBalancer {
 
 		if ( isset( $this->conns[$connKey][$i][self::KEY_LOCAL_DOMAIN] ) ) {
 			$conn = $this->conns[$connKey][$i][self::KEY_LOCAL_DOMAIN];
-			$this->connLogger->debug( __METHOD__ . ": reused a connection for $i" );
+			$this->connLogger->debug( __METHOD__ . ": reused a connection for $connKey/$i" );
 		} else {
 			$conn = $this->reallyOpenConnection(
 				$i,
@@ -1179,10 +1181,10 @@ class LoadBalancer implements ILoadBalancer {
 				[ self::INFO_AUTOCOMMIT_ONLY => $autoCommit ]
 			);
 			if ( $conn->isOpen() ) {
-				$this->connLogger->debug( __METHOD__ . ": opened new connection for $i" );
+				$this->connLogger->debug( __METHOD__ . ": opened new connection for $connKey/$i" );
 				$this->conns[$connKey][$i][self::KEY_LOCAL_DOMAIN] = $conn;
 			} else {
-				$this->connLogger->warning( __METHOD__ . ": connection error for $i" );
+				$this->connLogger->warning( __METHOD__ . ": connection error for $connKey/$i" );
 				$this->errorConnection = $conn;
 				$conn = false;
 			}
@@ -1245,13 +1247,13 @@ class LoadBalancer implements ILoadBalancer {
 		if ( isset( $this->conns[$connInUseKey][$i][$domain] ) ) {
 			// Reuse an in-use connection for the same domain
 			$conn = $this->conns[$connInUseKey][$i][$domain];
-			$this->connLogger->debug( __METHOD__ . ": reusing connection $i/$domain" );
+			$this->connLogger->debug( __METHOD__ . ": reusing connection $connInUseKey/$i/$domain" );
 		} elseif ( isset( $this->conns[$connFreeKey][$i][$domain] ) ) {
 			// Reuse a free connection for the same domain
 			$conn = $this->conns[$connFreeKey][$i][$domain];
 			unset( $this->conns[$connFreeKey][$i][$domain] );
 			$this->conns[$connInUseKey][$i][$domain] = $conn;
-			$this->connLogger->debug( __METHOD__ . ": reusing free connection $i/$domain" );
+			$this->connLogger->debug( __METHOD__ . ": reusing free connection $connInUseKey/$i/$domain" );
 		} elseif ( !empty( $this->conns[$connFreeKey][$i] ) ) {
 			// Reuse a free connection from another domain if possible
 			foreach ( $this->conns[$connFreeKey][$i] as $oldDomain => $oldConn ) {
@@ -1297,10 +1299,10 @@ class LoadBalancer implements ILoadBalancer {
 			if ( $conn->isOpen() ) {
 				// Note that if $domain is an empty string, getDomainID() might not match it
 				$this->conns[$connInUseKey][$i][$conn->getDomainID()] = $conn;
-				$this->connLogger->debug( __METHOD__ . ": opened new connection for $i/$domain" );
+				$this->connLogger->debug( __METHOD__ . ": opened new connection for $connInUseKey/$i/$domain" );
 			} else {
 				$this->connLogger->warning(
-					__METHOD__ . ": connection error for $i/{db_domain}",
+					__METHOD__ . ": connection error for $connInUseKey/$i/{db_domain}",
 					[ 'db_domain' => $domain ]
 				);
 				$this->errorConnection = $conn;
@@ -1393,7 +1395,8 @@ class LoadBalancer implements ILoadBalancer {
 				'errorLogger' => $this->errorLogger,
 				'deprecationLogger' => $this->deprecationLogger,
 				'profiler' => $this->profiler,
-				'trxProfiler' => $this->trxProfiler
+				'trxProfiler' => $this->trxProfiler,
+				'criticalSectionProvider' => $this->csProvider
 			] ),
 			Database::NEW_UNCONNECTED
 		);
@@ -1503,8 +1506,8 @@ class LoadBalancer implements ILoadBalancer {
 				__METHOD__ . ": connection error: {last_error} ({db_server})",
 				$context
 			);
-
-			throw new DBConnectionError( $conn, "{$this->lastError} ({$context['db_server']})" );
+			$error = $conn->lastError() ?: $this->lastError;
+			throw new DBConnectionError( $conn, "$error ({$context['db_server']})" );
 		} else {
 			// No last connection, probably due to all servers being too busy
 			$this->connLogger->error(
@@ -1856,54 +1859,52 @@ class LoadBalancer implements ILoadBalancer {
 			$conn->setTrxEndCallbackSuppression( false );
 		} );
 
-		$e = null; // first exception
+		$errors = [];
 		$fname = __METHOD__;
 		// Loop until callbacks stop adding callbacks on other connections
 		do {
 			// Run any pending callbacks for each connection...
 			$count = 0; // callback execution attempts
 			$this->forEachOpenMasterConnection(
-				static function ( Database $conn ) use ( $type, &$e, &$count ) {
+				static function ( Database $conn ) use ( $type, &$errors, &$count ) {
 					if ( $conn->trxLevel() ) {
 						return; // retry in the next iteration, after commit() is called
 					}
-					try {
-						$count += $conn->runOnTransactionIdleCallbacks( $type );
-					} catch ( Throwable $ex ) {
-						$e = $e ?: $ex;
-					}
+					$count += $conn->runOnTransactionIdleCallbacks( $type, $errors );
 				}
 			);
 			// Clear out any active transactions left over from callbacks...
-			$this->forEachOpenMasterConnection( function ( Database $conn ) use ( &$e, $fname ) {
-				if ( $conn->writesPending() ) {
-					// A callback from another handle wrote to this one and DBO_TRX is set
-					$this->queryLogger->warning( $fname . ": found writes pending." );
-					$fnames = implode( ', ', $conn->pendingWriteAndCallbackCallers() );
-					$this->queryLogger->warning(
-						"$fname: found writes pending ($fnames).",
-						[
-							'db_server' => $conn->getServer(),
-							'db_domain' => $conn->getDomainID(),
-							'exception' => new RuntimeException()
-						]
-					);
-				} elseif ( $conn->trxLevel() ) {
-					// A callback from another handle read from this one and DBO_TRX is set,
-					// which can easily happen if there is only one DB (no replicas)
-					$this->queryLogger->debug( "$fname: found empty transaction." );
+			$this->forEachOpenMasterConnection(
+				function ( Database $conn ) use ( &$errors, $fname ) {
+					if ( $conn->writesPending() ) {
+						// A callback from another handle wrote to this one and DBO_TRX is set
+						$this->queryLogger->warning( $fname . ": found writes pending." );
+						$fnames = implode( ', ', $conn->pendingWriteAndCallbackCallers() );
+						$this->queryLogger->warning(
+							"$fname: found writes pending ($fnames).",
+							[
+								'db_server' => $conn->getServer(),
+								'db_domain' => $conn->getDomainID(),
+								'exception' => new RuntimeException()
+							]
+						);
+					} elseif ( $conn->trxLevel() ) {
+						// A callback from another handle read from this one and DBO_TRX is set,
+						// which can easily happen if there is only one DB (no replicas)
+						$this->queryLogger->debug( "$fname: found empty transaction." );
+					}
+					try {
+						$conn->commit( $fname, $conn::FLUSHING_ALL_PEERS );
+					} catch ( DBError $ex ) {
+						$errors[] = $ex;
+					}
 				}
-				try {
-					$conn->commit( $fname, $conn::FLUSHING_ALL_PEERS );
-				} catch ( Throwable $ex ) {
-					$e = $e ?: $ex;
-				}
-			} );
+			);
 		} while ( $count > 0 );
 
 		$this->trxRoundStage = $oldStage;
 
-		return $e;
+		return $errors ? $errors[0] : null;
 	}
 
 	public function runMasterTransactionListenerCallbacks( $fname = __METHOD__, $owner = null ) {
@@ -1923,19 +1924,16 @@ class LoadBalancer implements ILoadBalancer {
 			$scope = ScopedCallback::newScopedIgnoreUserAbort();
 		}
 
-		$e = null;
-
+		$errors = [];
 		$this->trxRoundStage = self::ROUND_ERROR; // "failed" until proven otherwise
-		$this->forEachOpenMasterConnection( static function ( Database $conn ) use ( $type, &$e ) {
-			try {
-				$conn->runTransactionListenerCallbacks( $type );
-			} catch ( Throwable $ex ) {
-				$e = $e ?: $ex;
+		$this->forEachOpenMasterConnection(
+			static function ( Database $conn ) use ( $type, &$errors ) {
+				$conn->runTransactionListenerCallbacks( $type, $errors );
 			}
-		} );
+		);
 		$this->trxRoundStage = self::ROUND_CURSORY;
 
-		return $e;
+		return $errors ? $errors[0] : null;
 	}
 
 	public function rollbackMasterChanges( $fname = __METHOD__, $owner = null ) {

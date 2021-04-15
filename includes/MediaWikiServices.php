@@ -56,7 +56,9 @@ use MediaWiki\Page\ContentModelChangeFactory;
 use MediaWiki\Page\MergeHistoryFactory;
 use MediaWiki\Page\MovePageFactory;
 use MediaWiki\Page\PageStore;
+use MediaWiki\Page\PageStoreFactory;
 use MediaWiki\Page\ParserOutputAccess;
+use MediaWiki\Page\RollbackPageFactory;
 use MediaWiki\Page\WikiPageFactory;
 use MediaWiki\Parser\ParserCacheFactory;
 use MediaWiki\Permissions\GroupPermissionsLookup;
@@ -92,7 +94,7 @@ use MediaWiki\User\UserNamePrefixSearch;
 use MediaWiki\User\UserNameUtils;
 use MediaWiki\User\UserOptionsLookup;
 use MediaWiki\User\UserOptionsManager;
-use MediaWiki\User\WatchlistNotificationManager;
+use MediaWiki\Watchlist\WatchlistManager;
 use MessageCache;
 use MimeAnalyzer;
 use MWException;
@@ -1155,8 +1157,16 @@ class MediaWikiServices extends ServiceContainer {
 	 * @return PageStore
 	 * @since 1.36
 	 */
-	public function getPageStore(): PageStore {
+	public function getPageStore() : PageStore {
 		return $this->getService( 'PageStore' );
+	}
+
+	/**
+	 * @return PageStoreFactory
+	 * @since 1.36
+	 */
+	public function getPageStoreFactory() : PageStoreFactory {
+		return $this->getService( 'PageStoreFactory' );
 	}
 
 	/**
@@ -1317,6 +1327,14 @@ class MediaWikiServices extends ServiceContainer {
 	 */
 	public function getRevisionStoreFactory() : RevisionStoreFactory {
 		return $this->getService( 'RevisionStoreFactory' );
+	}
+
+	/**
+	 * @since 1.37
+	 * @return RollbackPageFactory
+	 */
+	public function getRollbackPageFactory() : RollbackPageFactory {
+		return $this->getService( 'RollbackPageFactory' );
 	}
 
 	/**
@@ -1594,10 +1612,20 @@ class MediaWikiServices extends ServiceContainer {
 
 	/**
 	 * @since 1.35
-	 * @return WatchlistNotificationManager
+	 * @return WatchlistManager
+	 * @deprecated since 1.36 use getWatchlistManager() instead
 	 */
-	public function getWatchlistNotificationManager() : WatchlistNotificationManager {
-		return $this->getService( 'WatchlistNotificationManager' );
+	public function getWatchlistNotificationManager() : WatchlistManager {
+		wfDeprecated( __METHOD__, '1.36' );
+		return $this->getWatchlistManager();
+	}
+
+	/**
+	 * @since 1.36
+	 * @return WatchlistManager
+	 */
+	public function getWatchlistManager() : WatchlistManager {
+		return $this->getService( 'WatchlistManager' );
 	}
 
 	/**

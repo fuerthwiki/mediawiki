@@ -71,7 +71,9 @@ class ParserOutputAccessTest extends MediaWikiIntegrationTestCase {
 			$this->getServiceContainer()->getHookContainer(),
 			new JsonCodec(),
 			new NullStatsdDataFactory(),
-			new NullLogger()
+			new NullLogger(),
+			$this->getServiceContainer()->getTitleFactory(),
+			$this->getServiceContainer()->getWikiPageFactory()
 		);
 
 		return $parserCache;
@@ -142,10 +144,13 @@ class ParserOutputAccessTest extends MediaWikiIntegrationTestCase {
 		return new ParserOutputAccess(
 			$parserCache,
 			$revisionOutputCache,
+			$this->getServiceContainer()->getRevisionLookup(),
 			$revRenderer,
 			$stats,
 			$lbFactory,
-			$this->getLoggerSpi()
+			$this->getLoggerSpi(),
+			$this->getServiceContainer()->getWikiPageFactory(),
+			$this->getServiceContainer()->getTitleFormatter()
 		);
 	}
 
@@ -249,7 +254,7 @@ class ParserOutputAccessTest extends MediaWikiIntegrationTestCase {
 
 		$revisionStore = $this->createNoOpMock(
 			RevisionStore::class,
-			[ 'getRevisionByTitle', 'getKnownCurrentRevision' ]
+			[ 'getRevisionByTitle', 'getKnownCurrentRevision', 'getRevisionById' ]
 		);
 		$revisionStore->method( 'getRevisionById' )->willReturn( null );
 		$revisionStore->method( 'getRevisionByTitle' )->willReturn( null );

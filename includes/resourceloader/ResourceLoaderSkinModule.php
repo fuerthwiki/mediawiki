@@ -55,12 +55,10 @@ class ResourceLoaderSkinModule extends ResourceLoaderLessVarFileModule {
 	 *     content area structures like the TOC themselves.
 	 *
 	 * "content":
-	 *     The most commonly used level for skins implemented from scratch. This level includes all
-	 *     the single element styles from "elements" as well as styles for complex structures such
-	 *     as the TOC that are output in the content area by MediaWiki rather than the skin.
-	 *     Essentially this is the common level that lets skins leave the style of the content area
-	 *     as it is normally styled, while leaving the rest of the skin up to the skin
-	 *     implementation.
+	 *     Deprecated. Alias for "content-thumbnails".
+	 *
+	 * "content-thumbnails":
+	 *     Styles for thumbnails and floated elements.
 	 *
 	 * "content-media":
 	 *     Styles for the new media structure on wikis where $wgUseNewMediaStructure is enabled.
@@ -72,11 +70,17 @@ class ResourceLoaderSkinModule extends ResourceLoaderLessVarFileModule {
 	 * "content-parser-output":
 	 *     Styles for the mw-parser-output class.
 	 *
+	 * "content-tables":
+	 *     Styles .wikitable style tables.
+	 *
 	 * "interface":
 	 *     The highest level, this stylesheet contains extra common styles for classes like
 	 *     .firstHeading, #contentSub, et cetera which are not outputted by MediaWiki but are common
 	 *     to skins like MonoBook, Vector, etc... Essentially this level is for styles that are
 	 *     common to MonoBook clones.
+	 *
+	 * "interface-category":
+	 *     Styles used for styling the categories in a horizontal bar at the bottom of the content.
 	 *
 	 * "interface-message-box":
 	 *     Styles for message boxes.
@@ -111,8 +115,9 @@ class ResourceLoaderSkinModule extends ResourceLoaderLessVarFileModule {
 			// Reserves whitespace for the logo in a pseudo element.
 			'print' => [ 'resources/src/mediawiki.skinning/logo-print.less' ],
 		],
-		'content' => [
-			'screen' => [ 'resources/src/mediawiki.skinning/content.less' ],
+		'content-thumbnails' => [
+			'screen' => [ 'resources/src/mediawiki.skinning/content.thumbnails.less' ],
+			'print' => [ 'resources/src/mediawiki.skinning/content.thumbnails-print.less' ],
 		],
 		'content-media' => [
 			'screen' => [ 'resources/src/mediawiki.skinning/content.media.less' ],
@@ -121,20 +126,31 @@ class ResourceLoaderSkinModule extends ResourceLoaderLessVarFileModule {
 			'screen' => [ 'resources/src/mediawiki.skinning/content.externallinks.less' ]
 		],
 		'content-parser-output' => [
-			'screen' => [ 'resources/src/mediawiki.skinning/content.parser-output.less' ]
+			'screen' => [ 'resources/src/mediawiki.skinning/content.parser-output.less' ],
+			'print' => [ 'resources/src/mediawiki.skinning/content.parser-output-print.less' ],
+		],
+		'content-tables' => [
+			'screen' => [ 'resources/src/mediawiki.skinning/content.tables.less' ],
+			'print' => [ 'resources/src/mediawiki.skinning/content.tables-print.less' ]
 		],
 		'interface' => [
 			'screen' => [ 'resources/src/mediawiki.skinning/interface.less' ],
+			'print' => [ 'resources/src/mediawiki.skinning/interface-print.less' ],
+		],
+		'interface-category' => [
+			'screen' => [ 'resources/src/mediawiki.skinning/interface.category.less' ],
+			'print' => [ 'resources/src/mediawiki.skinning/interface.category-print.less' ],
 		],
 		'interface-message-box' => [
 			'all' => [ 'resources/src/mediawiki.skinning/messageBoxes.less' ],
 		],
 		'elements' => [
-			'screen' => [ 'resources/src/mediawiki.skinning/elements.css' ],
+			'screen' => [ 'resources/src/mediawiki.skinning/elements.less' ],
+			'print' => [ 'resources/src/mediawiki.skinning/elements-print.less' ],
 		],
 		'legacy' => [
 			'all' => [ 'resources/src/mediawiki.skinning/messageBoxes.less' ],
-			'print' => [ 'resources/src/mediawiki.skinning/commonPrint.css' ],
+			'print' => [ 'resources/src/mediawiki.skinning/commonPrint.less' ],
 			'screen' => [ 'resources/src/mediawiki.skinning/legacy.less' ],
 		],
 		'i18n-ordered-lists' => [
@@ -158,15 +174,17 @@ class ResourceLoaderSkinModule extends ResourceLoaderLessVarFileModule {
 
 	/** @var array please order alphabetically */
 	private const DEFAULT_FEATURES = [
-		'content' => false,
 		'content-links' => false,
 		'content-media' => false,  // Will default to `true` when $wgUseNewMediaStructure is enabled everywhere
 		'content-parser-output' => true,
+		'content-tables' => false,
+		'content-thumbnails' => false, // To be consolidated with content-media at a future date.
 		'elements' => false,
 		'i18n-all-lists-margins' => false,
 		'i18n-headings' => false,
 		'i18n-ordered-lists' => false,
 		'interface' => false,
+		'interface-category' => false,
 		'interface-message-box' => false,
 		'legacy' => false,
 		'logo' => false,
@@ -196,6 +214,14 @@ class ResourceLoaderSkinModule extends ResourceLoaderLessVarFileModule {
 				'logo' => true,
 				'legacy' => true
 			];
+
+		// The `content` feature is mapped to `content-thumbnails`.
+		// FIXME: This should log a deprecated notice at a later date (proposed: 1.37 release)
+		if ( isset( $features[ 'content' ] ) ) {
+			$features[ 'content-thumbnails' ] = $features[ 'content' ];
+			unset( $features[ 'content' ] );
+		}
+
 		$enabledFeatures = [];
 		$compatibilityMode = false;
 		foreach ( $features as $key => $enabled ) {

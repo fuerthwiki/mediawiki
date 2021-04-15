@@ -274,7 +274,6 @@
 	"thisisdeleted": "Хьажа я меттахӀоттае $1?",
 	"viewdeleted": "Хьожий $1?",
 	"restorelink": "{{PLURAL:$1|1=$1 дӀадаьккхина нийсдар|$1 дӀадяхна нийсдарш}}",
-	"feedlinks": "Тайпанехь:",
 	"feed-invalid": "Тайпан нийса доцу талол оцу куьгтаlорна.",
 	"feed-unavailable": "Хаитарца йолу асанаш тlекхочучехь яц",
 	"site-rss-feed": "$1 — RSS-аса",
@@ -2529,7 +2528,7 @@
 	"newimages-legend": "Луьттург",
 	"newimages-user": "Декъашхочун цӀе я IP-адрес",
 	"newimages-showbots": "Гайта боташ чуяьхна файлаш",
-	"newimages-hidepatrolled": "Къайлаяха патруль йина файлаш",
+	"newimages-hidepatrolled": "Къайлаяха теллина файлаш",
 	"newimages-mediatype": "Медиа тайпа:",
 	"noimages": "Суьрташ дац.",
 	"gallery-slideshow-toggle": "ТӀеяха миниатюраш",
@@ -2911,6 +2910,7 @@
 	"feedback-useragent": "Браузер:",
 	"searchsuggest-search": "Лахар",
 	"searchsuggest-containing": "чуьраниг…",
+	"api-clientside-error-noconnect": "Таро яц сервер тӀе хоттадала. Тешна хилла, хьан Интернет ю аьлла, тӀакха юха а хьажа.",
 	"api-clientside-error-timeout": "Хьоьжу хана серверо жоп цало.",
 	"api-error-publishfailed": "Чоьхьара гӀалат: серверна хана йолу файл Ӏалашъян цаелира.",
 	"api-error-stashfailed": "Чоьхьара гӀалат: серверна хана йолу файл Ӏалашъян цаелира.",
@@ -3066,5 +3066,6 @@
 	"passwordpolicies-policy-minimumpasswordlengthtologin": "Пароль хила еза $1 {{PLURAL:$1|символал}} еха, декъашхочун шен агӀо караяйтархьама",
 	"passwordpolicies-policy-passwordcannotmatchusername": "Пароль декъашхочун цӀерах тера хила ца еза",
 	"passwordpolicies-policy-maximalpasswordlength": "Пароль $1 {{PLURAL:$1|символал}} йоца хила ца еза",
-	"passwordpolicies-policyflag-suggestchangeonlogin": "болхболича чекхбаккха хийцам"
+	"passwordpolicies-policyflag-suggestchangeonlogin": "болхболича чекхбаккха хийцам",
+	"userlogout-continue": "Лаьий хьуна болх дӀаберзо?"
 }
