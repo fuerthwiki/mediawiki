@@ -122,7 +122,103 @@
 	path = skins/Vector
 	url = https://gerrit.wikimedia.org/r/mediawiki/skins/Vector
 	branch = REL1_36
+[submodule "extensions/SemanticMediaWiki"]
+	path = extensions/SemanticMediaWiki
+	url = git@github.com:SemanticMediaWiki/SemanticMediaWiki.git
+[submodule "extensions/PageForms"]
+	path = extensions/PageForms
+	url = git@github.com:fuerthwiki/mediawiki-extensions-PageForms.git
+[submodule "extensions/Maps"]
+	path = extensions/Maps
+	url = git@github.com:JeroenDeDauw/Maps.git
+[submodule "extensions/AdminLinks"]
+	path = extensions/AdminLinks
+	url = git@github.com:wikimedia/mediawiki-extensions-AdminLinks.git
+[submodule "extensions/AuthorProtect"]
+	path = extensions/AuthorProtect
+	url = git@github.com:wikimedia/mediawiki-extensions-AuthorProtect.git
+[submodule "extensions/Arrays"]
+	path = extensions/Arrays
+	url = git@github.com:wikimedia/mediawiki-extensions-Arrays.git
+[submodule "extensions/CollapsibleVector"]
+	path = extensions/CollapsibleVector
+	url = git@github.com:wikimedia/mediawiki-extensions-CollapsibleVector.git
+[submodule "extensions/Echo"]
+	path = extensions/Echo
+	url = git@github.com:wikimedia/mediawiki-extensions-Echo.git
+[submodule "extensions/Loops"]
+	path = extensions/Loops
+	url = git@github.com:wikimedia/mediawiki-extensions-Loops.git
+[submodule "extensions/MobileFrontend"]
+	path = extensions/MobileFrontend
+	url = git@github.com:wikimedia/mediawiki-extensions-MobileFrontend.git
+[submodule "extensions/MobileShareButton"]
+	path = extensions/MobileShareButton
+	url = git@github.com:fuerthwiki/MobileShareButton.git
+[submodule "extensions/MobileSpecialPages"]
+	path = extensions/MobileSpecialPages
+	url = git@github.com:fuerthwiki/MobileSpecialPages.git
+[submodule "extensions/Tabs"]
+	path = extensions/Tabs
+	url = git@github.com:wikimedia/mediawiki-extensions-Tabs.git
+[submodule "extensions/MobileTabsPlugin"]
+	path = extensions/MobileTabsPlugin
+	url = git@github.com:fuerthwiki/MobileTabsPlugin.git
+[submodule "extensions/Popups"]
+	path = extensions/Popups
+	url = git@github.com:wikimedia/mediawiki-extensions-Popups.git
+[submodule "extensions/ProgressiveWebApp"]
+	path = extensions/ProgressiveWebApp
+	url = git@github.com:fuerthwiki/ProgressiveWebApp.git
+[submodule "extensions/ProofreadPage"]
+	path = extensions/ProofreadPage
+	url = git@github.com:wikimedia/mediawiki-extensions-ProofreadPage.git
+[submodule "extensions/RottenLinks"]
+	path = extensions/RottenLinks
+	url = git@github.com:miraheze/RottenLinks.git
+[submodule "extensions/SemanticResultFormats"]
+	path = extensions/SemanticResultFormats
+	url = git@github.com:SemanticMediaWiki/SemanticResultFormats.git
+[submodule "extensions/Variables"]
+	path = extensions/Variables
+	url = git@github.com:wikimedia/mediawiki-extensions-Variables.git
+[submodule "extensions/WhatsNearby"]
+	path = extensions/WhatsNearby
+	url = git@github.com:SemanticMediaWiki/WhatsNearby.git
+[submodule "extensions/Widgets"]
+	path = extensions/Widgets
+	url = git@github.com:wikimedia/mediawiki-extensions-Widgets.git
+[submodule "skins/MinervaNeue"]
+	path = skins/MinervaNeue
+	url = https://github.com/wikimedia/mediawiki-skins-MinervaNeue.git
+[submodule "extensions/Validator"]
+	path = extensions/Validator
+	url = https://github.com/JeroenDeDauw/Validator.git
+[submodule "extensions/SemanticCite"]
+	path = extensions/SemanticCite
+	url = https://github.com/SemanticMediaWiki/SemanticCite.git
+[submodule "extensions/SemanticExtraSpecialProperties"]
+	path = extensions/SemanticExtraSpecialProperties
+	url = https://github.com/SemanticMediaWiki/SemanticExtraSpecialProperties.git
+[submodule "extensions/SemanticScribunto"]
+	path = extensions/SemanticScribunto
+	url = https://github.com/SemanticMediaWiki/SemanticScribunto.git
 [submodule "vendor"]
 	path = vendor
-	url = https://gerrit.wikimedia.org/r/mediawiki/vendor
-	branch = REL1_36
+	url = git@github.com:fuerthwiki/vendor.git
+[submodule "extensions/Mermaid"]
+	path = extensions/Mermaid
+	url = git@github.com:SemanticMediaWiki/Mermaid.git
+[submodule "extensions/ExternalData"]
+	path = extensions/ExternalData
+	url = https://gerrit.wikimedia.org/r/mediawiki/extensions/ExternalData
+[submodule "extensions/SemanticCompoundQueries"]
+	path = extensions/SemanticCompoundQueries
+	url = https://github.com/SemanticMediaWiki/SemanticCompoundQueries.git
+[submodule "extensions/RevisionSlider"]
+	path = extensions/RevisionSlider
+	url = git@github.com:wikimedia/mediawiki-extensions-RevisionSlider.git
+[submodule "extensions/MatomoAnalytics"]
+	path = extensions/MatomoAnalytics
+	url = git@github.com:fuerthwiki/MatomoAnalytics.git
+

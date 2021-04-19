@@ -10,6 +10,10 @@ use Wikimedia\ScopedCallback;
 class ParserOptionsTest extends MediaWikiLangTestCase {
 
 	protected function setUp() : void {
+		if ( PHP_VERSION_ID >= 70400 && PHP_VERSION_ID <= 70408 ) {
+			$this->markTestSkipped( 'Tests broken on PHP 7.4.0 - 7.4.8. See T270228' );
+		}
+
 		parent::setUp();
 
 		$this->setMwGlobals( [
