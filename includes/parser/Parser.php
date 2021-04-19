@@ -989,9 +989,9 @@ class Parser {
 	}
 
 	/**
-	 * @return Title|null
+	 * @return Title
 	 */
-	public function getTitle() : ?Title {
+	public function getTitle() : Title {
 		return $this->mTitle;
 	}
 
