@@ -284,7 +284,7 @@ class SearchEngineTest extends MediaWikiLangTestCase {
 		 * @var SearchEngine $mockEngine
 		 */
 		$mockEngine = $this->getMockBuilder( SearchEngine::class )
-			->setMethods( [ 'makeSearchFieldMapping' ] )->getMock();
+			->onlyMethods( [ 'makeSearchFieldMapping' ] )->getMock();
 
 		$mockFieldBuilder = function ( $name, $type ) {
 			$mockField =
@@ -293,14 +293,13 @@ class SearchEngineTest extends MediaWikiLangTestCase {
 					$type,
 				] )->getMock();
 
-			$mockField->expects( $this->any() )->method( 'getMapping' )->willReturn( [
+			$mockField->method( 'getMapping' )->willReturn( [
 				'testData' => 'test',
 				'name' => $name,
 				'type' => $type,
 			] );
 
-			$mockField->expects( $this->any() )
-				->method( 'merge' )
+			$mockField->method( 'merge' )
 				->willReturn( $mockField );
 
 			return $mockField;

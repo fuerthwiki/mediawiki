@@ -38,7 +38,8 @@ class SessionUnitTest extends MediaWikiUnitTestCase {
 	 */
 	public function testMethods( $m, $args, $index, $ret ) {
 		$mock = $this->getMockBuilder( DummySessionBackend::class )
-			->setMethods( [ $m, 'deregisterSession' ] )
+			->onlyMethods( [ 'deregisterSession' ] )
+			->addMethods( [ $m ] )
 			->getMock();
 		$mock->expects( $this->once() )->method( 'deregisterSession' )
 			->with( $this->identicalTo( 42 ) );
@@ -54,7 +55,7 @@ class SessionUnitTest extends MediaWikiUnitTestCase {
 		$tmp = $tmp->with( ...$expectArgs );
 
 		$retval = new \stdClass;
-		$tmp->will( $this->returnValue( $retval ) );
+		$tmp->willReturn( $retval );
 
 		$session = TestUtils::getDummySession( $mock, 42 );
 

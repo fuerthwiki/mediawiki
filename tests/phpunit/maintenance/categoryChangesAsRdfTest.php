@@ -217,11 +217,10 @@ class CategoryChangesAsRdfTest extends MediaWikiLangTestCase {
 			array $preProcessed = [] ) {
 		$dumpScript =
 			$this->getMockBuilder( CategoryChangesAsRdf::class )
-				->setMethods( [ $iterator, 'getCategoryLinksIterator' ] )
+				->onlyMethods( [ $iterator, 'getCategoryLinksIterator' ] )
 				->getMock();
 
-		$dumpScript->expects( $this->any() )
-			->method( 'getCategoryLinksIterator' )
+		$dumpScript->method( 'getCategoryLinksIterator' )
 			->willReturnCallback( [ $this, 'getCategoryLinksIterator' ] );
 
 		$dumpScript->expects( $this->once() )

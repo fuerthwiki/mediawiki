@@ -158,7 +158,12 @@ class ApiMain extends ApiBase {
 		'upload' => ApiUpload::class,
 		'filerevert' => ApiFileRevert::class,
 		'emailuser' => ApiEmailUser::class,
-		'watch' => ApiWatch::class,
+		'watch' => [
+			'class' => ApiWatch::class,
+			'services' => [
+				'WatchlistManager',
+			]
+		],
 		'patrol' => ApiPatrol::class,
 		'import' => ApiImport::class,
 		'clearhasmsg' => [
@@ -172,7 +177,13 @@ class ApiMain extends ApiBase {
 		'imagerotate' => ApiImageRotate::class,
 		'revisiondelete' => ApiRevisionDelete::class,
 		'managetags' => ApiManageTags::class,
-		'tag' => ApiTag::class,
+		'tag' => [
+			'class' => ApiTag::class,
+			'services' => [
+				'DBLoadBalancer',
+				'RevisionStore',
+			]
+		],
 		'mergehistory' => ApiMergeHistory::class,
 		'setpagelanguage' => ApiSetPageLanguage::class,
 		'changecontentmodel' => [

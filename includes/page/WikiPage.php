@@ -36,7 +36,6 @@ use MediaWiki\Page\PageStoreRecord;
 use MediaWiki\Page\ParserOutputAccess;
 use MediaWiki\Permissions\Authority;
 use MediaWiki\Revision\RevisionRecord;
-use MediaWiki\Revision\RevisionRenderer;
 use MediaWiki\Revision\RevisionStore;
 use MediaWiki\Revision\SlotRecord;
 use MediaWiki\Revision\SlotRoleRegistry;
@@ -269,13 +268,6 @@ class WikiPage implements Page, IDBAccessObject, PageRecord {
 	}
 
 	/**
-	 * @return RevisionRenderer
-	 */
-	private function getRevisionRenderer() {
-		return MediaWikiServices::getInstance()->getRevisionRenderer();
-	}
-
-	/**
 	 * @return SlotRoleRegistry
 	 */
 	private function getSlotRoleRegistry() {
@@ -287,13 +279,6 @@ class WikiPage implements Page, IDBAccessObject, PageRecord {
 	 */
 	private function getContentHandlerFactory(): IContentHandlerFactory {
 		return MediaWikiServices::getInstance()->getContentHandlerFactory();
-	}
-
-	/**
-	 * @return ParserCache
-	 */
-	private function getParserCache() {
-		return MediaWikiServices::getInstance()->getParserCache();
 	}
 
 	/**
@@ -1863,9 +1848,9 @@ class WikiPage implements Page, IDBAccessObject, PageRecord {
 		$derivedDataUpdater = new DerivedPageDataUpdater(
 			$this, // NOTE: eventually, PageUpdater should not know about WikiPage
 			$this->getRevisionStore(),
-			$this->getRevisionRenderer(),
+			$services->getRevisionRenderer(),
 			$this->getSlotRoleRegistry(),
-			$this->getParserCache(),
+			$services->getParserCache(),
 			JobQueueGroup::singleton(),
 			$services->getMessageCache(),
 			$services->getContentLanguage(),
@@ -2165,8 +2150,7 @@ class WikiPage implements Page, IDBAccessObject, PageRecord {
 		// NOTE: while doUserEditContent() executes, callbacks to getDerivedDataUpdater and
 		// prepareContentForEdit will generally use the DerivedPageDataUpdater that is also
 		// used by this PageUpdater. However, there is no guarantee for this.
-		$user = MediaWikiServices::getInstance()->getUserFactory()->newFromAuthority( $performer );
-		$updater = $this->newPageUpdater( $user, $slotsUpdate );
+		$updater = $this->newPageUpdater( $performer, $slotsUpdate );
 		$updater->setContent( SlotRecord::MAIN, $content );
 
 		$revisionStore = $this->getRevisionStore();
@@ -2398,9 +2382,9 @@ class WikiPage implements Page, IDBAccessObject, PageRecord {
 			);
 			return;
 		}
-		$user = User::newFromIdentity( $revision->getUser( RevisionRecord::RAW ) );
+		$userIdentity = $revision->getUser( RevisionRecord::RAW );
 
-		$updater = $this->getDerivedDataUpdater( $user, $revision );
+		$updater = $this->getDerivedDataUpdater( $userIdentity, $revision );
 		$updater->prepareUpdate( $revision, $options );
 		$updater->doParserCacheUpdate();
 	}
@@ -2443,9 +2427,9 @@ class WikiPage implements Page, IDBAccessObject, PageRecord {
 			);
 			return;
 		}
-		$user = User::newFromIdentity( $revision->getUser( RevisionRecord::RAW ) );
+		$userIdentity = $revision->getUser( RevisionRecord::RAW );
 
-		$updater = $this->getDerivedDataUpdater( $user, $revision );
+		$updater = $this->getDerivedDataUpdater( $userIdentity, $revision );
 		$updater->prepareUpdate( $revision, $options );
 		$updater->doSecondaryDataUpdates( $options );
 	}
@@ -3153,7 +3137,6 @@ class WikiPage implements Page, IDBAccessObject, PageRecord {
 		$dbKey = $this->getTitle()->getDBkey();
 
 		$commentStore = CommentStore::getStore();
-		$actorMigration = ActorMigration::newMigration();
 
 		$revQuery = $this->getRevisionStore()->getQueryInfo();
 		$bitfield = false;
@@ -3212,10 +3195,10 @@ class WikiPage implements Page, IDBAccessObject, PageRecord {
 			}
 
 			$comment = $commentStore->getComment( 'rev_comment', $row );
-			$user = User::newFromAnyId( $row->rev_user, $row->rev_user_text, $row->rev_actor );
 			$rowInsert = [
 					'ar_namespace'  => $namespace,
 					'ar_title'      => $dbKey,
+					'ar_actor'      => $row->rev_actor,
 					'ar_timestamp'  => $row->rev_timestamp,
 					'ar_minor_edit' => $row->rev_minor_edit,
 					'ar_rev_id'     => $row->rev_id,
@@ -3224,8 +3207,7 @@ class WikiPage implements Page, IDBAccessObject, PageRecord {
 					'ar_page_id'    => $id,
 					'ar_deleted'    => $suppress ? $bitfield : $row->rev_deleted,
 					'ar_sha1'       => $row->rev_sha1,
-				] + $commentStore->insert( $dbw, 'ar_comment', $comment )
-				+ $actorMigration->getInsertValues( $dbw, 'ar_user', $user );
+				] + $commentStore->insert( $dbw, 'ar_comment', $comment );
 
 			$rowsInsert[] = $rowInsert;
 			$revids[] = $row->rev_id;

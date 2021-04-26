@@ -426,8 +426,7 @@ class ContentHandlerTest extends MediaWikiIntegrationTestCase {
 		$searchEngine = $this->getMockBuilder( SearchEngine::class )
 			->getMock();
 
-		$searchEngine->expects( $this->any() )
-			->method( 'makeSearchFieldMapping' )
+		$searchEngine->method( 'makeSearchFieldMapping' )
 			->will( $this->returnCallback( static function ( $name, $type ) {
 					return new DummySearchIndexFieldDefinition( $name, $type );
 			} ) );
@@ -516,10 +515,9 @@ class ContentHandlerTest extends MediaWikiIntegrationTestCase {
 		$customDifferenceEngine->objectId = 12345;
 		$customContentHandler = $this->getMockBuilder( ContentHandler::class )
 			->setConstructorArgs( [ 'foo', [] ] )
-			->setMethods( [ 'createDifferenceEngine' ] )
+			->onlyMethods( [ 'createDifferenceEngine' ] )
 			->getMockForAbstractClass();
-		$customContentHandler->expects( $this->any() )
-			->method( 'createDifferenceEngine' )
+		$customContentHandler->method( 'createDifferenceEngine' )
 			->willReturn( $customDifferenceEngine );
 		/** @var ContentHandler $customContentHandler */
 		$slotDiffRenderer = $customContentHandler->getSlotDiffRenderer( RequestContext::getMain() );
@@ -547,13 +545,11 @@ class ContentHandlerTest extends MediaWikiIntegrationTestCase {
 			->getMockForAbstractClass();
 		$customContentHandler2 = $this->getMockBuilder( ContentHandler::class )
 			->setConstructorArgs( [ 'bar', [] ] )
-			->setMethods( [ 'createDifferenceEngine', 'getSlotDiffRendererInternal' ] )
+			->onlyMethods( [ 'createDifferenceEngine', 'getSlotDiffRendererInternal' ] )
 			->getMockForAbstractClass();
-		$customContentHandler2->expects( $this->any() )
-			->method( 'createDifferenceEngine' )
+		$customContentHandler2->method( 'createDifferenceEngine' )
 			->willReturn( $customDifferenceEngine );
-		$customContentHandler2->expects( $this->any() )
-			->method( 'getSlotDiffRendererInternal' )
+		$customContentHandler2->method( 'getSlotDiffRendererInternal' )
 			->willReturn( $customSlotDiffRenderer );
 		/** @var ContentHandler $customContentHandler2 */
 		$slotDiffRenderer = $customContentHandler2->getSlotDiffRenderer( RequestContext::getMain() );
@@ -574,10 +570,9 @@ class ContentHandlerTest extends MediaWikiIntegrationTestCase {
 			->getMock();
 		$customContentHandler = $this->getMockBuilder( ContentHandler::class )
 			->setConstructorArgs( [ 'foo', [] ] )
-			->setMethods( [ 'createDifferenceEngine' ] )
+			->onlyMethods( [ 'createDifferenceEngine' ] )
 			->getMockForAbstractClass();
-		$customContentHandler->expects( $this->any() )
-			->method( 'createDifferenceEngine' )
+		$customContentHandler->method( 'createDifferenceEngine' )
 			->willReturn( $customDifferenceEngine );
 		/** @var ContentHandler $customContentHandler */
 
@@ -586,13 +581,11 @@ class ContentHandlerTest extends MediaWikiIntegrationTestCase {
 			->getMockForAbstractClass();
 		$customContentHandler2 = $this->getMockBuilder( ContentHandler::class )
 			->setConstructorArgs( [ 'bar', [] ] )
-			->setMethods( [ 'createDifferenceEngine', 'getSlotDiffRendererInternal' ] )
+			->onlyMethods( [ 'createDifferenceEngine', 'getSlotDiffRendererInternal' ] )
 			->getMockForAbstractClass();
-		$customContentHandler2->expects( $this->any() )
-			->method( 'createDifferenceEngine' )
+		$customContentHandler2->method( 'createDifferenceEngine' )
 			->willReturn( $customDifferenceEngine );
-		$customContentHandler2->expects( $this->any() )
-			->method( 'getSlotDiffRendererInternal' )
+		$customContentHandler2->method( 'getSlotDiffRendererInternal' )
 			->willReturn( $customSlotDiffRenderer );
 		/** @var ContentHandler $customContentHandler2 */
 

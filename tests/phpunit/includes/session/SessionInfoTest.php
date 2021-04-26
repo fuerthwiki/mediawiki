@@ -62,26 +62,26 @@ class SessionInfoTest extends MediaWikiIntegrationTestCase {
 
 		$manager = new SessionManager();
 		$provider = $this->getMockBuilder( SessionProvider::class )
-			->setMethods( [ 'persistsSessionId', 'canChangeUser', '__toString' ] )
+			->onlyMethods( [ 'persistsSessionId', 'canChangeUser', '__toString' ] )
 			->getMockForAbstractClass();
 		$provider->setManager( $manager );
-		$provider->expects( $this->any() )->method( 'persistsSessionId' )
-			->will( $this->returnValue( true ) );
-		$provider->expects( $this->any() )->method( 'canChangeUser' )
-			->will( $this->returnValue( true ) );
-		$provider->expects( $this->any() )->method( '__toString' )
-			->will( $this->returnValue( 'Mock' ) );
+		$provider->method( 'persistsSessionId' )
+			->willReturn( true );
+		$provider->method( 'canChangeUser' )
+			->willReturn( true );
+		$provider->method( '__toString' )
+			->willReturn( 'Mock' );
 
 		$provider2 = $this->getMockBuilder( SessionProvider::class )
-			->setMethods( [ 'persistsSessionId', 'canChangeUser', '__toString' ] )
+			->onlyMethods( [ 'persistsSessionId', 'canChangeUser', '__toString' ] )
 			->getMockForAbstractClass();
 		$provider2->setManager( $manager );
-		$provider2->expects( $this->any() )->method( 'persistsSessionId' )
-			->will( $this->returnValue( true ) );
-		$provider2->expects( $this->any() )->method( 'canChangeUser' )
-			->will( $this->returnValue( true ) );
-		$provider2->expects( $this->any() )->method( '__toString' )
-			->will( $this->returnValue( 'Mock2' ) );
+		$provider2->method( 'persistsSessionId' )
+			->willReturn( true );
+		$provider2->method( 'canChangeUser' )
+			->willReturn( true );
+		$provider2->method( '__toString' )
+			->willReturn( 'Mock2' );
 
 		try {
 			new SessionInfo( SessionInfo::MIN_PRIORITY, [

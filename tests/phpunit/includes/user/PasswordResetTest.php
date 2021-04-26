@@ -31,13 +31,13 @@ class PasswordResetTest extends MediaWikiIntegrationTestCase {
 
 		$authManager = $this->getMockBuilder( AuthManager::class )->disableOriginalConstructor()
 			->getMock();
-		$authManager->expects( $this->any() )->method( 'allowsAuthenticationDataChange' )
+		$authManager->method( 'allowsAuthenticationDataChange' )
 			->willReturn( $allowsAuthenticationDataChange ? Status::newGood() : Status::newFatal( 'foo' ) );
 
 		$user = $this->getMockBuilder( User::class )->getMock();
-		$user->expects( $this->any() )->method( 'getName' )->willReturn( 'Foo' );
-		$user->expects( $this->any() )->method( 'getBlock' )->willReturn( $block );
-		$user->expects( $this->any() )->method( 'getGlobalBlock' )->willReturn( $globalBlock );
+		$user->method( 'getName' )->willReturn( 'Foo' );
+		$user->method( 'getBlock' )->willReturn( $block );
+		$user->method( 'getGlobalBlock' )->willReturn( $globalBlock );
 
 		$permissionManager = $this->getMockBuilder( PermissionManager::class )
 			->disableOriginalConstructor()
@@ -210,10 +210,9 @@ class PasswordResetTest extends MediaWikiIntegrationTestCase {
 
 		$passwordReset = $this->getMockBuilder( PasswordReset::class )
 			->disableOriginalConstructor()
-			->setMethods( [ 'isAllowed' ] )
+			->onlyMethods( [ 'isAllowed' ] )
 			->getMock();
-		$passwordReset->expects( $this->any() )
-			->method( 'isAllowed' )
+		$passwordReset->method( 'isAllowed' )
 			->with( $user )
 			->willReturn( Status::newFatal( 'somestatuscode' ) );
 		/** @var PasswordReset $passwordReset */
@@ -260,7 +259,7 @@ class PasswordResetTest extends MediaWikiIntegrationTestCase {
 			return ( $user->getName() === 'User1' );
 		};
 		$userOptionsLookup = $this->getMockBuilder( UserOptionsLookup::class )
-			->setMethods( [ 'getBoolOption' ] )
+			->onlyMethods( [ 'getBoolOption' ] )
 			->getMockForAbstractClass();
 		$userOptionsLookup->method( 'getBoolOption' )
 			->willReturnCallback( $userRequiresEmail );
@@ -280,7 +279,7 @@ class PasswordResetTest extends MediaWikiIntegrationTestCase {
 
 		$mwServices = MediaWikiServices::getInstance();
 		$passwordReset = $this->getMockBuilder( PasswordReset::class )
-			->setMethods( [ 'getUsersByEmail', 'isAllowed' ] )
+			->onlyMethods( [ 'getUsersByEmail', 'isAllowed' ] )
 			->setConstructorArgs( [
 				$config,
 				new NullLogger(),
@@ -607,7 +606,7 @@ class PasswordResetTest extends MediaWikiIntegrationTestCase {
 		/** @var WebRequest $request */
 
 		$user = $this->getMockBuilder( User::class )
-			->setMethods( [ 'getName', 'pingLimiter', 'getRequest' ] )
+			->onlyMethods( [ 'getName', 'pingLimiter', 'getRequest' ] )
 			->getMock();
 
 		$user->method( 'getName' )

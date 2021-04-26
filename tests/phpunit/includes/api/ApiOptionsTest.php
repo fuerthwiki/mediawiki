@@ -29,23 +29,19 @@ class ApiOptionsTest extends MediaWikiLangTestCase {
 			->getMock();
 
 		// Set up groups and rights
-		$this->mUserMock->expects( $this->any() )
-			->method( 'getEffectiveGroups' )->will( $this->returnValue( [ '*', 'user' ] ) );
+		$this->mUserMock->method( 'getEffectiveGroups' )->willReturn( [ '*', 'user' ] );
 
 		// Set up callback for User::getOptionKinds
-		$this->mUserMock->expects( $this->any() )
-			->method( 'getOptionKinds' )->will( $this->returnCallback( [ $this, 'getOptionKinds' ] ) );
+		$this->mUserMock->method( 'getOptionKinds' )->will( $this->returnCallback( [ $this, 'getOptionKinds' ] ) );
 
 		// No actual DB data
-		$this->mUserMock->expects( $this->any() )
-			->method( 'getInstanceForUpdate' )->will( $this->returnValue( $this->mUserMock ) );
+		$this->mUserMock->method( 'getInstanceForUpdate' )->willReturn( $this->mUserMock );
 
 		// Needs to return something
 		$this->mUserMock->method( 'getOptions' )
 			->willReturn( [] );
 
-		$this->mUserMock->expects( $this->any() )
-			->method( 'isAllowedAny' )->willReturn( true );
+		$this->mUserMock->method( 'isAllowedAny' )->willReturn( true );
 
 		// DefaultPreferencesFactory calls a ton of user methods, but we still want to list all of
 		// them in case bugs are caused by unexpected things returning null that shouldn't.
@@ -184,7 +180,7 @@ class ApiOptionsTest extends MediaWikiLangTestCase {
 	public function testAnon() {
 		$this->mUserMock->expects( $this->once() )
 			->method( 'isAnon' )
-			->will( $this->returnValue( true ) );
+			->willReturn( true );
 
 		try {
 			$request = $this->getSampleRequest();
@@ -233,7 +229,7 @@ class ApiOptionsTest extends MediaWikiLangTestCase {
 	public function testReset() {
 		$this->mUserMock->expects( $this->once() )
 			->method( 'resetOptions' )
-			->with( $this->equalTo( [ 'all' ] ) );
+			->with( [ 'all' ] );
 
 		$this->mUserMock->expects( $this->never() )
 			->method( 'setOption' );
@@ -251,7 +247,7 @@ class ApiOptionsTest extends MediaWikiLangTestCase {
 	public function testResetKinds() {
 		$this->mUserMock->expects( $this->once() )
 			->method( 'resetOptions' )
-			->with( $this->equalTo( [ 'registered' ] ) );
+			->with( [ 'registered' ] );
 
 		$this->mUserMock->expects( $this->never() )
 			->method( 'setOption' );
@@ -273,8 +269,8 @@ class ApiOptionsTest extends MediaWikiLangTestCase {
 		$this->mUserMock->expects( $this->exactly( 2 ) )
 			->method( 'setOption' )
 			->withConsecutive(
-				[ $this->equalTo( 'willBeHappy' ), $this->equalTo( 'Happy' ) ],
-				[ $this->equalTo( 'name' ), $this->equalTo( 'value' ) ]
+				[ 'willBeHappy', 'Happy' ],
+				[ 'name', 'value' ]
 			);
 
 		$this->mUserMock->expects( $this->once() )

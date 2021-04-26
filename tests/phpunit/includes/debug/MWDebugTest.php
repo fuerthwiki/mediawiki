@@ -156,15 +156,14 @@ class MWDebugTest extends MediaWikiIntegrationTestCase {
 	 */
 	private function newApiRequest( array $params, $requestUrl ) {
 		$request = $this->getMockBuilder( FauxRequest::class )
-			->setMethods( [ 'getRequestURL' ] )
+			->onlyMethods( [ 'getRequestURL' ] )
 			->setConstructorArgs( [
 				$params
 			] )
 			->getMock();
 
-		$request->expects( $this->any() )
-			->method( 'getRequestURL' )
-			->will( $this->returnValue( $requestUrl ) );
+		$request->method( 'getRequestURL' )
+			->willReturn( $requestUrl );
 
 		return $request;
 	}

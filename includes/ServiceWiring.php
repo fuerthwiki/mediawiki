@@ -179,7 +179,8 @@ return [
 			$services->getReadOnlyMode(),
 			$services->getUserNameUtils(),
 			$services->getBlockManager(),
-			$services->getBlockErrorFormatter()
+			$services->getBlockErrorFormatter(),
+			$services->getWatchlistManager()
 		);
 		$authManager->setLogger( LoggerFactory::getInstance( 'authentication' ) );
 		return $authManager;
@@ -366,7 +367,7 @@ return [
 				$services->getMainConfig()
 			),
 			LoggerFactory::getInstance( 'DatabaseBlockStore' ),
-			$services->getActorMigration(),
+			$services->getActorNormalization(),
 			$services->getBlockRestrictionStore(),
 			$services->getCommentStore(),
 			$services->getHookContainer(),
@@ -537,6 +538,7 @@ return [
 
 		return new HtmlCacheUpdater(
 			$services->getHookContainer(),
+			$services->getTitleFactory(),
 			$config->get( 'CdnReboundPurgeDelay' ),
 			$config->get( 'UseFileCache' ),
 			$config->get( 'CdnMaxAge' )
@@ -560,6 +562,7 @@ return [
 			$services->getContentLanguage(),
 			$services->getMainWANObjectCache(),
 			$services->getHookContainer(),
+			$services->getDBLoadBalancer(),
 			$config->get( 'InterwikiExpiry' ),
 			$config->get( 'InterwikiCache' ),
 			$config->get( 'InterwikiScopes' ),
@@ -938,6 +941,8 @@ return [
 			$services->getDBLoadBalancer(),
 			LoggerFactory::getInstance( 'StashEdit' ),
 			$services->getStatsdDataFactory(),
+			$services->getUserEditTracker(),
+			$services->getUserFactory(),
 			$services->getHookContainer(),
 			defined( 'MEDIAWIKI_JOB_RUNNER' ) || $config->get( 'CommandLineMode' )
 				? PageEditStash::INITIATOR_JOB_OR_CLI
@@ -1276,7 +1281,8 @@ return [
 	'SearchEngineFactory' => static function ( MediaWikiServices $services ) : SearchEngineFactory {
 		return new SearchEngineFactory(
 			$services->getSearchEngineConfig(),
-			$services->getHookContainer()
+			$services->getHookContainer(),
+			$services->getDBLoadBalancer()
 		);
 	},
 
@@ -1633,7 +1639,9 @@ return [
 			$services->getRevisionLookup(),
 			$services->getTalkPageNotificationManager(),
 			$services->getWatchedItemStore(),
-			$services->getUserFactory()
+			$services->getUserFactory(),
+			$services->getNamespaceInfo(),
+			$services->getWikiPageFactory()
 		);
 	},
 

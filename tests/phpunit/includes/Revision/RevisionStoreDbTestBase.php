@@ -132,7 +132,7 @@ abstract class RevisionStoreDbTestBase extends MediaWikiIntegrationTestCase {
 		$domain = new DatabaseDomain( $server['dbname'], null, $server['tablePrefix'] );
 
 		$lb = $this->getMockBuilder( LoadBalancer::class )
-			->setMethods( [ 'reallyOpenConnection' ] )
+			->onlyMethods( [ 'reallyOpenConnection' ] )
 			->setConstructorArgs( [
 				[ 'servers' => [ $server ], 'localDomain' => $domain ]
 			] )
@@ -153,7 +153,7 @@ abstract class RevisionStoreDbTestBase extends MediaWikiIntegrationTestCase {
 	 */
 	private function getDatabaseMock( array $params ) {
 		$db = $this->getMockBuilder( DatabaseSqlite::class )
-			->setMethods( [ 'select', 'doQuery', 'open', 'closeConnection', 'isOpen' ] )
+			->onlyMethods( [ 'select', 'doQuery', 'open', 'closeConnection', 'isOpen' ] )
 			->setConstructorArgs( [ $params ] )
 			->getMock();
 
@@ -2198,14 +2198,12 @@ abstract class RevisionStoreDbTestBase extends MediaWikiIntegrationTestCase {
 		$blobStore->setLegacyEncoding( 'windows-1252' );
 
 		$factory = $this->getMockBuilder( BlobStoreFactory::class )
-			->setMethods( [ 'newBlobStore', 'newSqlBlobStore' ] )
+			->onlyMethods( [ 'newBlobStore', 'newSqlBlobStore' ] )
 			->disableOriginalConstructor()
 			->getMock();
-		$factory->expects( $this->any() )
-			->method( 'newBlobStore' )
+		$factory->method( 'newBlobStore' )
 			->willReturn( $blobStore );
-		$factory->expects( $this->any() )
-			->method( 'newSqlBlobStore' )
+		$factory->method( 'newSqlBlobStore' )
 			->willReturn( $blobStore );
 
 		$this->setService( 'BlobStoreFactory', $factory );

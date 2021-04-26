@@ -8,7 +8,6 @@ use MediaWiki\SpecialPage\SpecialPageFactory;
 use MediaWiki\Tidy\TidyDriverBase;
 use MediaWiki\User\UserFactory;
 use MediaWiki\User\UserOptionsLookup;
-use Psr\Log\LoggerInterface;
 use Wikimedia\TestingAccessWrapper;
 
 /**
@@ -18,7 +17,7 @@ class ParserFactoryTest extends MediaWikiUnitTestCase {
 	private function createFactory() {
 		$options = $this->getMockBuilder( ServiceOptions::class )
 		->disableOriginalConstructor()
-		->setMethods( [ 'assertRequiredOptions', 'get' ] )->getMock();
+		->onlyMethods( [ 'assertRequiredOptions', 'get' ] )->getMock();
 
 		$options->expects( $this->never() )
 			->method( $this->anythingBut( 'assertRequiredOptions', 'get' ) );
@@ -29,13 +28,13 @@ class ParserFactoryTest extends MediaWikiUnitTestCase {
 		// function hooks when it is created.
 		$mwFactory = $this->getMockBuilder( MagicWordFactory::class )
 			->disableOriginalConstructor()
-			->setMethods( [ 'get', 'getVariableIDs' ] )
+			->onlyMethods( [ 'get', 'getVariableIDs' ] )
 			->getMock();
 		$mwFactory
 			->method( 'get' )->will( $this->returnCallback( function ( $arg ) {
 				$mw = $this->getMockBuilder( MagicWord::class )
 				->disableOriginalConstructor()
-				->setMethods( [ 'getSynonyms' ] )
+				->onlyMethods( [ 'getSynonyms' ] )
 				->getMock();
 				$mw->method( 'getSynonyms' )->willReturn( [] );
 				return $mw;
@@ -51,7 +50,7 @@ class ParserFactoryTest extends MediaWikiUnitTestCase {
 			$this->createNoOpMock( SpecialPageFactory::class ),
 			$this->createNoOpMock( LinkRendererFactory::class ),
 			$this->createNoOpMock( NamespaceInfo::class ),
-			$this->createNoOpMock( LoggerInterface::class ),
+			new TestLogger(),
 			$this->createNoOpMock( BadFileLookup::class ),
 			$this->createNoOpMock( LanguageConverterFactory::class ),
 			$this->createHookContainer(),

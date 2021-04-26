@@ -103,19 +103,17 @@ exports.config = {
 		timeout: 60 * 1000
 	},
 
+	// =====
+	// Hooks
+	// =====
 	/**
 	 * Executed after a Mocha test ends.
 	 *
 	 * @param {Object} test Mocha Test object
 	 */
 	afterTest: function ( test ) {
-		// if test passed, ignore, else take and save screenshot
-		if ( test.passed ) {
-			return;
-		}
 		// save screenshot
 		const screenshotfile = filePath( test, logPath, 'png' );
 		browser.saveScreenshot( screenshotfile );
-		console.log( '\n\tScreenshot location:', screenshotfile, '\n' );
 	}
 };

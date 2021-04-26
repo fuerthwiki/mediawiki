@@ -275,7 +275,7 @@ class DefaultPreferencesFactory implements PreferencesFactory {
 		// Handling for multiselect preferences
 		if ( ( isset( $info['type'] ) && $info['type'] == 'multiselect' ) ||
 				( isset( $info['class'] ) && $info['class'] == \HTMLMultiSelectField::class ) ) {
-			$options = HTMLFormField::flattenOptions( $info['options'] );
+			$options = HTMLFormField::flattenOptions( $info['options-messages'] ?? $info['options'] );
 			$prefix = $info['prefix'] ?? $name;
 			$val = [];
 
@@ -753,7 +753,7 @@ class DefaultPreferencesFactory implements PreferencesFactory {
 				if ( $this->options->get( 'EnableUserEmailBlacklist' ) ) {
 					$defaultPreferences['email-blacklist'] = [
 						'type' => 'usersmultiselect',
-						'label-message' => 'email-blacklist-label',
+						'label-message' => 'email-mutelist-label',
 						'section' => 'personal/email',
 						'disabled' => $disableEmailPrefs,
 						'filter' => MultiUsernameFilter::class,

@@ -333,11 +333,11 @@ class ContentModelChangeTest extends MediaWikiIntegrationTestCase {
 	 */
 	public function testCheckPermissionsThrottle() {
 		$mock = $this->getMockBuilder( User::class )
-			->setMethods( [ 'pingLimiter' ] )
+			->onlyMethods( [ 'pingLimiter' ] )
 			->getMock();
 		$mock->expects( $this->once() )
 			->method( 'pingLimiter' )
-			->with( $this->equalTo( 'editcontentmodel' ) )
+			->with( 'editcontentmodel' )
 			->willReturn( true );
 
 		$change = $this->newContentModelChange(

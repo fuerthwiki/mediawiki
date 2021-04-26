@@ -83,7 +83,7 @@ class MergeHistoryTest extends MediaWikiIntegrationTestCase {
 		$limit = MergeHistory::REVISION_LIMIT;
 
 		$mh = $this->getMockBuilder( MergeHistory::class )
-			->setMethods( [ 'getRevisionCount' ] )
+			->onlyMethods( [ 'getRevisionCount' ] )
 			->setConstructorArgs( [
 				Title::newFromText( 'Test' ),
 				Title::newFromText( 'Test2' ),
@@ -91,7 +91,7 @@ class MergeHistoryTest extends MediaWikiIntegrationTestCase {
 			->getMock();
 		$mh->expects( $this->once() )
 			->method( 'getRevisionCount' )
-			->will( $this->returnValue( $limit + 1 ) );
+			->willReturn( $limit + 1 );
 
 		$status = $mh->isValidMerge();
 		$this->assertTrue( $status->hasMessage( 'mergehistory-fail-toobig' ) );
@@ -246,8 +246,7 @@ class MergeHistoryTest extends MediaWikiIntegrationTestCase {
 			$services->getWatchedItemStore(),
 			$services->getSpamChecker(),
 			$services->getHookContainer(),
-			$services->getWikiPageFactory(),
-			$services->getUserFactory()
+			$services->getWikiPageFactory()
 		);
 		$this->assertInstanceOf(
 			MergeHistory::class,

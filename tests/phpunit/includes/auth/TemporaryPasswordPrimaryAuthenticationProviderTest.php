@@ -54,17 +54,18 @@ class TemporaryPasswordPrimaryAuthenticationProviderTest extends \MediaWikiInteg
 				$mwServices->getReadOnlyMode(),
 				$userNameUtils,
 				$mwServices->getBlockManager(),
-				$mwServices->getBlockErrorFormatter()
+				$mwServices->getBlockErrorFormatter(),
+				$mwServices->getWatchlistManager()
 			);
 		}
 		$this->validity = \Status::newGood();
 
 		$mockedMethods[] = 'checkPasswordValidity';
 		$provider = $this->getMockBuilder( TemporaryPasswordPrimaryAuthenticationProvider::class )
-			->setMethods( $mockedMethods )
+			->onlyMethods( $mockedMethods )
 			->setConstructorArgs( [ $params ] )
 			->getMock();
-		$provider->expects( $this->any() )->method( 'checkPasswordValidity' )
+		$provider->method( 'checkPasswordValidity' )
 			->will( $this->returnCallback( function () {
 				return $this->validity;
 			} ) );

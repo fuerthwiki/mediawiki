@@ -54,8 +54,8 @@ class AbstractPrimaryAuthenticationProviderTest extends \MediaWikiIntegrationTes
 
 		$provider->expects( $this->once() )
 			->method( 'testUserExists' )
-			->with( $this->equalTo( 'foo' ) )
-			->will( $this->returnValue( true ) );
+			->with( 'foo' )
+			->willReturn( true );
 		$this->assertTrue( $provider->testUserCanAuthenticate( 'foo' ) );
 	}
 
@@ -72,7 +72,7 @@ class AbstractPrimaryAuthenticationProviderTest extends \MediaWikiIntegrationTes
 				$this->identicalTo( AuthManager::ACTION_REMOVE ),
 				$this->identicalTo( [ 'username' => 'UTSysop' ] )
 			)
-			->will( $this->returnValue( $reqs ) );
+			->willReturn( $reqs );
 		$provider->expects( $this->exactly( 3 ) )->method( 'providerChangeAuthenticationData' )
 			->will( $this->returnCallback( function ( $req ) {
 				$this->assertSame( 'UTSysop', $req->username );
@@ -94,8 +94,8 @@ class AbstractPrimaryAuthenticationProviderTest extends \MediaWikiIntegrationTes
 	 */
 	public function testPrimaryAccountLink( $type, $msg ) {
 		$provider = $this->getMockForAbstractClass( AbstractPrimaryAuthenticationProvider::class );
-		$provider->expects( $this->any() )->method( 'accountCreationType' )
-			->will( $this->returnValue( $type ) );
+		$provider->method( 'accountCreationType' )
+			->willReturn( $type );
 
 		$class = AbstractPrimaryAuthenticationProvider::class;
 		$msg1 = "{$class}::beginPrimaryAccountLink $msg";

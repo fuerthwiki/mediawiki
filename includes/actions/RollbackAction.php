@@ -92,6 +92,7 @@ class RollbackAction extends FormAction {
 
 	public function handleRollbackRequest() {
 		$this->enableTransactionalTimelimit();
+		$this->getOutput()->addModuleStyles( 'mediawiki.interface.helpers.styles' );
 
 		$request = $this->getRequest();
 		$user = $this->getUser();
@@ -114,6 +115,10 @@ class RollbackAction extends FormAction {
 			] );
 		}
 
+		if ( !$user->matchEditToken( $request->getVal( 'token' ), 'rollback' ) ) {
+			throw new ErrorPageError( 'sessionfailure-title', 'sessionfailure' );
+		}
+
 		// The revision has the user suppressed, so the rollback has empty 'from',
 		// so the check above would succeed in that case.
 		if ( !$revUser ) {
@@ -124,7 +129,7 @@ class RollbackAction extends FormAction {
 			->getRollbackPageFactory()
 			->newRollbackPage( $this->getWikiPage(), $this->getContext()->getAuthority(), $revUser )
 			->setSummary( $request->getText( 'summary' ) )
-			->markAsBot( $request->getVal( 'token' ) )
+			->markAsBot( $request->getBool( 'bot' ) )
 			->rollbackIfAllowed();
 		$data = $rollbackResult->getValue();
 
@@ -187,10 +192,11 @@ class RollbackAction extends FormAction {
 				->parseAsBlock()
 		);
 
-		$userOptionsLookup = MediaWikiServices::getInstance()->getUserOptionsLookup();
+		$services = MediaWikiServices::getInstance();
+		$userOptionsLookup = $services->getUserOptionsLookup();
 
 		if ( $userOptionsLookup->getBoolOption( $user, 'watchrollback' ) ) {
-			$user->addWatch( $this->getTitle(), User::IGNORE_USER_RIGHTS );
+			$services->getWatchlistManager()->addWatchIgnoringRights( $user, $this->getTitle() );
 		}
 
 		$this->getOutput()->returnToMain( false, $this->getTitle() );
@@ -200,9 +206,7 @@ class RollbackAction extends FormAction {
 		) {
 			$contentModel = $current->getSlot( SlotRecord::MAIN, RevisionRecord::RAW )
 				->getModel();
-			$contentHandler = MediaWikiServices::getInstance()
-				->getContentHandlerFactory()
-				->getContentHandler( $contentModel );
+			$contentHandler = $services->getContentHandlerFactory()->getContentHandler( $contentModel );
 			$de = $contentHandler->createDifferenceEngine(
 				$this->getContext(),
 				$current->getId(),

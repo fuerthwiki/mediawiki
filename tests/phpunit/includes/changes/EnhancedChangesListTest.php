@@ -80,10 +80,10 @@ class EnhancedChangesListTest extends MediaWikiLangTestCase {
 
 	public function testRecentChangesPrefix() {
 		$mockContext = $this->getMockBuilder( RequestContext::class )
-			->setMethods( [ 'getTitle' ] )
+			->onlyMethods( [ 'getTitle' ] )
 			->getMock();
 		$mockContext->method( 'getTitle' )
-			->will( $this->returnValue( Title::newFromText( 'Expected Context Title' ) ) );
+			->willReturn( Title::newFromText( 'Expected Context Title' ) );
 
 		// One group of two lines
 		$enhancedChangesList = $this->newEnhancedChangesList();

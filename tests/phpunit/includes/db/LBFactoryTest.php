@@ -329,10 +329,10 @@ class LBFactoryTest extends MediaWikiIntegrationTestCase {
 			null
 		);
 
-		$mockDB1->expects( $this->exactly( 1 ) )->method( 'writesOrCallbacksPending' );
-		$mockDB1->expects( $this->exactly( 1 ) )->method( 'lastDoneWrites' );
-		$mockDB2->expects( $this->exactly( 1 ) )->method( 'writesOrCallbacksPending' );
-		$mockDB2->expects( $this->exactly( 1 ) )->method( 'lastDoneWrites' );
+		$mockDB1->expects( $this->once() )->method( 'writesOrCallbacksPending' );
+		$mockDB1->expects( $this->once() )->method( 'lastDoneWrites' );
+		$mockDB2->expects( $this->once() )->method( 'writesOrCallbacksPending' );
+		$mockDB2->expects( $this->once() )->method( 'lastDoneWrites' );
 
 		// Nothing to wait for on first HTTP request start
 		$cp->applySessionReplicationPosition( $lb1 );
@@ -356,7 +356,7 @@ class LBFactoryTest extends MediaWikiIntegrationTestCase {
 		$lb1->method( 'hasStreamingReplicaServers' )->willReturn( true );
 		$lb1->method( 'getServerName' )->with( 0 )->willReturn( 'master1' );
 		$lb1->expects( $this->once() )
-			->method( 'waitFor' )->with( $this->equalTo( $m1Pos ) );
+			->method( 'waitFor' )->with( $m1Pos );
 		// Load balancer for master DB 2
 		$lb2 = $this->getMockBuilder( LoadBalancer::class )
 			->disableOriginalConstructor()
@@ -366,7 +366,7 @@ class LBFactoryTest extends MediaWikiIntegrationTestCase {
 		$lb2->method( 'hasStreamingReplicaServers' )->willReturn( true );
 		$lb2->method( 'getServerName' )->with( 0 )->willReturn( 'master2' );
 		$lb2->expects( $this->once() )
-			->method( 'waitFor' )->with( $this->equalTo( $m2Pos ) );
+			->method( 'waitFor' )->with( $m2Pos );
 
 		$cp = new ChronologyProtector(
 			$bag,

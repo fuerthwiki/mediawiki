@@ -165,7 +165,7 @@ class UserTest extends MediaWikiIntegrationTestCase {
 
 		// Add a Session that limits rights
 		$mock = $this->getMockBuilder( stdClass::class )
-			->setMethods( [ 'getAllowedUserRights', 'deregisterSession', 'getSessionId' ] )
+			->addMethods( [ 'getAllowedUserRights', 'deregisterSession', 'getSessionId' ] )
 			->getMock();
 		$mock->method( 'getAllowedUserRights' )->willReturn( [ 'test', 'writetest' ] );
 		$mock->method( 'getSessionId' )->willReturn(
@@ -173,7 +173,7 @@ class UserTest extends MediaWikiIntegrationTestCase {
 		);
 		$session = MediaWiki\Session\TestUtils::getDummySession( $mock );
 		$mockRequest = $this->getMockBuilder( FauxRequest::class )
-			->setMethods( [ 'getSession' ] )
+			->onlyMethods( [ 'getSession' ] )
 			->getMock();
 		$mockRequest->method( 'getSession' )->willReturn( $session );
 		$userWrapper->mRequest = $mockRequest;
@@ -1775,6 +1775,7 @@ class UserTest extends MediaWikiIntegrationTestCase {
 			'Stealing allowed' => [ 'user', [ 'steal' => true ], [], 'user' ],
 			'Stealing an already-system user' => [ 'system', [ 'steal' => true ], [], 'user' ],
 			'Anonymous actor (T236444)' => [ 'actor', [], [ 'reserved' => true ], 'user' ],
+			'System user (T236444), reserved' => [ 'system', [], [ 'reserved' => true ], 'user' ],
 			'Reserved but no anonymous actor' => [ 'missing', [], [ 'reserved' => true ], 'user' ],
 			'Anonymous actor but no creation' => [ 'actor', [ 'create' => false ], [], 'null' ],
 			'Anonymous actor but not reserved' => [ 'actor', [], [], 'exception' ],
@@ -2063,7 +2064,7 @@ class UserTest extends MediaWikiIntegrationTestCase {
 
 		$user->addWatch( $articleTitle, true, '2 weeks' );
 		$this->assertTrue(
-			$user->isTempWatched( $articleTitle, 'The article has been tempoarily watched' )
+			$user->isTempWatched( $articleTitle ), 'The article has been tempoarily watched'
 		);
 
 		$specialTitle = Title::makeTitle( NS_SPECIAL, 'Version' );

@@ -39,6 +39,7 @@ use MediaWiki\Session\SessionManager;
 use MediaWiki\Session\Token;
 use MediaWiki\User\UserFactory;
 use MediaWiki\User\UserIdentity;
+use MediaWiki\User\UserIdentityValue;
 use MediaWiki\User\UserNameUtils;
 use MediaWiki\User\UserOptionsLookup;
 use Wikimedia\Assert\Assert;
@@ -862,41 +863,9 @@ class User implements Authority, IDBAccessObject, UserIdentity, UserEmailContact
 
 			// If it's a reserved user that had an anonymous actor created for it at
 			// some point, we need special handling.
-			if ( !$userNameUtils->isValid( $name ) || $userNameUtils->isUsable( $name ) ) {
-				// Not reserved, so just create it.
-				return self::createNew( $name, [ 'token' => self::INVALID_TOKEN ] );
-			}
-
-			// It is reserved. Check for an anonymous actor row.
-			$dbw = $loadBalancer->getConnectionRef( DB_MASTER );
-			return $dbw->doAtomicSection( __METHOD__, function ( IDatabase $dbw, $fname ) use ( $name ) {
-				$row = $dbw->selectRow(
-					'actor',
-					[ 'actor_id' ],
-					[ 'actor_name' => $name, 'actor_user' => null ],
-					$fname,
-					[ 'FOR UPDATE' ]
-				);
-				if ( !$row ) {
-					// No anonymous actor.
-					return self::createNew( $name, [ 'token' => self::INVALID_TOKEN ] );
-				}
-
-				// There is an anonymous actor. Delete the actor row so we can create the user,
-				// then restore the old actor_id so as to not break existing references.
-				// @todo If MediaWiki ever starts using foreign keys for `actor`, this will break things.
-				$dbw->delete( 'actor', [ 'actor_id' => $row->actor_id ], $fname );
-				$user = self::createNew( $name, [ 'token' => self::INVALID_TOKEN ] );
-				$dbw->update(
-					'actor',
-					[ 'actor_id' => $row->actor_id ],
-					[ 'actor_id' => $user->getActorId() ],
-					$fname
-				);
-				$user->clearInstanceCache( 'id' );
-				$user->invalidateCache();
-				return $user;
-			} );
+			return self::insertNewUser( function ( UserIdentity $actor, IDatabase $dbw ) {
+				return MediaWikiServices::getInstance()->getActorStore()->acquireSystemActorId( $actor, $dbw );
+			}, $name, [ 'token' => self::INVALID_TOKEN ] );
 		}
 
 		$user = self::newFromRow( $row );
@@ -1962,7 +1931,7 @@ class User implements Authority, IDBAccessObject, UserIdentity, UserEmailContact
 	/**
 	 * Check if user is blocked from editing a particular article
 	 *
-	 * @param Title $title Title to check
+	 * @param PageIdentity $title Title to check
 	 * @param bool $fromReplica Whether to check the replica DB instead of the master
 	 * @return bool
 	 *
@@ -1971,6 +1940,8 @@ class User implements Authority, IDBAccessObject, UserIdentity, UserEmailContact
 	 *
 	 */
 	public function isBlockedFrom( $title, $fromReplica = false ) {
+		// TODO: remove the cast when PermissionManager accepts PageIdentity
+		$title = TitleValue::castPageToLinkTarget( $title );
 		return MediaWikiServices::getInstance()->getPermissionManager()
 			->isBlockedFrom( $this, $title, $fromReplica );
 	}
@@ -2202,7 +2173,6 @@ class User implements Authority, IDBAccessObject, UserIdentity, UserEmailContact
 	 */
 	public function setActorId( int $actorId ) {
 		$this->mActorId = $actorId;
-		$this->invalidateCache();
 		$this->setItemLoaded( 'actor' );
 	}
 
@@ -3185,16 +3155,19 @@ class User implements Authority, IDBAccessObject, UserIdentity, UserEmailContact
 	/**
 	 * Check the watched status of an article.
 	 * @since 1.22 $checkRights parameter added
-	 * @param Title $title Title of the article to look at
+	 * @param PageIdentity $title the article to look at
 	 * @param bool $checkRights Whether to check 'viewmywatchlist'/'editmywatchlist' rights.
 	 *     Pass User::CHECK_USER_RIGHTS or User::IGNORE_USER_RIGHTS.
 	 * @return bool
+	 * @deprecated since 1.37, use WatchlistManager::isWatched() or
+	 *     WatchlistManager::isWatchedIgnoringRights()
 	 */
-	public function isWatched( $title, $checkRights = self::CHECK_USER_RIGHTS ) {
-		if ( $title->isWatchable() && ( !$checkRights || $this->isAllowed( 'viewmywatchlist' ) ) ) {
-			return MediaWikiServices::getInstance()->getWatchedItemStore()->isWatched( $this, $title );
+	public function isWatched( PageIdentity $title, $checkRights = self::CHECK_USER_RIGHTS ) {
+		$watchlistManager = MediaWikiServices::getInstance()->getWatchlistManager();
+		if ( $checkRights ) {
+			return $watchlistManager->isWatched( $this, $title );
 		}
-		return false;
+		return $watchlistManager->isWatchedIgnoringRights( $this, $title );
 	}
 
 	/**
@@ -3202,86 +3175,60 @@ class User implements Authority, IDBAccessObject, UserIdentity, UserEmailContact
 	 * @since 1.35
 	 * @internal This, isWatched() and related User methods may be deprecated soon (T208766).
 	 *     If possible, implement permissions checks and call WatchedItemStore::isTempWatched()
-	 * @param Title $title Title of the article to look at
+	 * @param PageIdentity $title the article to look at
 	 * @param bool $checkRights Whether to check 'viewmywatchlist'/'editmywatchlist' rights.
 	 *     Pass User::CHECK_USER_RIGHTS or User::IGNORE_USER_RIGHTS.
 	 * @return bool
+	 * @deprecated since 1.37, use WatchlistManager::isTempWatched() or
+	 *     WatchlistManager::isTempWatchedIgnoringRights()
 	 */
-	public function isTempWatched( $title, $checkRights = self::CHECK_USER_RIGHTS ): bool {
-		if ( $title->isWatchable() && ( !$checkRights || $this->isAllowed( 'viewmywatchlist' ) ) ) {
-			return MediaWikiServices::getInstance()->getWatchedItemStore()
-				->isTempWatched( $this, $title );
+	public function isTempWatched( PageIdentity $title, $checkRights = self::CHECK_USER_RIGHTS ) {
+		$watchlistManager = MediaWikiServices::getInstance()->getWatchlistManager();
+		if ( $checkRights ) {
+			return $watchlistManager->isTempWatched( $this, $title );
 		}
-		return false;
+		return $watchlistManager->isTempWatchedIgnoringRights( $this, $title );
 	}
 
 	/**
 	 * Watch an article.
 	 * @since 1.22 $checkRights parameter added
-	 * @param Title $title Title of the article to look at
+	 * @param PageIdentity $title the article to look at
 	 * @param bool $checkRights Whether to check 'viewmywatchlist'/'editmywatchlist' rights.
 	 *     Pass User::CHECK_USER_RIGHTS or User::IGNORE_USER_RIGHTS.
 	 * @param string|null $expiry Optional expiry timestamp in any format acceptable to wfTimestamp(),
 	 *   null will not create expiries, or leave them unchanged should they already exist.
+	 * @deprecated since 1.37, use WatchlistManager::addWatch() or WatchlistManager::addWatchIgnoringRights()
 	 */
 	public function addWatch(
-		$title,
+		PageIdentity $title,
 		$checkRights = self::CHECK_USER_RIGHTS,
 		?string $expiry = null
 	) {
-		if ( !$title->isWatchable() ) {
-			return;
+		$watchlistManager = MediaWikiServices::getInstance()->getWatchlistManager();
+		if ( $checkRights ) {
+			$watchlistManager->addWatch( $this, $title, $expiry );
+		} else {
+			$watchlistManager->addWatchIgnoringRights( $this, $title, $expiry );
 		}
-
-		if ( !$checkRights || $this->isAllowed( 'editmywatchlist' ) ) {
-			$store = MediaWikiServices::getInstance()->getWatchedItemStore();
-			$store->addWatch( $this, $title->getSubjectPage(), $expiry );
-			if ( $title->canHaveTalkPage() ) {
-				$store->addWatch( $this, $title->getTalkPage(), $expiry );
-			}
-		}
-		$this->invalidateCache();
 	}
 
 	/**
 	 * Stop watching an article.
 	 * @since 1.22 $checkRights parameter added
-	 * @param Title $title Title of the article to look at
+	 * @param PageIdentity $title the article to look at
 	 * @param bool $checkRights Whether to check 'viewmywatchlist'/'editmywatchlist' rights.
 	 *     Pass User::CHECK_USER_RIGHTS or User::IGNORE_USER_RIGHTS.
+	 * @deprecated since 1.37, use WatchlistManager::removeWatch() or
+	 *     WatchlistManager::removeWatchIgnoringRights
 	 */
-	public function removeWatch( $title, $checkRights = self::CHECK_USER_RIGHTS ) {
-		if ( !$title->isWatchable() ) {
-			return;
+	public function removeWatch( PageIdentity $title, $checkRights = self::CHECK_USER_RIGHTS ) {
+		$watchlistManager = MediaWikiServices::getInstance()->getWatchlistManager();
+		if ( $checkRights ) {
+			$watchlistManager->removeWatch( $this, $title );
+		} else {
+			$watchlistManager->removeWatchIgnoringRights( $this, $title );
 		}
-
-		if ( !$checkRights || $this->isAllowed( 'editmywatchlist' ) ) {
-			$store = MediaWikiServices::getInstance()->getWatchedItemStore();
-			$store->removeWatch( $this, $title->getSubjectPage() );
-			if ( $title->canHaveTalkPage() ) {
-				$store->removeWatch( $this, $title->getTalkPage() );
-			}
-		}
-		$this->invalidateCache();
-	}
-
-	/**
-	 * Clear the user's notification timestamp for the given title.
-	 * If e-notif e-mails are on, they will receive notification mails on
-	 * the next change of the page if it's watched etc.
-	 *
-	 * @deprecated since 1.35, hard deprecated since 1.36
-	 * Use WatchlistManager::clearTitleUserNotification() instead.
-	 *
-	 * @note If the user doesn't have 'editmywatchlist', this will do nothing.
-	 * @param Title &$title Title of the article to look at
-	 * @param int $oldid The revision id being viewed. If not given or 0, latest revision is assumed.
-	 */
-	public function clearNotification( &$title, $oldid = 0 ) {
-		wfDeprecated( __METHOD__, '1.35' );
-		MediaWikiServices::getInstance()
-			->getWatchlistManager()
-			->clearTitleUserNotifications( $this, $title, $oldid );
 	}
 
 	/**
@@ -3518,10 +3465,22 @@ class User implements Authority, IDBAccessObject, UserIdentity, UserEmailContact
 	 *   - options: An associative array of non-default options.
 	 *   - token: Random authentication token. Do not set.
 	 *   - registration: Registration timestamp. Do not set.
-	 *
 	 * @return User|null User object, or null if the username already exists.
 	 */
 	public static function createNew( $name, $params = [] ) {
+		return self::insertNewUser( function ( UserIdentity $actor, IDatabase $dbw ) {
+			return MediaWikiServices::getInstance()->getActorStore()->createNewActor( $actor, $dbw );
+		}, $name, $params );
+	}
+
+	/**
+	 * See ::createNew
+	 * @param callable $insertActor ( UserIdentity $actor, IDatabase $dbw ): int actor ID,
+	 * @param string $name
+	 * @param array $params
+	 * @return User|null
+	 */
+	private static function insertNewUser( callable $insertActor, $name, $params = [] ) {
 		foreach ( [ 'password', 'newpassword', 'newpass_time', 'password_expires' ] as $field ) {
 			if ( isset( $params[$field] ) ) {
 				wfDeprecated( __METHOD__ . " with param '$field'", '1.27' );
@@ -3558,12 +3517,14 @@ class User implements Authority, IDBAccessObject, UserIdentity, UserEmailContact
 			$fields["user_$name"] = $value;
 		}
 
-		return $dbw->doAtomicSection( __METHOD__, function ( IDatabase $dbw, $fname ) use ( $fields ) {
+		return $dbw->doAtomicSection( __METHOD__, function ( IDatabase $dbw, $fname ) use ( $fields, $insertActor ) {
 			$dbw->insert( 'user', $fields, $fname, [ 'IGNORE' ] );
 			if ( $dbw->affectedRows() ) {
 				$newUser = self::newFromId( $dbw->insertId() );
 				$newUser->mName = $fields['user_name'];
-				$newUser->updateActorId( $dbw );
+				// Don't pass $this, since calling ::getId, ::getName might force ::load
+				// and this user might not be ready for the yet.
+				$newUser->mActorId = $insertActor( new UserIdentityValue( $newUser->mId, $newUser->mName ), $dbw );
 				// Load the user from master to avoid replica lag
 				$newUser->load( self::READ_LATEST );
 			} else {
@@ -3650,8 +3611,12 @@ class User implements Authority, IDBAccessObject, UserIdentity, UserEmailContact
 			}
 			$this->mId = $dbw->insertId();
 			self::$idCacheByName[$this->mName] = $this->mId;
-			$this->updateActorId( $dbw );
 
+			// Don't pass $this, since calling ::getId, ::getName might force ::load
+			// and this user might not be ready for the yet.
+			$this->mActorId = MediaWikiServices::getInstance()
+				->getActorNormalization()
+				->acquireActorId( new UserIdentityValue( $this->mId, $this->mName ), $dbw );
 			return Status::newGood();
 		} );
 		if ( !$status->isGood() ) {
@@ -3663,19 +3628,6 @@ class User implements Authority, IDBAccessObject, UserIdentity, UserEmailContact
 
 		MediaWikiServices::getInstance()->getUserOptionsManager()->saveOptions( $this );
 		return Status::newGood();
-	}
-
-	/**
-	 * Update the actor ID after an insert
-	 * @param IDatabase $dbw Writable database handle
-	 */
-	private function updateActorId( IDatabase $dbw ) {
-		$dbw->insert(
-			'actor',
-			[ 'actor_user' => $this->mId, 'actor_name' => $this->mName ],
-			__METHOD__
-		);
-		$this->mActorId = (int)$dbw->insertId();
 	}
 
 	/**

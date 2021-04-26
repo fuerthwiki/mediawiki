@@ -71,22 +71,24 @@ class SqlBagOStuff extends MediumSpecificBagOStuff {
 	/** @var Exception[] Map of (shard index => Exception) */
 	protected $connFailureErrors = [];
 
-	/** @var int */
-	private static $GC_DELAY_SEC = 1;
+	/** How many seconds must pass before triggering a garbage collection */
+	private const GC_DELAY_SEC = 1;
 
-	/** @var string */
-	private static $OP_SET = 'set';
-	/** @var string */
-	private static $OP_ADD = 'add';
-	/** @var string */
-	private static $OP_TOUCH = 'touch';
-	/** @var string */
-	private static $OP_DELETE = 'delete';
+	private const OP_SET = 'set';
+	private const OP_ADD = 'add';
+	private const OP_TOUCH = 'touch';
+	private const OP_DELETE = 'delete';
 
-	/** @var string */
 	private const SHARD_LOCAL = 'local';
-	/** @var string */
 	private const SHARD_GLOBAL = 'global';
+
+	/**
+	 * Placeholder timestamp to use for TTL_INDEFINITE that can be stored in all RDBMs types.
+	 * We use BINARY(14) for MySQL, BLOB for Sqlite, and TIMESTAMPZ for Postgres (which goes
+	 * up to 294276 AD). The last second of the year 9999 can be stored in all these cases.
+	 * https://www.postgresql.org/docs/9.0/datatype-datetime.html
+	 */
+	private const INF_TIMESTAMP_PLACEHOLDER = '99991231235959';
 
 	/**
 	 * Constructor. Parameters are:
@@ -315,6 +317,7 @@ class SqlBagOStuff extends MediumSpecificBagOStuff {
 			$keysByTableByShardIndex[$shardIndex][$tableName][] = $key;
 		}
 
+		$now = $this->getCurrentTime();
 		$dataRows = [];
 		foreach ( $keysByTableByShardIndex as $shardIndex => $serverKeys ) {
 			try {
@@ -351,7 +354,8 @@ class SqlBagOStuff extends MediumSpecificBagOStuff {
 				$db = null; // in case of connection failure
 				try {
 					$db = $this->getConnection( $row->shardIndex );
-					if ( $this->isExpired( $db, $row->exptime ) ) { // MISS
+					$expiry = $this->decodeDbExpiry( $db, $row->exptime );
+					if ( $expiry !== self::TTL_INDEFINITE && $expiry < $now ) { // MISS
 						$this->debug( "get: key has expired" );
 					} else { // HIT
 						$values[$key] = $db->decodeBlob( $row->value );
@@ -368,7 +372,7 @@ class SqlBagOStuff extends MediumSpecificBagOStuff {
 	}
 
 	protected function doSetMulti( array $data, $exptime = 0, $flags = 0 ) {
-		return $this->modifyMulti( $data, $exptime, $flags, self::$OP_SET );
+		return $this->modifyMulti( $data, $exptime, $flags, self::OP_SET );
 	}
 
 	/**
@@ -385,7 +389,7 @@ class SqlBagOStuff extends MediumSpecificBagOStuff {
 			$keysByTableByShardIndex[$shardIndex][$tableName][] = $key;
 		}
 
-		$exptime = $this->getExpirationAsTimestamp( $exptime );
+		$expiry = $this->getExpirationAsTimestamp( $exptime );
 
 		$result = true;
 		/** @noinspection PhpUnusedLocalVariableInspection */
@@ -395,7 +399,7 @@ class SqlBagOStuff extends MediumSpecificBagOStuff {
 			try {
 				$db = $this->getConnection( $shardIndex );
 				$this->occasionallyGarbageCollect( $db ); // expire old entries if any
-				$dbExpiry = $exptime ? $db->timestamp( $exptime ) : $this->getMaxDateTime( $db );
+				$dbExpiry = $this->encodeDbExpiry( $db, $expiry );
 			} catch ( DBError $e ) {
 				$this->handleWriteError( $e, $db, $shardIndex );
 				$result = false;
@@ -443,7 +447,7 @@ class SqlBagOStuff extends MediumSpecificBagOStuff {
 	private function updateTable( $op, $db, $table, $tableKeys, $data, $dbExpiry ) {
 		$success = true;
 
-		if ( $op === self::$OP_ADD ) {
+		if ( $op === self::OP_ADD ) {
 			$valueSizesByKey = [];
 
 			$rows = [];
@@ -469,7 +473,7 @@ class SqlBagOStuff extends MediumSpecificBagOStuff {
 			$success = ( $db->affectedRows() == count( $rows ) );
 
 			$this->updateOpStats( self::METRIC_OP_ADD, $valueSizesByKey );
-		} elseif ( $op === self::$OP_SET ) {
+		} elseif ( $op === self::OP_SET ) {
 			$valueSizesByKey = [];
 
 			$rows = [];
@@ -485,11 +489,11 @@ class SqlBagOStuff extends MediumSpecificBagOStuff {
 			$db->replace( $table, 'keyname', $rows, __METHOD__ );
 
 			$this->updateOpStats( self::METRIC_OP_SET, $valueSizesByKey );
-		} elseif ( $op === self::$OP_DELETE ) {
+		} elseif ( $op === self::OP_DELETE ) {
 			$db->delete( $table, [ 'keyname' => $tableKeys ], __METHOD__ );
 
 			$this->updateOpStats( self::METRIC_OP_DELETE, $tableKeys );
-		} elseif ( $op === self::$OP_TOUCH ) {
+		} elseif ( $op === self::OP_TOUCH ) {
 			$db->update(
 				$table,
 				[ 'exptime' => $dbExpiry ],
@@ -511,16 +515,16 @@ class SqlBagOStuff extends MediumSpecificBagOStuff {
 	}
 
 	protected function doSet( $key, $value, $exptime = 0, $flags = 0 ) {
-		return $this->modifyMulti( [ $key => $value ], $exptime, $flags, self::$OP_SET );
+		return $this->modifyMulti( [ $key => $value ], $exptime, $flags, self::OP_SET );
 	}
 
 	protected function doAdd( $key, $value, $exptime = 0, $flags = 0 ) {
-		return $this->modifyMulti( [ $key => $value ], $exptime, $flags, self::$OP_ADD );
+		return $this->modifyMulti( [ $key => $value ], $exptime, $flags, self::OP_ADD );
 	}
 
 	protected function doCas( $casToken, $key, $value, $exptime = 0, $flags = 0 ) {
 		list( $shardIndex, $tableName ) = $this->getKeyLocation( $key );
-		$exptime = $this->getExpirationAsTimestamp( $exptime );
+		$expiry = $this->getExpirationAsTimestamp( $exptime );
 		$serialized = $this->getSerialized( $value, $key );
 
 		/** @noinspection PhpUnusedLocalVariableInspection */
@@ -535,9 +539,7 @@ class SqlBagOStuff extends MediumSpecificBagOStuff {
 				[
 					'keyname' => $key,
 					'value' => $db->encodeBlob( $serialized ),
-					'exptime' => $exptime
-						? $db->timestamp( $exptime )
-						: $this->getMaxDateTime( $db )
+					'exptime' => $this->encodeDbExpiry( $db, $expiry )
 				],
 				[
 					'keyname' => $key,
@@ -567,12 +569,12 @@ class SqlBagOStuff extends MediumSpecificBagOStuff {
 			array_fill_keys( $keys, null ),
 			0,
 			$flags,
-			self::$OP_DELETE
+			self::OP_DELETE
 		);
 	}
 
 	protected function doDelete( $key, $flags = 0 ) {
-		return $this->modifyMulti( [ $key => null ], 0, $flags, self::$OP_DELETE );
+		return $this->modifyMulti( [ $key => null ], 0, $flags, self::OP_DELETE );
 	}
 
 	public function incr( $key, $step = 1, $flags = 0 ) {
@@ -620,36 +622,36 @@ class SqlBagOStuff extends MediumSpecificBagOStuff {
 			array_fill_keys( $keys, null ),
 			$exptime,
 			$flags,
-			self::$OP_TOUCH
+			self::OP_TOUCH
 		);
 	}
 
 	protected function doChangeTTL( $key, $exptime, $flags ) {
-		return $this->modifyMulti( [ $key => null ], $exptime, $flags, self::$OP_TOUCH );
+		return $this->modifyMulti( [ $key => null ], $exptime, $flags, self::OP_TOUCH );
 	}
 
 	/**
 	 * @param IDatabase $db
-	 * @param string $exptime
-	 * @return bool
-	 */
-	private function isExpired( IDatabase $db, $exptime ) {
-		return (
-			$exptime != $this->getMaxDateTime( $db ) &&
-			ConvertibleTimestamp::convert( TS_UNIX, $exptime ) < $this->getCurrentTime()
-		);
-	}
-
-	/**
-	 * @param IDatabase $db
+	 * @param int $expiry UNIX timestamp of expiration or TTL_INDEFINITE
 	 * @return string
 	 */
-	private function getMaxDateTime( $db ) {
-		if ( (int)$this->getCurrentTime() > 0x7fffffff ) {
-			return $db->timestamp( 1 << 62 );
-		} else {
-			return $db->timestamp( 0x7fffffff );
-		}
+	private function encodeDbExpiry( IDatabase $db, int $expiry ) {
+		return ( $expiry === self::TTL_INDEFINITE )
+			// Use the maximum timestamp that the column can store
+			? $db->timestamp( self::INF_TIMESTAMP_PLACEHOLDER )
+			// Convert the absolute timestamp into the DB timestamp format
+			: $db->timestamp( $expiry );
+	}
+
+	/**
+	 * @param IDatabase $db
+	 * @param string $dbExpiry DB timestamp of expiration
+	 * @return string UNIX timestamp of expiration or TTL_INDEFINITE
+	 */
+	private function decodeDbExpiry( IDatabase $db, string $dbExpiry ) {
+		return ( $dbExpiry === $db->timestamp( self::INF_TIMESTAMP_PLACEHOLDER ) )
+			? self::TTL_INDEFINITE
+			: ConvertibleTimestamp::convert( TS_UNIX, $dbExpiry );
 	}
 
 	/**
@@ -663,7 +665,7 @@ class SqlBagOStuff extends MediumSpecificBagOStuff {
 			// Only purge on one in every $this->purgePeriod writes
 			mt_rand( 0, $this->purgePeriod - 1 ) == 0 &&
 			// Avoid repeating the delete within a few seconds
-			( $this->getCurrentTime() - $this->lastGarbageCollect ) > self::$GC_DELAY_SEC
+			( $this->getCurrentTime() - $this->lastGarbageCollect ) > self::GC_DELAY_SEC
 		) {
 			$garbageCollector = function () use ( $db ) {
 				$this->deleteServerObjectsExpiringBefore(
@@ -928,15 +930,15 @@ class SqlBagOStuff extends MediumSpecificBagOStuff {
 	 * On typical message and page data, this can provide a 3X decrease
 	 * in storage requirements.
 	 *
-	 * @param mixed $data
+	 * @param mixed $value
 	 * @return string|int
 	 */
-	protected function serialize( $data ) {
-		if ( is_int( $data ) ) {
-			return $data;
+	protected function serialize( $value ) {
+		if ( is_int( $value ) ) {
+			return $value;
 		}
 
-		$serial = serialize( $data );
+		$serial = serialize( $value );
 		if ( function_exists( 'gzdeflate' ) ) {
 			$serial = gzdeflate( $serial );
 		}
@@ -946,25 +948,25 @@ class SqlBagOStuff extends MediumSpecificBagOStuff {
 
 	/**
 	 * Unserialize and, if necessary, decompress an object.
-	 * @param string $serial
+	 * @param string $value
 	 * @return mixed
 	 */
-	protected function unserialize( $serial ) {
-		if ( $this->isInteger( $serial ) ) {
-			return (int)$serial;
+	protected function unserialize( $value ) {
+		if ( $this->isInteger( $value ) ) {
+			return (int)$value;
 		}
 
 		if ( function_exists( 'gzinflate' ) ) {
 			AtEase::suppressWarnings();
-			$decomp = gzinflate( $serial );
+			$decompressed = gzinflate( $value );
 			AtEase::restoreWarnings();
 
-			if ( $decomp !== false ) {
-				$serial = $decomp;
+			if ( $decompressed !== false ) {
+				$value = $decompressed;
 			}
 		}
 
-		return unserialize( $serial );
+		return unserialize( $value );
 	}
 
 	/**

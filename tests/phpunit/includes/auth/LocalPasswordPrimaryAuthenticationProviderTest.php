@@ -54,16 +54,17 @@ class LocalPasswordPrimaryAuthenticationProviderTest extends \MediaWikiIntegrati
 				$mwServices->getReadOnlyMode(),
 				$userNameUtils,
 				$mwServices->getBlockManager(),
-				$mwServices->getBlockErrorFormatter()
+				$mwServices->getBlockErrorFormatter(),
+				$mwServices->getWatchlistManager()
 			);
 		}
 		$this->validity = \Status::newGood();
 		$provider = $this->getMockBuilder( LocalPasswordPrimaryAuthenticationProvider::class )
-			->setMethods( [ 'checkPasswordValidity' ] )
+			->onlyMethods( [ 'checkPasswordValidity' ] )
 			->setConstructorArgs( [ [ 'loginOnly' => $loginOnly ] ] )
 			->getMock();
 
-		$provider->expects( $this->any() )->method( 'checkPasswordValidity' )
+		$provider->method( 'checkPasswordValidity' )
 			->will( $this->returnCallback( function () {
 				return $this->validity;
 			} ) );

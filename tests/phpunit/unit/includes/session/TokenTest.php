@@ -13,11 +13,11 @@ class TokenTest extends MediaWikiUnitTestCase {
 
 	public function testBasics() {
 		$token = $this->getMockBuilder( Token::class )
-			->setMethods( [ 'toStringAtTimestamp' ] )
+			->onlyMethods( [ 'toStringAtTimestamp' ] )
 			->setConstructorArgs( [ 'sekret', 'salty', true ] )
 			->getMock();
-		$token->expects( $this->any() )->method( 'toStringAtTimestamp' )
-			->will( $this->returnValue( 'faketoken+\\' ) );
+		$token->method( 'toStringAtTimestamp' )
+			->willReturn( 'faketoken+\\' );
 
 		$this->assertSame( 'faketoken+\\', $token->toString() );
 		$this->assertSame( 'faketoken+\\', (string)$token );

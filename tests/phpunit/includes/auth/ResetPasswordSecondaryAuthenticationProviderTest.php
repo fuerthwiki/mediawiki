@@ -41,7 +41,7 @@ class ResetPasswordSecondaryAuthenticationProviderTest extends \MediaWikiIntegra
 		$reqs = [ new \stdClass ];
 
 		$mb = $this->getMockBuilder( ResetPasswordSecondaryAuthenticationProvider::class )
-			->setMethods( [ 'tryReset' ] );
+			->onlyMethods( [ 'tryReset' ] );
 
 		$methods = [
 			'beginSecondaryAuthentication' => [ $user, $reqs ],
@@ -53,7 +53,7 @@ class ResetPasswordSecondaryAuthenticationProviderTest extends \MediaWikiIntegra
 			$mock = $mb->getMock();
 			$mock->expects( $this->once() )->method( 'tryReset' )
 				->with( $this->identicalTo( $user ), $this->identicalTo( $reqs ) )
-				->will( $this->returnValue( $obj ) );
+				->willReturn( $obj );
 			$this->assertSame( $obj, $mock->$method( ...$args ) );
 		}
 	}
@@ -64,16 +64,16 @@ class ResetPasswordSecondaryAuthenticationProviderTest extends \MediaWikiIntegra
 		$provider = $this->getMockBuilder(
 			ResetPasswordSecondaryAuthenticationProvider::class
 		)
-			->setMethods( [
+			->onlyMethods( [
 				'providerAllowsAuthenticationDataChange', 'providerChangeAuthenticationData'
 			] )
 			->getMock();
-		$provider->expects( $this->any() )->method( 'providerAllowsAuthenticationDataChange' )
+		$provider->method( 'providerAllowsAuthenticationDataChange' )
 			->will( $this->returnCallback( function ( $req ) {
 				$this->assertSame( 'UTSysop', $req->username );
 				return $req->allow;
 			} ) );
-		$provider->expects( $this->any() )->method( 'providerChangeAuthenticationData' )
+		$provider->method( 'providerChangeAuthenticationData' )
 			->will( $this->returnCallback( function ( $req ) {
 				$this->assertSame( 'UTSysop', $req->username );
 				$req->done = true;
@@ -103,7 +103,8 @@ class ResetPasswordSecondaryAuthenticationProviderTest extends \MediaWikiIntegra
 			$mwServices->getReadOnlyMode(),
 			$userNameUtils,
 			$mwServices->getBlockManager(),
-			$mwServices->getBlockErrorFormatter()
+			$mwServices->getBlockErrorFormatter(),
+			$mwServices->getWatchlistManager()
 		);
 		$provider->setManager( $manager );
 		$provider = TestingAccessWrapper::newFromObject( $provider );

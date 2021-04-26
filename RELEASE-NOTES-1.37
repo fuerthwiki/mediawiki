@@ -28,9 +28,11 @@ For notes on 1.36.x and older releases, see HISTORY.
 * …
 
 ==== Removed configuration ====
-* …
+* $wgLegacyJavaScriptGlobals was deprecated in 1.36.
 
 === New user-facing features in 1.37 ===
+* Media files uploaded server side using the importImages.php maintenance
+  script now have the "mw-server-side-upload" change tag.
 * …
 
 === New developer features in 1.37 ===
@@ -46,6 +48,9 @@ For notes on 1.36.x and older releases, see HISTORY.
 * …
 
 ==== Changed external libraries ====
+* Updated WVUI from v0.1.0 to v0.1.1
+* Updated psr/container from v1.0.0 to v1.1.1.
+* Updated wikimedia/object-factory from v3.0.0 to v3.0.2.
 * …
 
 ===== Changed development-only external libraries =====
@@ -68,6 +73,8 @@ MediaWiki supports over 350 languages. Many localisations are updated regularly.
 Below only new and removed languages are listed, as well as changes to languages
 because of Phabricator reports.
 
+* (T280435) LRM and RLM characters were removed from names of languages with
+  parentheses in Names.php
 * (T279619) Added language support for Dagbani (dag).
 
 === Breaking changes in 1.37 ===
@@ -81,6 +88,16 @@ because of Phabricator reports.
    - findVariantLink()
    - mConverter
    - updateConversionTable()
+* (T273354) When an edit is prevented by an 'EditFilterMergedContent' hook
+  handler without changing the status, the edit form will now be displayed.
+* User::clearNotification() which had been deprecated in 1.35 has been removed.
+  Use WatchlistManager::clearTitleUserNotification() instead.
+* Autopromote class, deprecated since 1.35, was removed. Use
+  UserGroupManager instead.
+* The following classes, hard-deprecated since 1.36, have been removed:
+  CachedAction, SpecialCachedPage, CacheHelper, ICacheHelper.
+* The deprecated "es6-promise" alias ResourceLoader module has been removed. Use
+  "es6-polyfills" directly intead.
 
 === Deprecations in 1.37 ===
 * JobQueue::getWiki, deprecated in 1.33, now emits deprecation warnings.
@@ -90,9 +107,25 @@ because of Phabricator reports.
 * Deprecated passing LinkTarget to
   WatchlistManager::clearTitleUserNotifications() and
   WatchlistManager::getTitleNotificationTimestamp(). Pass PageIdentity instead.
+* Deprecated User::isWatched(), User::isTempWatched(), User::addWatch(), and
+  User::removeWatch(). Use corresponding methods in WatchlistManager instead.
+* Deprecated WatchAction::doWatchOrUnwatch(). Use WatchlistManager::setWatch()
+  instead.
+* Deprecated WatchAction::doWatch() and WatchAction::doUnwatch(). Use
+  WatchlistManager::addWatch() or WatchlistManager::removeWatch(), instead.
+* Title::isWatchable() has been deprecated. Use WatchlistManager::isWatchable()
+  instead.
+* wfIncrStats(), deprecated in 1.36, now emits deprecation warnings.
 * …
 
 === Other changes in 1.37 ===
+* WatchlistManager::addWatch and WatchlistManager::addWatchIgnoringRights(),
+  which replace User::addWatch(), now call the WatchArticle and
+  WatchArticleComplete hooks.
+* WatchlistManager::removeWatch and
+  WatchlistManager::removeWatchIgnoringRights(), which replace
+  User::removeWatch(), now call the UnwatchArticle and UnwatchArticleComplete
+  hooks.
 * …
 
 == Compatibility ==

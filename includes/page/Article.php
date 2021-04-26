@@ -29,6 +29,7 @@ use MediaWiki\Permissions\PermissionStatus;
 use MediaWiki\Revision\RevisionRecord;
 use MediaWiki\Revision\RevisionStore;
 use MediaWiki\Revision\SlotRecord;
+use MediaWiki\Watchlist\WatchlistManager;
 use Wikimedia\IPUtils;
 use Wikimedia\NonSerializable\NonSerializableTrait;
 
@@ -99,6 +100,11 @@ class Article implements Page {
 	private $revisionStore;
 
 	/**
+	 * @var WatchlistManager
+	 */
+	private $watchlistManager;
+
+	/**
 	 * @var RevisionRecord|null Revision to be shown
 	 *
 	 * Initialized by getOldIDFromRequest() or fetchRevisionRecord(). While the output of
@@ -120,6 +126,7 @@ class Article implements Page {
 		$services = MediaWikiServices::getInstance();
 		$this->linkRenderer = $services->getLinkRenderer();
 		$this->revisionStore = $services->getRevisionStore();
+		$this->watchlistManager = $services->getWatchlistManager();
 	}
 
 	/**
@@ -489,7 +496,7 @@ class Article implements Page {
 		$oldid = $this->getOldID();
 
 		$user = $this->getContext()->getUser();
-		# Another whitelist check in case getOldID() is altering the title
+		# Another check in case getOldID() is altering the title
 		$permissionStatus = PermissionStatus::newEmpty();
 		if ( !$this->getContext()->getAuthority()
 			->authorizeRead( 'read', $this->getTitle(), $permissionStatus )
@@ -1614,7 +1621,10 @@ class Article implements Page {
 			: 'revision-info';
 
 		$outputPage = $context->getOutput();
-		$outputPage->addModuleStyles( 'mediawiki.action.styles' );
+		$outputPage->addModuleStyles( [
+			'mediawiki.action.styles',
+			'mediawiki.interface.helpers.styles'
+		] );
 
 		$revisionUser = $revisionRecord->getUser();
 		$revisionInfo = "<div id=\"mw-{$infomsg}\">" .
@@ -1906,7 +1916,7 @@ class Article implements Page {
 
 			$this->doDelete( $reason, $suppress );
 
-			WatchAction::doWatchOrUnwatch( $request->getCheck( 'wpWatch' ), $title, $context->getAuthority() );
+			$this->watchlistManager->setWatch( $request->getCheck( 'wpWatch' ), $context->getAuthority(), $title );
 
 			return;
 		}
@@ -2011,8 +2021,9 @@ class Article implements Page {
 		$this->getHookRunner()->onArticleConfirmDelete( $this, $outputPage, $reason );
 
 		$user = $this->getContext()->getUser();
-		$checkWatch = MediaWikiServices::getInstance()->getUserOptionsLookup()
-			->getBoolOption( $user, 'watchdeletion' ) || $user->isWatched( $title );
+		$services = MediaWikiServices::getInstance();
+		$checkWatch = $services->getUserOptionsLookup()->getBoolOption( $user, 'watchdeletion' ) ||
+			$this->watchlistManager->isWatched( $user, $title );
 
 		$outputPage->enableOOUI();
 

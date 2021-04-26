@@ -855,7 +855,7 @@ class WikiPageDbTest extends MediaWikiLangTestCase {
 		/** @var ContentHandler|MockObject $handler */
 		$handler = $this->getMockBuilder( TextContentHandler::class )
 			->setConstructorArgs( [ $name ] )
-			->setMethods(
+			->onlyMethods(
 				[ 'getSecondaryDataUpdates', 'getDeletionUpdates', 'unserializeContent' ]
 			)
 			->getMock();
@@ -895,7 +895,7 @@ class WikiPageDbTest extends MediaWikiLangTestCase {
 		/** @var Content|MockObject $content */
 		$content = $this->getMockBuilder( TextContent::class )
 			->setConstructorArgs( [ $text ] )
-			->setMethods( [ 'getModel', 'getContentHandler' ] )
+			->onlyMethods( [ 'getModel', 'getContentHandler' ] )
 			->getMock();
 
 		$content->method( 'getModel' )->willReturn( $handler->getModelID() );
@@ -2216,14 +2216,14 @@ more stuff
 		// Set read only
 		$readOnly = $this->getMockBuilder( ReadOnlyMode::class )
 			->disableOriginalConstructor()
-			->setMethods( [ 'isReadOnly', 'getReason' ] )
+			->onlyMethods( [ 'isReadOnly', 'getReason' ] )
 			->getMock();
 		$readOnly->expects( $this->once() )
 			->method( 'isReadOnly' )
-			->will( $this->returnValue( true ) );
+			->willReturn( true );
 		$readOnly->expects( $this->once() )
 			->method( 'getReason' )
-			->will( $this->returnValue( 'Some Read Only Reason' ) );
+			->willReturn( 'Some Read Only Reason' );
 		$this->setService( 'ReadOnlyMode', $readOnly );
 
 		$status = $page->doUpdateRestrictions( [], [], $cascade, 'aReason', $user, [] );
@@ -2341,7 +2341,7 @@ more stuff
 		/** @var Content $content */
 		$content = $this->getMockBuilder( WikitextContent::class )
 			->setConstructorArgs( [ 'Hello World' ] )
-			->setMethods( [ 'getParserOutput' ] )
+			->onlyMethods( [ 'getParserOutput' ] )
 			->getMock();
 		$content->expects( $this->once() )
 			->method( 'getParserOutput' )

@@ -132,7 +132,8 @@ class AbstractPasswordPrimaryAuthenticationProviderTest extends \MediaWikiIntegr
 			$services->getReadOnlyMode(),
 			$services->getUserNameUtils(),
 			$services->getBlockManager(),
-			$services->getBlockErrorFormatter()
+			$services->getBlockErrorFormatter(),
+			$services->getWatchlistManager()
 		);
 
 		$provider = $this->getMockForAbstractClass(
@@ -228,7 +229,7 @@ class AbstractPasswordPrimaryAuthenticationProviderTest extends \MediaWikiIntegr
 		);
 		$provider->expects( $this->once() )
 			->method( 'providerChangeAuthenticationData' )
-			->with( $this->equalTo( $req ) );
+			->with( $req );
 
 		$provider->providerRevokeAccessForUser( 'foo' );
 	}

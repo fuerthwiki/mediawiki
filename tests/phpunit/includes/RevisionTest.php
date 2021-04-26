@@ -408,11 +408,9 @@ class RevisionTest extends MediaWikiIntegrationTestCase {
 		$factory = $this->getMockBuilder( BlobStoreFactory::class )
 			->disableOriginalConstructor()
 			->getMock();
-		$factory->expects( $this->any() )
-			->method( 'newBlobStore' )
+		$factory->method( 'newBlobStore' )
 			->willReturn( $blobStore );
-		$factory->expects( $this->any() )
-			->method( 'newSqlBlobStore' )
+		$factory->method( 'newSqlBlobStore' )
 			->willReturn( $blobStore );
 		return $factory;
 	}
@@ -508,20 +506,19 @@ class RevisionTest extends MediaWikiIntegrationTestCase {
 
 		$domain = MediaWikiServices::getInstance()->getDBLoadBalancer()->getLocalDomainID();
 		$db = $this->createMock( IDatabase::class );
-		$db->expects( $this->any() )
-			->method( 'getDomainId' )
-			->will( $this->returnValue( $domain ) );
+		$db->method( 'getDomainId' )
+			->willReturn( $domain );
 		$db->expects( $this->once() )
 			->method( 'selectRow' )
 			->with(
-				$this->equalTo( [
+				[
 					'revision', 'page', 'user',
 					'temp_rev_comment' => 'revision_comment_temp', 'comment_rev_comment' => 'comment',
 					'temp_rev_user' => 'revision_actor_temp', 'actor_rev_user' => 'actor',
-				] ),
+				],
 				// We don't really care about the fields are they come from the selectField methods
 				$this->isType( 'array' ),
-				$this->equalTo( $conditions ),
+				$conditions,
 				// Method name
 				$this->stringContains( 'fetchRevisionRowFromConds' ),
 				// We don't really care about the options here

@@ -42,6 +42,8 @@ is no longer recommended and the option has been removed.
 * (T157145) $wgSkinMetaTags – This setting allows configuration of skins to
   support meta tags. These tags make sharing of MediaWiki pages on a variety of
   social platforms more contentful and thus useful.
+* (T280944) $wgIncludejQueryMigrate - This setting allows the jQuery Migrate
+  plugin to be disabled. It has been enabled by default since MediaWiki 1.27.
 * …
 
 ==== Changed configuration ====
@@ -94,7 +96,7 @@ is no longer recommended and the option has been removed.
 * The logo of MediaWiki has changed. This means that the "Powered By MediaWiki"
   button shown in the skin footer will be different.
 * All HTML5 named entities are now accepted in wikitext.
-* …
+* (T106263) The file description page's alternate sizes now include 2048px.
 
 === New developer features in 1.36 ===
 * Parser test files can now declare a dependency on a specific extension being
@@ -553,6 +555,7 @@ because of Phabricator reports.
 * …
 
 === Deprecations in 1.36 ===
+* (T278026) The DB_MASTER constant has been deprecated in favour of DB_PRIMARY.
 * (T245963) User::getGrantName() is now hard deprecated and will be removed in
   a subsequent release. Use MWGrants::grantName() instead.
 * wfIncrStats() is now deprecated. Use MediaWikiServices::getInstance()
@@ -600,6 +603,8 @@ because of Phabricator reports.
   OutputPage::getIndicators.
 * Skin::makeVariablesScript() has been deprecated. Use
   ResourceLoader::makeInlineScript() instead.
+* SpecialPageFactory::getRestrictedPages() has been deprecated.
+  Use SpecialPageFactory::getUsablePages() instead.
 * Title::nameOf() is deprecated; use Title::newFromID()->getPrefixedDBkey()
   instead.
 * DatabaseBlock::insert, DatabaseBlock::update, DatabaseBlock::purgeExpired and
@@ -677,6 +682,9 @@ because of Phabricator reports.
 * Article::getContentObject, soft-deprecated since 1.32, was hard-deprecated.
 * WikiRevision::importUpload, soft-deprecated since 1.31, was hard-deprecated.
 * Html::infoBox() has been deprecated. There's no replacement.
+* Message::toString() without a $format parameter, soft-deprecated since 1.28,
+  was hard-deprecated. Use explicit formatting methods instead, such as
+  Message::text() and Message::escaped().
 * BagOStuff::makeKeyInternal() usage outside of BagOStuff has been deprecated.
 * BagOStuff::setDebug() is deprecated and calls to it are ignored. Debug logs
   are now unconditionally enabled.
@@ -758,6 +766,8 @@ because of Phabricator reports.
   MediaWiki\Watchlist\WatchlistManager instead. Deprecated the method
   MediaWikiServices->getWatchlistNotificationManager(); use
   MediaWikiServices->getWatchlistManager() instead.
+* The "ArticleEditUpdatesDeleteFromRecentchanges" hook, deprecated in 1.35, has
+  been removed. Other hooks like "RecentChange_save" can be used instead.
 * …
 
 === Other changes in 1.36 ===

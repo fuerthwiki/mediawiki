@@ -69,7 +69,6 @@ return [
 			'legacy' => true,
 		],
 	],
-	// Used in the web installer. Test it after modifying this definition!
 	'mediawiki.skinning.interface' => [
 		'class' => ResourceLoaderSkinModule::class,
 		'features' => [
@@ -117,15 +116,24 @@ return [
 	// These modules' dependencies MUST be dependency-free (having dependencies would cause recursion).
 
 	'jquery' => [
-		'scripts' => [
-			'resources/lib/jquery/jquery.js',
-			'resources/lib/jquery/jquery.migrate.js',
-		],
+		'scripts' => ( $GLOBALS['wgIncludejQueryMigrate'] ?
+			[
+				'resources/lib/jquery/jquery.js',
+				'resources/lib/jquery/jquery.migrate.js',
+			] : [
+				'resources/lib/jquery/jquery.js'
+			]
+		),
 		'targets' => [ 'desktop', 'mobile' ],
 	],
-	'es6-promise' => [
-		'scripts' => 'resources/lib/promise-polyfill/promise-polyfill.js',
-		'skipFunction' => 'resources/src/skip-Promise.js',
+	'es6-polyfills' => [
+		'scripts' => [
+			'resources/lib/promise-polyfill/promise-polyfill.js',
+			'resources/src/es6-polyfills/array-find-polyfill.js',
+			'resources/src/es6-polyfills/array-findIndex-polyfill.js',
+			'resources/src/es6-polyfills/array-includes-polyfill.js',
+		],
+		'skipFunction' => 'resources/src/skip-es6-polyfills.js',
 		'targets' => [ 'desktop', 'mobile' ],
 	],
 	'mediawiki.base' => [
@@ -133,7 +141,8 @@ return [
 		'packageFiles' => [
 			// This MUST be kept in sync with maintenance/jsduck/eg-iframe.html
 			'mediawiki.base.js',
-			'mediawiki.errorLogger.js',
+			'log.js',
+			'errorLogger.js',
 
 			// (not this though)
 			[ 'name' => 'config.json', 'callback' => 'ResourceLoader::getSiteConfigSettings' ],
@@ -591,7 +600,7 @@ return [
 		],
 		'dependencies' => [
 			'vue',
-			'es6-promise',
+			'es6-polyfills',
 		],
 		'targets' => [ 'desktop', 'mobile' ],
 	],
@@ -2318,6 +2327,7 @@ return [
 
 	// Used in the web installer. Test it after modifying this definition!
 	'mediawiki.legacy.config' => [
+		'deprecated' => 'This module will be removed in 1.37. Use `mediawiki.skinning.interface`.',
 		// These files are not actually loaded via ResourceLoader, so dependencies etc. won't work.
 		'scripts' => 'mw-config/config.js',
 		'styles' => 'mw-config/config.css',

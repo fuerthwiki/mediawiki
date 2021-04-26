@@ -81,8 +81,16 @@ use LogicException;
 interface ILoadBalancer {
 	/** Request a replica DB connection */
 	public const DB_REPLICA = -1;
-	/** Request a master DB connection */
-	public const DB_MASTER = -2;
+	/**
+	 * Request a primary, write-enabled DB connection
+	 * @since 1.36
+	 */
+	public const DB_PRIMARY = -2;
+	/**
+	 * Request a primary, write-enabled DB connection
+	 * @deprecated since 1.36, Use DB_PRIMARY instead
+	 */
+	public const DB_MASTER = self::DB_PRIMARY;
 
 	/** Domain specifier when no specific database needs to be selected */
 	public const DOMAIN_ANY = '';
@@ -466,7 +474,7 @@ interface ILoadBalancer {
 	public function hasStreamingReplicaServers();
 
 	/**
-	 * Get the host name or IP address of the server with the specified index
+	 * Get the name of the server with the specified index
 	 *
 	 * @param int $i
 	 * @return string Readable name if available or IP/host otherwise
@@ -740,7 +748,7 @@ interface ILoadBalancer {
 	public function forEachOpenReplicaConnection( $callback, array $params = [] );
 
 	/**
-	 * Get the hostname and lag time of the most-lagged replica server
+	 * Get the name and lag time of the most-lagged replica server
 	 *
 	 * This is useful for maintenance scripts that need to throttle their updates.
 	 * May attempt to open connections to replica DBs on the default DB. If there is
