@@ -42,6 +42,8 @@ is no longer recommended and the option has been removed.
 * (T157145) $wgSkinMetaTags – This setting allows configuration of skins to
   support meta tags. These tags make sharing of MediaWiki pages on a variety of
   social platforms more contentful and thus useful.
+* (T280944) $wgIncludejQueryMigrate - This setting allows the jQuery Migrate
+  plugin to be disabled. It has been enabled by default since MediaWiki 1.27.
 * …
 
 ==== Changed configuration ====
@@ -138,6 +140,8 @@ is no longer recommended and the option has been removed.
 ==== Changed external libraries ====
 * Updated composer/semver from 1.5.1 to 3.2.4.
 * Updated guzzlehttp/guzzle from 6.5.4 to 7.2.0.
+* Updated jQuery from v3.4.1 to v3.6.0.
+* Updated jQuery Migrate from v3.1.0 to v3.3.2.
 * Updated jquery.client from 2.0.2 to 3.0.0.
 * Updated OOUI from 0.39.3 to 0.41.3.
 * Updated pear/mail_mime from 1.10.8 to 1.10.9.
@@ -595,6 +599,8 @@ because of Phabricator reports.
   OutputPage::getIndicators.
 * Skin::makeVariablesScript() has been deprecated. Use
   ResourceLoader::makeInlineScript() instead.
+* SpecialPageFactory::getRestrictedPages() has been deprecated.
+  Use SpecialPageFactory::getUsablePages() instead.
 * Title::nameOf() is deprecated; use Title::newFromID()->getPrefixedDBkey()
   instead.
 * DatabaseBlock::insert, DatabaseBlock::update, DatabaseBlock::purgeExpired and
@@ -667,11 +673,15 @@ because of Phabricator reports.
 * The mw.language.commafy client-side method has been deprecated, to match
   the deprecation of Language::commafy. Use mw.language.convertNumber
   instead.
+* The "es6-promise" module has been deprecated. Use "es6-polyfills" instead.
 * Title::isDeleted() and Title::isDeletedQuick() have been deprecated. Please
   use Title::getDeletedEditsCount() and Title::hasDeletedEdits() instead.
 * Article::getContentObject, soft-deprecated since 1.32, was hard-deprecated.
 * WikiRevision::importUpload, soft-deprecated since 1.31, was hard-deprecated.
 * Html::infoBox() has been deprecated. There's no replacement.
+* Message::toString() without a $format parameter, soft-deprecated since 1.28,
+  was hard-deprecated. Use explicit formatting methods instead, such as
+  Message::text() and Message::escaped().
 * BagOStuff::makeKeyInternal() usage outside of BagOStuff has been deprecated.
 * BagOStuff::setDebug() is deprecated and calls to it are ignored. Debug logs
   are now unconditionally enabled.
@@ -754,6 +764,8 @@ because of Phabricator reports.
   A new "coalesceScheme" option takes its place, and is "hash_stop" by default.
   $wgWANObjectCaches entries that use dynomite should be updated to set the
   new "coalesceKeys" option to "hash_tag".
+* The "ArticleEditUpdatesDeleteFromRecentchanges" hook, deprecated in 1.35, has
+  been removed. Other hooks like "RecentChange_save" can be used instead.
 * …
 
 === Other changes in 1.36 ===
