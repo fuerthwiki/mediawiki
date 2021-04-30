@@ -297,6 +297,7 @@ class UserTest extends MediaWikiIntegrationTestCase {
 	 * @covers User::isIP
 	 */
 	public function testIsIP( $value, $result, $message ) {
+		$this->hideDeprecated( 'User::isIP' );
 		$this->assertSame( $result, $this->user->isIP( $value ), $message );
 	}
 
@@ -955,7 +956,7 @@ class UserTest extends MediaWikiIntegrationTestCase {
 			'wgExperiencedUserMemberSince' => 30,
 		] );
 
-		$db = wfGetDB( DB_MASTER );
+		$db = wfGetDB( DB_PRIMARY );
 		$userQuery = User::getQueryInfo();
 		$row = $db->selectRow(
 			$userQuery['tables'],

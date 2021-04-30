@@ -22,10 +22,10 @@
 
 namespace MediaWiki\Block;
 
-use ActorMigration;
 use CommentStore;
 use Hooks;
 use Html;
+use MediaWiki\Block\Restriction\ActionRestriction;
 use MediaWiki\Block\Restriction\NamespaceRestriction;
 use MediaWiki\Block\Restriction\PageRestriction;
 use MediaWiki\Block\Restriction\Restriction;
@@ -191,6 +191,11 @@ class DatabaseBlock extends AbstractBlock {
 	/**
 	 * Return the tables, fields, and join conditions to be selected to create
 	 * a new block object.
+	 *
+	 * Since 1.34, ipb_by and ipb_by_text have not been present in the
+	 * database, but they continue to be available in query results as
+	 * aliases.
+	 *
 	 * @since 1.31
 	 * @return array With three keys:
 	 *   - tables: (string[]) to include in the `$table` to `IDatabase->select()`
@@ -199,9 +204,11 @@ class DatabaseBlock extends AbstractBlock {
 	 */
 	public static function getQueryInfo() {
 		$commentQuery = CommentStore::getStore()->getJoin( 'ipb_reason' );
-		$actorQuery = ActorMigration::newMigration()->getJoin( 'ipb_by' );
 		return [
-			'tables' => [ 'ipblocks' ] + $commentQuery['tables'] + $actorQuery['tables'],
+			'tables' => [
+				'ipblocks',
+				'ipblocks_actor' => 'actor'
+			] + $commentQuery['tables'],
 			'fields' => [
 				'ipb_id',
 				'ipb_address',
@@ -216,8 +223,13 @@ class DatabaseBlock extends AbstractBlock {
 				'ipb_allow_usertalk',
 				'ipb_parent_block_id',
 				'ipb_sitewide',
-			] + $commentQuery['fields'] + $actorQuery['fields'],
-			'joins' => $commentQuery['joins'] + $actorQuery['joins'],
+				'ipb_by_actor',
+				'ipb_by' => 'ipblocks_actor.actor_user',
+				'ipb_by_text' => 'ipblocks_actor.actor_name'
+			] + $commentQuery['fields'],
+			'joins' => [
+				'ipblocks_actor' => [ 'JOIN', 'actor_id=ipb_by_actor' ]
+			] + $commentQuery['joins'],
 		];
 	}
 
@@ -268,7 +280,7 @@ class DatabaseBlock extends AbstractBlock {
 		$fromMaster,
 		$vagueTarget = null
 	) {
-		$db = wfGetDB( $fromMaster ? DB_MASTER : DB_REPLICA );
+		$db = wfGetDB( $fromMaster ? DB_PRIMARY : DB_REPLICA );
 
 		if ( $specificType !== null ) {
 			$conds = [ 'ipb_address' => [ (string)$specificTarget ] ];
@@ -705,7 +717,7 @@ class DatabaseBlock extends AbstractBlock {
 			$this->setTimestamp( wfTimestamp() );
 			$this->setExpiry( self::getAutoblockExpiry( $this->getTimestamp() ) );
 
-			$dbw = wfGetDB( DB_MASTER );
+			$dbw = wfGetDB( DB_PRIMARY );
 			$dbw->update( 'ipblocks',
 				[ /* SET */
 					'ipb_timestamp' => $dbw->timestamp( $this->getTimestamp() ),
@@ -967,7 +979,7 @@ class DatabaseBlock extends AbstractBlock {
 		}
 
 		if ( $fromMaster ) {
-			$db = wfGetDB( DB_MASTER );
+			$db = wfGetDB( DB_PRIMARY );
 		} else {
 			$db = wfGetDB( DB_REPLICA );
 		}
@@ -1226,6 +1238,35 @@ class DatabaseBlock extends AbstractBlock {
 		$restriction = $this->findRestriction( PageRestriction::TYPE, $pageId );
 
 		return (bool)$restriction;
+	}
+
+	/**
+	 * @inheritDoc
+	 */
+	public function appliesToRight( $right ) {
+		// Temporarily access service container until the feature flag is removed: T280532
+		$config = MediaWikiServices::getInstance()->getMainConfig();
+
+		$res = parent::appliesToRight( $right );
+
+		if ( !$res && $config->get( 'EnablePartialActionBlocks' ) ) {
+			$blockActions = MediaWikiServices::getInstance()->getBlockActionInfo()
+				->getAllBlockActions();
+
+			if ( isset( $blockActions[$right] ) ) {
+				$restriction = $this->findRestriction(
+					ActionRestriction::TYPE,
+					$blockActions[$right]
+				);
+
+				// $res may be null or false. This should be preserved if there is no restriction.
+				if ( $restriction ) {
+					$res = true;
+				}
+			}
+		}
+
+		return $res;
 	}
 
 	/**

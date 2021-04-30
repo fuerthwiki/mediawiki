@@ -29,7 +29,7 @@ class ChangeTagsTest extends MediaWikiIntegrationTestCase {
 	}
 
 	private function emptyChangeTagsTables() {
-		$dbw = wfGetDB( DB_MASTER );
+		$dbw = wfGetDB( DB_PRIMARY );
 		$dbw->delete( 'change_tag', '*' );
 		$dbw->delete( 'change_tag_def', '*' );
 	}
@@ -345,12 +345,14 @@ class ChangeTagsTest extends MediaWikiIntegrationTestCase {
 					'mw-redirect' => true,
 					'mw-rollback' => true,
 					'mw-blank' => true,
-					'mw-replace' => true
+					'mw-replace' => true,
+					'mw-add-media' => true,
 				],
 				[
 					'mw-rollback',
 					'mw-replace',
-					'mw-blank'
+					'mw-blank',
+					'mw-add-media',
 				]
 			],
 

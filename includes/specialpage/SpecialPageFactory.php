@@ -143,7 +143,6 @@ class SpecialPageFactory {
 				'LinkBatchFactory',
 				'DBLoadBalancer',
 				'CommentStore',
-				'ActorMigration',
 				'UserCache',
 			]
 		],
@@ -359,6 +358,7 @@ class SpecialPageFactory {
 				'BlockUserFactory',
 				'UserNameUtils',
 				'UserNamePrefixSearch',
+				'BlockActionInfo',
 			]
 		],
 		'Unblock' => [
@@ -376,7 +376,6 @@ class SpecialPageFactory {
 				'LinkBatchFactory',
 				'BlockRestrictionStore',
 				'DBLoadBalancer',
-				'ActorMigration',
 				'CommentStore',
 				'BlockUtils',
 			],
@@ -387,7 +386,6 @@ class SpecialPageFactory {
 				'LinkBatchFactory',
 				'BlockRestrictionStore',
 				'DBLoadBalancer',
-				'ActorMigration',
 				'CommentStore',
 				'BlockUtils'
 			],
@@ -534,7 +532,6 @@ class SpecialPageFactory {
 				'DBLoadBalancer',
 				'RevisionLookup',
 				'NamespaceInfo',
-				'ActorMigration',
 				'UserOptionsLookup',
 				'UserFactory',
 			]

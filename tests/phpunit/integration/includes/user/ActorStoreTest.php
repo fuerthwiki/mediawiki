@@ -750,6 +750,23 @@ class ActorStoreTest extends ActorStoreTestBase {
 		$this->assertSameActors( $anotherActor, $store->getActorById( $anotherActorId, $this->db ) );
 	}
 
+	public function testUserRenameUpdatesActor() {
+		$user = $this->getMutableTestUser()->getUser();
+		$oldName = $user->getName();
+
+		$store = $this->getStore();
+		$actorId = $store->findActorId( $user, $this->db );
+		$this->assertTrue( $actorId > 0 );
+
+		$user->setName( 'NewName' );
+		$user->saveSettings();
+
+		$this->assertSameActors( $user, $store->getActorById( $actorId, $this->db ) );
+		$this->assertSameActors( $user, $store->getUserIdentityByName( 'NewName' ) );
+		$this->assertSameActors( $user, $store->getUserIdentityByUserId( $user->getId() ) );
+		$this->assertNull( $store->getUserIdentityByName( $oldName ) );
+	}
+
 	/**
 	 * @covers ::acquireSystemActorId
 	 */
@@ -797,6 +814,30 @@ class ActorStoreTest extends ActorStoreTestBase {
 		$this->assertSame( 456789, $store->getActorById( $newActorId, $this->db )->getId() );
 		// Try with another store to verify not just cache was updated
 		$this->assertSame( 456789, $this->getStore()->getActorById( $newActorId, $this->db )->getId() );
+	}
+
+	/**
+	 * @covers ::deleteActor
+	 */
+	public function testDelete() {
+		$store = $this->getStore();
+		$actor = new UserIdentityValue( 9999, 'DeleteTest' );
+		$actorId = $store->acquireActorId( $actor, $this->db );
+		$this->assertTrue( $store->deleteActor( $actor, $this->db ) );
+
+		$this->assertNull( $store->findActorId( $actor, $this->db ) );
+		$this->assertNull( $store->getUserIdentityByUserId( $actor->getId() ) );
+		$this->assertNull( $store->getUserIdentityByName( $actor->getName() ) );
+		$this->assertNull( $store->getActorById( $actorId, $this->db ) );
+	}
+
+	/**
+	 * @covers ::deleteActor
+	 */
+	public function testDeleteDoesNotExist() {
+		$this->assertFalse(
+			$this->getStore()->deleteActor( new UserIdentityValue( 9998, 'DoesNotExist' ), $this->db )
+		);
 	}
 
 	/**

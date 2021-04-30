@@ -99,7 +99,7 @@ class RevDelRevisionItem extends RevDelItem {
 	public function setBits( $bits ) {
 		$revRecord = $this->getRevisionRecord();
 
-		$dbw = wfGetDB( DB_MASTER );
+		$dbw = wfGetDB( DB_PRIMARY );
 		// Update revision table
 		$dbw->update( 'revision',
 			[ 'rev_deleted' => $bits ],
@@ -199,7 +199,8 @@ class RevDelRevisionItem extends RevDelItem {
 		$userlink = Linker::revUserLink( $revRecord );
 		$comment = Linker::revComment( $revRecord );
 		if ( $this->isDeleted() ) {
-			$revlink = "<span class=\"history-deleted\">$revlink</span>";
+			$class = Linker::getRevisionDeletedClass( $revRecord );
+			$revlink = "<span class=\"$class\">$revlink</span>";
 		}
 		$content = "$difflink $revlink $userlink $comment";
 		$attribs = [];

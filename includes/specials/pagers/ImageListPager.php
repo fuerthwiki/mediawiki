@@ -20,6 +20,7 @@
  */
 
 use MediaWiki\Linker\LinkRenderer;
+use MediaWiki\User\UserNameUtils;
 use Wikimedia\Rdbms\FakeResultWrapper;
 use Wikimedia\Rdbms\ILoadBalancer;
 use Wikimedia\Rdbms\IResultWrapper;
@@ -80,6 +81,7 @@ class ImageListPager extends TablePager {
 	 * @param ILoadBalancer $loadBalancer
 	 * @param CommentStore $commentStore
 	 * @param UserCache $userCache
+	 * @param UserNameUtils $userNameUtils
 	 */
 	public function __construct(
 		IContextSource $context,
@@ -91,7 +93,8 @@ class ImageListPager extends TablePager {
 		RepoGroup $repoGroup,
 		ILoadBalancer $loadBalancer,
 		CommentStore $commentStore,
-		UserCache $userCache
+		UserCache $userCache,
+		UserNameUtils $userNameUtils
 	) {
 		$this->setContext( $context );
 
@@ -109,7 +112,7 @@ class ImageListPager extends TablePager {
 				if ( $user ) {
 					$this->mUser = $user;
 				}
-				if ( !$user || ( $user->isAnon() && !User::isIP( $user->getName() ) ) ) {
+				if ( !$user || ( $user->isAnon() && !$userNameUtils->isIP( $user->getName() ) ) ) {
 					$this->outputUserDoesNotExist( $userName );
 				}
 			}
@@ -287,7 +290,8 @@ class ImageListPager extends TablePager {
 		$dbr = $this->getDatabase();
 		$prefix = $table === 'oldimage' ? 'oi' : 'img';
 
-		$tables = [ $table ];
+		$tables = [ $table, 'actor' ];
+		$join_conds = [];
 
 		if ( $table === 'oldimage' ) {
 			$fields = [
@@ -296,6 +300,7 @@ class ImageListPager extends TablePager {
 				'img_size' => 'oi_size',
 				'top' => $dbr->addQuotes( 'no' )
 			];
+			$join_conds['actor'] = [ 'JOIN', 'actor_id=oi_actor' ];
 		} else {
 			$fields = [
 				'img_timestamp',
@@ -303,9 +308,10 @@ class ImageListPager extends TablePager {
 				'img_size',
 				'top' => $dbr->addQuotes( 'yes' )
 			];
+			$join_conds['actor'] = [ 'JOIN', 'actor_id=img_actor' ];
 		}
 
-		$options = $join_conds = [];
+		$options = [];
 
 		# Description field
 		$commentQuery = $this->commentStore->getJoin( $prefix . '_description' );
@@ -315,8 +321,6 @@ class ImageListPager extends TablePager {
 		$fields['description_field'] = $dbr->addQuotes( "{$prefix}_description" );
 
 		# Actor fields
-		$tables['actor'] = 'actor';
-		$join_conds['actor'] = [ 'JOIN', 'actor_id=img_actor' ];
 		$fields[] = 'actor_user';
 		$fields[] = 'actor_name';
 

@@ -2554,7 +2554,7 @@ class Title implements LinkTarget, PageIdentity, IDBAccessObject {
 	 * Remove any title protection due to page existing
 	 */
 	public function deleteTitleProtection() {
-		$dbw = wfGetDB( DB_MASTER );
+		$dbw = wfGetDB( DB_PRIMARY );
 
 		$dbw->delete(
 			'protected_titles',
@@ -2939,7 +2939,7 @@ class Title implements LinkTarget, PageIdentity, IDBAccessObject {
 			};
 
 			if ( $readLatest ) {
-				$dbr = wfGetDB( DB_MASTER );
+				$dbr = wfGetDB( DB_PRIMARY );
 				$rows = $loadRestrictionsFromDb( $dbr );
 			} else {
 				$cache = MediaWikiServices::getInstance()->getMainWANObjectCache();
@@ -3005,7 +3005,7 @@ class Title implements LinkTarget, PageIdentity, IDBAccessObject {
 		}
 
 		DeferredUpdates::addUpdate( new AtomicSectionUpdate(
-			wfGetDB( DB_MASTER ),
+			wfGetDB( DB_PRIMARY ),
 			__METHOD__,
 			static function ( IDatabase $dbw, $fname ) {
 				$config = MediaWikiServices::getInstance()->getMainConfig();
@@ -3023,7 +3023,7 @@ class Title implements LinkTarget, PageIdentity, IDBAccessObject {
 		) );
 
 		DeferredUpdates::addUpdate( new AtomicSectionUpdate(
-			wfGetDB( DB_MASTER ),
+			wfGetDB( DB_PRIMARY ),
 			__METHOD__,
 			static function ( IDatabase $dbw, $fname ) {
 				$dbw->delete(
@@ -3411,7 +3411,7 @@ class Title implements LinkTarget, PageIdentity, IDBAccessObject {
 	 */
 	public function getLinksTo( $options = [], $table = 'pagelinks', $prefix = 'pl' ) {
 		if ( count( $options ) > 0 ) {
-			$db = wfGetDB( DB_MASTER );
+			$db = wfGetDB( DB_PRIMARY );
 		} else {
 			$db = wfGetDB( DB_REPLICA );
 		}
@@ -3591,7 +3591,7 @@ class Title implements LinkTarget, PageIdentity, IDBAccessObject {
 	 * @return bool
 	 */
 	public function isSingleRevRedirect() {
-		$dbw = wfGetDB( DB_MASTER );
+		$dbw = wfGetDB( DB_PRIMARY );
 		$dbw->startAtomic( __METHOD__ );
 
 		$row = $dbw->selectRow(
@@ -4141,7 +4141,7 @@ class Title implements LinkTarget, PageIdentity, IDBAccessObject {
 		$conds = $this->pageCond();
 		DeferredUpdates::addUpdate(
 			new AutoCommitUpdate(
-				wfGetDB( DB_MASTER ),
+				wfGetDB( DB_PRIMARY ),
 				__METHOD__,
 				function ( IDatabase $dbw, $fname ) use ( $conds, $purgeTime ) {
 					$dbTimestamp = $dbw->timestamp( $purgeTime ?: time() );
@@ -4389,7 +4389,7 @@ class Title implements LinkTarget, PageIdentity, IDBAccessObject {
 	 * e.g. $wgLang (such as special pages, which are in the user language).
 	 *
 	 * @since 1.18
-	 * @return Language
+	 * @return Language|StubUserLang
 	 */
 	public function getPageLanguage() {
 		global $wgLang, $wgLanguageCode;
@@ -4430,7 +4430,7 @@ class Title implements LinkTarget, PageIdentity, IDBAccessObject {
 	 * e.g. $wgLang (such as special pages, which are in the user language).
 	 *
 	 * @since 1.20
-	 * @return Language
+	 * @return Language|StubUserLang
 	 */
 	public function getPageViewLanguage() {
 		global $wgLang;
@@ -4633,7 +4633,7 @@ class Title implements LinkTarget, PageIdentity, IDBAccessObject {
 	 *
 	 * For the purpose of the Title class, a proper page is one that can
 	 * exist in the page table. That is, a Title represents a proper page
-	 * if canExist() returns true and getFragment() returns an empty string.
+	 * if canExist() returns true.
 	 *
 	 * @see canExist()
 	 *
@@ -4643,11 +4643,6 @@ class Title implements LinkTarget, PageIdentity, IDBAccessObject {
 		Assert::precondition(
 			$this->canExist(),
 			'This Title instance does not represent a proper page, but merely a link target.'
-		);
-
-		Assert::precondition(
-			$this->getFragment() === '',
-			'This Title instance represents a fragment link.'
 		);
 	}
 

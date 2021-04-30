@@ -47,6 +47,7 @@
 use Liuggio\StatsdClient\Factory\StatsdDataFactoryInterface;
 use MediaWiki\Auth\AuthManager;
 use MediaWiki\BadFileLookup;
+use MediaWiki\Block\BlockActionInfo;
 use MediaWiki\Block\BlockErrorFormatter;
 use MediaWiki\Block\BlockManager;
 use MediaWiki\Block\BlockPermissionCheckerFactory;
@@ -210,6 +211,10 @@ return [
 			new ServiceOptions( BlobStoreFactory::CONSTRUCTOR_OPTIONS,
 				$services->getMainConfig() )
 		);
+	},
+
+	'BlockActionInfo' => static function ( MediaWikiServices $services ) : BlockActionInfo {
+		return new BlockActionInfo( $services->getHookContainer() );
 	},
 
 	'BlockErrorFormatter' => static function ( MediaWikiServices $services ) : BlockErrorFormatter {
@@ -430,6 +435,16 @@ return [
 		$instance = new $class( $lbConf );
 
 		MWLBFactory::setDomainAliases( $instance );
+
+		// NOTE: This accesses ProxyLookup from the MediaWikiServices singleton
+		// for non-essential non-nonimal purposes (via WebRequest::getIP).
+		// This state is fine (and meant) to be consistent for a given PHP process,
+		// even if applied to the service container for a different wiki.
+		MWLBFactory::applyGlobalState(
+			$instance,
+			$mainConfig,
+			$services->getStatsdDataFactory()
+		);
 
 		return $instance;
 	},
@@ -1023,7 +1038,8 @@ return [
 			$services->getTidy(),
 			$services->getMainWANObjectCache(),
 			$services->getUserOptionsLookup(),
-			$services->getUserFactory()
+			$services->getUserFactory(),
+			$services->getTitleFormatter()
 		);
 	},
 
@@ -1594,11 +1610,9 @@ return [
 		return new WatchedItemQueryService(
 			$services->getDBLoadBalancer(),
 			$services->getCommentStore(),
-			$services->getActorMigration(),
 			$services->getWatchedItemStore(),
 			$services->getPermissionManager(),
 			$services->getHookContainer(),
-			$services->getUserFactory(),
 			$services->getMainConfig()->get( 'WatchlistExpiry' )
 		);
 	},
@@ -1724,7 +1738,8 @@ return [
 			$services->getHookContainer(),
 			$services->getWikiPageFactory(),
 			$services->getUserFactory(),
-			$services->getActorMigration()
+			$services->getActorMigration(),
+			$services->getActorNormalization()
 		);
 	},
 

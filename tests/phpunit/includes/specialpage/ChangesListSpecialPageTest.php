@@ -260,12 +260,10 @@ class ChangesListSpecialPageTest extends AbstractChangesListSpecialPageTestCase 
 	}
 
 	public function testRcHidemyselfFilter() {
-		$actorNormalization = $this->getServiceContainer()->getActorNormalization();
 		$user = $this->getTestUser()->getUser();
-		$actorId = $actorNormalization->acquireActorId( $user, $this->db );
 		$this->assertConditions(
 			[ # expected
-				"NOT((rc_actor = {$actorId}))",
+				"actor_user<>{$user->getId()}",
 			],
 			[
 				'hidemyself' => 1,
@@ -275,10 +273,9 @@ class ChangesListSpecialPageTest extends AbstractChangesListSpecialPageTestCase 
 		);
 
 		$user = User::newFromName( '10.11.12.13', false );
-		$actorId = $actorNormalization->acquireActorId( $user, $this->db );
 		$this->assertConditions(
 			[ # expected
-				"NOT((rc_actor = {$actorId}))",
+				"actor_name<>'10.11.12.13'",
 			],
 			[
 				'hidemyself' => 1,
@@ -289,12 +286,10 @@ class ChangesListSpecialPageTest extends AbstractChangesListSpecialPageTestCase 
 	}
 
 	public function testRcHidebyothersFilter() {
-		$actorNormalization = $this->getServiceContainer()->getActorNormalization();
 		$user = $this->getTestUser()->getUser();
-		$actorId = $actorNormalization->acquireActorId( $user, $this->db );
 		$this->assertConditions(
 			[ # expected
-				"(rc_actor = {$actorId})",
+				'actor_user' => $user->getId(),
 			],
 			[
 				'hidebyothers' => 1,
@@ -304,10 +299,9 @@ class ChangesListSpecialPageTest extends AbstractChangesListSpecialPageTestCase 
 		);
 
 		$user = User::newFromName( '10.11.12.13', false );
-		$actorId = $actorNormalization->acquireActorId( $user, $this->db );
 		$this->assertConditions(
 			[ # expected
-				"(rc_actor = {$actorId})",
+				'actor_name' => '10.11.12.13',
 			],
 			[
 				'hidebyothers' => 1,
@@ -523,7 +517,7 @@ class ChangesListSpecialPageTest extends AbstractChangesListSpecialPageTestCase 
 		$this->assertConditions(
 			[
 				# expected
-				'actor_rc_user.actor_user IS NOT NULL',
+				'actor_user IS NOT NULL',
 			],
 			[
 				'userExpLevel' => 'newcomer;learner;experienced',
@@ -536,7 +530,7 @@ class ChangesListSpecialPageTest extends AbstractChangesListSpecialPageTestCase 
 		$this->assertConditions(
 			[
 				# expected
-				'actor_rc_user.actor_user IS NOT NULL',
+				'actor_user IS NOT NULL',
 			],
 			[
 				'userExpLevel' => 'registered',
@@ -549,7 +543,7 @@ class ChangesListSpecialPageTest extends AbstractChangesListSpecialPageTestCase 
 		$this->assertConditions(
 			[
 				# expected
-				'actor_rc_user.actor_user IS NULL',
+				'actor_user' => null,
 			],
 			[
 				'userExpLevel' => 'unregistered',
@@ -562,7 +556,7 @@ class ChangesListSpecialPageTest extends AbstractChangesListSpecialPageTestCase 
 		$this->assertConditions(
 			[
 				# expected
-				'actor_rc_user.actor_user IS NOT NULL',
+				'actor_user IS NOT NULL',
 			],
 			[
 				'userExpLevel' => 'registered;learner',
@@ -575,7 +569,7 @@ class ChangesListSpecialPageTest extends AbstractChangesListSpecialPageTestCase 
 		$conds = $this->buildQuery( [ 'userExpLevel' => 'unregistered;experienced' ] );
 
 		$this->assertRegExp(
-			'/\(actor_rc_user\.actor_user IS NULL\) OR '
+			'/actor_user IS NULL OR '
 				. '\(\(user_editcount >= 500\) AND \(\(user_registration IS NULL\) OR '
 				. '\(user_registration <= \'[^\']+\'\)\)\)/',
 			reset( $conds ),
@@ -650,7 +644,7 @@ class ChangesListSpecialPageTest extends AbstractChangesListSpecialPageTestCase 
 	}
 
 	private function createUsers( $specs, $now ) {
-		$dbw = wfGetDB( DB_MASTER );
+		$dbw = wfGetDB( DB_PRIMARY );
 		foreach ( $specs as $name => $spec ) {
 			User::createNew(
 				$name,
@@ -690,7 +684,7 @@ class ChangesListSpecialPageTest extends AbstractChangesListSpecialPageTestCase 
 
 		// @todo: This is not at all safe or sane. It just blindly assumes
 		// nothing in $conds depends on any other tables.
-		$result = wfGetDB( DB_MASTER )->select(
+		$result = wfGetDB( DB_PRIMARY )->select(
 			'user',
 			'user_name',
 			array_filter( $conds ) + [ 'user_email' => 'ut' ]

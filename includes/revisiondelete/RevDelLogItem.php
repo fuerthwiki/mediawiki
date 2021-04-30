@@ -61,7 +61,7 @@ class RevDelLogItem extends RevDelItem {
 	}
 
 	public function setBits( $bits ) {
-		$dbw = wfGetDB( DB_MASTER );
+		$dbw = wfGetDB( DB_PRIMARY );
 
 		$dbw->update( 'logging',
 			[ 'log_deleted' => $bits ],
@@ -143,7 +143,7 @@ class RevDelLogItem extends RevDelItem {
 		}
 		if ( LogEventsList::userCan( $this->row, LogPage::DELETED_USER, $user ) ) {
 			$ret += [
-				'userid' => $this->row->log_user,
+				'userid' => $this->row->log_user ?? 0,
 				'user' => $this->row->log_user_text,
 			];
 		}

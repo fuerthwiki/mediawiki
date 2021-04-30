@@ -22,6 +22,7 @@
 
 use MediaWiki\Block\BlockRestrictionStore;
 use MediaWiki\ParamValidator\TypeDef\UserDef;
+use MediaWiki\User\UserNameUtils;
 use Wikimedia\IPUtils;
 use Wikimedia\Rdbms\IResultWrapper;
 
@@ -38,21 +39,27 @@ class ApiQueryBlocks extends ApiQueryBase {
 	/** @var CommentStore */
 	private $commentStore;
 
+	/** @var UserNameUtils */
+	private $userNameUtils;
+
 	/**
 	 * @param ApiQuery $query
 	 * @param string $moduleName
 	 * @param BlockRestrictionStore $blockRestrictionStore
 	 * @param CommentStore $commentStore
+	 * @param UserNameUtils $userNameUtils
 	 */
 	public function __construct(
 		ApiQuery $query,
 		$moduleName,
 		BlockRestrictionStore $blockRestrictionStore,
-		CommentStore $commentStore
+		CommentStore $commentStore,
+		UserNameUtils $userNameUtils
 	) {
 		parent::__construct( $query, $moduleName, 'bk' );
 		$this->blockRestrictionStore = $blockRestrictionStore;
 		$this->commentStore = $commentStore;
+		$this->userNameUtils = $userNameUtils;
 	}
 
 	public function execute() {
@@ -80,10 +87,9 @@ class ApiQueryBlocks extends ApiQueryBase {
 
 		$this->addFieldsIf( [ 'ipb_address', 'ipb_user' ], $fld_user || $fld_userid );
 		if ( $fld_by || $fld_byid ) {
-			$actorQuery = ActorMigration::newMigration()->getJoin( 'ipb_by' );
-			$this->addTables( $actorQuery['tables'] );
-			$this->addFields( $actorQuery['fields'] );
-			$this->addJoinConds( $actorQuery['joins'] );
+			$this->addTables( 'actor' );
+			$this->addFields( [ 'actor_user', 'actor_name' ] );
+			$this->addJoinConds( [ 'actor' => [ 'JOIN', 'actor_id=ipb_by_actor' ] ] );
 		}
 		$this->addFieldsIf( 'ipb_expiry', $fld_expiry );
 		$this->addFieldsIf( [ 'ipb_range_start', 'ipb_range_end' ], $fld_range );
@@ -230,10 +236,10 @@ class ApiQueryBlocks extends ApiQueryBase {
 				$block['userid'] = (int)$row->ipb_user;
 			}
 			if ( $fld_by ) {
-				$block['by'] = $row->ipb_by_text;
+				$block['by'] = $row->actor_name;
 			}
 			if ( $fld_byid ) {
-				$block['byid'] = (int)$row->ipb_by;
+				$block['byid'] = (int)$row->actor_user;
 			}
 			if ( $fld_timestamp ) {
 				$block['timestamp'] = wfTimestamp( TS_ISO_8601, $row->ipb_timestamp );
@@ -283,7 +289,7 @@ class ApiQueryBlocks extends ApiQueryBase {
 				"baduser_{$encParamName}"
 			);
 		}
-		$name = User::isIP( $user )
+		$name = $this->userNameUtils->isIP( $user ) || IPUtils::isIPv6( $user )
 			? $user
 			: User::getCanonicalName( $user, 'valid' );
 		if ( $name === false ) {
@@ -319,6 +325,10 @@ class ApiQueryBlocks extends ApiQueryBase {
 			'page' => 'pages',
 			'ns' => 'namespaces',
 		];
+		if ( $this->getConfig()->get( 'EnablePartialActionBlocks' ) ) {
+			$keys['action'] = 'actions';
+		}
+
 		foreach ( $restrictions as $restriction ) {
 			$key = $keys[$restriction->getType()];
 			$id = $restriction->getBlockId();

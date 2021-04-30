@@ -56,6 +56,7 @@ use MediaWiki\Revision\RevisionStore;
 use MediaWiki\Revision\RevisionStoreRecord;
 use MediaWiki\Revision\SlotRecord;
 use MediaWiki\User\UserIdentity;
+use MediaWiki\User\UserNameUtils;
 use MediaWiki\Watchlist\WatchlistManager;
 use OOUI\CheckboxInputWidget;
 use OOUI\DropdownInputWidget;
@@ -429,6 +430,11 @@ class EditPage implements IEditObject {
 	private $watchlistManager;
 
 	/**
+	 * @var UserNameUtils
+	 */
+	private $userNameUtils;
+
+	/**
 	 * @stable to call
 	 * @param Article $article
 	 */
@@ -461,6 +467,7 @@ class EditPage implements IEditObject {
 		$this->watchedItemStore = $services->getWatchedItemStore();
 		$this->wikiPageFactory = $services->getWikiPageFactory();
 		$this->watchlistManager = $services->getWatchlistManager();
+		$this->userNameUtils = $services->getUserNameUtils();
 
 		$this->deprecatePublicProperty( 'mBaseRevision', '1.35', __CLASS__ );
 		$this->deprecatePublicProperty( 'deletedSinceEdit', '1.35', __CLASS__ );
@@ -1853,9 +1860,9 @@ class EditPage implements IEditObject {
 				// is if an extension hook aborted from inside ArticleSave.
 				// Render the status object into $this->hookError
 				// FIXME this sucks, we should just use the Status object throughout
-				$this->hookError = '<div class="error">' . "\n" .
-					$status->getWikiText( false, false, $this->context->getLanguage() ) .
-					'</div>';
+				$this->hookError = Html::errorBox(
+					$status->getWikiText( false, false, $this->context->getLanguage() )
+				);
 				return true;
 		}
 	}
@@ -2158,7 +2165,7 @@ class EditPage implements IEditObject {
 				} elseif ( $this->section == ''
 					&& $this->edittime
 					&& $this->revisionStore->userWasLastToEdit(
-						wfGetDB( DB_MASTER ),
+						wfGetDB( DB_PRIMARY ),
 						$this->mTitle->getArticleID(),
 						$user->getId(),
 						$this->edittime
@@ -2747,7 +2754,7 @@ class EditPage implements IEditObject {
 		if ( $namespace === NS_USER || $namespace === NS_USER_TALK ) {
 			$username = explode( '/', $this->mTitle->getText(), 2 )[0];
 			$user = User::newFromName( $username, false /* allow IP users */ );
-			$ip = User::isIP( $username );
+			$ip = $this->userNameUtils->isIP( $username );
 			$block = DatabaseBlock::newFromTarget( $user, $user );
 
 			$userExists = ( $user && $user->isRegistered() );
@@ -2958,8 +2965,11 @@ class EditPage implements IEditObject {
 		$out->addHTML( $this->editFormTextTop );
 
 		if ( $this->wasDeletedSinceLastEdit() && $this->formtype !== 'save' ) {
-			$out->wrapWikiMsg( "<div class='error mw-deleted-while-editing'>\n$1\n</div>",
-				'deletedwhileediting' );
+			$out->addHTML( Html::errorBox(
+				$out->msg( 'deletedwhileediting' )->plain(),
+				'',
+				'mw-deleted-while-editing'
+			) );
 		}
 
 		// @todo add EditForm plugin interface and use it here!
@@ -3010,7 +3020,7 @@ class EditPage implements IEditObject {
 		$this->showFormBeforeText();
 
 		if ( $this->wasDeletedSinceLastEdit() && $this->formtype == 'save' ) {
-			$username = $this->lastDelete->user_name;
+			$username = $this->lastDelete->actor_name;
 			$comment = CommentStore::getStore()
 				->getComment( 'log_comment', $this->lastDelete )->text;
 
@@ -3352,7 +3362,7 @@ class EditPage implements IEditObject {
 			# Check the skin exists
 			if ( $this->isWrongCaseUserConfigPage() ) {
 				$out->wrapWikiMsg(
-					"<div class='error' id='mw-userinvalidconfigtitle'>\n$1\n</div>",
+					"<div class='errorbox' id='mw-userinvalidconfigtitle'>\n$1\n</div>",
 					[ 'userinvalidconfigtitle', $this->mTitle->getSkinFromConfigSubpage() ]
 				);
 			}
@@ -4000,9 +4010,8 @@ class EditPage implements IEditObject {
 	protected function getLastDelete() {
 		$dbr = wfGetDB( DB_REPLICA );
 		$commentQuery = CommentStore::getStore()->getJoin( 'log_comment' );
-		$actorQuery = ActorMigration::newMigration()->getJoin( 'log_user' );
 		$data = $dbr->selectRow(
-			array_merge( [ 'logging' ], $commentQuery['tables'], $actorQuery['tables'], [ 'user' ] ),
+			array_merge( [ 'logging' ], $commentQuery['tables'], [ 'actor' ] ),
 			[
 				'log_type',
 				'log_action',
@@ -4011,8 +4020,8 @@ class EditPage implements IEditObject {
 				'log_title',
 				'log_params',
 				'log_deleted',
-				'user_name'
-			] + $commentQuery['fields'] + $actorQuery['fields'],
+				'actor_name'
+			] + $commentQuery['fields'],
 			[
 				'log_namespace' => $this->mTitle->getNamespace(),
 				'log_title' => $this->mTitle->getDBkey(),
@@ -4022,13 +4031,13 @@ class EditPage implements IEditObject {
 			__METHOD__,
 			[ 'LIMIT' => 1, 'ORDER BY' => 'log_timestamp DESC' ],
 			[
-				'user' => [ 'JOIN', 'user_id=' . $actorQuery['fields']['log_user'] ],
-			] + $commentQuery['joins'] + $actorQuery['joins']
+				'actor' => [ 'JOIN', 'actor_id=log_actor' ],
+			] + $commentQuery['joins']
 		);
 		// Quick paranoid permission checks...
 		if ( is_object( $data ) ) {
 			if ( $data->log_deleted & LogPage::DELETED_USER ) {
-				$data->user_name = $this->context->msg( 'rev-deleted-user' )->escaped();
+				$data->actor_name = $this->context->msg( 'rev-deleted-user' )->escaped();
 			}
 
 			if ( $data->log_deleted & LogPage::DELETED_COMMENT ) {
@@ -4214,9 +4223,9 @@ class EditPage implements IEditObject {
 		$parserOptions->setIsSectionPreview( $this->section !== null && $this->section !== '' );
 		$parserOptions->enableLimitReport();
 
-		// XXX: we could call $parserOptions->setCurrentRevisionCallback here to force the
+		// XXX: we could call $parserOptions->setCurrentRevisionRecordCallback here to force the
 		// current revision to be null during PST, until setupFakeRevision is called on
-		// the ParserOptions. Currently, we rely on Parser::getRevisionObject() to ignore
+		// the ParserOptions. Currently, we rely on Parser::getRevisionRecordObject() to ignore
 		// existing revisions in preview mode.
 
 		return $parserOptions;
@@ -4236,7 +4245,7 @@ class EditPage implements IEditObject {
 		$parserOptions = $this->getPreviewParserOptions();
 
 		// NOTE: preSaveTransform doesn't have a fake revision to operate on.
-		// Parser::getRevisionObject() will return null in preview mode,
+		// Parser::getRevisionRecordObject() will return null in preview mode,
 		// causing the context user to be used for {{subst:REVISIONUSER}}.
 		// XXX: Alternatively, we could also call setupFakeRevision() a second time:
 		// once before PST with $content, and then after PST with $pstContent.

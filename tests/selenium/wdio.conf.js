@@ -5,16 +5,7 @@ const fs = require( 'fs' );
 const path = require( 'path' );
 const video = require( 'wdio-video-reporter' );
 const logPath = process.env.LOG_DIR || path.join( __dirname, '/log' );
-
-// get current test title and clean it, to use it as file name
-function fileName( title ) {
-	return encodeURIComponent( title.replace( /\s+/g, '-' ) );
-}
-
-// build file path
-function filePath( test, screenshotPath, extension ) {
-	return path.join( screenshotPath, `${fileName( test.parent )}-${fileName( test.title )}.${extension}` );
-}
+const { makeFilenameDate, saveScreenshot } = require( 'wdio-mediawiki' );
 
 /**
  * For more details documentation and available options,
@@ -75,6 +66,9 @@ exports.config = {
 	// ===================
 	// Level of logging verbosity: trace | debug | info | warn | error | silent
 	logLevel: 'error',
+	// Setting this enables automatic screenshots for when a browser command fails
+	// It is also used by afterTest for capturing screenshots.
+	screenshotPath: logPath,
 	// Stop after this many failures, or 0 to run all tests before reporting failures.
 	bail: 0,
 	// Base for browser.url() and wdio-mediawiki/Page#openTitle()
@@ -88,7 +82,10 @@ exports.config = {
 		'dot',
 		// See also: https://webdriver.io/docs/junit-reporter.html#configuration
 		[ 'junit', {
-			outputDir: logPath
+			outputDir: logPath,
+			outputFileFormat: function () {
+				return `WDIO.xunit-${makeFilenameDate()}.xml`;
+			}
 		} ],
 		[
 			video, {
@@ -100,7 +97,7 @@ exports.config = {
 	// See also: http://mochajs.org/
 	mochaOpts: {
 		ui: 'bdd',
-		timeout: 60 * 1000
+		timeout: process.env.DEBUG ? ( 60 * 60 * 1000 ) : ( 60 * 1000 )
 	},
 
 	// =====
@@ -112,8 +109,6 @@ exports.config = {
 	 * @param {Object} test Mocha Test object
 	 */
 	afterTest: function ( test ) {
-		// save screenshot
-		const screenshotfile = filePath( test, logPath, 'png' );
-		browser.saveScreenshot( screenshotfile );
+		saveScreenshot( `${test.parent}-${test.title}` );
 	}
 };

@@ -4,7 +4,6 @@ namespace MediaWiki\ParamValidator\TypeDef;
 
 use ExternalUserNames;
 use MediaWiki\User\UserFactory;
-// phpcs:ignore MediaWiki.Classes.UnusedUseStatement.UnusedUse
 use MediaWiki\User\UserIdentity;
 use MediaWiki\User\UserNameUtils;
 use TitleFactory;
@@ -200,7 +199,7 @@ class UserDef extends TypeDef {
 		// An IP?
 		$b = IPUtils::RE_IP_BYTE;
 		if ( IPUtils::isValid( $value ) ||
-			// See comment for User::isIP.  We don't just call that function
+			// See comment for UserNameUtils::isIP. We don't just call that function
 			// here because it also returns true for things like
 			// 300.300.300.300 that are neither valid usernames nor valid IP
 			// addresses.

@@ -23,12 +23,17 @@
 
 use MediaWiki\Config\ServiceOptions;
 use MediaWiki\Logger\LoggerFactory;
+use Wikimedia\Rdbms\ChronologyProtector;
 use Wikimedia\Rdbms\DatabaseDomain;
+use Wikimedia\Rdbms\IDatabase;
 use Wikimedia\Rdbms\ILBFactory;
+use Wikimedia\Rdbms\LBFactory;
 use Wikimedia\RequestTimeout\CriticalSectionProvider;
 
 /**
  * MediaWiki-specific class for generating database load balancers
+ *
+ * @internal For use by core ServiceWiring only.
  * @ingroup Database
  */
 abstract class MWLBFactory {
@@ -336,9 +341,103 @@ abstract class MWLBFactory {
 	}
 
 	/**
+	 * Apply global state from the current web request or other PHP process.
+	 *
+	 * This technically violates the principle constraint on ServiceWiring to be
+	 * deterministic for a given site configuration. The exemption made here
+	 * is solely to aid in debugging and influence non-nominal behaviour such
+	 * as ChronologyProtector. That is, the state applied here must never change
+	 * the logical destination or meaning of any database-related methods, it
+	 * merely applies preferences and debugging information.
+	 *
+	 * The code here must be non-essential, with LBFactory behaving the same toward
+	 * its consumers regardless of whether this is applied or not.
+	 *
+	 * For example, something may instantiate LBFactory for the current wiki without
+	 * calling this, and its consumers must not be able to tell the difference.
+	 * Likewise, in the future MediaWiki may instantiate service wiring and LBFactory
+	 * for a foreign wiki in the same farm and apply the current global state to that,
+	 * and that should be fine as well.
+	 *
+	 * @param ILBFactory $lbFactory
+	 * @param Config $config
+	 * @param IBufferingStatsdDataFactory $stats
+	 */
+	public static function applyGlobalState(
+		ILBFactory $lbFactory,
+		Config $config,
+		IBufferingStatsdDataFactory $stats
+	) : void {
+		// Use the global WebRequest singleton. The main reason for using this
+		// is to call WebRequest::getIP() which is non-trivial to reproduce statically
+		// because it needs $wgUsePrivateIPs, as well as ProxyLookup and HookRunner services.
+		// TODO: Create a static version of WebRequest::getIP that accepts these three
+		// as dependencies, and then call that here. The other uses of $req below can
+		// trivially use $_COOKIES, $_GET and $_SERVER instead.
+		$req = RequestContext::getMain()->getRequest();
+
+		// Set user IP/agent information for agent session consistency purposes
+		$reqStart = (int)( $_SERVER['REQUEST_TIME_FLOAT'] ?? time() );
+		$cpPosInfo = LBFactory::getCPInfoFromCookieValue(
+			// The cookie has no prefix and is set by MediaWiki::preOutputCommit()
+			$req->getCookie( 'cpPosIndex', '' ),
+			// Mitigate broken client-side cookie expiration handling (T190082)
+			$reqStart - ChronologyProtector::POSITION_COOKIE_TTL
+		);
+		$lbFactory->setRequestInfo( [
+			'IPAddress' => $req->getIP(),
+			'UserAgent' => $req->getHeader( 'User-Agent' ),
+			'ChronologyProtection' => $req->getHeader( 'MediaWiki-Chronology-Protection' ),
+			'ChronologyPositionIndex' => $req->getInt( 'cpPosIndex', $cpPosInfo['index'] ),
+			'ChronologyClientId' => $cpPosInfo['clientId']
+				?? $req->getHeader( 'MediaWiki-Chronology-Client-Id' )
+		] );
+
+		if ( $config->get( 'CommandLineMode' ) ) {
+
+			// Add a comment for easy SHOW PROCESSLIST interpretation
+			// TODO: For web requests this is still handled eagerly in MediaWiki.php.
+			if ( function_exists( 'posix_getpwuid' ) ) {
+				$agent = posix_getpwuid( posix_geteuid() )['name'];
+			} else {
+				$agent = 'sysadmin';
+			}
+			$agent .= '@' . wfHostname();
+			$lbFactory->setAgentName(
+				mb_strlen( $agent ) > 15 ? mb_substr( $agent, 0, 15 ) . '...' : $agent
+			);
+
+			// Disable buffering and delaying of DeferredUpdates and stats
+			// for maintenance scripts and PHPUnit tests.
+			// Hook into period lag checks which often happen in long-running scripts
+			$lbFactory->setWaitForReplicationListener(
+				__METHOD__,
+				static function () use ( $stats, $config ) {
+					DeferredUpdates::tryOpportunisticExecute( 'run' );
+					// Try to periodically flush buffered metrics to avoid OOMs
+					MediaWiki::emitBufferedStatsdData( $stats, $config );
+				}
+			);
+			// Check for other windows to run them. A script may read or do a few writes
+			// to the master but mostly be writing to something else, like a file store.
+			$lbFactory->getMainLB()->setTransactionListener(
+				__METHOD__,
+				static function ( $trigger ) use ( $stats, $config ) {
+					if ( $trigger === IDatabase::TRIGGER_COMMIT ) {
+						DeferredUpdates::tryOpportunisticExecute( 'run' );
+					}
+					// Try to periodically flush buffered metrics to avoid OOMs
+					MediaWiki::emitBufferedStatsdData( $stats, $config );
+				}
+			);
+
+		}
+	}
+
+	/**
 	 * Log a database deprecation warning
+	 *
 	 * @param string $msg Deprecation message
-	 * @internal For use with service wiring
 	 */
 	public static function logDeprecation( $msg ) {
 		if ( isset( self::$loggedDeprecations[$msg] ) ) {

@@ -134,8 +134,8 @@ class PagePropsTest extends MediaWikiLangTestCase {
 		$page1ID = $this->title1->getArticleID();
 		$page2ID = $this->title2->getArticleID();
 		$titles = [
-			$this->title1,
-			$this->title2
+			$this->title1->toPageIdentity(),
+			$this->title2->toPageIdentity()
 		];
 		$properties = [
 			"property1",
@@ -288,7 +288,7 @@ class PagePropsTest extends MediaWikiLangTestCase {
 			];
 		}
 
-		$dbw = wfGetDB( DB_MASTER );
+		$dbw = wfGetDB( DB_PRIMARY );
 		$dbw->replace(
 			'page_props',
 			[

@@ -282,7 +282,7 @@ class User implements Authority, IDBAccessObject, UserIdentity, UserEmailContact
 			return $copy;
 		} elseif ( $name === 'mOptions' ) {
 			wfDeprecated( 'User::$mOptions', '1.35' );
-			$options = $this->getOptions();
+			$options = MediaWikiServices::getInstance()->getUserOptionsLookup()->getOptions( $this );
 			return $options;
 		} elseif ( !property_exists( $this, $name ) ) {
 			// T227688 - do not break $u->foo['bar'] = 1
@@ -843,7 +843,7 @@ class User implements Authority, IDBAccessObject, UserIdentity, UserEmailContact
 		);
 		if ( !$row ) {
 			// Try the master database...
-			$dbw = $loadBalancer->getConnectionRef( DB_MASTER );
+			$dbw = $loadBalancer->getConnectionRef( DB_PRIMARY );
 			$row = $dbw->selectRow(
 				$userQuery['tables'],
 				$userQuery['fields'],
@@ -863,7 +863,7 @@ class User implements Authority, IDBAccessObject, UserIdentity, UserEmailContact
 
 			// If it's a reserved user that had an anonymous actor created for it at
 			// some point, we need special handling.
-			return self::insertNewUser( function ( UserIdentity $actor, IDatabase $dbw ) {
+			return self::insertNewUser( static function ( UserIdentity $actor, IDatabase $dbw ) {
 				return MediaWikiServices::getInstance()->getActorStore()->acquireSystemActorId( $actor, $dbw );
 			}, $name, [ 'token' => self::INVALID_TOKEN ] );
 		}
@@ -974,12 +974,14 @@ class User implements Authority, IDBAccessObject, UserIdentity, UserEmailContact
 	 * addresses like this, if we allowed accounts like this to be created
 	 * new users could get the old edits of these anonymous users.
 	 *
-	 * @deprecated since 1.35, use the UserNameUtils service
+	 * @deprecated since 1.35, use the UserNameUtils service.
+	 * Hard deprecated since 1.37.
 	 *    Note that UserNameUtils::isIP does not accept IPv6 ranges, while this method does
 	 * @param string $name Name to match
 	 * @return bool
 	 */
 	public static function isIP( $name ) {
+		wfDeprecated( __METHOD__, '1.35' );
 		return preg_match( '/^\d{1,3}\.\d{1,3}\.\d{1,3}\.(?:xxx|\d{1,3})$/', $name )
 			|| IPUtils::isIPv6( $name );
 	}
@@ -1507,7 +1509,7 @@ class User implements Authority, IDBAccessObject, UserIdentity, UserEmailContact
 		// Get a new user_touched that is higher than the old one
 		$newTouched = $this->newTouchedTimestamp();
 
-		$dbw = wfGetDB( DB_MASTER );
+		$dbw = wfGetDB( DB_PRIMARY );
 		$dbw->update( 'user',
 			[ 'user_touched' => $dbw->timestamp( $newTouched ) ],
 			$this->makeUpdateConditions( $dbw, [
@@ -2058,8 +2060,9 @@ class User implements Authority, IDBAccessObject, UserIdentity, UserEmailContact
 	 */
 	public function getId( $wikiId = self::LOCAL ) : int {
 		$this->deprecateInvalidCrossWiki( $wikiId, '1.36' );
+		$userNameUtils = MediaWikiServices::getInstance()->getUserNameUtils();
 		if ( $this->mId === null && $this->mName !== null &&
-			( self::isIP( $this->mName ) || ExternalUserNames::isExternal( $this->mName ) )
+			( $userNameUtils->isIP( $this->mName ) || ExternalUserNames::isExternal( $this->mName ) )
 		) {
 			// Special case, we know the user is anonymous
 			// Note that "external" users are "local" (they have an actor ID that is relative to
@@ -2332,7 +2335,7 @@ class User implements Authority, IDBAccessObject, UserIdentity, UserEmailContact
 		if ( $mode === 'refresh' ) {
 			$cache->delete( $key, 1 ); // low tombstone/"hold-off" TTL
 		} else {
-			$lb->getConnectionRef( DB_MASTER )->onTransactionPreCommitOrIdle(
+			$lb->getConnectionRef( DB_PRIMARY )->onTransactionPreCommitOrIdle(
 				static function () use ( $cache, $key ) {
 					$cache->delete( $key );
 				},
@@ -2652,9 +2655,11 @@ class User implements Authority, IDBAccessObject, UserIdentity, UserEmailContact
 	 *   User::GETOPTIONS_EXCLUDE_DEFAULTS  Exclude user options that are set
 	 *                                      to the default value. (Since 1.25)
 	 * @return array
-	 * @deprecated since 1.35 Use UserOptionsLookup::getOptions instead
+	 * @deprecated since 1.35 Use UserOptionsLookup::getOptions instead.
+	 * Hard deprecated since 1.37.
 	 */
 	public function getOptions( $flags = 0 ) {
+		wfDeprecated( __METHOD__, '1.35' );
 		return MediaWikiServices::getInstance()
 			->getUserOptionsLookup()
 			->getOptions( $this, $flags );
@@ -3384,7 +3389,7 @@ class User implements Authority, IDBAccessObject, UserIdentity, UserEmailContact
 		// check against race conditions and replica DB lag.
 		$newTouched = $this->newTouchedTimestamp();
 
-		$dbw = wfGetDB( DB_MASTER );
+		$dbw = wfGetDB( DB_PRIMARY );
 		$dbw->doAtomicSection( __METHOD__, function ( IDatabase $dbw, $fname ) use ( $newTouched ) {
 			$dbw->update( 'user',
 				[ /* SET */
@@ -3421,6 +3426,7 @@ class User implements Authority, IDBAccessObject, UserIdentity, UserEmailContact
 				[ 'actor_user' => $this->mId ],
 				$fname
 			);
+			MediaWikiServices::getInstance()->getActorStore()->deleteUserIdentityFromCache( $this );
 		} );
 
 		$this->mTouched = $newTouched;
@@ -3468,7 +3474,7 @@ class User implements Authority, IDBAccessObject, UserIdentity, UserEmailContact
 	 * @return User|null User object, or null if the username already exists.
 	 */
 	public static function createNew( $name, $params = [] ) {
-		return self::insertNewUser( function ( UserIdentity $actor, IDatabase $dbw ) {
+		return self::insertNewUser( static function ( UserIdentity $actor, IDatabase $dbw ) {
 			return MediaWikiServices::getInstance()->getActorStore()->createNewActor( $actor, $dbw );
 		}, $name, $params );
 	}
@@ -3497,7 +3503,7 @@ class User implements Authority, IDBAccessObject, UserIdentity, UserEmailContact
 				->loadUserOptions( $user, $user->queryFlagsUsed, $params['options'] );
 			unset( $params['options'] );
 		}
-		$dbw = wfGetDB( DB_MASTER );
+		$dbw = wfGetDB( DB_PRIMARY );
 
 		$noPass = PasswordFactory::newInvalidPassword()->toString();
 
@@ -3572,7 +3578,7 @@ class User implements Authority, IDBAccessObject, UserIdentity, UserEmailContact
 
 		$this->mTouched = $this->newTouchedTimestamp();
 
-		$dbw = wfGetDB( DB_MASTER );
+		$dbw = wfGetDB( DB_PRIMARY );
 		$status = $dbw->doAtomicSection( __METHOD__, function ( IDatabase $dbw, $fname ) {
 			$noPass = PasswordFactory::newInvalidPassword()->toString();
 			$dbw->insert( 'user',
@@ -3665,6 +3671,7 @@ class User implements Authority, IDBAccessObject, UserIdentity, UserEmailContact
 
 	/**
 	 * Get whether the user is explicitly blocked from account creation.
+	 * @deprecated since 1.37. Instead use Authority::authorize* for createaccount permission.
 	 * @return bool|AbstractBlock
 	 */
 	public function isBlockedFromCreateAccount() {

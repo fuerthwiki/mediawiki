@@ -88,11 +88,22 @@ class ChangeTags {
 	 * This tagged edit was performed while importing media files using the importImages.php maintenance script.
 	 */
 	public const TAG_SERVER_SIDE_UPLOAD = 'mw-server-side-upload';
-
+	/**
+	 * The tagged edit included additions of media.
+	 */
+	public const TAG_ADD_MEDIA = 'mw-add-media';
+	/**
+	 * The tagged edit included removals of media.
+	 */
+	public const TAG_REMOVE_MEDIA = 'mw-remove-media';
 	/**
 	 * List of tags which denote a revert of some sort. (See also TAG_REVERTED.)
 	 */
 	public const REVERT_TAGS = [ self::TAG_ROLLBACK, self::TAG_UNDO, self::TAG_MANUAL_REVERT ];
+	/**
+	 * List of tags which denote a change in media.
+	 */
+	public const MEDIA_TAGS = [ self::TAG_ADD_MEDIA, self::TAG_REMOVE_MEDIA ];
 
 	/**
 	 * Flag for canDeleteTag().
@@ -121,6 +132,8 @@ class ChangeTags {
 		'mw-manual-revert',
 		'mw-reverted',
 		'mw-server-side-upload',
+		'mw-add-media',
+		'mw-remove-media',
 	];
 
 	/**
@@ -361,7 +374,7 @@ class ChangeTags {
 				'specified when adding or removing a tag from a change!' );
 		}
 
-		$dbw = wfGetDB( DB_MASTER );
+		$dbw = wfGetDB( DB_PRIMARY );
 
 		// Might as well look for rcids and so on.
 		if ( !$rc_id ) {
@@ -830,7 +843,7 @@ class ChangeTags {
 		$logEntry->setParameters( $logParams );
 		$logEntry->setRelations( [ 'Tag' => array_merge( $tagsAdded, $tagsRemoved ) ] );
 
-		$dbw = wfGetDB( DB_MASTER );
+		$dbw = wfGetDB( DB_PRIMARY );
 		$logId = $logEntry->insert( $dbw );
 		// Only send this to UDP, not RC, similar to patrol events
 		$logEntry->publish( $logId, 'udp' );
@@ -1037,7 +1050,7 @@ class ChangeTags {
 	 * @since 1.25
 	 */
 	public static function defineTag( $tag ) {
-		$dbw = wfGetDB( DB_MASTER );
+		$dbw = wfGetDB( DB_PRIMARY );
 		$tagDef = [
 			'ctd_name' => $tag,
 			'ctd_user_defined' => 1,
@@ -1064,7 +1077,7 @@ class ChangeTags {
 	 * @since 1.25
 	 */
 	public static function undefineTag( $tag ) {
-		$dbw = wfGetDB( DB_MASTER );
+		$dbw = wfGetDB( DB_PRIMARY );
 
 		$dbw->update(
 			'change_tag_def',
@@ -1100,7 +1113,7 @@ class ChangeTags {
 	protected static function logTagManagementAction( $action, $tag, $reason,
 		UserIdentity $user, $tagCount = null, array $logEntryTags = []
 	) {
-		$dbw = wfGetDB( DB_MASTER );
+		$dbw = wfGetDB( DB_PRIMARY );
 
 		$logEntry = new ManualLogEntry( 'managetags', $action );
 		$logEntry->setPerformer( $user );
@@ -1385,7 +1398,7 @@ class ChangeTags {
 	 * @since 1.25
 	 */
 	public static function deleteTagEverywhere( $tag ) {
-		$dbw = wfGetDB( DB_MASTER );
+		$dbw = wfGetDB( DB_PRIMARY );
 		$dbw->startAtomic( __METHOD__ );
 
 		// fetch tag id, this must be done before calling undefineTag(), see T225564

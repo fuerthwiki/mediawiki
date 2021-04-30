@@ -1,5 +1,4 @@
 <?php
-// phpcs:disable MediaWiki.Commenting.FunctionAnnotations.UnrecognizedAnnotation
 
 use MediaWiki\Logger\LegacyLogger;
 use MediaWiki\Logger\LegacySpi;
@@ -181,11 +180,11 @@ abstract class MediaWikiIntegrationTestCase extends PHPUnit\Framework\TestCase {
 	}
 
 	/**
-	 * @stable for overriding
+	 * The annotation causes this to be called immediately before setUpBeforeClass()
+	 * @beforeClass
 	 */
-	public static function setUpBeforeClass() : void {
+	final public static function mediaWikiSetUpBeforeClass() : void {
 		global $IP;
-		parent::setUpBeforeClass();
 		if ( !file_exists( "$IP/LocalSettings.php" ) ) {
 				echo "File \"$IP/LocalSettings.php\" could not be found. "
 				. "Test case " . static::class . " extends " . self::class . " "
@@ -422,7 +421,7 @@ abstract class MediaWikiIntegrationTestCase extends PHPUnit\Framework\TestCase {
 			self::$reuseDB = $this->getCliArg( 'reuse-db' );
 
 			$lb = MediaWikiServices::getInstance()->getDBLoadBalancer();
-			$this->db = $lb->getConnection( DB_MASTER );
+			$this->db = $lb->getConnection( DB_PRIMARY );
 
 			$this->checkDbIsSupported();
 
@@ -540,7 +539,7 @@ abstract class MediaWikiIntegrationTestCase extends PHPUnit\Framework\TestCase {
 	 * The annotation causes this to be called immediately before setUp()
 	 * @before
 	 */
-	protected function mediaWikiSetUp() {
+	final protected function mediaWikiSetUp() : void {
 		$reflection = new ReflectionClass( $this );
 		// TODO: Eventually we should assert for test presence in /integration/
 		if ( strpos( $reflection->getFileName(), '/unit/' ) !== false ) {
@@ -570,15 +569,8 @@ abstract class MediaWikiIntegrationTestCase extends PHPUnit\Framework\TestCase {
 			}
 		}
 
-		MWDebug::clearDeprecationFilters();
-
 		// Reset all caches between tests.
 		self::resetNonServiceCaches();
-
-		// XXX: reset maintenance triggers
-		// Hook into period lag checks which often happen in long-running scripts
-		$lbFactory = $this->localServices->getDBLoadBalancerFactory();
-		Maintenance::setLBFactoryTriggers( $lbFactory, $this->localServices->getMainConfig() );
 
 		// T46192 Do not attempt to send a real e-mail
 		$this->setTemporaryHook( 'AlternateUserMailer',
@@ -608,7 +600,7 @@ abstract class MediaWikiIntegrationTestCase extends PHPUnit\Framework\TestCase {
 	 * The annotation causes this to be called immediately after tearDown()
 	 * @after
 	 */
-	protected function mediaWikiTearDown() {
+	final protected function mediaWikiTearDown() : void {
 		global $wgRequest, $wgSQLMode;
 
 		$status = ob_get_status();
