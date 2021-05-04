@@ -46,22 +46,28 @@ class BlockActionInfo {
 	/** @var int */
 	private const ACTION_MOVE = 2;
 
+	/** @var int */
+	private const ACTION_CREATE = 3;
+
 	/**
 	 * Core block actions.
 	 *
 	 * Each key is an action string passed to PermissionManager::checkUserBlock
 	 * Each value is a class constant for that action
 	 *
-	 * Each key has a corresponding message with key "ipb-actions-$key"
+	 * Each key has a corresponding message with key "ipb-action-$key"
 	 *
 	 * Core messages:
-	 * ipb-actions-upload
+	 * ipb-action-upload
+	 * ipb-action-move
+	 * ipb-action-create
 	 *
 	 * @var int[]
 	 */
 	private const CORE_BLOCK_ACTIONS = [
 		'upload' => self::ACTION_UPLOAD,
 		'move' => self::ACTION_MOVE,
+		'create' => self::ACTION_CREATE,
 	];
 
 	/**
@@ -87,6 +93,14 @@ class BlockActionInfo {
 			$this->hookRunner->onGetAllBlockActions( $this->allBlockActions );
 		}
 		return $this->allBlockActions;
+	}
+
+	/**
+	 * @param int $actionId
+	 * @return string|false
+	 */
+	public function getActionFromId( int $actionId ) {
+		return array_search( $actionId, $this->getAllBlockActions() );
 	}
 
 }

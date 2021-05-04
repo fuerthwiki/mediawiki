@@ -13,8 +13,12 @@ trait MockTitleTrait {
 	 * @param array $props Additional properties to set. Supported keys:
 	 *        - id: int
 	 *        - namespace: int
+	 *        - fragment: string
+	 *        - interwiki: string
+	 *        - redirect: bool
 	 *        - language: Language
-	 * 		  - contentModel: string
+	 *        - contentModel: string
+	 *        - revision: int
 	 *
 	 * @return Title|MockObject
 	 */
@@ -49,6 +53,8 @@ trait MockTitleTrait {
 		$title->method( 'exists' )->willReturn( $id > 0 );
 		$title->method( 'isRedirect' )->willReturn( $props['redirect'] ?? false );
 		$title->method( 'getTouched' )->willReturn( $id ? '20200101223344' : false );
+
+		// TODO getPageLanguage should return a Language object, 'qqx' is a string
 		$title->method( 'getPageLanguage' )->willReturn( $props['language'] ?? 'qqx' );
 		$title->method( 'getContentModel' )
 			->willReturn( $props['contentModel'] ?? CONTENT_MODEL_WIKITEXT );
@@ -62,7 +68,6 @@ trait MockTitleTrait {
 		} else {
 			$title->method( 'getLatestRevId' )->willReturn( $id === 0 ? 0 : 43 );
 		}
-		$title->method( 'getContentModel' )->willReturn( CONTENT_MODEL_WIKITEXT );
 		$title->method( 'isContentPage' )->willReturn( true );
 		$title->method( 'isSamePageAs' )->willReturnCallback( static function ( $other ) use ( $id ) {
 			return $other && $id === $other->getArticleId();
@@ -80,18 +85,60 @@ trait MockTitleTrait {
 	}
 
 	/**
+	 * @param array $options Supported keys:
+	 *    - validInterwikis: string[]
+	 *
 	 * @return MediaWikiTitleCodec
 	 */
-	private function makeMockTitleCodec() {
+	private function makeMockTitleCodec( array $options = [] ) {
+		$baseConfig = [
+			'validInterwikis' => [],
+		];
+		$config = $options + $baseConfig;
+
 		/** @var Language|MockObject $language */
-		$language = $this->createNoOpMock( Language::class, [ 'ucfirst' ] );
+		$language = $this->createNoOpMock(
+			Language::class,
+			[ 'ucfirst', 'lc', 'getNsIndex' ]
+		);
 		$language->method( 'ucfirst' )->willReturnCallback( 'ucfirst' );
+		$language->method( 'lc' )->willReturnCallback(
+			static function ( $str, $first ) {
+				return $first ? lcfirst( $str ) : strtolower( $str );
+			}
+		);
+		$language->method( 'getNsIndex' )->willReturnCallback(
+			static function ( $text ) {
+				$text = strtolower( $text );
+				if ( $text === '' ) {
+					return NS_MAIN;
+				}
+				// partial support for the most commonly used namespaces in tests,
+				// feel free to expand as needed
+				$namespaces = [
+					'talk' => NS_TALK,
+					'user' => NS_USER,
+					'user_talk' => NS_USER_TALK,
+					'project' => NS_PROJECT,
+					'project_talk' => NS_PROJECT_TALK,
+				];
+				return $namespaces[ $text ] ?? false;
+			}
+		);
 
 		/** @var GenderCache|MockObject $genderCache */
 		$genderCache = $this->createNoOpMock( GenderCache::class );
 
 		/** @var InterwikiLookup|MockObject $interwikiLookup */
-		$interwikiLookup = $this->createNoOpMock( InterwikiLookup::class );
+		$interwikiLookup = $this->createNoOpMock( InterwikiLookup::class, [ 'isValidInterwiki' ] );
+		$interwikiLookup->method( 'isValidInterwiki' )->willReturnCallback(
+			static function ( $prefix ) use ( $config ) {
+				// interwikis are lowercase, but we might be given a prefix that
+				// has uppercase characters, eg. from UserNameUtils normalization
+				$prefix = strtolower( $prefix );
+				return in_array( $prefix, $config['validInterwikis'] );
+			}
+		);
 
 		/** @var NamespaceInfo|MockObject $namespaceInfo */
 		$namespaceInfo = $this->createNoOpMock( NamespaceInfo::class, [ 'isCapitalized' ] );

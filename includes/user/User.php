@@ -1307,6 +1307,8 @@ class User implements Authority, IDBAccessObject, UserIdentity, UserEmailContact
 		);
 
 		$this->queryFlagsUsed = $flags;
+
+		// hook is hard deprecated since 1.37
 		$this->getHookRunner()->onUserLoadFromDatabase( $this, $s );
 
 		if ( $s !== false ) {
@@ -2870,13 +2872,7 @@ class User implements Authority, IDBAccessObject, UserIdentity, UserEmailContact
 		if ( !$wgSecureLogin ) {
 			return false;
 		}
-		$https = $this->getBoolOption( 'prefershttps' );
-		$this->getHookRunner()->onUserRequiresHTTPS( $this, $https );
-		if ( $https ) {
-			$https = wfCanIPUseHTTPS( $this->getRequest()->getIP() );
-		}
-
-		return $https;
+		return $this->getBoolOption( 'prefershttps' );
 	}
 
 	/**
@@ -4353,19 +4349,6 @@ class User implements Authority, IDBAccessObject, UserIdentity, UserEmailContact
 		$key = "right-$right";
 		$msg = wfMessage( $key );
 		return $msg->isDisabled() ? $right : $msg->text();
-	}
-
-	/**
-	 * Get the name of a given grant
-	 *
-	 * @since 1.29
-	 * @param string $grant Grant to query
-	 * @return string Localized name of the grant
-	 * @deprecated since 1.36, use MWGrants::grantName instead
-	 */
-	public static function getGrantName( $grant ) {
-		wfDeprecated( __METHOD__, '1.36' );
-		return MWGrants::grantName( $grant );
 	}
 
 	/**

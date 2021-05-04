@@ -798,18 +798,6 @@ class WikiPage implements Page, IDBAccessObject, PageRecord {
 	}
 
 	/**
-	 * Get the Revision object of the oldest revision
-	 * @deprecated since 1.35 Use RevisionStore::getFirstRevision for the
-	 *   corresponding title instead.
-	 * @return Revision|null
-	 */
-	public function getOldestRevision() {
-		wfDeprecated( __METHOD__, '1.35' );
-		$rev = $this->getRevisionStore()->getFirstRevision( $this->getTitle() );
-		return $rev ? new Revision( $rev ) : null;
-	}
-
-	/**
 	 * Loads everything except the text
 	 * This isn't necessary for all uses, so it's only done if needed.
 	 */
@@ -869,20 +857,6 @@ class WikiPage implements Page, IDBAccessObject, PageRecord {
 		$this->mLatest = $revRecord->getId();
 		$this->mTimestamp = $revRecord->getTimestamp();
 		$this->mTouched = max( $this->mTouched, $revRecord->getTimestamp() );
-	}
-
-	/**
-	 * Get the latest revision
-	 * @deprecated since 1.35
-	 * @return Revision|null
-	 */
-	public function getRevision() {
-		wfDeprecated( __METHOD__, '1.35' );
-		$this->loadLastEdit();
-		if ( $this->mLastRevision ) {
-			return new Revision( $this->mLastRevision );
-		}
-		return null;
 	}
 
 	/**
@@ -2533,7 +2507,7 @@ class WikiPage implements Page, IDBAccessObject, PageRecord {
 		$logParamsDetails = [];
 
 		// Null revision (used for change tag insertion)
-		$nullRevision = null;
+		$nullRevisionRecord = null;
 
 		if ( $id ) { // Protection of existing page
 			$legacyUser = MediaWikiServices::getInstance()->getUserFactory()->newFromUserIdentity( $user );
@@ -2641,14 +2615,6 @@ class WikiPage implements Page, IDBAccessObject, PageRecord {
 			$this->getHookRunner()->onRevisionFromEditComplete(
 				$this, $nullRevisionRecord, $latest, $user, $tags );
 
-			// Hook is hard deprecated since 1.35
-			if ( $this->getHookContainer()->isRegistered( 'NewRevisionFromEditComplete' ) ) {
-				// Only create the Revision object if neeed
-				$nullRevision = new Revision( $nullRevisionRecord );
-				$this->getHookRunner()->onNewRevisionFromEditComplete(
-					$this, $nullRevision, $latest, $legacyUser, $tags );
-			}
-
 			$this->getHookRunner()->onArticleProtectComplete( $this, $legacyUser, $limit, $reason );
 		} else { // Protection of non-existing page (also known as "title protection")
 			// Cascade protection is meaningless in this case
@@ -2702,8 +2668,8 @@ class WikiPage implements Page, IDBAccessObject, PageRecord {
 		$logEntry->setComment( $reason );
 		$logEntry->setPerformer( $user );
 		$logEntry->setParameters( $params );
-		if ( $nullRevision !== null ) {
-			$logEntry->setAssociatedRevId( $nullRevision->getId() );
+		if ( $nullRevisionRecord !== null ) {
+			$logEntry->setAssociatedRevId( $nullRevisionRecord->getId() );
 		}
 		$logEntry->addTags( $tags );
 		if ( $logRelationsField !== null && count( $logRelationsValues ) ) {

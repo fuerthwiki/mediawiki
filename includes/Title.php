@@ -884,14 +884,14 @@ class Title implements LinkTarget, PageIdentity, IDBAccessObject {
 	/**
 	 * Callback for usort() to do title sorts by (namespace, title)
 	 *
-	 * @param LinkTarget $a
-	 * @param LinkTarget $b
+	 * @param LinkTarget|PageReference $a
+	 * @param LinkTarget|PageReference $b
 	 *
 	 * @return int Result of string comparison, or namespace comparison
 	 */
-	public static function compare( LinkTarget $a, LinkTarget $b ) {
+	public static function compare( $a, $b ) {
 		return $a->getNamespace() <=> $b->getNamespace()
-			?: strcmp( $a->getText(), $b->getText() );
+			?: strcmp( $a->getDBkey(), $b->getDBkey() );
 	}
 
 	/**
@@ -1275,6 +1275,7 @@ class Title implements LinkTarget, PageIdentity, IDBAccessObject {
 	 * @return bool
 	 */
 	public function isWatchable() {
+		wfDeprecated( __METHOD__, '1.37' );
 		$watchlistManager = MediaWikiServices::getInstance()->getWatchlistManager();
 		return $watchlistManager->isWatchable( $this );
 	}
@@ -3744,22 +3745,6 @@ class Title implements LinkTarget, PageIdentity, IDBAccessObject {
 	public function getNextRevisionID( $revId, $flags = 0 ) {
 		wfDeprecated( __METHOD__, '1.34' );
 		return $this->getRelativeRevisionID( $revId, $flags, 'next' );
-	}
-
-	/**
-	 * Get the first revision of the page
-	 *
-	 * @deprecated since 1.35. Use RevisionLookup::getFirstRevision instead.
-	 * @param int $flags Bitfield of class READ_* constants
-	 * @return Revision|null If page doesn't exist
-	 */
-	public function getFirstRevision( $flags = 0 ) {
-		wfDeprecated( __METHOD__, '1.35' );
-		$flags |= ( $flags & self::GAID_FOR_UPDATE ) ? self::READ_LATEST : 0; // b/c
-		$rev = MediaWikiServices::getInstance()
-			->getRevisionLookup()
-			->getFirstRevision( $this, $flags );
-		return $rev ? new Revision( $rev ) : null;
 	}
 
 	/**
