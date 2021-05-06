@@ -185,6 +185,10 @@ $wgExtraNamespaces =
 	      101 => "Portal_Diskussion",
 	      200 => "Klasse",
 	      201 => "Klasse_Diskussion",
+		  300 => "Inhaltsverzeichnis",
+		  301 => "Inhaltsverzeichnis_Diskussion",
+		  400 => "Seite",
+		  401 => "Seite_Diskussion",
 );
 $smwgNamespacesWithSemanticLinks[200] = true;
 $smwgNamespacesWithSemanticLinks[201] = true;
@@ -263,6 +267,7 @@ wfLoadExtension( 'Mermaid' );
 wfLoadExtension( 'SemanticCompoundQueries' );
 wfLoadExtension( 'ExternalData' );
 wfLoadExtension( 'RevisionSlider' );
+wfLoadExtension( 'LabeledSectionTransclusion' );
 
 # MatomoAnalytics settings
 wfLoadExtension( 'MatomoAnalytics' );

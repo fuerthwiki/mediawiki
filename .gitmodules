@@ -221,3 +221,6 @@
 [submodule "extensions/MatomoAnalytics"]
 	path = extensions/MatomoAnalytics
 	url = git@github.com:fuerthwiki/MatomoAnalytics.git
+[submodule "extensions/LabeledSectionTransclusion"]
+	path = extensions/LabeledSectionTransclusion
+	url = git@github.com:wikimedia/mediawiki-extensions-LabeledSectionTransclusion.git
