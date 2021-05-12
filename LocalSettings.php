@@ -186,8 +186,10 @@ $wgExtraNamespaces =
 	      200 => "Klasse",
 	      201 => "Klasse_Diskussion",
 );
-$smwgNamespacesWithSemanticLinks[200] = true;
-$smwgNamespacesWithSemanticLinks[201] = true;
+$smwgNamespacesWithSemanticLinks[200] = true; # Klasse
+$smwgNamespacesWithSemanticLinks[201] = true; # 
+$smwgNamespacesWithSemanticLinks[252] = true; # Index
+$smwgNamespacesWithSemanticLinks[250] = true; # Seite
 
 $wgDefaultUserOptions['thumbsize'] = 2; //180px
 
