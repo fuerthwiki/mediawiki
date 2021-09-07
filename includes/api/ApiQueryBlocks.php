@@ -20,6 +20,7 @@
  * @file
  */
 
+use MediaWiki\Block\BlockActionInfo;
 use MediaWiki\Block\BlockRestrictionStore;
 use MediaWiki\ParamValidator\TypeDef\UserDef;
 use MediaWiki\User\UserNameUtils;
@@ -33,6 +34,9 @@ use Wikimedia\Rdbms\IResultWrapper;
  */
 class ApiQueryBlocks extends ApiQueryBase {
 
+	/** @var BlockActionInfo */
+	private $blockActionInfo;
+
 	/** @var BlockRestrictionStore */
 	private $blockRestrictionStore;
 
@@ -45,6 +49,7 @@ class ApiQueryBlocks extends ApiQueryBase {
 	/**
 	 * @param ApiQuery $query
 	 * @param string $moduleName
+	 * @param BlockActionInfo $blockActionInfo
 	 * @param BlockRestrictionStore $blockRestrictionStore
 	 * @param CommentStore $commentStore
 	 * @param UserNameUtils $userNameUtils
@@ -52,11 +57,13 @@ class ApiQueryBlocks extends ApiQueryBase {
 	public function __construct(
 		ApiQuery $query,
 		$moduleName,
+		BlockActionInfo $blockActionInfo,
 		BlockRestrictionStore $blockRestrictionStore,
 		CommentStore $commentStore,
 		UserNameUtils $userNameUtils
 	) {
 		parent::__construct( $query, $moduleName, 'bk' );
+		$this->blockActionInfo = $blockActionInfo;
 		$this->blockRestrictionStore = $blockRestrictionStore;
 		$this->commentStore = $commentStore;
 		$this->userNameUtils = $userNameUtils;
@@ -67,7 +74,7 @@ class ApiQueryBlocks extends ApiQueryBase {
 		$params = $this->extractRequestParams();
 		$this->requireMaxOneParameter( $params, 'users', 'ip' );
 
-		$prop = array_flip( $params['prop'] );
+		$prop = array_fill_keys( $params['prop'], true );
 		$fld_id = isset( $prop['id'] );
 		$fld_user = isset( $prop['user'] );
 		$fld_userid = isset( $prop['userid'] );
@@ -179,7 +186,7 @@ class ApiQueryBlocks extends ApiQueryBase {
 		}
 
 		if ( $params['show'] !== null ) {
-			$show = array_flip( $params['show'] );
+			$show = array_fill_keys( $params['show'], true );
 
 			/* Check for conflicting parameters. */
 			if ( ( isset( $show['account'] ) && isset( $show['!account'] ) )
@@ -291,7 +298,7 @@ class ApiQueryBlocks extends ApiQueryBase {
 		}
 		$name = $this->userNameUtils->isIP( $user ) || IPUtils::isIPv6( $user )
 			? $user
-			: User::getCanonicalName( $user, 'valid' );
+			: $this->userNameUtils->getCanonical( $user );
 		if ( $name === false ) {
 			$encParamName = $this->encodeParamName( 'users' );
 			$this->dieWithError( [ 'apierror-baduser', $encParamName, wfEscapeWikiText( $user ) ],
@@ -340,6 +347,9 @@ class ApiQueryBlocks extends ApiQueryBase {
 					if ( $restriction->getTitle() ) {
 						self::addTitleInfo( $value, $restriction->getTitle() );
 					}
+					break;
+				case 'action':
+					$value = $this->blockActionInfo->getActionFromId( $restriction->getValue() );
 					break;
 				default:
 					$value = $restriction->getValue();

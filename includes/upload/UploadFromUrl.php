@@ -163,14 +163,14 @@ class UploadFromUrl extends UploadBase {
 	 * @return bool
 	 */
 	public static function isValidRequest( $request ) {
-		global $wgUser;
+		$user = RequestContext::getMain()->getUser();
 
 		$url = $request->getVal( 'wpUploadFileURL' );
 
 		return !empty( $url )
 			&& MediaWikiServices::getInstance()
-				   ->getPermissionManager()
-				   ->userHasRight( $wgUser, 'upload_by_url' );
+				->getPermissionManager()
+				->userHasRight( $user, 'upload_by_url' );
 	}
 
 	/**
@@ -188,7 +188,7 @@ class UploadFromUrl extends UploadBase {
 	 * @return Status
 	 */
 	public function fetchFile( $httpOptions = [] ) {
-		if ( !Http::isValidURI( $this->mUrl ) ) {
+		if ( !MWHttpRequest::isValidURI( $this->mUrl ) ) {
 			return Status::newFatal( 'http-invalid-url', $this->mUrl );
 		}
 
@@ -283,8 +283,9 @@ class UploadFromUrl extends UploadBase {
 		// capturing the redirect response as part of the file.
 		$attemptsLeft = $options['maxRedirects'] ?? 5;
 		$targetUrl = $this->mUrl;
+		$requestFactory = MediaWikiServices::getInstance()->getHttpRequestFactory();
 		while ( $attemptsLeft > 0 ) {
-			$req = MWHttpRequest::factory( $targetUrl, $options, __METHOD__ );
+			$req = $requestFactory->create( $targetUrl, $options, __METHOD__ );
 			$req->setCallback( [ $this, 'saveTempFileChunk' ] );
 			$status = $req->execute();
 			if ( !$req->isRedirect() ) {

@@ -17,7 +17,7 @@ use Wikimedia\TestingAccessWrapper;
  */
 class EditPageTest extends MediaWikiLangTestCase {
 
-	protected function setUp() : void {
+	protected function setUp(): void {
 		parent::setUp();
 
 		$contLang = MediaWikiServices::getInstance()->getContentLanguage();
@@ -43,7 +43,7 @@ class EditPageTest extends MediaWikiLangTestCase {
 	public function testExtractSectionTitle( $section, $title ) {
 		$this->assertEquals(
 			$title,
-			 TestingAccessWrapper::newFromClass( EditPage::class )->extractSectionTitle( $section )
+			TestingAccessWrapper::newFromClass( EditPage::class )->extractSectionTitle( $section )
 		);
 	}
 
@@ -137,11 +137,15 @@ class EditPageTest extends MediaWikiLangTestCase {
 			}
 		}
 
+		if ( $user == null ) {
+			$user = $this->getTestUser()->getUser();
+		}
+
 		$page = WikiPage::factory( $title );
 
 		if ( $baseText !== null ) {
 			$content = ContentHandler::makeContent( $baseText, $title );
-			$page->doEditContent( $content, "base text for test" );
+			$page->doUserEditContent( $content, $user, "base text for test" );
 			$this->forceRevisionDate( $page, '20120101000000' );
 
 			// sanity check
@@ -151,10 +155,6 @@ class EditPageTest extends MediaWikiLangTestCase {
 			# EditPage rtrim() the user input, so we alter our expected text
 			# to reflect that.
 			$this->assertEditedTextEquals( $baseText, $currentText );
-		}
-
-		if ( $user == null ) {
-			$user = $this->getTestUser()->getUser();
 		}
 
 		if ( !isset( $edit['wpEditToken'] ) ) {
@@ -803,7 +803,8 @@ hello
 		$this->setTemporaryHook( 'getUserPermissionsErrors',
 			static function ( Title $page, $user, $action, &$result ) {
 				if ( $action === 'editcontentmodel' &&
-					 $page->getContentModel() === CONTENT_MODEL_WIKITEXT ) {
+					$page->getContentModel() === CONTENT_MODEL_WIKITEXT
+				) {
 					$result = false;
 
 					return false;
@@ -937,6 +938,29 @@ hello
 				'options' => array_merge( [ '2020-05-05T12:00:02Z' ], $standardOptions ),
 			],
 		];
+	}
+
+	/**
+	 * T277204
+	 * @covers EditPage
+	 */
+	public function testFalseyEditRevId() {
+		$elmosEdit['wpTextbox1'] = 'Elmo\'s text';
+		$bertasEdit['wpTextbox1'] = 'Berta\'s text';
+
+		$elmosEdit['wpSummary'] = 'Elmo\'s edit';
+		$bertasEdit['wpSummary'] = 'Bertas\'s edit';
+
+		$bertasEdit['editRevId'] = 0;
+
+		$this->assertEdit( __METHOD__,
+			null, 'Elmo', $elmosEdit,
+			EditPage::AS_SUCCESS_NEW_ARTICLE, null, 'expected successful creation' );
+
+		// A successful update would probably be OK too. The important thing is
+		// that it doesn't throw an exception.
+		$this->assertEdit( __METHOD__, null, 'Berta', $bertasEdit,
+			EditPage::AS_CONFLICT_DETECTED, null, 'expected successful update' );
 	}
 
 }

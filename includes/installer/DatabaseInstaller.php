@@ -204,13 +204,13 @@ abstract class DatabaseInstaller {
 	 *
 	 * @param string $sourceFileMethod
 	 * @param string $stepName
-	 * @param bool $archiveTableMustNotExist
+	 * @param bool|string $tableThatMustNotExist
 	 * @return Status
 	 */
 	private function stepApplySourceFile(
 		$sourceFileMethod,
 		$stepName,
-		$archiveTableMustNotExist = false
+		$tableThatMustNotExist = false
 	) {
 		$status = $this->getConnection();
 		if ( !$status->isOK() ) {
@@ -218,7 +218,7 @@ abstract class DatabaseInstaller {
 		}
 		$this->db->selectDB( $this->getVar( 'wgDBname' ) );
 
-		if ( $archiveTableMustNotExist && $this->db->tableExists( 'archive', __METHOD__ ) ) {
+		if ( $tableThatMustNotExist && $this->db->tableExists( $tableThatMustNotExist, __METHOD__ ) ) {
 			$status->warning( "config-$stepName-tables-exist" );
 			$this->enableLB();
 
@@ -254,7 +254,7 @@ abstract class DatabaseInstaller {
 	 * @return Status
 	 */
 	public function createTables() {
-		return $this->stepApplySourceFile( 'getGeneratedSchemaPath', 'install', true );
+		return $this->stepApplySourceFile( 'getGeneratedSchemaPath', 'install', 'archive' );
 	}
 
 	/**
@@ -264,11 +264,11 @@ abstract class DatabaseInstaller {
 	 * @return Status
 	 */
 	public function createManualTables() {
-		return $this->stepApplySourceFile( 'getSchemaPath', 'install-manual', false );
+		return $this->stepApplySourceFile( 'getSchemaPath', 'install-manual' );
 	}
 
 	/**
-	 * Insert update keys into table to prevent running unneded updates.
+	 * Insert update keys into table to prevent running unneeded updates.
 	 * @stable to override
 	 *
 	 * @return Status

@@ -12,7 +12,7 @@ use Wikimedia\TestingAccessWrapper;
  */
 class ArticleViewTest extends MediaWikiIntegrationTestCase {
 
-	protected function setUp() : void {
+	protected function setUp(): void {
 		parent::setUp();
 
 		$this->setUserLang( 'qqx' );
@@ -40,6 +40,11 @@ class ArticleViewTest extends MediaWikiIntegrationTestCase {
 
 		$user = $this->getTestUser()->getUser();
 
+		// Make sure all revision have different timestamps all the time,
+		// to make timestamp asserts below deterministic.
+		$time = time() - 86400;
+		MWTimestamp::setFakeTime( $time );
+
 		foreach ( $revisionContents as $key => $cont ) {
 			if ( is_string( $cont ) ) {
 				$cont = new WikitextContent( $cont );
@@ -50,7 +55,9 @@ class ArticleViewTest extends MediaWikiIntegrationTestCase {
 			$rev = $u->saveRevision( CommentStoreComment::newUnsavedComment( 'Rev ' . $key ) );
 
 			$revisions[ $key ] = $rev;
+			MWTimestamp::setFakeTime( ++$time );
 		}
+		MWTimestamp::setFakeTime( false );
 
 		// Clear content model cache to support tests that mock the revision
 		$this->getServiceContainer()->getMainWANObjectCache()->clearProcessCache();
@@ -245,6 +252,8 @@ class ArticleViewTest extends MediaWikiIntegrationTestCase {
 
 		$this->assertStringNotContainsString( 'id="revision-info-current"', $output->getSubtitle() );
 		$this->assertStringNotContainsString( 'Test B', $this->getHtml( $output ) );
+		$this->assertSame( $idA, $output->getRevisionId() );
+		$this->assertSame( $revisions[1]->getTimestamp(), $output->getRevisionTimestamp() );
 	}
 
 	public function testViewOfOldRevisionFromCache() {
@@ -258,28 +267,35 @@ class ArticleViewTest extends MediaWikiIntegrationTestCase {
 				],
 			],
 		] );
+
 		$revisions = [];
 		$page = $this->getPage( __METHOD__, [ 1 => 'Test A', 2 => 'Test B' ], $revisions );
 		$idA = $revisions[1]->getId();
 
+		// View the revision once (to get it into the cache)
 		$article = new Article( $page->getTitle(), $idA );
-		$article->getContext()->getOutput()->setTitle( $page->getTitle() );
-
-		// Force cache
-		MediaWikiServices::getInstance()
-			->getParserOutputAccess()
-			->getParserOutput(
-				$page,
-				ParserOptions::newCanonical( $article->getContext()->getUser() ),
-				$revisions[1]
-			);
-
 		$article->view();
 
+		// Reset the output page and view the revision again (from ParserCache)
+		$article = new Article( $page->getTitle(), $idA );
+		$context = RequestContext::getMain();
+		$context->setOutput( new OutputPage( $context ) );
+		$article->setContext( $context );
+
+		$outputPageBeforeHTMLRevisionId = null;
+		$this->setTemporaryHook( 'OutputPageBeforeHTML',
+			static function ( OutputPage $out ) use ( &$outputPageBeforeHTMLRevisionId ) {
+				$outputPageBeforeHTMLRevisionId = $out->getRevisionId();
+			}
+		);
+
+		$article->view();
 		$output = $article->getContext()->getOutput();
 		$this->assertStringContainsString( 'Test A', $this->getHtml( $output ) );
 		$this->assertSame( 1, substr_count( $output->getSubtitle(), 'class="mw-revision warningbox"' ) );
 		$this->assertSame( $idA, $output->getRevisionId() );
+		$this->assertSame( $idA, $outputPageBeforeHTMLRevisionId );
+		$this->assertSame( $revisions[1]->getTimestamp(), $output->getRevisionTimestamp() );
 	}
 
 	public function testViewOfCurrentRevision() {
@@ -478,7 +494,7 @@ class ArticleViewTest extends MediaWikiIntegrationTestCase {
 		// use ArticleViewHeader hook to bypass the parser cache
 		$this->setTemporaryHook(
 			'ArticleViewHeader',
-			static function ( Article $articlePage, &$outputDone, &$useParserCache ) use ( $article ) {
+			static function ( Article $articlePage, &$outputDone, &$useParserCache ) {
 				$useParserCache = false;
 			}
 		);
@@ -537,7 +553,7 @@ class ArticleViewTest extends MediaWikiIntegrationTestCase {
 		// use ArticleViewHeader hook to bypass the parser cache
 		$this->setTemporaryHook(
 			'ArticleViewHeader',
-			static function ( Article $articlePage, &$outputDone, &$useParserCache ) use ( $article ) {
+			static function ( Article $articlePage, &$outputDone, &$useParserCache ) {
 				$useParserCache = false;
 			}
 		);

@@ -11,7 +11,7 @@ class SpecialMuteTest extends SpecialPageTestBase {
 	/** @var UserOptionsManager */
 	private $userOptionsManager;
 
-	protected function setUp() : void {
+	protected function setUp(): void {
 		parent::setUp();
 
 		$this->userOptionsManager = $this->getServiceContainer()->getUserOptionsManager();
@@ -25,8 +25,9 @@ class SpecialMuteTest extends SpecialPageTestBase {
 	 */
 	protected function newSpecialPage() {
 		return new SpecialMute(
+			$this->getServiceContainer()->getCentralIdLookupFactory()->getLookup( 'local' ),
 			$this->userOptionsManager,
-			$this->getServiceContainer()->getUserFactory()
+			$this->getServiceContainer()->getUserIdentityLookup()
 		);
 	}
 
@@ -75,10 +76,6 @@ class SpecialMuteTest extends SpecialPageTestBase {
 	 * @covers SpecialMute::execute
 	 */
 	public function testMuteAddsUserToEmailBlacklist() {
-		$this->setMwGlobals( [
-			'wgCentralIdLookupProvider' => 'local',
-		] );
-
 		$targetUser = $this->getTestUser()->getUser();
 
 		$loggedInUser = $this->getMutableTestUser()->getUser();
@@ -102,10 +99,6 @@ class SpecialMuteTest extends SpecialPageTestBase {
 	 * @covers SpecialMute::execute
 	 */
 	public function testUnmuteRemovesUserFromEmailBlacklist() {
-		$this->setMwGlobals( [
-			'wgCentralIdLookupProvider' => 'local',
-		] );
-
 		$targetUser = $this->getTestUser()->getUser();
 
 		$loggedInUser = $this->getMutableTestUser()->getUser();

@@ -410,7 +410,7 @@ class RebuildRecentchanges extends Maintenance {
 		# may be lost at this point (aside from joining on the patrol log table entries).
 		$botgroups = [ 'bot' ];
 		$autopatrolgroups = ( $wgUseRCPatrol || $wgUseNPPatrol || $wgUseFilePatrol ) ?
-			MediaWikiServices::getInstance()->getPermissionManager()
+			MediaWikiServices::getInstance()->getGroupPermissionsLookup()
 			->getGroupsWithPermission( 'autopatrol' ) : [];
 
 		# Flag our recent bot edits
@@ -468,7 +468,7 @@ class RebuildRecentchanges extends Maintenance {
 	 * @param ILBFactory $lbFactory
 	 */
 	private function rebuildRecentChangesTablePass5( ILBFactory $lbFactory ) {
-		$dbw = wfGetDB( DB_PRIMARY );
+		$dbw = $this->getDB( DB_PRIMARY );
 
 		$this->output( "Removing duplicate revision and logging entries...\n" );
 

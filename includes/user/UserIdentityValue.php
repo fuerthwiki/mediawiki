@@ -58,7 +58,7 @@ class UserIdentityValue implements UserIdentity {
 	 * @param string $name user name
 	 * @param string|false $wikiId wiki ID or self::LOCAL for the local wiki
 	 */
-	public function __construct( $id, $name, $wikiId = self::LOCAL ) {
+	public function __construct( int $id, string $name, $wikiId = self::LOCAL ) {
 		if ( is_int( $wikiId ) ) {
 			// Handle old signature: ( $id, $name, $actor, $wikiId )
 			$args = func_get_args();
@@ -74,13 +74,51 @@ class UserIdentityValue implements UserIdentity {
 			}
 		}
 
-		Assert::parameterType( 'integer', $id, '$id' );
-		Assert::parameterType( 'string', $name, '$name' );
 		$this->assertWikiIdParam( $wikiId );
 
 		$this->id = $id;
 		$this->name = $name;
 		$this->wikiId = $wikiId;
+	}
+
+	/**
+	 * Create UserIdentity for an anonymous user.
+	 *
+	 * @since 1.36
+	 * @param string $name
+	 * @param string|false $wikiId wiki ID or self::LOCAL for the local wiki
+	 * @return UserIdentityValue
+	 */
+	public static function newAnonymous( string $name, $wikiId = self::LOCAL ): self {
+		return new self( 0, $name, $wikiId );
+	}
+
+	/**
+	 * Create UserIdentity for a registered user.
+	 *
+	 * @since 1.37
+	 * @param int $userId
+	 * @param string $name
+	 * @param string|false $wikiId wiki ID or self::LOCAL for the local wiki
+	 * @return UserIdentityValue
+	 */
+	public static function newRegistered( int $userId, string $name, $wikiId = self::LOCAL ): self {
+		Assert::parameter( $userId > 0, '$userId', 'must be greater than zero (user must exist)' );
+		return new self( $userId, $name, $wikiId );
+	}
+
+	/**
+	 * Create UserIdentity for an external user with $prefix and $name
+	 *
+	 * @since 1.37
+	 * @param string $prefix
+	 * @param string $name
+	 * @param string|false $wikiId wiki ID or self::LOCAL for the local wiki
+	 * @return UserIdentityValue
+	 */
+	public static function newExternal( string $prefix, string $name, $wikiId = self::LOCAL ): self {
+		// > is a standard separator for external users in the database, see ExternalUserNames
+		return new self( 0, "$prefix>$name", $wikiId );
 	}
 
 	/**
@@ -102,7 +140,7 @@ class UserIdentityValue implements UserIdentity {
 	 * @return int The user ID. May be 0 for anonymous users or for users with no local account.
 	 *
 	 */
-	public function getId( $wikiId = self::LOCAL ) : int {
+	public function getId( $wikiId = self::LOCAL ): int {
 		$this->deprecateInvalidCrossWiki( $wikiId, '1.36' );
 		return $this->id;
 	}
@@ -110,7 +148,7 @@ class UserIdentityValue implements UserIdentity {
 	/**
 	 * @return string The user's logical name. May be an IPv4 or IPv6 address for anonymous users.
 	 */
-	public function getName() : string {
+	public function getName(): string {
 		return $this->name;
 	}
 
@@ -121,7 +159,7 @@ class UserIdentityValue implements UserIdentity {
 	 *
 	 * @return int always 0.
 	 */
-	public function getActorId( $wikiId = self::LOCAL ) : int {
+	public function getActorId( $wikiId = self::LOCAL ): int {
 		wfDeprecated( __METHOD__, '1.36' );
 		return 0;
 	}
@@ -129,10 +167,13 @@ class UserIdentityValue implements UserIdentity {
 	/**
 	 * @since 1.32
 	 *
-	 * @param UserIdentity $user
+	 * @param UserIdentity|null $user
 	 * @return bool
 	 */
-	public function equals( UserIdentity $user ) : bool {
+	public function equals( ?UserIdentity $user ): bool {
+		if ( !$user ) {
+			return false;
+		}
 		// XXX it's not clear whether central ID providers are supposed to obey this
 		return $this->getName() === $user->getName();
 	}
@@ -144,8 +185,8 @@ class UserIdentityValue implements UserIdentity {
 	 *   anonymous or has no local account (which can happen when importing). This is equivalent to
 	 *   getId() != 0 and is provided for code readability.
 	 */
-	public function isRegistered() : bool {
-		return $this->getId() != 0;
+	public function isRegistered(): bool {
+		return $this->getId( $this->wikiId ) != 0;
 	}
 
 	public function __toString(): string {

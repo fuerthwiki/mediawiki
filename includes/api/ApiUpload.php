@@ -20,6 +20,9 @@
  * @file
  */
 
+use MediaWiki\User\UserOptionsLookup;
+use MediaWiki\Watchlist\WatchlistManager;
+
 /**
  * @ingroup API
  */
@@ -32,11 +35,31 @@ class ApiUpload extends ApiBase {
 
 	protected $mParams;
 
-	public function __construct( ApiMain $mainModule, $moduleName, $modulePrefix = '' ) {
-		parent::__construct( $mainModule, $moduleName, $modulePrefix );
+	/** @var JobQueueGroup */
+	private $jobQueueGroup;
 
+	/**
+	 * @param ApiMain $mainModule
+	 * @param string $moduleName
+	 * @param JobQueueGroup $jobQueueGroup
+	 * @param WatchlistManager $watchlistManager
+	 * @param UserOptionsLookup $userOptionsLookup
+	 */
+	public function __construct(
+		ApiMain $mainModule,
+		$moduleName,
+		JobQueueGroup $jobQueueGroup,
+		WatchlistManager $watchlistManager,
+		UserOptionsLookup $userOptionsLookup
+	) {
+		parent::__construct( $mainModule, $moduleName );
+		$this->jobQueueGroup = $jobQueueGroup;
+
+		// Variables needed in ApiWatchlistTrait trait
 		$this->watchlistExpiryEnabled = $this->getConfig()->get( 'WatchlistExpiry' );
 		$this->watchlistMaxDuration = $this->getConfig()->get( 'WatchlistExpiryMaxDuration' );
+		$this->watchlistManager = $watchlistManager;
+		$this->userOptionsLookup = $userOptionsLookup;
 	}
 
 	public function execute() {
@@ -267,7 +290,7 @@ class ApiUpload extends ApiBase {
 					[ 'result' => 'Poll',
 						'stage' => 'queued', 'status' => Status::newGood() ]
 				);
-				JobQueueGroup::singleton()->push( new AssembleUploadChunksJob(
+				$this->jobQueueGroup->push( new AssembleUploadChunksJob(
 					Title::makeTitle( NS_FILE, $filekey ),
 					[
 						'filename' => $this->mParams['filename'],
@@ -860,7 +883,7 @@ class ApiUpload extends ApiBase {
 				$this->mParams['filekey'],
 				[ 'result' => 'Poll', 'stage' => 'queued', 'status' => Status::newGood() ]
 			);
-			JobQueueGroup::singleton()->push( new PublishStashedFileJob(
+			$this->jobQueueGroup->push( new PublishStashedFileJob(
 				Title::makeTitle( NS_FILE, $this->mParams['filename'] ),
 				[
 					'filename' => $this->mParams['filename'],

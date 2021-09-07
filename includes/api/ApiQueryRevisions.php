@@ -20,10 +20,14 @@
  * @file
  */
 
-use MediaWiki\MediaWikiServices;
+use MediaWiki\Content\IContentHandlerFactory;
+use MediaWiki\Content\Transform\ContentTransformer;
 use MediaWiki\ParamValidator\TypeDef\UserDef;
 use MediaWiki\Revision\RevisionRecord;
+use MediaWiki\Revision\RevisionStore;
+use MediaWiki\Revision\SlotRoleRegistry;
 use MediaWiki\Storage\NameTableAccessException;
+use MediaWiki\Storage\NameTableStore;
 
 /**
  * A query action to enumerate revisions of a given page, or show top revisions
@@ -37,12 +41,50 @@ class ApiQueryRevisions extends ApiQueryRevisionsBase {
 
 	private $token = null;
 
+	/** @var RevisionStore */
+	private $revisionStore;
+
+	/** @var NameTableStore */
+	private $changeTagDefStore;
+
+	/** @var ActorMigration */
+	private $actorMigration;
+
 	/**
 	 * @param ApiQuery $query
 	 * @param string $moduleName
+	 * @param RevisionStore $revisionStore
+	 * @param IContentHandlerFactory $contentHandlerFactory
+	 * @param ParserFactory $parserFactory
+	 * @param SlotRoleRegistry $slotRoleRegistry
+	 * @param NameTableStore $changeTagDefStore
+	 * @param ActorMigration $actorMigration
+	 * @param ContentTransformer $contentTransformer
 	 */
-	public function __construct( ApiQuery $query, $moduleName ) {
-		parent::__construct( $query, $moduleName, 'rv' );
+	public function __construct(
+		ApiQuery $query,
+		$moduleName,
+		RevisionStore $revisionStore,
+		IContentHandlerFactory $contentHandlerFactory,
+		ParserFactory $parserFactory,
+		SlotRoleRegistry $slotRoleRegistry,
+		NameTableStore $changeTagDefStore,
+		ActorMigration $actorMigration,
+		ContentTransformer $contentTransformer
+	) {
+		parent::__construct(
+			$query,
+			$moduleName,
+			'rv',
+			$revisionStore,
+			$contentHandlerFactory,
+			$parserFactory,
+			$slotRoleRegistry,
+			$contentTransformer
+		);
+		$this->revisionStore = $revisionStore;
+		$this->changeTagDefStore = $changeTagDefStore;
+		$this->actorMigration = $actorMigration;
 	}
 
 	private $tokenFunctions;
@@ -85,8 +127,9 @@ class ApiQueryRevisions extends ApiQueryRevisionsBase {
 	}
 
 	protected function run( ApiPageSet $resultPageSet = null ) {
+		global $wgActorTableSchemaMigrationStage;
+
 		$params = $this->extractRequestParams( false );
-		$revisionStore = MediaWikiServices::getInstance()->getRevisionStore();
 
 		// If any of those parameters are used, work in 'enumeration' mode.
 		// Enum mode can only be used when exactly one page is provided.
@@ -144,7 +187,9 @@ class ApiQueryRevisions extends ApiQueryRevisionsBase {
 		];
 		$useIndex = [];
 
-		if ( $params['user'] !== null ) {
+		if ( $params['user'] !== null &&
+			( $wgActorTableSchemaMigrationStage & SCHEMA_COMPAT_READ_TEMP )
+		) {
 			// We're going to want to use the page_actor_timestamp index (on revision_actor_temp)
 			// so use that table's denormalized fields.
 			$idField = 'revactor_rev';
@@ -159,7 +204,7 @@ class ApiQueryRevisions extends ApiQueryRevisionsBase {
 			if ( $this->fld_user ) {
 				$opts[] = 'user';
 			}
-			$revQuery = $revisionStore->getQueryInfo( $opts );
+			$revQuery = $this->revisionStore->getQueryInfo( $opts );
 
 			if ( $idField !== 'rev_id' ) {
 				$aliasFields = [ 'rev_id' => $idField, 'rev_timestamp' => $tsField, 'rev_page' => $pageField ];
@@ -193,9 +238,8 @@ class ApiQueryRevisions extends ApiQueryRevisionsBase {
 			$this->addJoinConds(
 				[ 'change_tag' => [ 'JOIN', [ 'rev_id=ct_rev_id' ] ] ]
 			);
-			$changeTagDefStore = MediaWikiServices::getInstance()->getChangeTagDefStore();
 			try {
-				$this->addWhereFld( 'ct_tag_id', $changeTagDefStore->getId( $params['tag'] ) );
+				$this->addWhereFld( 'ct_tag_id', $this->changeTagDefStore->getId( $params['tag'] ) );
 			} catch ( NameTableAccessException $exception ) {
 				// Return nothing.
 				$this->addWhere( '1=0' );
@@ -320,14 +364,12 @@ class ApiQueryRevisions extends ApiQueryRevisionsBase {
 			$this->addWhereFld( $pageField, reset( $ids ) );
 
 			if ( $params['user'] !== null ) {
-				$actorQuery = ActorMigration::newMigration()
-					->getWhere( $db, 'rev_user', $params['user'] );
+				$actorQuery = $this->actorMigration->getWhere( $db, 'rev_user', $params['user'] );
 				$this->addTables( $actorQuery['tables'] );
 				$this->addJoinConds( $actorQuery['joins'] );
 				$this->addWhere( $actorQuery['conds'] );
 			} elseif ( $params['excludeuser'] !== null ) {
-				$actorQuery = ActorMigration::newMigration()
-					->getWhere( $db, 'rev_user', $params['excludeuser'] );
+				$actorQuery = $this->actorMigration->getWhere( $db, 'rev_user', $params['excludeuser'] );
 				$this->addTables( $actorQuery['tables'] );
 				$this->addJoinConds( $actorQuery['joins'] );
 				$this->addWhere( 'NOT(' . $actorQuery['conds'] . ')' );
@@ -434,7 +476,7 @@ class ApiQueryRevisions extends ApiQueryRevisionsBase {
 			if ( $resultPageSet !== null ) {
 				$generated[] = $row->rev_id;
 			} else {
-				$revision = $revisionStore->newRevisionFromRow( $row, 0, Title::newFromRow( $row ) );
+				$revision = $this->revisionStore->newRevisionFromRow( $row, 0, Title::newFromRow( $row ) );
 				$rev = $this->extractRevisionInfo( $revision, $row );
 
 				if ( $this->token !== null ) {

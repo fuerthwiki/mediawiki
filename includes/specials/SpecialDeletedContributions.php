@@ -139,10 +139,7 @@ class SpecialDeletedContributions extends SpecialPage {
 
 		$out = $this->getOutput();
 		$out->addSubtitle( $this->getSubTitle( $userObj ) );
-		$out->setHTMLTitle( $this->msg(
-			'pagetitle',
-			$this->msg( 'deletedcontributions-title', $target )->plain()
-		)->inContentLanguage() );
+		$out->setPageTitle( $this->msg( 'deletedcontributions-title', $target ) );
 
 		$this->getForm();
 
@@ -229,7 +226,8 @@ class SpecialDeletedContributions extends SpecialPage {
 			$block = DatabaseBlock::newFromTarget( $userObj, $userObj );
 			if ( $block !== null && $block->getType() != DatabaseBlock::TYPE_AUTO ) {
 				if ( $block->getType() == DatabaseBlock::TYPE_RANGE ) {
-					$nt = $this->namespaceInfo->getCanonicalName( NS_USER ) . ':' . $block->getTarget();
+					$nt = $this->namespaceInfo->getCanonicalName( NS_USER )
+						. ':' . $block->getTargetName();
 				}
 
 				// LogEventsList::showLogExtract() wants the first parameter by ref

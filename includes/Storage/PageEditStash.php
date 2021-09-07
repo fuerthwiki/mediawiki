@@ -121,7 +121,7 @@ class PageEditStash {
 		$key = $this->getStashKey( $page, $this->getContentHash( $content ), $user );
 		$fname = __METHOD__;
 
-		// Use the master DB to allow for fast blocking locks on the "save path" where this
+		// Use the primary DB to allow for fast blocking locks on the "save path" where this
 		// value might actually be used to complete a page edit. If the edit submission request
 		// happens before this edit stash requests finishes, then the submission will block until
 		// the stash request finishes parsing. For the lock acquisition below, there is not much
@@ -287,7 +287,7 @@ class PageEditStash {
 		}
 
 		if ( $editInfo->output->getFlag( 'vary-revision' ) ) {
-			// This can be used for the initial parse, e.g. for filters or doEditContent(),
+			// This can be used for the initial parse, e.g. for filters or doUserEditContent(),
 			// but a second parse will be triggered in doEditUpdates() no matter what
 			$logger->info(
 				"Cache for key '{key}' has vary-revision; post-insertion parse inevitable.",
@@ -337,7 +337,7 @@ class PageEditStash {
 			$start = microtime( true );
 			// We ignore user aborts and keep parsing. Block on any prior parsing
 			// so as to use its results and make use of the time spent parsing.
-			// Skip this logic if there no master connection in case this method
+			// Skip this logic if there no primary connection in case this method
 			// is called on an HTTP GET request for some reason.
 			$dbw = $this->lb->getAnyOpenConnection( $this->lb->getWriterIndex() );
 			if ( $dbw && $dbw->lock( $key, __METHOD__, 30 ) ) {

@@ -40,6 +40,8 @@ $cfg['exclude_file_list'] = array_merge(
 	[
 		// This file has invalid PHP syntax
 		'vendor/squizlabs/php_codesniffer/src/Standards/PSR2/Tests/Methods/MethodDeclarationUnitTest.inc',
+		// This file implements a polyfill for the JsonUnserializable class
+		'vendor/php-parallel-lint/php-parallel-lint/src/polyfill.php'
 	]
 );
 
@@ -126,6 +128,9 @@ $cfg['globals_type_map'] = array_merge( $cfg['globals_type_map'], [
 	'wgOut' => 'OutputPage',
 	'wgExtraNamespaces' => 'string[]',
 ] );
+
+// TODO Provide as base config with a new version of mediawiki-phan-config
+$cfg['plugins'][] = 'UseReturnValuePlugin';
 
 // Include a local config file if it exists
 if ( file_exists( __DIR__ . '/local-config.php' ) ) {

@@ -67,7 +67,7 @@ class ApiSetNotificationTimestamp extends ApiBase {
 	public function execute() {
 		$user = $this->getUser();
 
-		if ( $user->isAnon() ) {
+		if ( !$user->isRegistered() ) {
 			$this->dieWithError( 'watchlistanontext', 'notloggedin' );
 		}
 		$this->checkUserRightsAny( 'editmywatchlist' );
@@ -173,18 +173,18 @@ class ApiSetNotificationTimestamp extends ApiBase {
 				$result[] = $rev;
 			}
 
-			if ( $pageSet->getTitles() ) {
+			if ( $pageSet->getPages() ) {
 				// Now process the valid titles
 				$this->watchedItemStore->setNotificationTimestampsForUser(
 					$user,
 					$timestamp,
-					$pageSet->getTitles()
+					$pageSet->getPages()
 				);
 
 				// Query the results of our update
 				$timestamps = $this->watchedItemStore->getNotificationTimestampsBatch(
 					$user,
-					$pageSet->getTitles()
+					$pageSet->getPages()
 				);
 
 				// Now, put the valid titles into the result

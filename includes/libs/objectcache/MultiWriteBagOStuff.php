@@ -230,7 +230,7 @@ class MultiWriteBagOStuff extends BagOStuff {
 		);
 	}
 
-	public function lock( $key, $timeout = 6, $expiry = 6, $rclass = '' ) {
+	public function lock( $key, $timeout = 6, $exptime = 6, $rclass = '' ) {
 		// Only need to lock the first cache; also avoids deadlocks
 		return $this->callKeyMethodOnTierCache(
 			0,
@@ -255,11 +255,12 @@ class MultiWriteBagOStuff extends BagOStuff {
 	public function deleteObjectsExpiringBefore(
 		$timestamp,
 		callable $progress = null,
-		$limit = INF
+		$limit = INF,
+		string $tag = null
 	) {
 		$ret = false;
 		foreach ( $this->caches as $cache ) {
-			if ( $cache->deleteObjectsExpiringBefore( $timestamp, $progress, $limit ) ) {
+			if ( $cache->deleteObjectsExpiringBefore( $timestamp, $progress, $limit, $tag ) ) {
 				$ret = true;
 			}
 		}

@@ -33,7 +33,7 @@ class DBConnRef implements IDatabase {
 	private $conn;
 	/** @var array N-tuple of (server index, group, DatabaseDomain|string) */
 	private $params;
-	/** @var int One of DB_MASTER/DB_REPLICA */
+	/** @var int One of DB_PRIMARY/DB_REPLICA */
 	private $role;
 
 	private const FLD_INDEX = 0;
@@ -44,7 +44,7 @@ class DBConnRef implements IDatabase {
 	/**
 	 * @param ILoadBalancer $lb Connection manager for $conn
 	 * @param IDatabase|array $conn Database or (server index, query groups, domain, flags)
-	 * @param int $role The type of connection asked for; one of DB_MASTER/DB_REPLICA
+	 * @param int $role The type of connection asked for; one of DB_PRIMARY/DB_REPLICA
 	 * @internal This method should not be called outside of LoadBalancer
 	 */
 	public function __construct( ILoadBalancer $lb, $conn, $role ) {
@@ -69,7 +69,7 @@ class DBConnRef implements IDatabase {
 	}
 
 	/**
-	 * @return int DB_MASTER when this *requires* the master DB, otherwise DB_REPLICA
+	 * @return int DB_PRIMARY when this *requires* the primary DB, otherwise DB_REPLICA
 	 * @since 1.33
 	 */
 	public function getReferenceRole() {
@@ -80,11 +80,20 @@ class DBConnRef implements IDatabase {
 		return $this->__call( __FUNCTION__, func_get_args() );
 	}
 
+	public function getTopologyBasedServerId() {
+		return $this->__call( __FUNCTION__, func_get_args() );
+	}
+
 	public function getTopologyRole() {
 		return $this->__call( __FUNCTION__, func_get_args() );
 	}
 
+	public function getTopologyRootPrimary() {
+		return $this->__call( __FUNCTION__, func_get_args() );
+	}
+
 	public function getTopologyRootMaster() {
+		wfDeprecated( __METHOD__, '1.37' );
 		return $this->__call( __FUNCTION__, func_get_args() );
 	}
 
@@ -302,7 +311,7 @@ class DBConnRef implements IDatabase {
 
 	public function selectFieldValues(
 		$table, $var, $cond = '', $fname = __METHOD__, $options = [], $join_conds = []
-	) {
+	): array {
 		return $this->__call( __FUNCTION__, func_get_args() );
 	}
 
@@ -464,6 +473,10 @@ class DBConnRef implements IDatabase {
 		return $this->__call( __FUNCTION__, func_get_args() );
 	}
 
+	public function getServerName() {
+		return $this->__call( __FUNCTION__, func_get_args() );
+	}
+
 	public function addQuotes( $s ) {
 		return $this->__call( __FUNCTION__, func_get_args() );
 	}
@@ -574,7 +587,12 @@ class DBConnRef implements IDatabase {
 		return $this->__call( __FUNCTION__, func_get_args() );
 	}
 
-	public function masterPosWait( DBMasterPos $pos, $timeout ) {
+	public function primaryPosWait( DBPrimaryPos $pos, $timeout ) {
+		return $this->__call( __FUNCTION__, func_get_args() );
+	}
+
+	public function masterPosWait( DBPrimaryPos $pos, $timeout ) {
+		wfDeprecated( __METHOD__, '1.37' );
 		return $this->__call( __FUNCTION__, func_get_args() );
 	}
 
@@ -582,8 +600,13 @@ class DBConnRef implements IDatabase {
 		return $this->__call( __FUNCTION__, func_get_args() );
 	}
 
-	public function getMasterPos() {
+	public function getPrimaryPos() {
 		return $this->__call( __FUNCTION__, func_get_args() );
+	}
+
+	public function getMasterPos() {
+		// wfDeprecated( __METHOD__, '1.37' );
+		return $this->getPrimaryPos();
 	}
 
 	public function serverIsReadOnly() {
@@ -692,7 +715,7 @@ class DBConnRef implements IDatabase {
 	}
 
 	public function setSessionOptions( array $options ) {
-		return $this->__call( __FUNCTION__, func_get_args() );
+		$this->__call( __FUNCTION__, func_get_args() );
 	}
 
 	public function setSchemaVars( $vars ) {
@@ -705,7 +728,7 @@ class DBConnRef implements IDatabase {
 		return $this->__call( __FUNCTION__, func_get_args() );
 	}
 
-	public function lock( $lockName, $method, $timeout = 5 ) {
+	public function lock( $lockName, $method, $timeout = 5, $flags = 0 ) {
 		$this->assertRoleAllowsWrites();
 
 		return $this->__call( __FUNCTION__, func_get_args() );
@@ -764,20 +787,20 @@ class DBConnRef implements IDatabase {
 	}
 
 	/**
-	 * Error out if the role is not DB_MASTER
+	 * Error out if the role is not DB_PRIMARY
 	 *
 	 * Note that the underlying connection may or may not itself be read-only.
-	 * It could even be to a writable master (both server-side and to the application).
+	 * It could even be to a writable primary (both server-side and to the application).
 	 * This error is meant for the case when a DB_REPLICA handle was requested but a
 	 * a write was attempted on that handle regardless.
 	 *
-	 * In configurations where the master DB has some generic read load or is the only server,
-	 * DB_MASTER/DB_REPLICA will sometimes (or always) use the same connection to the master DB.
+	 * In configurations where the primary DB has some generic read load or is the only server,
+	 * DB_PRIMARY/DB_REPLICA will sometimes (or always) use the same connection to the primary DB.
 	 * This does not effect the role of DBConnRef instances.
 	 * @throws DBReadOnlyRoleError
 	 */
 	protected function assertRoleAllowsWrites() {
-		// DB_MASTER is "prima facie" writable
+		// DB_PRIMARY is "prima facie" writable
 		if ( $this->role !== ILoadBalancer::DB_PRIMARY ) {
 			throw new DBReadOnlyRoleError( $this->conn, "Cannot write with role DB_REPLICA" );
 		}

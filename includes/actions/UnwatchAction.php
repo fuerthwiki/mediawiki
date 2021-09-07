@@ -20,7 +20,7 @@
  * @ingroup Actions
  */
 
-use MediaWiki\MediaWikiServices;
+use MediaWiki\Watchlist\WatchlistManager;
 
 /**
  * Page removal from a user's watchlist
@@ -29,12 +29,31 @@ use MediaWiki\MediaWikiServices;
  */
 class UnwatchAction extends WatchAction {
 
+	/** @var WatchlistManager */
+	private $watchlistManager;
+
+	/**
+	 * @param Page $page
+	 * @param IContextSource $context
+	 * @param WatchlistManager $watchlistManager
+	 * @param WatchedItemStore $watchedItemStore
+	 */
+	public function __construct(
+		Page $page,
+		IContextSource $context,
+		WatchlistManager $watchlistManager,
+		WatchedItemStore $watchedItemStore
+	) {
+		parent::__construct( $page, $context, $watchlistManager, $watchedItemStore );
+		$this->watchlistManager = $watchlistManager;
+	}
+
 	public function getName() {
 		return 'unwatch';
 	}
 
 	public function onSubmit( $data ) {
-		MediaWikiServices::getInstance()->getWatchlistManager()->removeWatch(
+		$this->watchlistManager->removeWatch(
 			$this->getContext()->getAuthority(),
 			$this->getTitle()
 		);
@@ -46,7 +65,6 @@ class UnwatchAction extends WatchAction {
 		return [
 			'intro' => [
 				'type' => 'info',
-				'vertical-label' => true,
 				'raw' => true,
 				'default' => $this->msg( 'confirm-unwatch-top' )->parse()
 			]

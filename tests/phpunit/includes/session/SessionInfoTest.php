@@ -10,6 +10,7 @@ use MediaWikiIntegrationTestCase;
  * @covers MediaWiki\Session\SessionInfo
  */
 class SessionInfoTest extends MediaWikiIntegrationTestCase {
+	use SessionProviderTestTrait;
 
 	public function testBasics() {
 		$anonInfo = UserInfo::newAnonymous();
@@ -64,7 +65,7 @@ class SessionInfoTest extends MediaWikiIntegrationTestCase {
 		$provider = $this->getMockBuilder( SessionProvider::class )
 			->onlyMethods( [ 'persistsSessionId', 'canChangeUser', '__toString' ] )
 			->getMockForAbstractClass();
-		$provider->setManager( $manager );
+		$this->initProvider( $provider, null, null, $manager );
 		$provider->method( 'persistsSessionId' )
 			->willReturn( true );
 		$provider->method( 'canChangeUser' )
@@ -75,7 +76,7 @@ class SessionInfoTest extends MediaWikiIntegrationTestCase {
 		$provider2 = $this->getMockBuilder( SessionProvider::class )
 			->onlyMethods( [ 'persistsSessionId', 'canChangeUser', '__toString' ] )
 			->getMockForAbstractClass();
-		$provider2->setManager( $manager );
+		$this->initProvider( $provider2, null, null, $manager );
 		$provider2->method( 'persistsSessionId' )
 			->willReturn( true );
 		$provider2->method( 'canChangeUser' )

@@ -26,11 +26,13 @@ class SpecialBlockTest extends SpecialPageTestBase {
 			$services->getBlockUserFactory(),
 			$services->getUserNameUtils(),
 			$services->getUserNamePrefixSearch(),
-			$services->getBlockActionInfo()
+			$services->getBlockActionInfo(),
+			$services->getTitleFormatter(),
+			$services->getNamespaceInfo()
 		);
 	}
 
-	protected function tearDown() : void {
+	protected function tearDown(): void {
 		$this->resetTables();
 		parent::tearDown();
 	}
@@ -86,15 +88,15 @@ class SpecialBlockTest extends SpecialPageTestBase {
 		$block = $this->insertBlock();
 
 		// Refresh the block from the database.
-		$block = DatabaseBlock::newFromTarget( $block->getTarget() );
+		$block = DatabaseBlock::newFromTarget( $block->getTargetUserIdentity() );
 
 		$page = $this->newSpecialPage();
 
 		$wrappedPage = TestingAccessWrapper::newFromObject( $page );
-		$wrappedPage->target = $block->getTarget();
+		$wrappedPage->target = $block->getTargetUserIdentity();
 		$fields = $wrappedPage->getFormFields();
 
-		$this->assertSame( (string)$block->getTarget(), $fields['Target']['default'] );
+		$this->assertSame( $block->getTargetName(), $fields['Target']['default'] );
 		$this->assertSame( $block->isHardblock(), $fields['HardBlock']['default'] );
 		$this->assertSame( $block->isCreateAccountBlocked(), $fields['CreateAccount']['default'] );
 		$this->assertSame( $block->isAutoblocking(), $fields['AutoBlock']['default'] );
@@ -119,7 +121,7 @@ class SpecialBlockTest extends SpecialPageTestBase {
 		$block = new DatabaseBlock( [
 			'address' => $badActor->getName(),
 			'user' => $badActor->getId(),
-			'by' => $sysop->getId(),
+			'by' => $sysop,
 			'expiry' => 'infinity',
 			'sitewide' => 0,
 			'enableAutoblock' => true,
@@ -137,12 +139,12 @@ class SpecialBlockTest extends SpecialPageTestBase {
 		MediaWikiServices::getInstance()->getDatabaseBlockStore()->insertBlock( $block );
 
 		// Refresh the block from the database.
-		$block = DatabaseBlock::newFromTarget( $block->getTarget() );
+		$block = DatabaseBlock::newFromTarget( $block->getTargetUserIdentity() );
 
 		$page = $this->newSpecialPage();
 
 		$wrappedPage = TestingAccessWrapper::newFromObject( $page );
-		$wrappedPage->target = $block->getTarget();
+		$wrappedPage->target = $block->getTargetUserIdentity();
 		$fields = $wrappedPage->getFormFields();
 
 		$titles = [
@@ -150,7 +152,7 @@ class SpecialBlockTest extends SpecialPageTestBase {
 			$pageSaturn->getTitle()->getPrefixedText(),
 		];
 
-		$this->assertSame( (string)$block->getTarget(), $fields['Target']['default'] );
+		$this->assertSame( $block->getTargetName(), $fields['Target']['default'] );
 		$this->assertSame( 'partial', $fields['EditingRestriction']['default'] );
 		$this->assertSame( implode( "\n", $titles ), $fields['PageRestrictions']['default'] );
 		$this->assertSame( [ $actionId ], $fields['ActionRestrictions']['default'] );
@@ -204,7 +206,7 @@ class SpecialBlockTest extends SpecialPageTestBase {
 		$block = new DatabaseBlock( [
 			'address' => $badActor->getName(),
 			'user' => $badActor->getId(),
-			'by' => $sysop->getId(),
+			'by' => $sysop,
 			'expiry' => 'infinity',
 			'sitewide' => 0,
 			'enableAutoblock' => false,
@@ -634,7 +636,7 @@ class SpecialBlockTest extends SpecialPageTestBase {
 
 		$block = new DatabaseBlock( [
 			'address' => $blockedUser,
-			'by' => $performer->getId(),
+			'by' => $performer,
 			'hideName' => true,
 		] );
 		MediaWikiServices::getInstance()->getDatabaseBlockStore()->insertBlock( $block );
@@ -775,12 +777,10 @@ class SpecialBlockTest extends SpecialPageTestBase {
 
 		$userToBlock = $this->getTestUser()->getUser();
 		$pageSaturn = $this->getExistingTestPage( 'Saturn' );
-		$pageSaturn->doEditContent(
+		$pageSaturn->doUserEditContent(
 			ContentHandler::makeContent( 'content', $pageSaturn->getTitle() ),
-			'summary',
-			0,
-			false,
-			$userToBlock
+			$userToBlock,
+			'summary'
 		);
 
 		$context = new DerivativeContext( RequestContext::getMain() );
@@ -847,7 +847,7 @@ class SpecialBlockTest extends SpecialPageTestBase {
 		$block = new DatabaseBlock( [
 			'address' => $blockedUser->getName(),
 			'user' => $blockedUser->getId(),
-			'by' => $blockPerformer->getId(),
+			'by' => $blockPerformer,
 			'expiry' => 'infinity',
 			'sitewide' => $sitewide,
 			'enableAutoblock' => true,
@@ -947,7 +947,7 @@ class SpecialBlockTest extends SpecialPageTestBase {
 		$block = new DatabaseBlock( [
 			'address' => $badActor->getName(),
 			'user' => $badActor->getId(),
-			'by' => $sysop->getId(),
+			'by' => $sysop,
 			'expiry' => 'infinity',
 			'sitewide' => 1,
 			'enableAutoblock' => true,
@@ -968,10 +968,10 @@ class SpecialBlockTest extends SpecialPageTestBase {
 	 *
 	 * @return BlockRestrictionStore
 	 */
-	private function getBlockRestrictionStore() : BlockRestrictionStore {
+	private function getBlockRestrictionStore(): BlockRestrictionStore {
 		$loadBalancer = $this->getMockBuilder( LoadBalancer::class )
-					   ->disableOriginalConstructor()
-					   ->getMock();
+			->disableOriginalConstructor()
+			->getMock();
 
 		return new BlockRestrictionStore( $loadBalancer );
 	}

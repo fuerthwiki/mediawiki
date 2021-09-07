@@ -43,7 +43,7 @@ class PageProps {
 	private const CACHE_SIZE = 100; // integer; max cached pages
 
 	/** @var MapCacheLRU */
-	private $cache = null;
+	private $cache;
 
 	/**
 	 * @return PageProps
@@ -233,15 +233,23 @@ class PageProps {
 			}
 
 			foreach ( $titles as $title ) {
-				$pageID = $title->getId();
-				if ( $pageID > 0 ) {
-					$result[] = $pageID;
+				// Until we only allow ProperPageIdentity, Title objects
+				// can deceive us with an unexpected Special page
+				if ( $title->canExist() ) {
+					$pageID = $title->getId();
+					if ( $pageID > 0 ) {
+						$result[] = $pageID;
+					}
 				}
 			}
 		} else {
-			$pageID = $titles->getId();
-			if ( $pageID > 0 ) {
-				$result[] = $pageID;
+			// Until we only allow ProperPageIdentity, Title objects
+			// can deceive us with an unexpected Special page
+			if ( $titles->canExist() ) {
+				$pageID = $titles->getId();
+				if ( $pageID > 0 ) {
+					$result[] = $pageID;
+				}
 			}
 		}
 		return $result;

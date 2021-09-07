@@ -19,12 +19,14 @@
  * @file
  */
 
+use MediaWiki\Collation\CollationFactory;
 use MediaWiki\Config\ServiceOptions;
 use MediaWiki\Content\IContentHandlerFactory;
 use MediaWiki\EditPage\SpamChecker;
 use MediaWiki\HookContainer\HookContainer;
 use MediaWiki\HookContainer\HookRunner;
 use MediaWiki\MediaWikiServices;
+use MediaWiki\Page\MovePageFactory;
 use MediaWiki\Page\PageIdentity;
 use MediaWiki\Page\WikiPageFactory;
 use MediaWiki\Permissions\Authority;
@@ -33,6 +35,7 @@ use MediaWiki\Revision\MutableRevisionRecord;
 use MediaWiki\Revision\RevisionRecord;
 use MediaWiki\Revision\RevisionStore;
 use MediaWiki\Revision\SlotRecord;
+use MediaWiki\User\UserEditTracker;
 use MediaWiki\User\UserFactory;
 use MediaWiki\User\UserIdentity;
 use Wikimedia\Rdbms\IDatabase;
@@ -111,6 +114,15 @@ class MovePage {
 	 */
 	private $userFactory;
 
+	/** @var UserEditTracker */
+	private $userEditTracker;
+
+	/** @var MovePageFactory */
+	private $movePageFactory;
+
+	/** @var CollationFactory */
+	public $collationFactory;
+
 	/**
 	 * @internal For use by PageCommandFactory
 	 */
@@ -120,8 +132,6 @@ class MovePage {
 	];
 
 	/**
-	 * Calling this directly is deprecated in 1.34. Use MovePageFactory instead.
-	 *
 	 * @param Title $oldTitle
 	 * @param Title $newTitle
 	 * @param ServiceOptions|null $options
@@ -135,6 +145,10 @@ class MovePage {
 	 * @param HookContainer|null $hookContainer
 	 * @param WikiPageFactory|null $wikiPageFactory
 	 * @param UserFactory|null $userFactory
+	 * @param UserEditTracker|null $userEditTracker
+	 * @param MovePageFactory|null $movePageFactory
+	 * @param CollationFactory|null $collationFactory
+	 * @deprecated since 1.34, hard deprecated since 1.37. Use MovePageFactory instead.
 	 */
 	public function __construct(
 		Title $oldTitle,
@@ -149,8 +163,18 @@ class MovePage {
 		SpamChecker $spamChecker = null,
 		HookContainer $hookContainer = null,
 		WikiPageFactory $wikiPageFactory = null,
-		UserFactory $userFactory = null
+		UserFactory $userFactory = null,
+		UserEditTracker $userEditTracker = null,
+		MovePageFactory $movePageFactory = null,
+		CollationFactory $collationFactory = null
 	) {
+		if ( !$options ) {
+			wfDeprecatedMsg(
+				__METHOD__ . ' without providing all services is deprecated',
+				'1.34'
+			);
+		}
+
 		$this->oldTitle = $oldTitle;
 		$this->newTitle = $newTitle;
 
@@ -175,6 +199,9 @@ class MovePage {
 		$this->hookRunner = new HookRunner( $hookContainer ?? $services()->getHookContainer() );
 		$this->wikiPageFactory = $wikiPageFactory ?? $services()->getWikiPageFactory();
 		$this->userFactory = $userFactory ?? $services()->getUserFactory();
+		$this->userEditTracker = $userEditTracker ?? $services()->getUserEditTracker();
+		$this->movePageFactory = $movePageFactory ?? $services()->getMovePageFactory();
+		$this->collationFactory = $collationFactory ?? $services()->getCollationFactory();
 	}
 
 	/**
@@ -371,9 +398,8 @@ class MovePage {
 		$status = new Status();
 
 		if ( !$this->newTitle->inNamespace( NS_FILE ) ) {
-			$status->fatal( 'imagenocrossnamespace' );
 			// No need for further errors about the target filename being wrong
-			return $status;
+			return $status->fatal( 'imagenocrossnamespace' );
 		}
 
 		$file = $this->repoGroup->getLocalRepo()->newFile( $this->oldTitle );
@@ -516,9 +542,9 @@ class MovePage {
 		UserIdentity $user, $reason = null, $createRedirect = true, array $changeTags = []
 	) {
 		return $this->moveSubpagesInternal(
-			static function ( Title $oldSubpage, Title $newSubpage )
+			function ( Title $oldSubpage, Title $newSubpage )
 			use ( $user, $reason, $createRedirect, $changeTags ) {
-				$mp = new MovePage( $oldSubpage, $newSubpage );
+				$mp = $this->movePageFactory->newMovePage( $oldSubpage, $newSubpage );
 				return $mp->move( $user, $reason, $createRedirect, $changeTags );
 			}
 		);
@@ -544,9 +570,9 @@ class MovePage {
 			return Status::newFatal( 'cant-move-subpages' );
 		}
 		return $this->moveSubpagesInternal(
-			static function ( Title $oldSubpage, Title $newSubpage )
+			function ( Title $oldSubpage, Title $newSubpage )
 			use ( $performer, $reason, $createRedirect, $changeTags ) {
-				$mp = new MovePage( $oldSubpage, $newSubpage );
+				$mp = $this->movePageFactory->newMovePage( $oldSubpage, $newSubpage );
 				return $mp->moveIfAllowed( $performer, $reason, $createRedirect, $changeTags );
 			}
 		);
@@ -648,7 +674,7 @@ class MovePage {
 		$protected = $this->oldTitle->isProtected();
 
 		// Attempt the actual move
-		$moveAttemptResult = $this->moveToInternal( $userObj, $this->newTitle, $reason, $createRedirect,
+		$moveAttemptResult = $this->moveToInternal( $user, $this->newTitle, $reason, $createRedirect,
 			$changeTags );
 
 		if ( $moveAttemptResult instanceof Status ) {
@@ -670,12 +696,13 @@ class MovePage {
 			__METHOD__
 		);
 		$type = $this->nsInfo->getCategoryLinkType( $this->newTitle->getNamespace() );
+		$collation = $this->collationFactory->getCategoryCollation();
 		foreach ( $prefixes as $prefixRow ) {
 			$prefix = $prefixRow->cl_sortkey_prefix;
 			$catTo = $prefixRow->cl_to;
 			$dbw->update( 'categorylinks',
 				[
-					'cl_sortkey' => Collation::singleton()->getSortKey(
+					'cl_sortkey' => $collation->getSortKey(
 							$this->newTitle->getCategorySortkey( $prefix ) ),
 					'cl_collation' => $this->options->get( 'CategoryCollation' ),
 					'cl_type' => $type,
@@ -797,7 +824,7 @@ class MovePage {
 			new AtomicSectionUpdate(
 				$dbw,
 				__METHOD__,
-				function () use ( $user, $userObj, $pageid, $redirid, $reason, $nullRevision ) {
+				function () use ( $user, $pageid, $redirid, $reason, $nullRevision ) {
 					$this->hookRunner->onPageMoveComplete(
 						$this->oldTitle,
 						$this->newTitle,
@@ -855,7 +882,6 @@ class MovePage {
 	private function moveToInternal( UserIdentity $user, &$nt, $reason = '', $createRedirect = true,
 		array $changeTags = []
 	) {
-		$userObj = $this->userFactory->newFromUserIdentity( $user );
 		if ( $nt->getArticleId( Title::READ_LATEST ) ) {
 			$moveOverRedirect = true;
 			$logType = 'move_redir';
@@ -873,7 +899,7 @@ class MovePage {
 			$errs = [];
 			$status = $newpage->doDeleteArticleReal(
 				$overwriteMessage,
-				$userObj,
+				$user,
 				/* $suppress */ false,
 				/* unused */ null,
 				$errs,
@@ -976,7 +1002,7 @@ class MovePage {
 		 * Increment user_editcount during page moves
 		 * Moved from SpecialMovepage.php per T195550
 		 */
-		$userObj->incEditCount();
+		$this->userEditTracker->incrementUserEditCount( $user );
 
 		if ( !$redirectContent ) {
 			// Clean up the old title *before* reset article id - T47348
@@ -992,7 +1018,7 @@ class MovePage {
 		$this->hookRunner->onRevisionFromEditComplete(
 			$newpage, $nullRevision, $nullRevision->getParentId(), $user, $fakeTags );
 
-		$newpage->doEditUpdates( $nullRevision, $userObj,
+		$newpage->doEditUpdates( $nullRevision, $user,
 			[ 'changed' => false, 'moved' => true, 'oldcountable' => $oldcountable ] );
 
 		WikiPage::onArticleCreate( $nt );
@@ -1027,9 +1053,16 @@ class MovePage {
 					$fakeTags
 				);
 
+				// Clear all caches to make sure no stale information is used
+				// when parsing the newly created redirect. Without this, moves would fail
+				// under certain conditions when Lua core runs on the new page.
+				// It is not entirely clear why this is needed, we just found that
+				// it fixes the issue at hand (T279832).
+				Title::clearCaches();
+
 				$redirectArticle->doEditUpdates(
 					$inserted,
-					$userObj,
+					$user,
 					[ 'created' => true ]
 				);
 

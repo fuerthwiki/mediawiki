@@ -33,7 +33,7 @@ use Wikimedia\Rdbms\LBFactoryMulti;
 use Wikimedia\Rdbms\LBFactorySimple;
 use Wikimedia\Rdbms\LoadBalancer;
 use Wikimedia\Rdbms\LoadMonitorNull;
-use Wikimedia\Rdbms\MySQLMasterPos;
+use Wikimedia\Rdbms\MySQLPrimaryPos;
 
 /**
  * @group Database
@@ -113,11 +113,11 @@ class LBFactoryTest extends MediaWikiIntegrationTestCase {
 
 		$dbw = $lb->getConnection( DB_PRIMARY );
 		$this->assertEquals(
-			$dbw::ROLE_STREAMING_MASTER, $dbw->getTopologyRole(), 'master shows as master' );
+			$dbw::ROLE_STREAMING_MASTER, $dbw->getTopologyRole(), 'primary shows as primary' );
 		$this->assertEquals(
 			( $wgDBserver != '' ) ? $wgDBserver : 'localhost',
-			$dbw->getTopologyRootMaster(),
-			'cluster master set' );
+			$dbw->getTopologyRootPrimary(),
+			'cluster primary is set' );
 
 		$dbr = $lb->getConnection( DB_REPLICA );
 		$this->assertEquals(
@@ -125,8 +125,8 @@ class LBFactoryTest extends MediaWikiIntegrationTestCase {
 
 		$this->assertEquals(
 			( $wgDBserver != '' ) ? $wgDBserver : 'localhost',
-			$dbr->getTopologyRootMaster(),
-			'cluster master set'
+			$dbr->getTopologyRootPrimary(),
+			'cluster primary is set'
 		);
 
 		$factory->shutdown();
@@ -164,7 +164,7 @@ class LBFactoryTest extends MediaWikiIntegrationTestCase {
 		$this->assertSame( 1, $countLBsFunc( $factory ) );
 		// Test that LoadBalancer instances made during pre-commit callbacks in do not
 		// throw DBTransactionError due to transaction ROUND_* stages being mismatched.
-		$factory->beginMasterChanges( __METHOD__ );
+		$factory->beginPrimaryChanges( __METHOD__ );
 		$dbw->onTransactionPreCommitOrIdle( static function () use ( $factory, &$called ) {
 			++$called;
 			// Trigger s1 LoadBalancer instantiation during "finalize" stage.
@@ -172,7 +172,7 @@ class LBFactoryTest extends MediaWikiIntegrationTestCase {
 			// but this fools getMainLB() at least.
 			$factory->getMainLB( 's1wiki' )->getConnection( DB_PRIMARY );
 		} );
-		$factory->commitMasterChanges( __METHOD__ );
+		$factory->commitPrimaryChanges( __METHOD__ );
 		$this->assertSame( 1, $called );
 		$this->assertEquals( 2, $countLBsFunc( $factory ) );
 		$factory->shutdown();
@@ -186,7 +186,7 @@ class LBFactoryTest extends MediaWikiIntegrationTestCase {
 		// Test that LoadBalancer instances made during pre-commit callbacks in do not
 		// throw DBTransactionError due to transaction ROUND_* stages being mismatched.hrow
 		// DBTransactionError due to transaction ROUND_* stages being mismatched.
-		$factory->beginMasterChanges( __METHOD__ );
+		$factory->beginPrimaryChanges( __METHOD__ );
 		$dbw->query( "SELECT 1 as t", __METHOD__ );
 		$dbw->onTransactionResolution( static function () use ( $factory, &$called ) {
 			++$called;
@@ -195,7 +195,7 @@ class LBFactoryTest extends MediaWikiIntegrationTestCase {
 			// but this fools getMainLB() at least.
 			$factory->getMainLB( 's1wiki' )->getConnection( DB_PRIMARY );
 		} );
-		$factory->commitMasterChanges( __METHOD__ );
+		$factory->commitPrimaryChanges( __METHOD__ );
 		$this->assertSame( 1, $called );
 		$this->assertEquals( 2, $countLBsFunc( $factory ) );
 		$factory->shutdown();
@@ -257,18 +257,18 @@ class LBFactoryTest extends MediaWikiIntegrationTestCase {
 		$now = microtime( true );
 
 		// (a) First HTTP request
-		$m1Pos = new MySQLMasterPos( 'db1034-bin.000976/843431247', $now );
-		$m2Pos = new MySQLMasterPos( 'db1064-bin.002400/794074907', $now );
+		$m1Pos = new MySQLPrimaryPos( 'db1034-bin.000976/843431247', $now );
+		$m2Pos = new MySQLPrimaryPos( 'db1064-bin.002400/794074907', $now );
 
-		// Master DB 1
+		// Primary DB 1
 		/** @var IDatabase|\PHPUnit\Framework\MockObject\MockObject $mockDB1 */
 		$mockDB1 = $this->getMockBuilder( IDatabase::class )
 			->disableOriginalConstructor()
 			->getMock();
 		$mockDB1->method( 'writesOrCallbacksPending' )->willReturn( true );
 		$mockDB1->method( 'lastDoneWrites' )->willReturn( $now );
-		$mockDB1->method( 'getMasterPos' )->willReturn( $m1Pos );
-		// Load balancer for master DB 1
+		$mockDB1->method( 'getPrimaryPos' )->willReturn( $m1Pos );
+		// Load balancer for primary DB 1
 		$lb1 = $this->getMockBuilder( LoadBalancer::class )
 			->disableOriginalConstructor()
 			->getMock();
@@ -277,7 +277,7 @@ class LBFactoryTest extends MediaWikiIntegrationTestCase {
 		$lb1->method( 'hasReplicaServers' )->willReturn( true );
 		$lb1->method( 'hasStreamingReplicaServers' )->willReturn( true );
 		$lb1->method( 'getAnyOpenConnection' )->willReturn( $mockDB1 );
-		$lb1->method( 'hasOrMadeRecentMasterChanges' )->will( $this->returnCallback(
+		$lb1->method( 'hasOrMadeRecentPrimaryChanges' )->will( $this->returnCallback(
 				static function () use ( $mockDB1 ) {
 					$p = 0;
 					$p |= $mockDB1->writesOrCallbacksPending();
@@ -286,18 +286,18 @@ class LBFactoryTest extends MediaWikiIntegrationTestCase {
 					return (bool)$p;
 				}
 			) );
-		$lb1->method( 'getMasterPos' )->willReturn( $m1Pos );
+		$lb1->method( 'getPrimaryPos' )->willReturn( $m1Pos );
 		$lb1->method( 'getReplicaResumePos' )->willReturn( $m1Pos );
 		$lb1->method( 'getServerName' )->with( 0 )->willReturn( 'master1' );
-		// Master DB 2
+		// Primary DB 2
 		/** @var IDatabase|\PHPUnit\Framework\MockObject\MockObject $mockDB2 */
 		$mockDB2 = $this->getMockBuilder( IDatabase::class )
 			->disableOriginalConstructor()
 			->getMock();
 		$mockDB2->method( 'writesOrCallbacksPending' )->willReturn( true );
 		$mockDB2->method( 'lastDoneWrites' )->willReturn( $now );
-		$mockDB2->method( 'getMasterPos' )->willReturn( $m2Pos );
-		// Load balancer for master DB 2
+		$mockDB2->method( 'getPrimaryPos' )->willReturn( $m2Pos );
+		// Load balancer for primary DB 2
 		$lb2 = $this->getMockBuilder( LoadBalancer::class )
 			->disableOriginalConstructor()
 			->getMock();
@@ -306,7 +306,7 @@ class LBFactoryTest extends MediaWikiIntegrationTestCase {
 		$lb2->method( 'hasReplicaServers' )->willReturn( true );
 		$lb2->method( 'hasStreamingReplicaServers' )->willReturn( true );
 		$lb2->method( 'getAnyOpenConnection' )->willReturn( $mockDB2 );
-		$lb2->method( 'hasOrMadeRecentMasterChanges' )->will( $this->returnCallback(
+		$lb2->method( 'hasOrMadeRecentPrimaryChanges' )->will( $this->returnCallback(
 			static function () use ( $mockDB2 ) {
 				$p = 0;
 				$p |= $mockDB2->writesOrCallbacksPending();
@@ -315,7 +315,7 @@ class LBFactoryTest extends MediaWikiIntegrationTestCase {
 				return (bool)$p;
 			}
 		) );
-		$lb2->method( 'getMasterPos' )->willReturn( $m2Pos );
+		$lb2->method( 'getPrimaryPos' )->willReturn( $m2Pos );
 		$lb2->method( 'getReplicaResumePos' )->willReturn( $m2Pos );
 		$lb2->method( 'getServerName' )->with( 0 )->willReturn( 'master2' );
 
@@ -347,7 +347,7 @@ class LBFactoryTest extends MediaWikiIntegrationTestCase {
 
 		// (b) Second HTTP request
 
-		// Load balancer for master DB 1
+		// Load balancer for primary DB 1
 		$lb1 = $this->getMockBuilder( LoadBalancer::class )
 			->disableOriginalConstructor()
 			->getMock();
@@ -357,7 +357,7 @@ class LBFactoryTest extends MediaWikiIntegrationTestCase {
 		$lb1->method( 'getServerName' )->with( 0 )->willReturn( 'master1' );
 		$lb1->expects( $this->once() )
 			->method( 'waitFor' )->with( $m1Pos );
-		// Load balancer for master DB 2
+		// Load balancer for primary DB 2
 		$lb2 = $this->getMockBuilder( LoadBalancer::class )
 			->disableOriginalConstructor()
 			->getMock();
@@ -621,7 +621,7 @@ class LBFactoryTest extends MediaWikiIntegrationTestCase {
 		);
 		$lb = $factory->getMainLB();
 
-		// FIXME: this should probaly be lower (T235311)
+		// FIXME: this should probably be lower (T235311)
 		$this->expectException( \Wikimedia\Rdbms\DBConnectionError::class );
 		if ( !$factory->getMainLB()->getServerAttributes( 0 )[Database::ATTR_DB_IS_FILE] ) {
 			$this->markTestSkipped( "Not applicable per ATTR_DB_IS_FILE" );
@@ -646,7 +646,7 @@ class LBFactoryTest extends MediaWikiIntegrationTestCase {
 		);
 		$lb = $factory->getMainLB();
 
-		// FIXME: this should probaly be lower (T235311)
+		// FIXME: this should probably be lower (T235311)
 		$this->expectException( \Wikimedia\Rdbms\DBExpectedError::class );
 		if ( !$lb->getConnection( DB_PRIMARY )->databasesAreIndependent() ) {
 			$this->markTestSkipped( "Not applicable per databasesAreIndependent()" );

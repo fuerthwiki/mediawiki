@@ -1,9 +1,9 @@
 <?php
 
-use MediaWiki\Interwiki\InterwikiLookup;
 use MediaWiki\MediaWikiServices;
 use MediaWiki\Page\PageReference;
 use MediaWiki\Page\PageReferenceValue;
+use MediaWiki\Tests\Unit\DummyServicesTrait;
 use Wikimedia\Assert\PreconditionException;
 
 /**
@@ -14,8 +14,9 @@ use Wikimedia\Assert\PreconditionException;
  *       But we do expect the Help namespace to contain Wikitext.
  */
 class TitleMethodsTest extends MediaWikiLangTestCase {
+	use DummyServicesTrait;
 
-	protected function setUp() : void {
+	protected function setUp(): void {
 		parent::setUp();
 
 		$this->mergeMwGlobalArrayValue(
@@ -32,9 +33,17 @@ class TitleMethodsTest extends MediaWikiLangTestCase {
 				12302 => CONTENT_MODEL_JAVASCRIPT,
 			]
 		);
+
+		// Some tests use interwikis - define valid prefixes and their configuration
+		// DummyServicesTrait::getDummyInterwikiLookup
+		$interwikiLookup = $this->getDummyInterwikiLookup( [
+			[ 'iw_prefix' => 'acme', 'iw_url' => 'https://acme.test/$1' ],
+			[ 'iw_prefix' => 'yy', 'iw_url' => 'https://yy.wiki.test/wiki/$1', 'iw_local' => true ]
+		] );
+		$this->setService( 'InterwikiLookup', $interwikiLookup );
 	}
 
-	protected function tearDown() : void {
+	protected function tearDown(): void {
 		Title::clearCaches();
 		parent::tearDown();
 	}
@@ -370,6 +379,17 @@ class TitleMethodsTest extends MediaWikiLangTestCase {
 			'Goatificatiön'
 		];
 
+		yield 'Fragment only (query is ignored)' => [
+			'#Goatificatiön',
+			NS_MAIN,
+			'',
+			'Goatificatiön',
+			'',
+			[
+				'a' => 1,
+			]
+		];
+
 		yield 'Unknown interwiki with fragment' => [
 			'https://xx.wiki.test/wiki/xyzzy:Goats#Goatificatiön',
 			NS_MAIN,
@@ -407,38 +427,6 @@ class TitleMethodsTest extends MediaWikiLangTestCase {
 		];
 	}
 
-	private function installFakeInterwikiLookup() {
-		$interwikiLookup =
-			$this->createNoOpMock( InterwikiLookup::class, [ 'fetch', 'isValidInterwiki' ] );
-
-		$interwikis = [
-			'' => null,
-			'acme' => new Interwiki(
-				'acme',
-				'https://acme.test/$1'
-			),
-			'yy' => new Interwiki(
-				'yy',
-				'https://yy.wiki.test/wiki/$1',
-				'/w/api.php',
-				'yywiki',
-				true
-			),
-		];
-
-		$interwikiLookup->method( 'fetch' )
-			->willReturnCallback( static function ( $interwiki ) use ( $interwikis ) {
-				return $interwikis[$interwiki] ?? false;
-			} );
-
-		$interwikiLookup->method( 'isValidInterwiki' )
-			->willReturnCallback( static function ( $interwiki ) use ( $interwikis ) {
-				return isset( $interwikis[$interwiki] );
-			} );
-
-		$this->setService( 'InterwikiLookup', $interwikiLookup );
-	}
-
 	/**
 	 * @dataProvider provideGetLinkURL
 	 *
@@ -463,8 +451,6 @@ class TitleMethodsTest extends MediaWikiLangTestCase {
 			'wgExternalInterwikiFragmentMode' => 'legacy',
 			'wgFragmentMode' => [ 'html5', 'legacy' ]
 		] );
-
-		$this->installFakeInterwikiLookup();
 
 		$title = Title::makeTitle( $ns, $title, $fragment, $interwiki );
 		$this->assertSame( $expected, $title->getLinkURL( $query, $query2, $proto ) );
@@ -607,7 +593,6 @@ class TitleMethodsTest extends MediaWikiLangTestCase {
 	 * @covers Title::makeTitle
 	 */
 	public function testMakeTitle( $expected, $ns, $text, $fragment = '', $interwiki = '' ) {
-		$this->installFakeInterwikiLookup();
 		$title = Title::makeTitle( $ns, $text, $fragment, $interwiki );
 
 		$this->assertTrue( $title->isValid() );
@@ -619,9 +604,7 @@ class TitleMethodsTest extends MediaWikiLangTestCase {
 		yield 'lower case' => [ 'User:foo', NS_USER, 'foo' ];
 		yield 'empty' => [ '', NS_MAIN, '' ];
 		yield 'bad character' => [ 'Foo|Bar', NS_MAIN, 'Foo|Bar' ];
-
-		// Is the trailing # intentional?
-		yield 'bad interwiki' => [ 'qwerty:Foo#', NS_MAIN, 'Foo', null, 'qwerty' ];
+		yield 'bad interwiki' => [ 'qwerty:Foo', NS_MAIN, 'Foo', null, 'qwerty' ];
 	}
 
 	/**
@@ -629,7 +612,6 @@ class TitleMethodsTest extends MediaWikiLangTestCase {
 	 * @covers Title::makeTitle
 	 */
 	public function testMakeTitle_invalid( $expected, $ns, $text, $fragment = '', $interwiki = '' ) {
-		$this->installFakeInterwikiLookup();
 		$title = Title::makeTitle( $ns, $text, $fragment, $interwiki );
 
 		$this->assertFalse( $title->isValid() );
@@ -656,7 +638,6 @@ class TitleMethodsTest extends MediaWikiLangTestCase {
 	 * @covers Title::makeTitleSafe
 	 */
 	public function testMakeTitleSafe( $expected, $ns, $text, $fragment = '', $interwiki = '' ) {
-		$this->installFakeInterwikiLookup();
 		$title = Title::makeTitleSafe( $ns, $text, $fragment, $interwiki );
 
 		$this->assertTrue( $title->isValid() );
@@ -674,7 +655,6 @@ class TitleMethodsTest extends MediaWikiLangTestCase {
 	 * @covers Title::makeTitleSafe
 	 */
 	public function testMakeTitleSafe_invalid( $ns, $text, $fragment = '', $interwiki = '' ) {
-		$this->installFakeInterwikiLookup();
 		$title = Title::makeTitleSafe( $ns, $text, $fragment, $interwiki );
 
 		$this->assertNull( $title );
@@ -735,6 +715,55 @@ class TitleMethodsTest extends MediaWikiLangTestCase {
 		} else {
 			$this->assertSame( 0, Title::compare( $a, $b ) );
 		}
+	}
+
+	/**
+	 * @covers Title::getContentModel
+	 * @covers Title::setContentModel
+	 * @covers Title::uncache
+	 */
+	public function testSetContentModel() {
+		// NOTE: must use newFromText to test behavior of internal instance cache (T281337)
+		$title = Title::newFromText( 'Foo' );
+
+		$title->setContentModel( CONTENT_MODEL_UNKNOWN );
+		$this->assertSame( CONTENT_MODEL_UNKNOWN, $title->getContentModel() );
+
+		// Ensure that the instance we get back from newFromText isn't the modified one.
+		$title = Title::newFromText( 'Foo' );
+		$this->assertNotSame( CONTENT_MODEL_UNKNOWN, $title->getContentModel() );
+	}
+
+	/**
+	 * @covers Title::getFragment
+	 * @covers Title::getFragment
+	 * @covers Title::uncache
+	 */
+	public function testSetFragment() {
+		// NOTE: must use newFromText to test behavior of internal instance cache (T281337)
+		$title = Title::newFromText( 'Foo' );
+
+		$title->setFragment( '#Xyzzy' );
+		$this->assertSame( 'Xyzzy', $title->getFragment() );
+
+		// Ensure that the instance we get back from newFromText isn't the modified one.
+		$title = Title::newFromText( 'Foo' );
+		$this->assertNotSame( 'Xyzzy', $title->getFragment() );
+	}
+
+	/**
+	 * @covers Title::__clone
+	 */
+	public function testClone() {
+		// NOTE: must use newFromText to test behavior of internal instance cache (T281337)
+		$title = Title::newFromText( 'Foo' );
+
+		$clone = clone $title;
+		$clone->setFragment( '#Xyzzy' );
+
+		// Ensure that the instance we get back from newFromText is the original one
+		$title2 = Title::newFromText( 'Foo' );
+		$this->assertSame( $title, $title2 );
 	}
 
 }

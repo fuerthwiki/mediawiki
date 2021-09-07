@@ -54,9 +54,6 @@ class PageReferenceValueTest extends MediaWikiUnitTestCase {
 	public function badConstructorProvider() {
 		return [
 			[ NS_MAIN, 'Test', 2.3 ],
-			[ NS_MAIN, 'Foo#Bar', false ],
-			[ NS_MAIN, 'Foo|Bar', false ],
-			[ NS_MAIN, "Foo\tBar", false ],
 		];
 	}
 
@@ -137,5 +134,15 @@ class PageReferenceValueTest extends MediaWikiUnitTestCase {
 	public function testIsSamePageAs( PageReferenceValue $a, PageReferenceValue $b, $expected ) {
 		$this->assertSame( $expected, $a->isSamePageAs( $b ) );
 		$this->assertSame( $expected, $b->isSamePageAs( $a ) );
+	}
+
+	/**
+	 * @covers \MediaWiki\Page\PageReferenceValue::localReference
+	 */
+	public function testLocalIdentity() {
+		$page = PageReferenceValue::localReference( NS_MAIN, __METHOD__ );
+		$this->assertSame( NS_MAIN, $page->getNamespace() );
+		$this->assertSame( __METHOD__, $page->getDBkey() );
+		$this->assertSame( PageReference::LOCAL, $page->getWikiId() );
 	}
 }

@@ -29,6 +29,8 @@ use MediaWiki\Languages\LanguageNameUtils;
 use MediaWiki\Linker\LinkTarget;
 use MediaWiki\Logger\LoggerFactory;
 use MediaWiki\MediaWikiServices;
+use MediaWiki\Page\PageReference;
+use MediaWiki\Page\PageReferenceValue;
 use MediaWiki\Revision\SlotRecord;
 use Psr\Log\LoggerAwareInterface;
 use Psr\Log\LoggerInterface;
@@ -72,11 +74,11 @@ class MessageCache implements LoggerAwareInterface {
 	protected $cache;
 
 	/**
-	 * Map of (lowercase message key => index) for all software defined messages
+	 * Map of (lowercase message key => unused) for all software defined messages
 	 *
 	 * @var array
 	 */
-	protected $overridable;
+	private $systemMessageNames;
 
 	/**
 	 * @var bool[] Map of (language code => boolean)
@@ -110,6 +112,8 @@ class MessageCache implements LoggerAwareInterface {
 	protected $srvCache;
 	/** @var Language */
 	protected $contLang;
+	/** @var string */
+	protected $contLangCode;
 	/** @var ILanguageConverter */
 	protected $contLangConverter;
 	/** @var LanguageFactory */
@@ -190,6 +194,7 @@ class MessageCache implements LoggerAwareInterface {
 		$this->srvCache = $serverCache;
 		$this->contLang = $contLang;
 		$this->contLangConverter = $contLangConverter;
+		$this->contLangCode = $contLang->getCode();
 		$this->logger = $logger;
 		$this->langFactory = $langFactory;
 		$this->localisationCache = $localisationCache;
@@ -212,11 +217,10 @@ class MessageCache implements LoggerAwareInterface {
 	 * @return ParserOptions
 	 */
 	private function getParserOptions() {
-		global $wgUser;
-
 		if ( !$this->mParserOptions ) {
-			if ( !$wgUser || !$wgUser->isSafeToLoad() ) {
-				// $wgUser isn't available yet, so don't try to get a
+			$user = RequestContext::getMain()->getUser();
+			if ( !$user->isSafeToLoad() ) {
+				// It isn't safe to use the context user yet, so don't try to get a
 				// ParserOptions for it. And don't cache this ParserOptions
 				// either.
 				$po = ParserOptions::newFromAnon();
@@ -224,7 +228,7 @@ class MessageCache implements LoggerAwareInterface {
 				return $po;
 			}
 
-			$this->mParserOptions = new ParserOptions( $wgUser );
+			$this->mParserOptions = new ParserOptions( $user );
 			// Messages may take parameters that could come
 			// from malicious sources. As a precaution, disable
 			// the <html> parser tag when parsing messages.
@@ -287,9 +291,6 @@ class MessageCache implements LoggerAwareInterface {
 		if ( $this->isLanguageLoaded( $code ) && $mode != self::FOR_UPDATE ) {
 			return true;
 		}
-
-		$this->overridable =
-			array_flip( $this->localisationCache->getSubitemList( $code, 'messages' ) );
 
 		# 8 lines of code just to say (once) that message cache is disabled
 		if ( $this->mDisable ) {
@@ -421,7 +422,7 @@ class MessageCache implements LoggerAwareInterface {
 	/**
 	 * @param string $code
 	 * @param string[] &$where List of debug comments
-	 * @param int|null $mode Use MessageCache::FOR_UPDATE to use DB_MASTER
+	 * @param int|null $mode Use MessageCache::FOR_UPDATE to use DB_PRIMARY
 	 * @return true|string True on success or one of ("cantacquire", "disabled")
 	 */
 	protected function loadFromDBWithLock( $code, array &$where, $mode = null ) {
@@ -487,7 +488,7 @@ class MessageCache implements LoggerAwareInterface {
 	 * @return array Loaded messages for storing in caches
 	 */
 	protected function loadFromDB( $code, $mode = null ) {
-		global $wgMaxMsgCacheEntrySize, $wgLanguageCode, $wgAdaptiveMessageCache;
+		global $wgMaxMsgCacheEntrySize, $wgAdaptiveMessageCache;
 
 		// (T164666) The query here performs really poorly on WMF's
 		// contributions replicas. We don't have a way to say "any group except
@@ -498,19 +499,15 @@ class MessageCache implements LoggerAwareInterface {
 		$cache = [];
 
 		$mostused = []; // list of "<cased message key>/<code>"
-		if ( $wgAdaptiveMessageCache && $code !== $wgLanguageCode ) {
-			if ( !$this->cache->has( $wgLanguageCode ) ) {
-				$this->load( $wgLanguageCode );
+		if ( $wgAdaptiveMessageCache && $code !== $this->contLangCode ) {
+			if ( !$this->cache->has( $this->contLangCode ) ) {
+				$this->load( $this->contLangCode );
 			}
-			$mostused = array_keys( $this->cache->get( $wgLanguageCode ) );
+			$mostused = array_keys( $this->cache->get( $this->contLangCode ) );
 			foreach ( $mostused as $key => $value ) {
 				$mostused[$key] = "$value/$code";
 			}
 		}
-
-		// Get the list of software-defined messages in core/extensions
-		$overridable =
-			array_flip( $this->localisationCache->getSubitemList( $wgLanguageCode, 'messages' ) );
 
 		// Common conditions
 		$conds = [
@@ -519,7 +516,7 @@ class MessageCache implements LoggerAwareInterface {
 		];
 		if ( count( $mostused ) ) {
 			$conds['page_title'] = $mostused;
-		} elseif ( $code !== $wgLanguageCode ) {
+		} elseif ( $code !== $this->contLangCode ) {
 			$conds[] = 'page_title' . $dbr->buildLike( $dbr->anyString(), '/', $code );
 		} else {
 			# Effectively disallows use of '/' character in NS_MEDIAWIKI for uses
@@ -537,7 +534,8 @@ class MessageCache implements LoggerAwareInterface {
 		);
 		foreach ( $res as $row ) {
 			// Include entries/stubs for all keys in $mostused in adaptive mode
-			if ( $wgAdaptiveMessageCache || $this->isMainCacheable( $row->page_title, $overridable ) ) {
+			if ( $wgAdaptiveMessageCache || $this->isMainCacheable( $row->page_title )
+			) {
 				$cache[$row->page_title] = '!TOO BIG';
 			}
 			// At least include revision ID so page changes are reflected in the hash
@@ -582,7 +580,8 @@ class MessageCache implements LoggerAwareInterface {
 		$revisions = $result->isOK() ? $result->getValue() : [];
 		foreach ( $res as $row ) {
 			// Include entries/stubs for all keys in $mostused in adaptive mode
-			if ( $wgAdaptiveMessageCache || $this->isMainCacheable( $row->page_title, $overridable ) ) {
+			if ( $wgAdaptiveMessageCache || $this->isMainCacheable( $row->page_title )
+			) {
 				try {
 					$rev = $revisions[$row->rev_id] ?? null;
 					$content = $rev ? $rev->getContent( SlotRecord::MAIN ) : null;
@@ -638,17 +637,38 @@ class MessageCache implements LoggerAwareInterface {
 	}
 
 	/**
+	 * Can the given DB key be added to the main cache blob? To reduce the
+	 * impact of abuse of the MediaWiki namespace by {{int:}} and CentralNotice,
+	 * this is only true if the page overrides a predefined message.
+	 *
 	 * @param string $name Message name (possibly with /code suffix)
-	 * @param array $overridable Map of (key => unused) for software-defined messages
+	 * @param string|null $code The language code. If this is null, message
+	 *   presence will be bulk loaded for the content language. Otherwise,
+	 *   presence will be detected by loading the specified message.
 	 * @return bool
 	 */
-	private function isMainCacheable( $name, array $overridable ) {
+	private function isMainCacheable( $name, $code = null ) {
 		// Convert first letter to lowercase, and strip /code suffix
 		$name = $this->contLang->lcfirst( $name );
-		$msg = preg_replace( '/\/[a-z0-9-]{2,}$/', '', $name );
 		// Include common conversion table pages. This also avoids problems with
 		// Installer::parse() bailing out due to disallowed DB queries (T207979).
-		return ( isset( $overridable[$msg] ) || strpos( $name, 'conversiontable/' ) === 0 );
+		if ( strpos( $name, 'conversiontable/' ) === 0 ) {
+			return true;
+		}
+		$msg = preg_replace( '/\/[a-z0-9-]{2,}$/', '', $name );
+
+		if ( $code === null ) {
+			// Bulk load
+			if ( $this->systemMessageNames === null ) {
+				$this->systemMessageNames = array_fill_keys(
+					$this->localisationCache->getSubitemList( $this->contLangCode, 'messages' ),
+					true );
+			}
+			return isset( $this->systemMessageNames[$msg] );
+		} else {
+			// Use individual subitem
+			return $this->localisationCache->getSubitem( $code, 'messages', $msg ) !== null;
+		}
 	}
 
 	/**
@@ -658,14 +678,12 @@ class MessageCache implements LoggerAwareInterface {
 	 * @param string|false $text New contents of the page (false if deleted)
 	 */
 	public function replace( $title, $text ) {
-		global $wgLanguageCode;
-
 		if ( $this->mDisable ) {
 			return;
 		}
 
 		list( $msg, $code ) = $this->figureMessage( $title );
-		if ( strpos( $title, '/' ) !== false && $code === $wgLanguageCode ) {
+		if ( strpos( $title, '/' ) !== false && $code === $this->contLangCode ) {
 			// Content language overrides do not use the /<code> suffix
 			return;
 		}
@@ -1070,9 +1088,7 @@ class MessageCache implements LoggerAwareInterface {
 	 * @return string The page name
 	 */
 	private function getMessagePageName( $langcode, $uckey ) {
-		global $wgLanguageCode;
-
-		if ( $langcode === $wgLanguageCode ) {
+		if ( $langcode === $this->contLangCode ) {
 			// Messages created in the content language will not have the /lang extension
 			return $uckey;
 		} else {
@@ -1118,7 +1134,7 @@ class MessageCache implements LoggerAwareInterface {
 			);
 		} else {
 			// Message page either does not exist or does not override a software message
-			if ( !$this->isMainCacheable( $title, $this->overridable ) ) {
+			if ( !$this->isMainCacheable( $title, $code ) ) {
 				// Message page does not override any software-defined message. A custom
 				// message might be defined to have content or settings specific to the wiki.
 				// Load the message page, utilizing the individual message cache as needed.
@@ -1220,10 +1236,10 @@ class MessageCache implements LoggerAwareInterface {
 	 * @param string $message
 	 * @param bool $interface
 	 * @param Language|null $language
-	 * @param Title|null $title
+	 * @param PageReference|null $page
 	 * @return string
 	 */
-	public function transform( $message, $interface = false, $language = null, $title = null ) {
+	public function transform( $message, $interface = false, $language = null, PageReference $page = null ) {
 		// Avoid creating parser if nothing to transform
 		if ( strpos( $message, '{{' ) === false ) {
 			return $message;
@@ -1241,7 +1257,7 @@ class MessageCache implements LoggerAwareInterface {
 
 			$userlang = $popts->setUserLang( $language );
 			$this->mInParser = true;
-			$message = $parser->transformMsg( $message, $popts, $title );
+			$message = $parser->transformMsg( $message, $popts, $page );
 			$this->mInParser = false;
 			$popts->setUserLang( $userlang );
 		}
@@ -1264,13 +1280,13 @@ class MessageCache implements LoggerAwareInterface {
 
 	/**
 	 * @param string $text
-	 * @param Title|null $title
+	 * @param PageReference|null $page
 	 * @param bool $linestart Whether or not this is at the start of a line
 	 * @param bool $interface Whether this is an interface message
 	 * @param Language|string|null $language Language code
 	 * @return ParserOutput|string
 	 */
-	public function parse( $text, $title = null, $linestart = true,
+	public function parse( $text, PageReference $page = null, $linestart = true,
 		$interface = false, $language = null
 	) {
 		global $wgTitle;
@@ -1288,23 +1304,26 @@ class MessageCache implements LoggerAwareInterface {
 		}
 		$popts->setTargetLanguage( $language );
 
-		if ( !$title || !$title instanceof Title ) {
+		if ( !$page ) {
 			$logger = LoggerFactory::getInstance( 'GlobalTitleFail' );
 			$logger->info(
 				__METHOD__ . ' called with no title set.',
 				[ 'exception' => new Exception ]
 			);
-			$title = $wgTitle;
+			$page = $wgTitle;
 		}
 		// Sometimes $wgTitle isn't set either...
-		if ( !$title ) {
+		if ( !$page ) {
 			# It's not uncommon having a null $wgTitle in scripts. See r80898
 			# Create a ghost title in such case
-			$title = Title::makeTitle( NS_SPECIAL, 'Badtitle/title not set in ' . __METHOD__ );
+			$page = PageReferenceValue::localReference(
+				NS_SPECIAL,
+				'Badtitle/title not set in ' . __METHOD__
+			);
 		}
 
 		$this->mInParser = true;
-		$res = $parser->parse( $text, $title, $popts, $linestart );
+		$res = $parser->parse( $text, $page, $popts, $linestart );
 		$this->mInParser = false;
 
 		return $res;
@@ -1352,16 +1371,14 @@ class MessageCache implements LoggerAwareInterface {
 	 * @return array
 	 */
 	public function figureMessage( $key ) {
-		global $wgLanguageCode;
-
 		$pieces = explode( '/', $key );
 		if ( count( $pieces ) < 2 ) {
-			return [ $key, $wgLanguageCode ];
+			return [ $key, $this->contLangCode ];
 		}
 
 		$lang = array_pop( $pieces );
 		if ( !$this->languageNameUtils->getLanguageName( $lang, null, 'mw' ) ) {
-			return [ $key, $wgLanguageCode ];
+			return [ $key, $this->contLangCode ];
 		}
 
 		$message = implode( '/', $pieces );

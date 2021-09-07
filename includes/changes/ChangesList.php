@@ -37,11 +37,6 @@ class ChangesList extends ContextSource {
 
 	public const CSS_CLASS_PREFIX = 'mw-changeslist-';
 
-	/**
-	 * @var Skin
-	 */
-	public $skin;
-
 	protected $watchlist = false;
 	protected $lastdate;
 	protected $message;
@@ -62,22 +57,16 @@ class ChangesList extends ContextSource {
 	protected $linkRenderer;
 
 	/**
-	 * @var array
+	 * @var ChangesListFilterGroup[]
 	 */
 	protected $filterGroups;
 
 	/**
-	 * @param Skin|IContextSource $obj
-	 * @param array $filterGroups Array of ChangesListFilterGroup objects (currently optional)
+	 * @param IContextSource $context
+	 * @param ChangesListFilterGroup[] $filterGroups Array of ChangesListFilterGroup objects (currently optional)
 	 */
-	public function __construct( $obj, array $filterGroups = [] ) {
-		if ( $obj instanceof IContextSource ) {
-			$this->setContext( $obj );
-			$this->skin = $obj->getSkin();
-		} else {
-			$this->setContext( $obj->getContext() );
-			$this->skin = $obj;
-		}
+	public function __construct( $context, array $filterGroups = [] ) {
+		$this->setContext( $context );
 		$this->preCacheMessages();
 		$this->watchMsgCache = new MapCacheLRU( 50 );
 		$this->linkRenderer = MediaWikiServices::getInstance()->getLinkRenderer();
@@ -248,11 +237,9 @@ class ChangesList extends ContextSource {
 			( $nsInfo->isTalk( $rc->mAttribs['rc_namespace'] ) ? 'talk' : 'subject' )
 		);
 
-		if ( $this->filterGroups !== null ) {
-			foreach ( $this->filterGroups as $filterGroup ) {
-				foreach ( $filterGroup->getFilters() as $filter ) {
-					$filter->applyCssClassIfNeeded( $this, $rc, $classes );
-				}
+		foreach ( $this->filterGroups as $filterGroup ) {
+			foreach ( $filterGroup->getFilters() as $filter ) {
+				$filter->applyCssClassIfNeeded( $this, $rc, $classes );
 			}
 		}
 
@@ -421,7 +408,7 @@ class ChangesList extends ContextSource {
 	 * @param Authority $performer
 	 * @param Language $lang
 	 * @param Title|null $title (optional) where Title does not match
-	 *   the Title associated with the Revision
+	 *   the Title associated with the RevisionRecord
 	 * @internal For usage by Pager classes only (e.g. HistoryPager and ContribsPager).
 	 * @return string HTML
 	 */

@@ -7,7 +7,6 @@ use MediaWiki\Auth\Hook\AuthManagerLoginAuthenticateAuditHook;
 use MediaWiki\Auth\Hook\LocalUserCreatedHook;
 use MediaWiki\Auth\Hook\SecuritySensitiveOperationStatusHook;
 use MediaWiki\Auth\Hook\UserLoggedInHook;
-use MediaWiki\Block\BlockErrorFormatter;
 use MediaWiki\Block\BlockManager;
 use MediaWiki\Block\DatabaseBlock;
 use MediaWiki\HookContainer\HookContainer;
@@ -15,7 +14,11 @@ use MediaWiki\HookContainer\StaticHookRegistry;
 use MediaWiki\MediaWikiServices;
 use MediaWiki\Session\SessionInfo;
 use MediaWiki\Session\UserInfo;
+use MediaWiki\User\BotPasswordStore;
+use MediaWiki\User\UserFactory;
+use MediaWiki\User\UserIdentityLookup;
 use MediaWiki\User\UserNameUtils;
+use MediaWiki\User\UserOptionsManager;
 use MediaWiki\Watchlist\WatchlistManager;
 use PHPUnit\Framework\Assert;
 use PHPUnit\Framework\MockObject\Builder\InvocationMocker;
@@ -69,11 +72,29 @@ class AuthManagerTest extends \MediaWikiIntegrationTestCase {
 	/** @var BlockManager */
 	private $blockManager;
 
-	/** @var BlockErrorFormatter */
-	private $blockErrorFormatter;
-
 	/** @var WatchlistManager */
 	private $watchlistManager;
+
+	/** @var ILoadBalancer */
+	private $loadBalancer;
+
+	/** @var Language */
+	private $contentLanguage;
+
+	/** @var LanguageConverterFactory */
+	private $languageConverterFactory;
+
+	/** @var BotPasswordStore */
+	private $botPasswordStore;
+
+	/** @var UserFactory */
+	private $userFactory;
+
+	/** @var UserIdentityLookup */
+	private $userIdentityLookup;
+
+	/** @var UserOptionsManager */
+	private $userOptionsManager;
 
 	protected function setUp(): void {
 		parent::setUp();
@@ -180,6 +201,7 @@ class AuthManagerTest extends \MediaWikiIntegrationTestCase {
 	 * @param bool $regen Force a call to $this->initializeConfig()
 	 */
 	protected function initializeManager( $regen = false ) {
+		// TODO clean this up, don't need to re fetch the services each time
 		if ( $regen || !$this->config ) {
 			$this->config = new \HashConfig();
 		}
@@ -195,9 +217,6 @@ class AuthManagerTest extends \MediaWikiIntegrationTestCase {
 		}
 		if ( $regen || !$this->blockManager ) {
 			$this->blockManager = MediaWikiServices::getInstance()->getBlockManager();
-		}
-		if ( $regen || !$this->blockErrorFormatter ) {
-			$this->blockErrorFormatter = MediaWikiServices::getInstance()->getBlockErrorFormatter();
 		}
 		if ( $regen || !$this->watchlistManager ) {
 			$this->watchlistManager = MediaWikiServices::getInstance()->getWatchlistManager();
@@ -224,6 +243,27 @@ class AuthManagerTest extends \MediaWikiIntegrationTestCase {
 		if ( $regen || !$this->userNameUtils ) {
 			$this->userNameUtils = MediaWikiServices::getInstance()->getUserNameUtils();
 		}
+		if ( $regen || !$this->loadBalancer ) {
+			$this->loadBalancer = MediaWikiServices::getInstance()->getDBLoadBalancer();
+		}
+		if ( $regen || !$this->contentLanguage ) {
+			$this->contentLanguage = MediaWikiServices::getInstance()->getContentLanguage();
+		}
+		if ( $regen || !$this->languageConverterFactory ) {
+			$this->languageConverterFactory = MediaWikiServices::getInstance()->getLanguageConverterFactory();
+		}
+		if ( $regen || !$this->botPasswordStore ) {
+			$this->botPasswordStore = MediaWikiServices::getInstance()->getBotPasswordStore();
+		}
+		if ( $regen || !$this->userFactory ) {
+			$this->userFactory = MediaWikiServices::getInstance()->getUserFactory();
+		}
+		if ( $regen || !$this->userIdentityLookup ) {
+			$this->userIdentityLookup = MediaWikiServices::getInstance()->getUserIdentityLookup();
+		}
+		if ( $regen || !$this->userOptionsManager ) {
+			$this->userOptionsManager = MediaWikiServices::getInstance()->getUserOptionsManager();
+		}
 		if ( !$this->logger ) {
 			$this->logger = new \TestLogger();
 		}
@@ -239,8 +279,14 @@ class AuthManagerTest extends \MediaWikiIntegrationTestCase {
 			$this->readOnlyMode,
 			$this->userNameUtils,
 			$this->blockManager,
-			$this->blockErrorFormatter,
-			$this->watchlistManager
+			$this->watchlistManager,
+			$this->loadBalancer,
+			$this->contentLanguage,
+			$this->languageConverterFactory,
+			$this->botPasswordStore,
+			$this->userFactory,
+			$this->userIdentityLookup,
+			$this->userOptionsManager
 		);
 		$this->manager->setLogger( $this->logger );
 		$this->managerPriv = TestingAccessWrapper::newFromObject( $this->manager );
@@ -295,26 +341,6 @@ class AuthManagerTest extends \MediaWikiIntegrationTestCase {
 		}
 
 		return [ $provider, $reset ];
-	}
-
-	public function testSingleton() {
-		$this->hideDeprecated( 'MediaWiki\Auth\AuthManager::singleton' );
-		// Temporarily clear out the global singleton, if any, to test creating
-		// one.
-		$rProp = new \ReflectionProperty( AuthManager::class, 'instance' );
-		$rProp->setAccessible( true );
-		$old = $rProp->getValue();
-		$cb = new ScopedCallback( [ $rProp, 'setValue' ], [ $old ] );
-		$rProp->setValue( null );
-
-		$singleton = AuthManager::singleton();
-		$this->assertInstanceOf( AuthManager::class, AuthManager::singleton() );
-		$this->assertSame( $singleton, AuthManager::singleton() );
-		$this->assertSame( \RequestContext::getMain()->getRequest(), $singleton->getRequest() );
-		$this->assertSame(
-			\RequestContext::getMain()->getConfig(),
-			TestingAccessWrapper::newFromObject( $singleton )->config
-		);
 	}
 
 	public function testCanAuthenticateNow() {
@@ -705,9 +731,8 @@ class AuthManagerTest extends \MediaWikiIntegrationTestCase {
 	public function testSetDefaultUserOptions(
 		$contLang, $useContextLang, $expectedLang, $expectedVariant
 	) {
-		$this->initializeManager();
-
 		$this->setContentLang( $contLang );
+		$this->initializeManager( true );
 		$context = \RequestContext::getMain();
 		$reset = new ScopedCallback( [ $context, 'setLanguage' ], [ $context->getLanguage() ] );
 		$context->setLanguage( 'de' );
@@ -1562,7 +1587,7 @@ class AuthManagerTest extends \MediaWikiIntegrationTestCase {
 		$blockOptions = [
 			'address' => 'UTBlockee',
 			'user' => $user->getId(),
-			'by' => $this->getTestSysop()->getUser()->getId(),
+			'by' => $this->getTestSysop()->getUser(),
 			'reason' => __METHOD__,
 			'expiry' => time() + 100500,
 			'createAccount' => true,
@@ -1586,7 +1611,7 @@ class AuthManagerTest extends \MediaWikiIntegrationTestCase {
 		$blockStore = $this->getServiceContainer()->getDatabaseBlockStore();
 		$blockOptions = [
 			'address' => '127.0.0.0/24',
-			'by' => $this->getTestSysop()->getUser()->getId(),
+			'by' => $this->getTestSysop()->getUser(),
 			'reason' => __METHOD__,
 			'expiry' => time() + 100500,
 			'createAccount' => true,
@@ -1637,7 +1662,7 @@ class AuthManagerTest extends \MediaWikiIntegrationTestCase {
 		$blockOptions = [
 			'address' => 'UTBlockee',
 			'user' => $user->getId(),
-			'by' => $this->getTestSysop()->getUser()->getId(),
+			'by' => $this->getTestSysop()->getUser(),
 			'reason' => __METHOD__,
 			'expiry' => time() + 100500,
 			'createAccount' => false,
@@ -1647,7 +1672,7 @@ class AuthManagerTest extends \MediaWikiIntegrationTestCase {
 
 		$blockOptions = [
 			'address' => '127.0.0.0/24',
-			'by' => $this->getTestSysop()->getUser()->getId(),
+			'by' => $this->getTestSysop()->getUser(),
 			'reason' => __METHOD__,
 			'expiry' => time() + 100500,
 			'createAccount' => true,

@@ -13,7 +13,7 @@ use Wikimedia\TestingAccessWrapper;
  * @group Database
  */
 class ApiStashEditTest extends ApiTestCase {
-	protected function setUp() : void {
+	protected function setUp(): void {
 		parent::setUp();
 		// Hack to make user edit tracker survive service reset.
 		// We want it's cache to persist within tests run, otherwise
@@ -246,8 +246,9 @@ class ApiStashEditTest extends ApiTestCase {
 		$page = WikiPage::factory( Title::makeTitle( NS_MAIN, $name ) );
 
 		$content = new CssContent( 'Css' );
-		$revRecord = $page->doEditContent( $content, '' )->value['revision-record'];
-		$page->doEditContent( new WikitextContent( 'Text' ), '' );
+		$user = $this->getTestSysop()->getUser();
+		$revRecord = $page->doUserEditContent( $content, $user, '' )->value['revision-record'];
+		$page->doUserEditContent( new WikitextContent( 'Text' ), $user, '' );
 
 		$this->setExpectedApiException(
 			[ 'apierror-contentmodel-mismatch', 'wikitext', 'css' ]
@@ -317,6 +318,8 @@ class ApiStashEditTest extends ApiTestCase {
 
 	public function testCheckCache() {
 		$user = $this->getMutableTestUser()->getUser();
+		$permissionManager = $this->getServiceContainer()->getPermissionManager();
+		$userGroupManager = $this->getServiceContainer()->getUserGroupManager();
 
 		$this->doStash( [], $user );
 
@@ -329,17 +332,17 @@ class ApiStashEditTest extends ApiTestCase {
 		);
 
 		// Nor does the original one if they become a bot
-		$user->addGroup( 'bot' );
-		MediaWikiServices::getInstance()->getPermissionManager()->invalidateUsersRightsCache();
+		$userGroupManager->addUserToGroup( $user, 'bot' );
+		$permissionManager->invalidateUsersRightsCache();
 		$this->assertFalse(
 			$this->doCheckCache( $user ),
 			"We assume bots don't have cache entries"
 		);
 
 		// But other groups are okay
-		$user->removeGroup( 'bot' );
-		$user->addGroup( 'sysop' );
-		MediaWikiServices::getInstance()->getPermissionManager()->invalidateUsersRightsCache();
+		$userGroupManager->removeUserFromGroup( $user, 'bot' );
+		$userGroupManager->addUserToGroup( $user, 'sysop' );
+		$permissionManager->invalidateUsersRightsCache();
 		$this->assertInstanceOf( stdClass::class, $this->doCheckCache( $user ) );
 	}
 

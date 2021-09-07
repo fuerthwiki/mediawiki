@@ -51,7 +51,8 @@ class RollbackEdits extends Maintenance {
 	public function execute() {
 		$user = $this->getOption( 'user' );
 		$services = MediaWikiServices::getInstance();
-		$username = $services->getUserNameUtils()->isIP( $user ) ? $user : User::getCanonicalName( $user );
+		$userNameUtils = $services->getUserNameUtils();
+		$username = $userNameUtils->isIP( $user ) ? $user : $userNameUtils->getCanonical( $user );
 		if ( !$username ) {
 			$this->fatalError( 'Invalid username' );
 		}
@@ -78,13 +79,13 @@ class RollbackEdits extends Maintenance {
 			return;
 		}
 
-		$doer = User::newSystemUser( 'Maintenance script', [ 'steal' => true ] );
+		$doer = User::newSystemUser( User::MAINTENANCE_SCRIPT_USER, [ 'steal' => true ] );
 
 		$wikiPageFactory = $services->getWikiPageFactory();
 		$rollbackPageFactory = $services->getRollbackPageFactory();
 		foreach ( $titles as $t ) {
 			$page = $wikiPageFactory->newFromTitle( $t );
-			$this->output( 'Processing ' . $t->getPrefixedText() . '... ' );
+			$this->output( 'Processing ' . $t->getPrefixedText() . '...' );
 			$rollbackResult = $rollbackPageFactory
 				->newRollbackPage( $page, $doer, $user )
 				->markAsBot( $bot )

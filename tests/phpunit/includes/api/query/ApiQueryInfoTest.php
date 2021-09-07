@@ -163,7 +163,7 @@ class ApiQueryInfoTest extends ApiTestCase {
 		$block = new DatabaseBlock( [
 			'address' => $badActor->getName(),
 			'user' => $badActor->getId(),
-			'by' => $sysop->getId(),
+			'by' => $sysop,
 			'expiry' => 'infinity',
 			'sitewide' => 1,
 			'enableAutoblock' => true,
@@ -200,6 +200,47 @@ class ApiQueryInfoTest extends ApiTestCase {
 		$this->assertArrayHasKey( 'blockinfo', $info['actions']['edit'][0]['data'] );
 		$this->assertArrayHasKey( 'blockid', $info['actions']['edit'][0]['data']['blockinfo'] );
 		$this->assertSame( $block->getId(), $info['actions']['edit'][0]['data']['blockinfo']['blockid'] );
+	}
+
+	/**
+	 * @covers ::execute
+	 * @covers ::extractPageInfo
+	 */
+	public function testAssociatedPage() {
+		$page = $this->getExistingTestPage( 'Demo' );
+		$title = $page->getTitle();
+
+		$title2 = Title::makeTitle( NS_TALK, 'Page does not exist' );
+		// Make sure it doesn't exist
+		$this->getNonexistingTestPage( $title2 );
+
+		list( $data ) = $this->doApiRequest( [
+			'action' => 'query',
+			'prop' => 'info',
+			'titles' => $title->getPrefixedText() . '|' . $title2->getPrefixedText(),
+			'inprop' => 'associatedpage',
+		] );
+
+		$this->assertArrayHasKey( 'query', $data );
+		$this->assertArrayHasKey( 'pages', $data['query'] );
+		$this->assertArrayHasKey( $page->getId(), $data['query']['pages'] );
+
+		$info = $data['query']['pages'][$page->getId()];
+		$this->assertArrayHasKey( 'associatedpage', $info );
+		$this->assertEquals(
+			'Talk:Demo',
+			$info['associatedpage']
+		);
+
+		// For the non-existing page
+		$this->assertArrayHasKey( -1, $data['query']['pages'] );
+
+		$info = $data['query']['pages'][ -1 ];
+		$this->assertArrayHasKey( 'associatedpage', $info );
+		$this->assertEquals(
+			'Page does not exist',
+			$info['associatedpage']
+		);
 	}
 
 }

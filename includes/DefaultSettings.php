@@ -639,6 +639,28 @@ $wgImgAuthUrlPathMap = [];
  *   - isPrivate        Set this if measures should always be taken to keep the files private.
  *                      One should not trust this to assure that the files are not web readable;
  *                      the server configuration should be done manually depending on the backend.
+ *   - useJsonMetadata  Whether handler metadata should be stored in JSON format. Default: false.
+ *   - useSplitMetadata Whether handler metadata should be split up and stored in the text table.
+ *                      Default: false.
+ *   - splitMetadataThreshold
+ *                      If the media handler opts in, large metadata items will be split into a
+ *                      separate blob in the database if the item is larger than this threshold.
+ *                      Default: 1000
+ *   - updateCompatibleMetadata
+ *                      When true, image metadata will be upgraded by reloading it from the original
+ *                      file, if the handler indicates that it is out of date.
+ *
+ *                      By default, when purging a file or otherwise refreshing file metadata, it
+ *                      is only reloaded when the metadata is invalid. Valid data originally loaded
+ *                      by a current or older compatible version is left unchanged. Enable this
+ *                      to also reload and upgrade metadata that was stored by an older compatible
+ *                      version. See also MediaHandler::isMetadataValid, and RefreshImageMetadata.
+ *
+ *                      Default: false.
+ *
+ *   - reserializeMetadata
+ *                      If true, image metadata will be automatically rewritten to the database
+ *                      if its serialization format is out of date. Default: false
  *
  * These settings describe a foreign MediaWiki installation. They are optional, and will be ignored
  * for local repositories:
@@ -940,9 +962,7 @@ $wgLockManagers = [];
 $wgShowEXIF = function_exists( 'exif_read_data' );
 
 /**
- * If to automatically update the img_metadata field
- * if the metadata field is outdated but compatible with the current version.
- * Defaults to false.
+ * Shortcut for the 'updateCompatibleMetadata' setting of $wgLocalFileRepo.
  */
 $wgUpdateCompatibleMetadata = false;
 
@@ -992,8 +1012,8 @@ $wgCopyUploadTimeout = false;
  * type maximums can be set, using the file and url keys. If the `*` key is set
  * this value will be used as maximum for non-specified types.
  *
- * The below example would set the maximum for all uploads to 250 kB except,
- * for upload-by-url, which would have a maximum of 500 kB.
+ * The below example would set the maximum for all uploads to 250 KiB except,
+ * for upload-by-url, which would have a maximum of 500 KiB.
  *
  * @par Example:
  * @code
@@ -1003,7 +1023,7 @@ $wgCopyUploadTimeout = false;
  * ];
  * @endcode
  *
- * Default: 100 MB.
+ * Default: 100 MiB.
  */
 $wgMaxUploadSize = 1024 * 1024 * 100;
 
@@ -1016,7 +1036,7 @@ $wgMaxUploadSize = 1024 * 1024 * 100;
  * `post_max_size` PHP settings. Use ApiUpload::getMinUploadChunkSize to
  * get the effective minimum chunk size used by MediaWiki.
  *
- * Default: 1 KB.
+ * Default: 1 KiB.
  *
  * @since 1.26
  * @see ApiUpload::getMinUploadChunkSize
@@ -2252,7 +2272,7 @@ $wgSharedSchema = false;
  * variable, the single-server variables will generally be ignored (except
  * perhaps in some command-line scripts).
  *
- * The first server listed in this array (with key 0) will be the master. The
+ * The first server listed in this array (with key 0) will be the primary. The
  * rest of the servers will be replica DBs. To prevent writes to your replica DBs due to
  * accidental misconfiguration or MediaWiki bugs, set read_only=1 on all your
  * replica DBs in my.cnf. You can set read_only mode at runtime using:
@@ -2263,14 +2283,14 @@ $wgSharedSchema = false;
  *
  * Since the effect of writing to a replica DB is so damaging and difficult to clean
  * up, we at Wikimedia set read_only=1 in my.cnf on all our DB servers, even
- * our masters, and then set read_only=0 on masters at runtime.
+ * our primaries, and then set read_only=0 on primaries at runtime.
  */
 $wgDBservers = false;
 
 /**
  * Load balancer factory configuration
- * To set up a multi-master wiki farm, set the class here to something that
- * can return a LoadBalancer with an appropriate master on a call to getMainLB().
+ * To set up a multi-primary wiki farm, set the class here to something that
+ * can return a LoadBalancer with an appropriate primary on a call to getMainLB().
  * The class identified here is responsible for reading $wgDBservers,
  * $wgDBserver, etc., so overriding it may cause those globals to be ignored.
  *
@@ -2281,7 +2301,7 @@ $wgLBFactoryConf = [ 'class' => \Wikimedia\Rdbms\LBFactorySimple::class ];
 
 /**
  * After a state-changing request is done by a client, this determines
- * how many seconds that client should keep using the master datacenter.
+ * how many seconds that client should keep using the primary datacenter.
  * This avoids unexpected stale or 404 responses due to replication lag.
  *
  * This must be greater than or equal to
@@ -2370,6 +2390,28 @@ $wgDatabaseReplicaLagCritical = 30;
  */
 $wgMultiContentRevisionSchemaMigrationStage = SCHEMA_COMPAT_NEW;
 
+/**
+ * Actor table schema migration stage, for migration from the temporary table
+ * revision_actor_temp to the revision.rev_actor field.
+ *
+ * Use the SCHEMA_COMPAT_XXX flags. Supported values:
+ *
+ *   - SCHEMA_COMPAT_TEMP
+ *   - SCHEMA_COMPAT_WRITE_TEMP_AND_NEW | SCHEMA_COMPAT_READ_TEMP
+ *   - SCHEMA_COMPAT_WRITE_TEMP_AND_NEW | SCHEMA_COMPAT_READ_NEW
+ *   - SCHEMA_COMPAT_NEW
+ *
+ * History:
+ *   - 1.31: Added
+ *   - 1.32: Now uses SCHEMA_COMPAT_XXX flags
+ *   - 1.34: Removed, implicitly SCHEMA_COMPAT_NEW always
+ *   - 1.37: Re-added with SCHEMA_COMPAT_NEW renamed to SCHEMA_COMPAT_TEMP for
+ *     a new migration which removes temporary tables.
+ *
+ * @var int An appropriate combination of SCHEMA_COMPAT_XXX flags.
+ */
+$wgActorTableSchemaMigrationStage = SCHEMA_COMPAT_TEMP;
+
 // endregion -- End of DB settings
 
 /***************************************************************************/
@@ -2420,6 +2462,7 @@ $wgNamespaceContentModels = [];
  * * 'serialize': serialize to default format
  *
  * @since 1.21
+ * @deprecated since 1.37
  */
 $wgContentHandlerTextFallback = 'ignore';
 
@@ -2608,7 +2651,7 @@ $wgAllowSlowParserFunctions = false;
 $wgAllowSchemaUpdates = true;
 
 /**
- * Maximum article size in kilobytes
+ * Maximum article size in kibibytes
  */
 $wgMaxArticleSize = 2048;
 
@@ -2883,7 +2926,7 @@ $wgEnableWANCacheReaper = false;
  * system for these operations.
  *
  * The multi-datacenter strategy for MediaWiki is to have CDN route HTTP POST requests to the
- * master datacenter and HTTP GET/HEAD/OPTIONS requests to the closest datacenter to the client.
+ * primary datacenter and HTTP GET/HEAD/OPTIONS requests to the closest datacenter to the client.
  * The stash accepts write operations from any datacenter, but cross-datacenter replication is
  * asynchronous.
  *
@@ -3402,12 +3445,6 @@ $wgUsePrivateIPs = false;
 $wgLanguageCode = 'en';
 
 /**
- * Language cache size, or really how many languages can we handle
- * simultaneously without degrading to crawl speed.
- */
-$wgLangObjCacheSize = 10;
-
-/**
  * Some languages need different word forms, usually for different cases.
  * Used in Language::convertGrammar().
  *
@@ -3763,6 +3800,19 @@ $wgXhtmlNamespaces = [];
  * MediaWiki:Anonnotice page.
  */
 $wgSiteNotice = '';
+
+/**
+ * Override ability of certains browsers to attempt to autodetect dataformats in pages.
+ * This is a default feature of many mobile browsers, but can have a lot of false positives,
+ * where for instance year ranges are confused with phone numbers.
+ * The default of this setting is to disable telephone number data detection.
+ * Set BrowserFormatDetection to false to fallback to browser defaults.
+ * @since 1.37
+ * @var string that is a compatible value with meta name="format-detection"
+ * @see https://developer.apple.com/
+ *   library/archive/documentation/AppleApplications/Reference/SafariHTMLRef/Articles/MetaTags.html
+ */
+$wgBrowserFormatDetection = 'telephone=no';
 
 /**
  * An array of open graph tags which should be added by all skins.
@@ -4420,7 +4470,7 @@ $wgIncludeLegacyJavaScript = false;
  *
  * @deprecated since 1.36
  */
-$wgIncludejQueryMigrate = true;
+$wgIncludejQueryMigrate = false;
 
 /**
  * ResourceLoader will not generate URLs whose query string is more than
@@ -4514,6 +4564,13 @@ $wgMetaNamespace = false;
  * manually for grammatical reasons.
  */
 $wgMetaNamespaceTalk = false;
+
+/**
+ * Canonical namespace names.
+ *
+ * Must not be changed directly in configuration or by extensions, use $wgExtraNamespaces instead.
+ */
+$wgCanonicalNamespaceNames = NamespaceInfo::CANONICAL_NAMES;
 
 /**
  * Additional namespaces. If the namespaces defined in Language.php and
@@ -4919,11 +4976,12 @@ $wgAllowImageTag = false;
 $wgTidyConfig = [];
 
 /**
- * Emit using the new media structure described at,
+ * Enable legacy media HTML structure in the output from the Parser.  The one
+ * that replaces it is described at,
  * https://www.mediawiki.org/wiki/Parsing/Media_structure
  * @since 1.36
  */
-$wgUseNewMediaStructure = false;
+$wgParserEnableLegacyMediaDOM = true;
 
 /**
  * Allow raw, unchecked HTML in "<html>...</html>" sections.
@@ -5138,7 +5196,13 @@ $wgRevertedTagMaxDepth = 15;
  * @since 1.27
  */
 $wgCentralIdLookupProviders = [
-	'local' => [ 'class' => LocalIdLookup::class ],
+	'local' => [
+		'class' => LocalIdLookup::class,
+		'services' => [
+			'MainConfig',
+			'DBLoadBalancer',
+		]
+	],
 ];
 
 /**
@@ -5294,6 +5358,9 @@ $wgAuthManagerAutoConfig = [
 		// probably auto-insert themselves in the wrong place.
 		MediaWiki\Auth\TemporaryPasswordPrimaryAuthenticationProvider::class => [
 			'class' => MediaWiki\Auth\TemporaryPasswordPrimaryAuthenticationProvider::class,
+			'services' => [
+				'DBLoadBalancer',
+			],
 			'args' => [ [
 				// Fall through to LocalPasswordPrimaryAuthenticationProvider
 				'authoritative' => false,
@@ -5302,6 +5369,9 @@ $wgAuthManagerAutoConfig = [
 		],
 		MediaWiki\Auth\LocalPasswordPrimaryAuthenticationProvider::class => [
 			'class' => MediaWiki\Auth\LocalPasswordPrimaryAuthenticationProvider::class,
+			'services' => [
+				'DBLoadBalancer',
+			],
 			'args' => [ [
 				// Last one should be authoritative, or else the user will get
 				// a less-than-helpful error message (something like "supplied
@@ -5328,6 +5398,9 @@ $wgAuthManagerAutoConfig = [
 		// ],
 		MediaWiki\Auth\EmailNotificationSecondaryAuthenticationProvider::class => [
 			'class' => MediaWiki\Auth\EmailNotificationSecondaryAuthenticationProvider::class,
+			'services' => [
+				'DBLoadBalancer',
+			],
 			'sort' => 200,
 		],
 	],
@@ -5582,6 +5655,7 @@ $wgMaxNameChars = 255;
 /**
  * Array of usernames which may not be registered or logged in from
  * Maintenance scripts can still use these
+ * @see User::MAINTENANCE_SCRIPT_USER
  */
 $wgReservedUsernames = [
 	'MediaWiki default', // Default 'Main Page' and MediaWiki: message pages
@@ -5667,6 +5741,7 @@ $wgDefaultUserOptions = [
 	'useeditwarning' => 1,
 	'prefershttps' => 1,
 	'requireemail' => 0,
+	'skin-responsive' => 1,
 ];
 
 /**
@@ -7223,7 +7298,7 @@ $wgDebugDumpSql = false;
  */
 $wgTrxProfilerLimits = [
 	// HTTP GET/HEAD requests.
-	// Master queries should not happen on GET requests
+	// Primary queries should not happen on GET requests
 	'GET' => [
 		'masterConns' => 0,
 		'writes' => 0,
@@ -7231,7 +7306,7 @@ $wgTrxProfilerLimits = [
 		'readQueryRows' => 10000
 	],
 	// HTTP POST requests.
-	// Master reads and writes will happen for a subset of these.
+	// Primary reads and writes will happen for a subset of these.
 	'POST' => [
 		'readQueryTime' => 5,
 		'writeQueryTime' => 1,
@@ -7249,7 +7324,7 @@ $wgTrxProfilerLimits = [
 		'writeQueryTime' => 1,
 		'readQueryRows' => 10000,
 		'maxAffected' => 1000,
-		// Log master queries under the post-send entry point as they are discouraged
+		// Log primary queries under the post-send entry point as they are discouraged
 		'masterConns' => 0,
 		'writes' => 0,
 	],
@@ -7344,34 +7419,12 @@ $wgShowDebug = false;
 $wgSpecialVersionShowHooks = false;
 
 /**
- * Whether to show "we're sorry, but there has been a database error" pages.
- * Displaying errors aids in debugging, but may display information useful
- * to an attacker.
- *
- * @deprecated and nonfunctional since 1.32: set $wgShowExceptionDetails and/or
- * $wgShowHostnames instead.
- */
-$wgShowSQLErrors = false;
-
-/**
  * If set to true, uncaught exceptions will print the exception message and a
  * complete stack trace to output. This should only be used for debugging, as it
  * may reveal private information in function parameters due to PHP's backtrace
  * formatting.  If set to false, only the exception's class will be shown.
  */
 $wgShowExceptionDetails = false;
-
-/**
- * If true, show a backtrace for database errors
- *
- * @note This setting only applies when connection errors and query errors are
- * reported in the normal manner. $wgShowExceptionDetails applies in other cases,
- * including those in which an uncaught exception is thrown from within the
- * exception handler.
- *
- * @deprecated and nonfunctional since 1.32: set $wgShowExceptionDetails instead.
- */
-$wgShowDBErrorBacktrace = false;
 
 /**
  * If true, send the exception backtrace to the error log
@@ -7428,8 +7481,17 @@ $wgDeprecationReleaseLimit = false;
  * - 'output' (`string|string[]`):  ProfilerOutput subclass or subclasess to use.
  *   Default: `[]`.
  *
- * The output classes available in MediaWiki core are:
- * ProfilerOutputText, ProfilerOutputStats, and ProfilerOutputDump.
+ * The options array is passed in its entirety to the specified
+ * Profiler `class`. Check individual Profiler subclasses for additional
+ * options that may be available.
+ *
+ * Profiler subclasses available in MediaWiki core:
+ *
+ * - ProfilerXhprof: Based on XHProf or Tideways.
+ * - ProfilerExcimer: Based on Excimer.
+ * - ProfilerSectionOnly
+ *
+ * Profiler output classes available in MediaWiki:
  *
  * - ProfilerOutputText: outputs profiling data in the web page body as
  *   a comment.  You can make the profiling data in HTML render visibly
@@ -7446,18 +7508,22 @@ $wgDeprecationReleaseLimit = false;
  * Examples:
  *
  * @code
- *  $wgProfiler['class'] = ProfilerXhprof::class;
- *  $wgProfiler['output'] = ProfilerOutputText::class;
+ * $wgProfiler = [
+ *   'class' => ProfilerXhprof::class,
+ *   'output' => ProfilerOutputText::class,
+ * ];
  * @endcode
  *
  * @code
- *   $wgProfiler['class'] = ProfilerXhprof:class;
- *   $wgProfiler['output'] = [ ProfilerOutputText::class ];
- *   $wgProfiler['sampling'] = 50; // one every 50 requests
+ * $wgProfiler = [
+ *   'class' => ProfilerXhprof::class,
+ *   'output' => [ ProfilerOutputText::class ],
+ *   'sampling' => 50, // one in every 50 requests
+ * ];
  * @endcode
  *
  * For performance, the profiler is always disabled for CLI scripts as they
- * could be long running and the data would accumulate. Use the '--profiler'
+ * could be long running and the data would accumulate. Use the `--profiler`
  * parameter of maintenance scripts to override this.
  *
  * @since 1.17.0
@@ -9116,38 +9182,11 @@ $wgRangeContributionsCIDRLimit = [
 /** @name   Actions */
 
 /**
- * Array of allowed values for the "title=foo&action=<action>" parameter. Syntax is:
- *     'foo' => 'ClassName'    Load the specified class which subclasses Action
- *     'foo' => true           Load the class FooAction which subclasses Action
- *                             If something is specified in the getActionOverrides()
- *                             of the relevant Page object it will be used
- *                             instead of the default class.
- *     'foo' => false          The action is disabled; show an error message
- * Unsetting core actions will probably cause things to complain loudly.
+ * Array of allowed values for the "title=foo&action=<action>" parameter. See
+ * ActionFactory for the syntax. Core defaults are in ActionFactory::CORE_ACTIONS,
+ * anything here overrides that.
  */
-$wgActions = [
-	'credits' => true,
-	'delete' => true,
-	'edit' => true,
-	'editchangetags' => SpecialPageAction::class,
-	'history' => true,
-	'info' => true,
-	'markpatrolled' => true,
-	'mcrundo' => McrUndoAction::class,
-	'mcrrestore' => McrRestoreAction::class,
-	'protect' => true,
-	'purge' => true,
-	'raw' => true,
-	'render' => true,
-	'revert' => true,
-	'revisiondelete' => SpecialPageAction::class,
-	'rollback' => true,
-	'submit' => true,
-	'unprotect' => true,
-	'unwatch' => true,
-	'view' => true,
-	'watch' => true,
-];
+$wgActions = [];
 
 // endregion -- end actions
 
@@ -9459,12 +9498,12 @@ $wgRestAPIAdditionalRouteFiles = [];
 /** @name   Shell and process control */
 
 /**
- * Maximum amount of virtual memory available to shell processes under linux, in KB.
+ * Maximum amount of virtual memory available to shell processes under linux, in KiB.
  */
 $wgMaxShellMemory = 307200;
 
 /**
- * Maximum file size created by shell processes under linux, in KB
+ * Maximum file size created by shell processes under linux, in KiB
  * ImageMagick convert for example can be fairly hungry for scratch space
  */
 $wgMaxShellFileSize = 102400;
@@ -9563,16 +9602,24 @@ $wgShellLocale = 'C.UTF-8';
 $wgShellRestrictionMethod = 'autodetect';
 
 /**
+ * @deprecated since 1.37; use $wgShellboxUrls instead
+ */
+$wgShellboxUrl = null;
+
+/**
  * Shell commands can be run on a remote server using Shellbox. To use this
- * feature, set this to the URL, and also configure $wgShellboxSecretKey.
+ * feature, set this to the URLs mapped by the service, and also configure $wgShellboxSecretKey.
+ * You can also disable a certain service by setting it to false or null.
+ *
+ * 'default' would be the default URL if no URL is defined for that service.
  *
  * For more information about installing Shellbox, see
  * https://www.mediawiki.org/wiki/Shellbox
  *
- * @since 1.36
- * @var string|null
+ * @since 1.37
+ * @var (string|false|null)[]
  */
-$wgShellboxUrl = null;
+$wgShellboxUrls = [ 'default' => null ];
 
 /**
  * The secret key for HMAC verification of Shellbox requests. Set this to
@@ -9648,13 +9695,23 @@ $wgHTTPProxy = '';
  *
  * This affects the following:
  * - MWHttpRequest: If a request is to be made to a domain listed here, or any
- *   subdomain thereof, then no proxy will be used.
+ *   subdomain thereof, then $wgLocalHTTPProxy will be used.
  *   Command-line scripts are not affected by this setting and will always use
  *   the proxy if it is configured.
  *
  * @since 1.25
  */
 $wgLocalVirtualHosts = [];
+
+/**
+ * Proxy to use to requests to domains in $wgLocalVirtualHosts
+ *
+ * If set to false, no proxy will be used for local requests
+ *
+ * @var string|bool
+ * @since 1.37
+ */
+$wgLocalHTTPProxy = false;
 
 /**
  * Whether to respect/honour the request ID provided by the incoming request

@@ -22,8 +22,8 @@ class WANObjectCacheTest extends PHPUnit\Framework\TestCase {
 	use MediaWikiCoversValidator;
 
 	/**
-	 * @param array $params [optional]
-	 * @return WANObjectCache[]|HashBagOStuff[] (WANObjectCache, BagOStuff)
+	 * @param array $params
+	 * @return array [ WANObjectCache, HashBagOStuff ]
 	 */
 	private function newWanCache( array $params = [] ) {
 		if ( isset( $params['broadcastRoutingPrefix'] ) ) {
@@ -967,7 +967,7 @@ class WANObjectCacheTest extends PHPUnit\Framework\TestCase {
 
 		$wasSet = 0;
 		$genFunc = static function ( array $ids, array &$ttls, array &$setOpts ) use (
-			&$wasSet, &$priorValue, &$priorAsOf
+			&$wasSet
 		) {
 			$newValues = [];
 			foreach ( $ids as $id ) {
@@ -1209,7 +1209,7 @@ class WANObjectCacheTest extends PHPUnit\Framework\TestCase {
 		$cache->setMockTime( $mockWallClock );
 
 		$calls = 0;
-		$func = static function () use ( &$calls, $value, $cache, $key ) {
+		$func = static function () use ( &$calls, $value ) {
 			++$calls;
 			return $value;
 		};

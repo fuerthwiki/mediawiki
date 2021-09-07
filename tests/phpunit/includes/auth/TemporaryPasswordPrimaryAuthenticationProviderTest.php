@@ -3,18 +3,21 @@
 namespace MediaWiki\Auth;
 
 use MediaWiki\MediaWikiServices;
+use MediaWiki\Tests\Unit\Auth\AuthenticationProviderTestTrait;
 use MediaWiki\User\UserNameUtils;
 use Psr\Container\ContainerInterface;
-use Psr\Log\NullLogger;
 use Wikimedia\ScopedCallback;
 use Wikimedia\TestingAccessWrapper;
 
 /**
+ * TODO clean up and reduce duplication
+ *
  * @group AuthManager
  * @group Database
  * @covers \MediaWiki\Auth\TemporaryPasswordPrimaryAuthenticationProvider
  */
 class TemporaryPasswordPrimaryAuthenticationProviderTest extends \MediaWikiIntegrationTestCase {
+	use AuthenticationProviderTestTrait;
 
 	private $manager = null;
 	private $config = null;
@@ -55,8 +58,14 @@ class TemporaryPasswordPrimaryAuthenticationProviderTest extends \MediaWikiInteg
 				$mwServices->getReadOnlyMode(),
 				$userNameUtils,
 				$mwServices->getBlockManager(),
-				$mwServices->getBlockErrorFormatter(),
-				$mwServices->getWatchlistManager()
+				$mwServices->getWatchlistManager(),
+				$mwServices->getDBLoadBalancer(),
+				$mwServices->getContentLanguage(),
+				$mwServices->getLanguageConverterFactory(),
+				$mwServices->getBotPasswordStore(),
+				$mwServices->getUserFactory(),
+				$mwServices->getUserIdentityLookup(),
+				$mwServices->getUserOptionsManager()
 			);
 		}
 		$this->validity = \Status::newGood();
@@ -64,19 +73,14 @@ class TemporaryPasswordPrimaryAuthenticationProviderTest extends \MediaWikiInteg
 		$mockedMethods[] = 'checkPasswordValidity';
 		$provider = $this->getMockBuilder( TemporaryPasswordPrimaryAuthenticationProvider::class )
 			->onlyMethods( $mockedMethods )
-			->setConstructorArgs( [ $params ] )
+			->setConstructorArgs( [ $mwServices->getDBLoadBalancer(), $params ] )
 			->getMock();
 		$provider->method( 'checkPasswordValidity' )
 			->will( $this->returnCallback( function () {
 				return $this->validity;
 			} ) );
-		$userNameUtils = $this->getServiceContainer()->getUserNameUtils();
-		$provider->init(
-			new NullLogger(),
-			$this->manager,
-			$hookContainer,
-			$config,
-			$this->createNoOpMock( UserNameUtils::class )
+		$this->initProvider(
+			$provider, $config, null, $this->manager, null, $this->getServiceContainer()->getUserNameUtils()
 		);
 
 		return $provider;
@@ -122,35 +126,30 @@ class TemporaryPasswordPrimaryAuthenticationProviderTest extends \MediaWikiInteg
 			'AllowRequiringEmailForResets' => false,
 		] );
 
-		$p = TestingAccessWrapper::newFromObject( new TemporaryPasswordPrimaryAuthenticationProvider() );
-		$p->init(
-			$this->createNoOpMock( NullLogger::class ),
-			$this->createNoOpMock( AuthManager::class ),
-			$this->createHookContainer(),
-			$config,
-			$this->createNoOpMock( UserNameUtils::class )
+		$provider = new TemporaryPasswordPrimaryAuthenticationProvider(
+			$this->getServiceContainer()->getDBLoadBalancer()
 		);
-		$this->assertSame( false, $p->emailEnabled );
-		$this->assertSame( 100, $p->newPasswordExpiry );
-		$this->assertSame( 101, $p->passwordReminderResendTime );
+		$providerPriv = TestingAccessWrapper::newFromObject( $provider );
+		$this->initProvider( $provider, $config );
+		$this->assertSame( false, $providerPriv->emailEnabled );
+		$this->assertSame( 100, $providerPriv->newPasswordExpiry );
+		$this->assertSame( 101, $providerPriv->passwordReminderResendTime );
 
-		$p = TestingAccessWrapper::newFromObject( new TemporaryPasswordPrimaryAuthenticationProvider( [
-			'emailEnabled' => true,
-			'newPasswordExpiry' => 42,
-			'passwordReminderResendTime' => 43,
-			'allowRequiringEmailForResets' => true,
-		] ) );
-		$p->init(
-			$this->createNoOpMock( NullLogger::class ),
-			$this->createNoOpMock( AuthManager::class ),
-			$this->createHookContainer(),
-			$config,
-			$this->createNoOpMock( UserNameUtils::class )
+		$provider = new TemporaryPasswordPrimaryAuthenticationProvider(
+			$this->getServiceContainer()->getDBLoadBalancer(),
+			[
+				'emailEnabled' => true,
+				'newPasswordExpiry' => 42,
+				'passwordReminderResendTime' => 43,
+				'allowRequiringEmailForResets' => true,
+			]
 		);
-		$this->assertSame( true, $p->emailEnabled );
-		$this->assertSame( 42, $p->newPasswordExpiry );
-		$this->assertSame( 43, $p->passwordReminderResendTime );
-		$this->assertSame( true, $p->allowRequiringEmail );
+		$providerPriv = TestingAccessWrapper::newFromObject( $provider );
+		$this->initProvider( $provider, $config );
+		$this->assertSame( true, $providerPriv->emailEnabled );
+		$this->assertSame( 42, $providerPriv->newPasswordExpiry );
+		$this->assertSame( 43, $providerPriv->passwordReminderResendTime );
+		$this->assertSame( true, $providerPriv->allowRequiringEmail );
 	}
 
 	public function testTestUserCanAuthenticate() {

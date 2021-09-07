@@ -2,45 +2,57 @@
 
 namespace MediaWiki\Auth;
 
-use Config;
 use MediaWiki\MediaWikiServices;
+use MediaWiki\Tests\Unit\Auth\AuthenticationProviderTestTrait;
 use MediaWiki\User\UserNameUtils;
 use Psr\Container\ContainerInterface;
 use Psr\Log\LoggerInterface;
-use Psr\Log\NullLogger;
 use Wikimedia\TestingAccessWrapper;
 
 /**
  * @covers \MediaWiki\Auth\EmailNotificationSecondaryAuthenticationProvider
+ * @group Database
  */
 class EmailNotificationSecondaryAuthenticationProviderTest extends \MediaWikiIntegrationTestCase {
+	use AuthenticationProviderTestTrait;
+
+	/**
+	 * @param array $options
+	 * @return EmailNotificationSecondaryAuthenticationProvider
+	 */
+	private function getProvider( array $options = [] ): EmailNotificationSecondaryAuthenticationProvider {
+		$services = $this->getServiceContainer();
+		$provider = new EmailNotificationSecondaryAuthenticationProvider(
+			$options['loadBalancer'] ?? $services->getDBLoadBalancer(),
+			$options // make things easier for tests by using the same options
+		);
+		$this->initProvider(
+			$provider,
+			$options['config'] ?? null,
+			$options['logger'] ?? null,
+			$options['authManager'] ?? null,
+			$options['hookContainer'] ?? null,
+			$options['userNameUtils'] ?? null
+		);
+		return $provider;
+	}
+
 	public function testConstructor() {
 		$config = new \HashConfig( [
 			'EnableEmail' => true,
 			'EmailAuthentication' => true,
 		] );
 
-		$provider = new EmailNotificationSecondaryAuthenticationProvider();
-		$provider->init(
-			$this->createNoOpMock( NullLogger::class ),
-			$this->createNoOpMock( AuthManager::class ),
-			$this->createHookContainer(),
-			$config,
-			$this->createNoOpMock( UserNameUtils::class )
-		);
+		$provider = $this->getProvider( [
+			'config' => $config,
+		] );
 		$providerPriv = TestingAccessWrapper::newFromObject( $provider );
 		$this->assertTrue( $providerPriv->sendConfirmationEmail );
 
-		$provider = new EmailNotificationSecondaryAuthenticationProvider( [
+		$provider = $this->getProvider( [
+			'config' => $config,
 			'sendConfirmationEmail' => false,
 		] );
-		$provider->init(
-			$this->createNoOpMock( NullLogger::class ),
-			$this->createNoOpMock( AuthManager::class ),
-			$this->createHookContainer(),
-			$config,
-			$this->createNoOpMock( UserNameUtils::class )
-		);
 		$providerPriv = TestingAccessWrapper::newFromObject( $provider );
 		$this->assertFalse( $providerPriv->sendConfirmationEmail );
 	}
@@ -51,7 +63,7 @@ class EmailNotificationSecondaryAuthenticationProviderTest extends \MediaWikiInt
 	 * @param AuthenticationRequest[] $expected
 	 */
 	public function testGetAuthenticationRequests( $action, $expected ) {
-		$provider = new EmailNotificationSecondaryAuthenticationProvider( [
+		$provider = $this->getProvider( [
 			'sendConfirmationEmail' => true,
 		] );
 		$this->assertSame( $expected, $provider->getAuthenticationRequests( $action, [] ) );
@@ -68,7 +80,7 @@ class EmailNotificationSecondaryAuthenticationProviderTest extends \MediaWikiInt
 	}
 
 	public function testBeginSecondaryAuthentication() {
-		$provider = new EmailNotificationSecondaryAuthenticationProvider( [
+		$provider = $this->getProvider( [
 			'sendConfirmationEmail' => true,
 		] );
 		$this->assertEquals( AuthenticationResponse::newAbstain(),
@@ -89,8 +101,14 @@ class EmailNotificationSecondaryAuthenticationProviderTest extends \MediaWikiInt
 			$mwServices->getReadOnlyMode(),
 			$userNameUtils,
 			$mwServices->getBlockManager(),
-			$mwServices->getBlockErrorFormatter(),
-			$mwServices->getWatchlistManager()
+			$mwServices->getWatchlistManager(),
+			$mwServices->getDBLoadBalancer(),
+			$mwServices->getContentLanguage(),
+			$mwServices->getLanguageConverterFactory(),
+			$mwServices->getBotPasswordStore(),
+			$mwServices->getUserFactory(),
+			$mwServices->getUserIdentityLookup(),
+			$mwServices->getUserOptionsManager()
 		);
 
 		$creator = $this->getMockBuilder( \User::class )->getMock();
@@ -117,52 +135,31 @@ class EmailNotificationSecondaryAuthenticationProviderTest extends \MediaWikiInt
 			->willReturnSelf();
 		$userNotExpectsConfirmation->expects( $this->never() )->method( 'sendConfirmationMail' );
 
-		$provider = new EmailNotificationSecondaryAuthenticationProvider( [
+		$provider = $this->getProvider( [
 			'sendConfirmationEmail' => false,
+			'authManager' => $authManager,
+			'hookContainer' => $hookContainer,
+			'userNameUtils' => $userNameUtils
 		] );
-		$provider->init(
-			$this->createNoOpMock( NullLogger::class ),
-			$authManager,
-			$hookContainer,
-			$this->createNoOpAbstractMock( Config::class ),
-			$userNameUtils
-		);
 		$provider->beginSecondaryAccountCreation( $userNotExpectsConfirmation, $creator, [] );
 
-		$provider = new EmailNotificationSecondaryAuthenticationProvider( [
+		$provider = $this->getProvider( [
 			'sendConfirmationEmail' => true,
+			'authManager' => $authManager,
+			'userNameUtils' => $userNameUtils
 		] );
-		$provider->init(
-			$this->createNoOpMock( NullLogger::class ),
-			$authManager,
-			$this->createHookContainer(),
-			$this->createNoOpAbstractMock( Config::class ),
-			$userNameUtils
-		);
 		$provider->beginSecondaryAccountCreation( $userWithoutEmail, $creator, [] );
 		$provider->beginSecondaryAccountCreation( $userExpectsConfirmation, $creator, [] );
 
 		// test logging of email errors
 		$logger = $this->getMockForAbstractClass( LoggerInterface::class );
 		$logger->expects( $this->once() )->method( 'warning' );
-		$provider->init(
-			$logger,
-			$authManager,
-			$this->createHookContainer(),
-			$this->createNoOpAbstractMock( Config::class ),
-			$userNameUtils
-		);
+		$this->initProvider( $provider, null, $logger, $authManager );
 		$provider->beginSecondaryAccountCreation( $userWithEmailError, $creator, [] );
 
 		// test disable flag used by other providers
 		$authManager->setAuthenticationSessionData( 'no-email', true );
-		$provider->init(
-			$this->createNoOpMock( NullLogger::class ),
-			$authManager,
-			$this->createHookContainer(),
-			$this->createNoOpAbstractMock( Config::class ),
-			$userNameUtils
-		);
+		$this->initProvider( $provider, null, null, $authManager );
 		$provider->beginSecondaryAccountCreation( $userNotExpectsConfirmation, $creator, [] );
 	}
 }

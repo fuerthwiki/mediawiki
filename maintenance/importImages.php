@@ -156,9 +156,9 @@ class ImportImages extends Maintenance {
 		# Initialise the user for this operation
 		$user = $this->hasOption( 'user' )
 			? User::newFromName( $this->getOption( 'user' ) )
-			: User::newSystemUser( 'Maintenance script', [ 'steal' => true ] );
+			: User::newSystemUser( User::MAINTENANCE_SCRIPT_USER, [ 'steal' => true ] );
 		if ( !$user instanceof User ) {
-			$user = User::newSystemUser( 'Maintenance script', [ 'steal' => true ] );
+			$user = User::newSystemUser( User::MAINTENANCE_SCRIPT_USER, [ 'steal' => true ] );
 		}
 		$wgUser = $user;
 
@@ -297,12 +297,12 @@ class ImportImages extends Maintenance {
 						$f = $this->findAuxFile( $file, $commentExt );
 						if ( !$f ) {
 							$this->output( " No comment file with extension {$commentExt} found "
-								 . "for {$file}, using default comment. " );
+								. "for {$file}, using default comment." );
 						} else {
 							$commentText = file_get_contents( $f );
 							if ( !$commentText ) {
 								$this->output(
-									" Failed to load comment file {$f}, using default comment. "
+									" Failed to load comment file {$f}, using default comment."
 								);
 							}
 						}
@@ -316,7 +316,7 @@ class ImportImages extends Maintenance {
 				# Import the file
 				if ( $this->hasOption( 'dry' ) ) {
 					$this->output(
-						" publishing {$file} by '{$user->getName()}', comment '$commentText'... "
+						" publishing {$file} by '{$user->getName()}', comment '$commentText'..."
 					);
 				} else {
 					$mwProps = new MWFileProps( $services->getMimeAnalyzer() );
@@ -325,17 +325,15 @@ class ImportImages extends Maintenance {
 					$publishOptions = [];
 					$handler = MediaHandler::getHandler( $props['mime'] );
 					if ( $handler ) {
-						$metadata = \Wikimedia\AtEase\AtEase::quietCall( 'unserialize', $props['metadata'] );
-
-						$publishOptions['headers'] = $handler->getContentHeaders( $metadata );
+						$publishOptions['headers'] = $handler->getContentHeaders( $props['metadata'] );
 					} else {
 						$publishOptions['headers'] = [];
 					}
 					$archive = $image->publish( $file, $flags, $publishOptions );
 					if ( !$archive->isGood() ) {
 						$this->output( "failed. (" .
-							 $archive->getMessage( false, false, 'en' )->text() .
-							 ")\n" );
+							$archive->getMessage( false, false, 'en' )->text() .
+							")\n" );
 						$failed++;
 						continue;
 					}
@@ -378,7 +376,7 @@ class ImportImages extends Maintenance {
 						sleep( 2 ); # Why this sleep?
 						$lbFactory->waitForReplication();
 
-						$this->output( "\nSetting image restrictions ... " );
+						$this->output( "\nSetting image restrictions ..." );
 
 						$cascade = false;
 						$restrictions = [];
@@ -511,7 +509,7 @@ class ImportImages extends Maintenance {
 	private function getFileCommentFromSourceWiki( $wiki_host, $file ) {
 		$url = $wiki_host . '/api.php?action=query&format=xml&titles=File:'
 			. rawurlencode( $file ) . '&prop=imageinfo&&iiprop=comment';
-		$body = Http::get( $url, [], __METHOD__ );
+		$body = MediaWikiServices::getInstance()->getHttpRequestFactory()->get( $url, [], __METHOD__ );
 		if ( preg_match( '#<ii comment="([^"]*)" />#', $body, $matches ) == 0 ) {
 			return false;
 		}
@@ -522,7 +520,7 @@ class ImportImages extends Maintenance {
 	private function getFileUserFromSourceWiki( $wiki_host, $file ) {
 		$url = $wiki_host . '/api.php?action=query&format=xml&titles=File:'
 			. rawurlencode( $file ) . '&prop=imageinfo&&iiprop=user';
-		$body = Http::get( $url, [], __METHOD__ );
+		$body = MediaWikiServices::getInstance()->getHttpRequestFactory()->get( $url, [], __METHOD__ );
 		if ( preg_match( '#<ii user="([^"]*)" />#', $body, $matches ) == 0 ) {
 			return false;
 		}

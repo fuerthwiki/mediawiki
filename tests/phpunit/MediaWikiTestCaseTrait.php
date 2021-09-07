@@ -3,8 +3,9 @@
 use MediaWiki\HookContainer\HookContainer;
 use PHPUnit\Framework\Constraint\Constraint;
 use PHPUnit\Framework\MockObject\MockObject;
-use Pimple\Psr11\ServiceLocator;
+use Psr\Container\ContainerInterface;
 use Wikimedia\ObjectFactory;
+use Wikimedia\Services\NoSuchServiceException;
 use Wikimedia\Timestamp\ConvertibleTimestamp;
 
 /**
@@ -24,6 +25,11 @@ trait MediaWikiTestCaseTrait {
 	 * @return Constraint
 	 */
 	protected function anythingBut( ...$values ) {
+		if ( !in_array( '__destruct', $values, true ) ) {
+			// Ensure that __destruct is always included. PHPUnit will fail very hard with no
+			// useful output if __destruct ends up being called (T280780).
+			$values[] = '__destruct';
+		}
 		return $this->logicalNot( $this->logicalOr(
 			...array_map( [ $this, 'identicalTo' ], $values )
 		) );
@@ -62,14 +68,19 @@ trait MediaWikiTestCaseTrait {
 	}
 
 	/**
-	 * Create an ObjectFactory with no dependencies
+	 * Create an ObjectFactory with no dependencies and no services
 	 *
 	 * @return ObjectFactory
 	 */
 	protected function createSimpleObjectFactory() {
-		return new ObjectFactory(
-			new ServiceLocator( new \Pimple\Container(), [] )
+		$serviceContainer = $this->createMock( ContainerInterface::class );
+		$serviceContainer->method( 'has' )->willReturn( false );
+		$serviceContainer->method( 'get' )->willReturnCallback(
+			static function ( $serviceName ) {
+				throw new NoSuchServiceException( $serviceName );
+			}
 		);
+		return new ObjectFactory( $serviceContainer );
 	}
 
 	/**

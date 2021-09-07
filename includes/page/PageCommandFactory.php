@@ -25,6 +25,7 @@ namespace MediaWiki\Page;
 use ActorMigration;
 use Config;
 use ContentModelChange;
+use MediaWiki\Collation\CollationFactory;
 use MediaWiki\Config\ServiceOptions;
 use MediaWiki\Content\IContentHandlerFactory;
 use MediaWiki\EditPage\SpamChecker;
@@ -32,6 +33,7 @@ use MediaWiki\HookContainer\HookContainer;
 use MediaWiki\Permissions\Authority;
 use MediaWiki\Revision\RevisionStore;
 use MediaWiki\User\ActorNormalization;
+use MediaWiki\User\UserEditTracker;
 use MediaWiki\User\UserFactory;
 use MediaWiki\User\UserIdentity;
 use MergeHistory;
@@ -40,6 +42,7 @@ use NamespaceInfo;
 use ReadOnlyMode;
 use RepoGroup;
 use Title;
+use TitleFactory;
 use TitleFormatter;
 use WatchedItemStoreInterface;
 use Wikimedia\Rdbms\ILoadBalancer;
@@ -102,6 +105,15 @@ class PageCommandFactory implements
 	/** @var ActorNormalization */
 	private $actorNormalization;
 
+	/** @var TitleFactory */
+	private $titleFactory;
+
+	/** @var UserEditTracker */
+	private $userEditTracker;
+
+	/** @var CollationFactory */
+	private $collationFactory;
+
 	public function __construct(
 		Config $config,
 		ILoadBalancer $loadBalancer,
@@ -117,7 +129,10 @@ class PageCommandFactory implements
 		WikiPageFactory $wikiPageFactory,
 		UserFactory $userFactory,
 		ActorMigration $actorMigration,
-		ActorNormalization $actorNormalization
+		ActorNormalization $actorNormalization,
+		TitleFactory $titleFactory,
+		UserEditTracker $userEditTracker,
+		CollationFactory $collationFactory
 	) {
 		$this->config = $config;
 		$this->loadBalancer = $loadBalancer;
@@ -134,6 +149,9 @@ class PageCommandFactory implements
 		$this->userFactory = $userFactory;
 		$this->actorMigration = $actorMigration;
 		$this->actorNormalization = $actorNormalization;
+		$this->titleFactory = $titleFactory;
+		$this->userEditTracker = $userEditTracker;
+		$this->collationFactory = $collationFactory;
 	}
 
 	/**
@@ -146,7 +164,7 @@ class PageCommandFactory implements
 		Authority $performer,
 		WikiPage $wikipage,
 		string $newContentModel
-	) : ContentModelChange {
+	): ContentModelChange {
 		return new ContentModelChange(
 			$this->contentHandlerFactory,
 			$this->hookContainer,
@@ -159,20 +177,16 @@ class PageCommandFactory implements
 	}
 
 	/**
-	 * @param Title $source
-	 * @param Title $destination
+	 * @param PageIdentity $source
+	 * @param PageIdentity $destination
 	 * @param string|null $timestamp
 	 * @return MergeHistory
 	 */
 	public function newMergeHistory(
-		Title $source,
-		Title $destination,
+		PageIdentity $source,
+		PageIdentity $destination,
 		string $timestamp = null
-	) : MergeHistory {
-		if ( $timestamp === null ) {
-			// For compatibility with MergeHistory constructor until it can be changed
-			$timestamp = false;
-		}
+	): MergeHistory {
 		return new MergeHistory(
 			$source,
 			$destination,
@@ -183,7 +197,9 @@ class PageCommandFactory implements
 			$this->watchedItemStore,
 			$this->spamChecker,
 			$this->hookContainer,
-			$this->wikiPageFactory
+			$this->wikiPageFactory,
+			$this->titleFormatter,
+			$this->titleFactory
 		);
 	}
 
@@ -192,7 +208,7 @@ class PageCommandFactory implements
 	 * @param Title $to
 	 * @return MovePage
 	 */
-	public function newMovePage( Title $from, Title $to ) : MovePage {
+	public function newMovePage( Title $from, Title $to ): MovePage {
 		return new MovePage(
 			$from,
 			$to,
@@ -206,7 +222,10 @@ class PageCommandFactory implements
 			$this->spamChecker,
 			$this->hookContainer,
 			$this->wikiPageFactory,
-			$this->userFactory
+			$this->userFactory,
+			$this->userEditTracker,
+			$this,
+			$this->collationFactory
 		);
 	}
 
@@ -222,7 +241,7 @@ class PageCommandFactory implements
 		PageIdentity $page,
 		Authority $performer,
 		UserIdentity $byUser
-	) : RollbackPage {
+	): RollbackPage {
 		return new RollbackPage(
 			new ServiceOptions( RollbackPage::CONSTRUCTOR_OPTIONS, $this->config ),
 			$this->loadBalancer,

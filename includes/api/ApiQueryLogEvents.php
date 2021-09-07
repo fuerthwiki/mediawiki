@@ -20,9 +20,9 @@
  * @file
  */
 
-use MediaWiki\MediaWikiServices;
 use MediaWiki\ParamValidator\TypeDef\UserDef;
 use MediaWiki\Storage\NameTableAccessException;
+use MediaWiki\Storage\NameTableStore;
 
 /**
  * Query action to List the log events, with optional filtering by various parameters.
@@ -34,18 +34,24 @@ class ApiQueryLogEvents extends ApiQueryBase {
 	/** @var CommentStore */
 	private $commentStore;
 
+	/** @var NameTableStore */
+	private $changeTagDefStore;
+
 	/**
 	 * @param ApiQuery $query
 	 * @param string $moduleName
 	 * @param CommentStore $commentStore
+	 * @param NameTableStore $changeTagDefStore
 	 */
 	public function __construct(
 		ApiQuery $query,
 		$moduleName,
-		CommentStore $commentStore
+		CommentStore $commentStore,
+		NameTableStore $changeTagDefStore
 	) {
 		parent::__construct( $query, $moduleName, 'le' );
 		$this->commentStore = $commentStore;
+		$this->changeTagDefStore = $changeTagDefStore;
 	}
 
 	private $fld_ids = false, $fld_title = false, $fld_type = false,
@@ -58,7 +64,7 @@ class ApiQueryLogEvents extends ApiQueryBase {
 		$db = $this->getDB();
 		$this->requireMaxOneParameter( $params, 'title', 'prefix', 'namespace' );
 
-		$prop = array_flip( $params['prop'] );
+		$prop = array_fill_keys( $params['prop'], true );
 
 		$this->fld_ids = isset( $prop['ids'] );
 		$this->fld_title = isset( $prop['title'] );
@@ -119,9 +125,8 @@ class ApiQueryLogEvents extends ApiQueryBase {
 			$this->addTables( 'change_tag' );
 			$this->addJoinConds( [ 'change_tag' => [ 'JOIN',
 				[ 'log_id=ct_log_id' ] ] ] );
-			$changeTagDefStore = MediaWikiServices::getInstance()->getChangeTagDefStore();
 			try {
-				$this->addWhereFld( 'ct_tag_id', $changeTagDefStore->getId( $params['tag'] ) );
+				$this->addWhereFld( 'ct_tag_id', $this->changeTagDefStore->getId( $params['tag'] ) );
 			} catch ( NameTableAccessException $exception ) {
 				// Return nothing.
 				$this->addWhere( '1=0' );
@@ -136,7 +141,7 @@ class ApiQueryLogEvents extends ApiQueryBase {
 				// all items in the list have a slash
 				$valid = false;
 			} else {
-				$logActions = array_flip( $this->getAllowedLogActions() );
+				$logActions = array_fill_keys( $this->getAllowedLogActions(), true );
 				list( $type, $action ) = explode( '/', $logAction, 2 );
 				$valid = isset( $logActions[$logAction] ) || isset( $logActions[$type . '/*'] );
 			}
@@ -183,13 +188,6 @@ class ApiQueryLogEvents extends ApiQueryBase {
 		$user = $params['user'];
 		if ( $user !== null ) {
 			$this->addWhereFld( 'actor_name', $user );
-
-			// Remove after T270620 is resolved.
-			$index = $db->indexExists( 'logging', 'times', __METHOD__ ) ? 'times' : 'log_times';
-
-			// T71222: MariaDB's optimizer, at least 10.1.37 and .38, likes to choose a wildly bad plan for
-			// some reason for this code path. Tell it not to use the wrong index it wants to pick.
-			$this->addOption( 'IGNORE INDEX', [ 'logging' => [ $index ] ] );
 		}
 
 		$title = $params['title'];
@@ -245,7 +243,8 @@ class ApiQueryLogEvents extends ApiQueryBase {
 		// `logging` and filesorting is somehow better than querying $limit+1 rows from `logging`.
 		// Tell it not to reorder the query. But not when `letag` was used, as it seems as likely
 		// to be harmed as helped in that case.
-		if ( $params['tag'] === null ) {
+		// If "user" was specified, it's obviously correct to query actor first (T282122)
+		if ( $params['tag'] === null && $user === null ) {
 			$this->addOption( 'STRAIGHT_JOIN' );
 		}
 

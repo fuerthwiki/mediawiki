@@ -10,6 +10,8 @@
 use MediaWiki\Linker\LinkTarget;
 use MediaWiki\MediaWikiServices;
 use MediaWiki\Page\PageIdentity;
+use MediaWiki\Permissions\Authority;
+use MediaWiki\User\UserIdentity;
 
 /**
  * Base code for file repositories.
@@ -254,7 +256,7 @@ class FileRepo {
 	 * Get an explanatory message if this repo is read-only.
 	 * This checks if an administrator disabled writes to the backend.
 	 *
-	 * @return string|bool Returns false if the repo is not read-only
+	 * @return string|false Returns false if the repo is not read-only
 	 */
 	public function getReadOnlyReason() {
 		return $this->backend->getReadOnlyReason();
@@ -294,7 +296,7 @@ class FileRepo {
 	 * The suffix, if supplied, is considered to be unencoded, and will be
 	 * URL-encoded before being returned.
 	 *
-	 * @param string|bool $suffix
+	 * @param string|false $suffix
 	 * @return string
 	 */
 	public function getVirtualUrl( $suffix = false ) {
@@ -311,7 +313,7 @@ class FileRepo {
 	 *
 	 * @param string $zone One of: public, deleted, temp, thumb
 	 * @param string|null $ext Optional file extension
-	 * @return string|bool
+	 * @return string|false
 	 */
 	public function getZoneUrl( $zone, $ext = null ) {
 		if ( in_array( $zone, [ 'public', 'thumb', 'transcoded' ] ) ) {
@@ -411,7 +413,7 @@ class FileRepo {
 	 * Create a new File object from the local repository
 	 *
 	 * @param PageIdentity|LinkTarget|string $title
-	 * @param bool|string $time Time at which the image was uploaded. If this
+	 * @param string|false $time Time at which the image was uploaded. If this
 	 *   is specified, the returned object will be an instance of the
 	 *   repository's old file class instead of a current file. Repositories
 	 *   not supporting version control should return false if this parameter
@@ -445,18 +447,19 @@ class FileRepo {
 	 *                   current version. An image object will be returned which was
 	 *                   created at the specified time (which may be archived or current).
 	 *   ignoreRedirect: If true, do not follow file redirects
-	 *   private:        If a User object, return restricted (deleted) files if the
-	 *                   user is allowed to view them. Otherwise, such files will not
-	 *                   be found. If set and not a User object, throws an exception
+	 *   private:        If an Authority object, return restricted (deleted) files if the
+	 *                   performer is allowed to view them. Otherwise, such files will not
+	 *                   be found. If set and not an Authority object, throws an exception.
+	 *                   Authority is only accepted since 1.37, User was required before.
 	 *   latest:         If true, load from the latest available data into File objects
-	 * @return File|bool False on failure
+	 * @return File|false False on failure
 	 * @throws InvalidArgumentException
 	 */
 	public function findFile( $title, $options = [] ) {
-		if ( !empty( $options['private'] ) && !( $options['private'] instanceof User ) ) {
+		if ( !empty( $options['private'] ) && !( $options['private'] instanceof Authority ) ) {
 			throw new InvalidArgumentException(
 				__METHOD__ . ' called with the `private` option set to something ' .
-				'other than a User object'
+				'other than an Authority object'
 			);
 		}
 
@@ -487,7 +490,7 @@ class FileRepo {
 					if ( !$img->isDeleted( File::DELETED_FILE ) ) {
 						return $img; // always OK
 					} elseif (
-						// If its not empty, its a User object
+						// If its not empty, its an Authority object
 						!empty( $options['private'] ) &&
 						$img->userCan( File::DELETED_FILE, $options['private'] )
 					) {
@@ -533,7 +536,7 @@ class FileRepo {
 	 *     - FileRepo::NAME_AND_TIME_ONLY : return a (search title => (title,timestamp)) map.
 	 *       The search title uses the input titles; the other is the final post-redirect title.
 	 *       All titles are returned as string DB keys and the inner array is associative.
-	 * @return array Map of (file name => File objects) for matches
+	 * @return array Map of (file name => File objects) for matches or (search title => (title,timestamp))
 	 */
 	public function findFiles( array $items, $flags = 0 ) {
 		$result = [];
@@ -545,9 +548,9 @@ class FileRepo {
 
 				if (
 					!empty( $options['private'] ) &&
-					!( $options['private'] instanceof User )
+					!( $options['private'] instanceof Authority )
 				) {
-					$options['private'] = RequestContext::getMain()->getUser();
+					$options['private'] = RequestContext::getMain()->getAuthority();
 				}
 			} else {
 				$title = $item;
@@ -577,14 +580,14 @@ class FileRepo {
 	 *
 	 * @param string $sha1 Base 36 SHA-1 hash
 	 * @param array $options Option array, same as findFile().
-	 * @return File|bool False on failure
-	 * @throws InvalidArgumentException if the `private` option is set and not a User object
+	 * @return File|false False on failure
+	 * @throws InvalidArgumentException if the `private` option is set and not an Authority object
 	 */
 	public function findFileFromKey( $sha1, $options = [] ) {
-		if ( !empty( $options['private'] ) && !( $options['private'] instanceof User ) ) {
+		if ( !empty( $options['private'] ) && !( $options['private'] instanceof Authority ) ) {
 			throw new InvalidArgumentException(
 				__METHOD__ . ' called with the `private` option set to something ' .
-				'other than a User object'
+				'other than an Authority object'
 			);
 		}
 
@@ -604,7 +607,7 @@ class FileRepo {
 				if ( !$img->isDeleted( File::DELETED_FILE ) ) {
 					return $img; // always OK
 				} elseif (
-					// If its not empty, its a User object
+					// If its not empty, its an Authority object
 					!empty( $options['private'] ) &&
 					$img->userCan( File::DELETED_FILE, $options['private'] )
 				) {
@@ -802,7 +805,7 @@ class FileRepo {
 	 *
 	 * @param string|string[] $query Query string to append
 	 * @param string $entry Entry point; defaults to index
-	 * @return string|bool False on failure
+	 * @return string|false False on failure
 	 */
 	public function makeUrl( $query = '', $entry = 'index' ) {
 		if ( isset( $this->scriptDirUrl ) ) {
@@ -881,7 +884,7 @@ class FileRepo {
 	/**
 	 * Get the URL of the stylesheet to apply to description pages
 	 *
-	 * @return string|bool False on failure
+	 * @return string|false False on failure
 	 */
 	public function getDescriptionStylesheetUrl() {
 		if ( isset( $this->scriptDirUrl ) ) {
@@ -990,9 +993,8 @@ class FileRepo {
 		if ( $flags & self::SKIP_LOCKING ) {
 			$opts['nonLocking'] = true;
 		}
-		$status->merge( $backend->doOperations( $operations, $opts ) );
 
-		return $status;
+		return $status->merge( $backend->doOperations( $operations, $opts ) );
 	}
 
 	/**
@@ -1027,9 +1029,8 @@ class FileRepo {
 		if ( $flags & self::SKIP_LOCKING ) {
 			$opts['nonLocking'] = true;
 		}
-		$status->merge( $this->backend->doOperations( $operations, $opts ) );
 
-		return $status;
+		return $status->merge( $this->backend->doOperations( $operations, $opts ) );
 	}
 
 	/**
@@ -1099,9 +1100,8 @@ class FileRepo {
 			];
 			$status->merge( $this->initDirectory( dirname( $dst ) ) );
 		}
-		$status->merge( $this->backend->doQuickOperations( $operations ) );
 
-		return $status;
+		return $status->merge( $this->backend->doQuickOperations( $operations ) );
 	}
 
 	/**
@@ -1124,11 +1124,11 @@ class FileRepo {
 	 * @return Status
 	 */
 	public function quickCleanDir( $dir ) {
-		$status = $this->newGood();
-		$status->merge( $this->backend->clean(
-			[ 'dir' => $this->resolveToStoragePathIfVirtual( $dir ) ] ) );
-
-		return $status;
+		return $this->newGood()->merge(
+			$this->backend->clean(
+				[ 'dir' => $this->resolveToStoragePathIfVirtual( $dir ) ]
+			)
+		);
 	}
 
 	/**
@@ -1136,7 +1136,7 @@ class FileRepo {
 	 * This function can be used to write to otherwise read-only foreign repos.
 	 * This does no locking nor journaling and is intended for purging thumbnails.
 	 *
-	 * @param array $paths List of virtual URLs or storage paths
+	 * @param string[] $paths List of virtual URLs or storage paths
 	 * @return Status
 	 */
 	public function quickPurgeBatch( array $paths ) {
@@ -1200,7 +1200,7 @@ class FileRepo {
 	/**
 	 * Concatenate a list of temporary files into a target file location.
 	 *
-	 * @param array $srcPaths Ordered list of source virtual URLs/storage paths
+	 * @param string[] $srcPaths Ordered list of source virtual URLs/storage paths
 	 * @param string $dstPath Target file system path
 	 * @param int $flags Bitwise combination of the following flags:
 	 *   self::DELETE_SOURCE     Delete the source files on success
@@ -1411,10 +1411,7 @@ class FileRepo {
 			$params = [ 'noAccess' => true, 'noListing' => true ] + $params;
 		}
 
-		$status = $this->newGood();
-		$status->merge( $this->backend->prepare( $params ) );
-
-		return $status;
+		return $this->newGood()->merge( $this->backend->prepare( $params ) );
 	}
 
 	/**
@@ -1426,11 +1423,11 @@ class FileRepo {
 	public function cleanDir( $dir ) {
 		$this->assertWritableRepo(); // fail out if read-only
 
-		$status = $this->newGood();
-		$status->merge( $this->backend->clean(
-			[ 'dir' => $this->resolveToStoragePathIfVirtual( $dir ) ] ) );
-
-		return $status;
+		return $this->newGood()->merge(
+			$this->backend->clean(
+				[ 'dir' => $this->resolveToStoragePathIfVirtual( $dir ) ]
+			)
+		);
 	}
 
 	/**
@@ -1544,9 +1541,7 @@ class FileRepo {
 		// We're now committed to returning an OK result, which will
 		// lead to the files being moved in the DB also.
 		$opts = [ 'force' => true ];
-		$status->merge( $backend->doOperations( $operations, $opts ) );
-
-		return $status;
+		return $status->merge( $backend->doOperations( $operations, $opts ) );
 	}
 
 	/**
@@ -1645,7 +1640,7 @@ class FileRepo {
 	 * Get the timestamp of a file with a given virtual URL/storage path
 	 *
 	 * @param string $virtualUrl
-	 * @return string|bool False on failure
+	 * @return string|false False on failure
 	 */
 	public function getFileTimestamp( $virtualUrl ) {
 		$path = $this->resolveToStoragePathIfVirtual( $virtualUrl );
@@ -1694,8 +1689,7 @@ class FileRepo {
 		ob_start( null, 1048576 );
 		ob_implicit_flush( true );
 
-		$status = $this->newGood();
-		$status->merge( $this->backend->streamFile( $params ) );
+		$status = $this->newGood()->merge( $this->backend->streamFile( $params ) );
 
 		// T186565: Close the buffer, unless it has already been closed
 		// in HTTPFileStreamer::resetOutputBuffers().
@@ -1831,7 +1825,7 @@ class FileRepo {
 	 * STUB
 	 *
 	 * @param PageIdentity|LinkTarget $title Title of image
-	 * @return Title|bool
+	 * @return Title|false
 	 */
 	public function checkRedirect( $title ) {
 		return false;
@@ -1962,10 +1956,10 @@ class FileRepo {
 	/**
 	 * Get an UploadStash associated with this repo.
 	 *
-	 * @param User|null $user
+	 * @param UserIdentity|null $user
 	 * @return UploadStash
 	 */
-	public function getUploadStash( User $user = null ) {
+	public function getUploadStash( UserIdentity $user = null ) {
 		return new UploadStash( $this, $user );
 	}
 

@@ -312,7 +312,6 @@ class SpecialPageFactory {
 		'CreateAccount' => [
 			'class' => \SpecialCreateAccount::class,
 			'services' => [
-				'PermissionManager',
 				'AuthManager',
 			]
 		],
@@ -359,6 +358,8 @@ class SpecialPageFactory {
 				'UserNameUtils',
 				'UserNamePrefixSearch',
 				'BlockActionInfo',
+				'TitleFormatter',
+				'NamespaceInfo'
 			]
 		],
 		'Unblock' => [
@@ -400,6 +401,7 @@ class SpecialPageFactory {
 			'services' => [
 				'PasswordFactory',
 				'AuthManager',
+				'CentralIdLookup',
 			]
 		],
 		'PasswordReset' => [
@@ -490,10 +492,7 @@ class SpecialPageFactory {
 			]
 		],
 		'PasswordPolicies' => [
-			'class' => \SpecialPasswordPolicies::class,
-			'services' => [
-				'NamespaceInfo'
-			]
+			'class' => \SpecialPasswordPolicies::class
 		],
 
 		// Recent changes and logs
@@ -501,10 +500,9 @@ class SpecialPageFactory {
 			'class' => \SpecialNewFiles::class,
 			'services' => [
 				'MimeAnalyzer',
-				'PermissionManager',
+				'GroupPermissionsLookup',
 				'DBLoadBalancer',
-				'UserCache',
-				'UserFactory',
+				'LinkBatchFactory',
 			]
 		],
 		'Log' => [
@@ -530,12 +528,11 @@ class SpecialPageFactory {
 				'LinkBatchFactory',
 				'CommentStore',
 				'ContentHandlerFactory',
-				'PermissionManager',
+				'GroupPermissionsLookup',
 				'DBLoadBalancer',
 				'RevisionLookup',
 				'NamespaceInfo',
 				'UserOptionsLookup',
-				'UserFactory',
 			]
 		],
 		'Recentchanges' => [
@@ -629,10 +626,7 @@ class SpecialPageFactory {
 			'class' => \SpecialApiSandbox::class,
 		],
 		'Statistics' => [
-			'class' => \SpecialStatistics::class,
-			'services' => [
-				'NamespaceInfo',
-			]
+			'class' => \SpecialStatistics::class
 		],
 		'Allmessages' => [
 			'class' => \SpecialAllMessages::class,
@@ -663,7 +657,7 @@ class SpecialPageFactory {
 			]
 		],
 		'Randompage' => [
-			'class' => \RandomPage::class,
+			'class' => \SpecialRandomPage::class,
 			'services' => [
 				'DBLoadBalancer',
 				'NamespaceInfo',
@@ -676,14 +670,14 @@ class SpecialPageFactory {
 			]
 		],
 		'Randomredirect' => [
-			'class' => \SpecialRandomredirect::class,
+			'class' => \SpecialRandomRedirect::class,
 			'services' => [
 				'DBLoadBalancer',
 				'NamespaceInfo',
 			]
 		],
 		'Randomrootpage' => [
-			'class' => \SpecialRandomrootpage::class,
+			'class' => \SpecialRandomRootPage::class,
 			'services' => [
 				'DBLoadBalancer',
 				'NamespaceInfo',
@@ -768,6 +762,7 @@ class SpecialPageFactory {
 			'class' => \SpecialImport::class,
 			'services' => [
 				'PermissionManager',
+				'WikiImporterFactory',
 			]
 		],
 		'Undelete' => [
@@ -1010,7 +1005,7 @@ class SpecialPageFactory {
 	 *
 	 * @return string[]
 	 */
-	public function getNames() : array {
+	public function getNames(): array {
 		return array_keys( $this->getPageList() );
 	}
 
@@ -1019,7 +1014,7 @@ class SpecialPageFactory {
 	 *
 	 * @return array
 	 */
-	private function getPageList() : array {
+	private function getPageList(): array {
 		if ( !is_array( $this->list ) ) {
 			$this->list = self::CORE_LIST;
 
@@ -1073,8 +1068,9 @@ class SpecialPageFactory {
 				$this->list['Mute'] = [
 					'class' => \SpecialMute::class,
 					'services' => [
+						'CentralIdLookup',
 						'UserOptionsManager',
-						'UserFactory',
+						'UserIdentityLookup',
 					]
 				];
 			}
@@ -1108,7 +1104,7 @@ class SpecialPageFactory {
 	 * All registered special pages are guaranteed to map to themselves.
 	 * @return array
 	 */
-	private function getAliasList() : array {
+	private function getAliasList(): array {
 		if ( $this->aliases === null ) {
 			$aliases = $this->contLang->getSpecialPageAliases();
 			$pageList = $this->getPageList();
@@ -1249,9 +1245,9 @@ class SpecialPageFactory {
 	 * that the current user has the required permissions for.
 	 *
 	 * @param User $user User object to check permissions provided
-	 * @return array ( string => Specialpage )
+	 * @return SpecialPage[]
 	 */
-	public function getUsablePages( User $user ) : array {
+	public function getUsablePages( User $user ): array {
 		$pages = [];
 		foreach ( $this->getPageList() as $name => $rec ) {
 			$page = $this->getPage( $name );
@@ -1271,39 +1267,13 @@ class SpecialPageFactory {
 	/**
 	 * Get listed special pages available to everyone by default.
 	 *
-	 * @return array ( string => Specialpage )
+	 * @return SpecialPage[]
 	 */
-	public function getRegularPages() : array {
+	public function getRegularPages(): array {
 		$pages = [];
 		foreach ( $this->getPageList() as $name => $rec ) {
 			$page = $this->getPage( $name );
 			if ( $page && $page->isListed() && !$page->isRestricted() ) {
-				$pages[$name] = $page;
-			}
-		}
-
-		return $pages;
-	}
-
-	/**
-	 * Get listed special pages generally restricted, but available to the current user.
-	 *
-	 * @deprecated since 1.36 Use getUsablePages() instead and exclude any public
-	 *  entries with `!$page->isRestricted()`
-	 * @param User $user User object to use
-	 * @return array ( string => Specialpage )
-	 */
-	public function getRestrictedPages( User $user ) : array {
-		wfDeprecated( __METHOD__, '1.36' );
-
-		$pages = [];
-		foreach ( $this->getPageList() as $name => $rec ) {
-			$page = $this->getPage( $name );
-			if ( $page
-				&& $page->isListed()
-				&& $page->isRestricted()
-				&& $page->userCanExecute( $user )
-			) {
 				$pages[$name] = $page;
 			}
 		}

@@ -1,6 +1,8 @@
 <?php
 
 use MediaWiki\MediaWikiServices;
+use MediaWiki\Page\PageReference;
+use MediaWiki\Page\PageReferenceValue;
 use Wikimedia\TestingAccessWrapper;
 
 /**
@@ -8,7 +10,7 @@ use Wikimedia\TestingAccessWrapper;
  */
 class MessageTest extends MediaWikiLangTestCase {
 
-	protected function setUp() : void {
+	protected function setUp(): void {
 		parent::setUp();
 
 		$this->setMwGlobals( [
@@ -312,14 +314,9 @@ class MessageTest extends MediaWikiLangTestCase {
 		$msg = new Message( $key );
 		$this->assertSame( $expect, $msg->$format() );
 
-		// This statefulness is deprecated (T146416)
-		$this->hideDeprecated( 'Message::toString with implicit format' );
-		$this->assertSame( $expect, $msg->toString(), 'toString is affected by format call' );
-
 		// This used to behave the same as toString() and was a security risk.
 		// It now has a stable return value that is always parsed/sanitized. (T146416)
 		$this->assertSame( $expectImplicit, $msg->__toString(), '__toString is not affected by format call' );
-		$this->assertSame( $expect, $msg->toString(), 'toString is not affected by __toString' );
 	}
 
 	public static function provideToString_raw() {
@@ -352,11 +349,7 @@ class MessageTest extends MediaWikiLangTestCase {
 
 		$this->assertSame( $expect, $msg->$format() );
 
-		$this->hideDeprecated( 'Message::toString with implicit format' );
-		$this->assertSame( $expect, $msg->toString(), 'toString is affected by format call' );
-
 		$this->assertSame( $expectImplicit, $msg->__toString() );
-		$this->assertSame( $expect, $msg->toString(), 'toString is not naffected by __toString' );
 	}
 
 	/**
@@ -863,13 +856,13 @@ class MessageTest extends MediaWikiLangTestCase {
 	public function testSerialization() {
 		$msg = new Message( 'parentheses' );
 		$msg->rawParams( '<a>foo</a>' );
-		$msg->title( Title::newFromText( 'Testing' ) );
+		$msg->page( PageReferenceValue::localReference( NS_MAIN, 'Testing' ) );
 		$this->assertSame( '(<a>foo</a>)', $msg->parse(), 'Sanity check' );
 		$msg = unserialize( serialize( $msg ) );
 		$this->assertSame( '(<a>foo</a>)', $msg->parse() );
-		$title = TestingAccessWrapper::newFromObject( $msg )->title;
-		$this->assertInstanceOf( Title::class, $title );
-		$this->assertSame( 'Testing', $title->getFullText() );
+		$title = TestingAccessWrapper::newFromObject( $msg )->contextPage;
+		$this->assertInstanceOf( PageReference::class, $title );
+		$this->assertSame( 'Testing', $title->getDbKey() );
 
 		$msg = new Message( 'mainpage' );
 		$msg->inLanguage( 'de' );

@@ -23,6 +23,7 @@
 use MediaWiki\MediaWikiServices;
 use MediaWiki\Page\PageIdentity;
 use MediaWiki\Permissions\Authority;
+use MediaWiki\Watchlist\WatchlistManager;
 use Wikimedia\ParamValidator\TypeDef\ExpiryDef;
 
 /**
@@ -41,21 +42,33 @@ class WatchAction extends FormAction {
 	/** @var false|WatchedItem */
 	protected $watchedItem = false;
 
+	/** @var WatchlistManager */
+	private $watchlistManager;
+
 	/**
 	 * Only public since 1.21
 	 *
 	 * @param Page $page
-	 * @param IContextSource|null $context
+	 * @param IContextSource $context
+	 * @param WatchlistManager $watchlistManager
+	 * @param WatchedItemStore $watchedItemStore
 	 */
-	public function __construct( Page $page, IContextSource $context = null ) {
+	public function __construct(
+		Page $page,
+		IContextSource $context,
+		WatchlistManager $watchlistManager,
+		WatchedItemStore $watchedItemStore
+	) {
 		parent::__construct( $page, $context );
 		$this->watchlistExpiry = $this->getContext()->getConfig()->get( 'WatchlistExpiry' );
 		if ( $this->watchlistExpiry ) {
 			// The watchedItem is only used in this action's form if $wgWatchlistExpiry is enabled.
-			$this->watchedItem = MediaWikiServices::getInstance()
-				->getWatchedItemStore()
-				->getWatchedItem( $this->getUser(), $this->getTitle() );
+			$this->watchedItem = $watchedItemStore->getWatchedItem(
+				$this->getUser(),
+				$this->getTitle()
+			);
 		}
+		$this->watchlistManager = $watchlistManager;
 	}
 
 	public function getName() {
@@ -75,7 +88,7 @@ class WatchAction extends FormAction {
 
 		// Even though we're never unwatching here, use WatchlistManager::setWatch() because it also checks for
 		// changed expiry.
-		return MediaWikiServices::getInstance()->getWatchlistManager()->setWatch(
+		return $this->watchlistManager->setWatch(
 			true,
 			$this->getContext()->getAuthority(),
 			$this->getTitle(),
@@ -102,7 +115,6 @@ class WatchAction extends FormAction {
 			return [
 				'intro' => [
 					'type' => 'info',
-					'vertical-label' => true,
 					'raw' => true,
 					'default' => $this->msg( 'confirm-watch-top' )->parse(),
 				],
@@ -161,7 +173,7 @@ class WatchAction extends FormAction {
 	 */
 	private static function getExpiryOptionsFromMessage(
 		MessageLocalizer $msgLocalizer, ?string $lang = null
-	) : array {
+	): array {
 		$expiryOptionsMsg = $msgLocalizer->msg( 'watchlist-expiry-options' );
 		$optionsText = !$lang ? $expiryOptionsMsg->text() : $expiryOptionsMsg->inLanguage( $lang )->text();
 		$options = XmlSelect::parseOptionsMessage(
@@ -255,6 +267,7 @@ class WatchAction extends FormAction {
 		Authority $performer,
 		string $expiry = null
 	) {
+		wfDeprecated( __METHOD__, '1.37' );
 		return Status::wrap( MediaWikiServices::getInstance()->getWatchlistManager()->setWatch(
 			$watch,
 			$performer,
@@ -281,6 +294,7 @@ class WatchAction extends FormAction {
 		$checkRights = User::CHECK_USER_RIGHTS,
 		?string $expiry = null
 	) {
+		wfDeprecated( __METHOD__, '1.37' );
 		$watchlistManager = MediaWikiServices::getInstance()->getWatchlistManager();
 		if ( $checkRights ) {
 			return Status::wrap( $watchlistManager->addWatch(
@@ -307,6 +321,7 @@ class WatchAction extends FormAction {
 	 * @deprecated since 1.37, use WatchlistManager:removeWatch() instead.
 	 */
 	public static function doUnwatch( PageIdentity $pageIdentity, Authority $performer ) {
+		wfDeprecated( __METHOD__, '1.37' );
 		return Status::wrap( MediaWikiServices::getInstance()->getWatchlistManager()->removeWatch(
 			$performer,
 			$pageIdentity
@@ -316,6 +331,8 @@ class WatchAction extends FormAction {
 	/**
 	 * Get token to watch (or unwatch) a page for a user
 	 *
+	 * @deprecated since 1.37, use CsrfTokenSet::getToken
+	 *
 	 * @param PageIdentity $page Title object of page to watch
 	 * @param User $user User for whom the action is going to be performed
 	 * @param string $action Optionally override the action to 'unwatch'
@@ -323,6 +340,7 @@ class WatchAction extends FormAction {
 	 * @since 1.18
 	 */
 	public static function getWatchToken( PageIdentity $page, User $user, $action = 'watch' ) {
+		wfDeprecated( __METHOD__, '1.37' );
 		if ( $action != 'unwatch' ) {
 			$action = 'watch';
 		}

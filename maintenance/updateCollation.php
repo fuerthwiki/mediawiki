@@ -37,7 +37,6 @@ use Wikimedia\Rdbms\IDatabase;
  */
 class UpdateCollation extends Maintenance {
 	private const BATCH_SIZE = 100; // Number of rows to process in one batch
-	private const SYNC_INTERVAL = 5; // Wait for replica DBs after this many batches
 
 	public $sizeHistogram = [];
 
@@ -76,11 +75,10 @@ TEXT
 		$verboseStats = $this->getOption( 'verbose-stats' );
 		if ( $this->hasOption( 'target-collation' ) ) {
 			$collationName = $this->getOption( 'target-collation' );
-			$collation = Collation::factory( $collationName );
 		} else {
 			$collationName = $this->getConfig()->get( 'CategoryCollation' );
-			$collation = Collation::singleton();
 		}
+		$collation = MediaWikiServices::getInstance()->getCollationFactory()->makeCollation( $collationName );
 
 		// Collation sanity check: in some cases the constructor will work,
 		// but this will raise an exception, breaking all category pages
@@ -283,6 +281,9 @@ TEXT
 	}
 
 	private function showSortKeySizeHistogram() {
+		if ( !$this->sizeHistogram ) {
+			return;
+		}
 		$maxLength = max( array_keys( $this->sizeHistogram ) );
 		if ( $maxLength == 0 ) {
 			return;

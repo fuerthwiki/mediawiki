@@ -23,12 +23,11 @@
 
 use MediaWiki\Cache\LinkBatchFactory;
 use MediaWiki\Content\IContentHandlerFactory;
-use MediaWiki\Permissions\PermissionManager;
+use MediaWiki\Permissions\GroupPermissionsLookup;
 use MediaWiki\Revision\MutableRevisionRecord;
 use MediaWiki\Revision\RevisionLookup;
 use MediaWiki\Revision\RevisionRecord;
 use MediaWiki\Revision\SlotRecord;
-use MediaWiki\User\UserFactory;
 use MediaWiki\User\UserIdentityValue;
 use MediaWiki\User\UserOptionsLookup;
 use Wikimedia\Rdbms\ILoadBalancer;
@@ -57,8 +56,8 @@ class SpecialNewpages extends IncludableSpecialPage {
 	/** @var IContentHandlerFactory */
 	private $contentHandlerFactory;
 
-	/** @var PermissionManager */
-	private $permissionManager;
+	/** @var GroupPermissionsLookup */
+	private $groupPermissionsLookup;
 
 	/** @var ILoadBalancer */
 	private $loadBalancer;
@@ -72,41 +71,35 @@ class SpecialNewpages extends IncludableSpecialPage {
 	/** @var UserOptionsLookup */
 	private $userOptionsLookup;
 
-	/** @var UserFactory */
-	private $userFactory;
-
 	/**
 	 * @param LinkBatchFactory $linkBatchFactory
 	 * @param CommentStore $commentStore
 	 * @param IContentHandlerFactory $contentHandlerFactory
-	 * @param PermissionManager $permissionManager
+	 * @param GroupPermissionsLookup $groupPermissionsLookup
 	 * @param ILoadBalancer $loadBalancer
 	 * @param RevisionLookup $revisionLookup
 	 * @param NamespaceInfo $namespaceInfo
 	 * @param UserOptionsLookup $userOptionsLookup
-	 * @param UserFactory $userFactory
 	 */
 	public function __construct(
 		LinkBatchFactory $linkBatchFactory,
 		CommentStore $commentStore,
 		IContentHandlerFactory $contentHandlerFactory,
-		PermissionManager $permissionManager,
+		GroupPermissionsLookup $groupPermissionsLookup,
 		ILoadBalancer $loadBalancer,
 		RevisionLookup $revisionLookup,
 		NamespaceInfo $namespaceInfo,
-		UserOptionsLookup $userOptionsLookup,
-		UserFactory $userFactory
+		UserOptionsLookup $userOptionsLookup
 	) {
 		parent::__construct( 'Newpages' );
 		$this->linkBatchFactory = $linkBatchFactory;
 		$this->commentStore = $commentStore;
 		$this->contentHandlerFactory = $contentHandlerFactory;
-		$this->permissionManager = $permissionManager;
+		$this->groupPermissionsLookup = $groupPermissionsLookup;
 		$this->loadBalancer = $loadBalancer;
 		$this->revisionLookup = $revisionLookup;
 		$this->namespaceInfo = $namespaceInfo;
 		$this->userOptionsLookup = $userOptionsLookup;
-		$this->userFactory = $userFactory;
 	}
 
 	/**
@@ -233,10 +226,9 @@ class SpecialNewpages extends IncludableSpecialPage {
 			$this->opts,
 			$this->linkBatchFactory,
 			$this->getHookContainer(),
-			$this->permissionManager,
+			$this->groupPermissionsLookup,
 			$this->loadBalancer,
-			$this->namespaceInfo,
-			$this->userFactory
+			$this->namespaceInfo
 		);
 		$pager->mLimit = $this->opts->getValue( 'limit' );
 		$pager->mOffset = $this->opts->getValue( 'offset' );
@@ -349,7 +341,7 @@ class SpecialNewpages extends IncludableSpecialPage {
 			'tagFilter' => [
 				'type' => 'tagfilter',
 				'name' => 'tagfilter',
-				'label-raw' => $this->msg( 'tag-filter' )->parse(),
+				'label-message' => 'tag-filter',
 				'default' => $tagFilterVal,
 			],
 			'username' => [
@@ -384,8 +376,8 @@ class SpecialNewpages extends IncludableSpecialPage {
 					return false;
 				}
 			)
-			->setSubmitText( $this->msg( 'newpages-submit' )->text() )
-			->setWrapperLegend( $this->msg( 'newpages' )->text() )
+			->setSubmitTextMsg( 'newpages-submit' )
+			->setWrapperLegendMsg( 'newpages' )
 			->addFooterText( Html::rawElement(
 				'div',
 				null,
@@ -400,7 +392,7 @@ class SpecialNewpages extends IncludableSpecialPage {
 	 * @param Title $title
 	 * @return RevisionRecord
 	 */
-	private function revisionFromRcResult( stdClass $result, Title $title ) : RevisionRecord {
+	private function revisionFromRcResult( stdClass $result, Title $title ): RevisionRecord {
 		$revRecord = new MutableRevisionRecord( $title );
 		$revRecord->setComment(
 			$this->commentStore->getComment( 'rc_comment', $result )
@@ -578,10 +570,9 @@ class SpecialNewpages extends IncludableSpecialPage {
 			$this->opts,
 			$this->linkBatchFactory,
 			$this->getHookContainer(),
-			$this->permissionManager,
+			$this->groupPermissionsLookup,
 			$this->loadBalancer,
-			$this->namespaceInfo,
-			$this->userFactory
+			$this->namespaceInfo
 		);
 		$limit = $this->opts->getValue( 'limit' );
 		$pager->mLimit = min( $limit, $this->getConfig()->get( 'FeedLimit' ) );
@@ -650,8 +641,8 @@ class SpecialNewpages extends IncludableSpecialPage {
 	}
 
 	private function canAnonymousUsersCreatePages() {
-		return $this->permissionManager->groupHasPermission( '*', 'createpage' ) ||
-			$this->permissionManager->groupHasPermission( '*', 'createtalk' );
+		return $this->groupPermissionsLookup->groupHasPermission( '*', 'createpage' ) ||
+			$this->groupPermissionsLookup->groupHasPermission( '*', 'createtalk' );
 	}
 
 	protected function getGroupName() {

@@ -85,6 +85,16 @@ class ActorStoreTest extends ActorStoreTestBase {
 			'0', // $argument
 			new UserIdentityValue( 26, '0' ), // $expected
 		];
+		yield 'getUserIdentityByName, empty' => [
+			'getUserIdentityByName', // $method
+			'', // $argument
+			null, // $expected
+		];
+		yield 'getUserIdentityByName, ip range' => [
+			'getUserIdentityByName', // $method
+			'1.1.1.1/1', // $argument
+			null, // $expected
+		];
 		yield 'getUserIdentityByUserId, registered' => [
 			'getUserIdentityByUserId', // $method
 			24, // $argument
@@ -186,21 +196,6 @@ class ActorStoreTest extends ActorStoreTestBase {
 		$user = $this->getTestUser()->getUser();
 		$actor = $this->getStore()->getUserIdentityByUserId( $user->getId() );
 		$this->assertSameActors( $user, $actor );
-	}
-
-	public function provideGetUserIdentityByName_exception() {
-		yield 'empty' => [
-			'', // $name
-		];
-	}
-
-	/**
-	 * @dataProvider provideGetUserIdentityByName_exception
-	 * @covers ::getUserIdentityByName
-	 */
-	public function testGetUserIdentityByName_exception( string $name ) {
-		$this->expectException( InvalidArgumentException::class );
-		$this->getStore()->getUserIdentityByName( $name );
 	}
 
 	public function provideNewActorFromRow() {
@@ -879,6 +874,12 @@ class ActorStoreTest extends ActorStoreTestBase {
 	public function testNewSelectQueryBuilderWithDB() {
 		$store = $this->getStore();
 		$queryBuilder = $store->newSelectQueryBuilder( $this->db );
+		$this->assertInstanceOf( UserSelectQueryBuilder::class, $queryBuilder );
+	}
+
+	public function testNewSelectQueryBuilderWithQueryFlags() {
+		$store = $this->getStore();
+		$queryBuilder = $store->newSelectQueryBuilder( ActorStore::READ_NORMAL );
 		$this->assertInstanceOf( UserSelectQueryBuilder::class, $queryBuilder );
 	}
 }

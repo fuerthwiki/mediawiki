@@ -6,8 +6,6 @@ use MediaWiki\ShellDisabledError;
 use Wikimedia\ScopedCallback;
 
 /**
- * ExtensionRegistry class
- *
  * The Registry loads JSON files, and uses a Processor
  * to extract information from them. It also registers
  * classes with the autoloader.
@@ -180,7 +178,7 @@ class ExtensionRegistry {
 		$this->queued[$path] = $mtime;
 	}
 
-	private function getCache() : BagOStuff {
+	private function getCache(): BagOStuff {
 		// Can't call MediaWikiServices here, as we must not cause services
 		// to be instantiated before extensions have loaded.
 		return ObjectCache::makeLocalServerCache();
@@ -470,6 +468,13 @@ class ExtensionRegistry {
 				$mergeStrategy = 'array_merge';
 			}
 
+			if ( $mergeStrategy === 'provide_default' ) {
+				if ( !array_key_exists( $key, $GLOBALS ) ) {
+					$GLOBALS[$key] = $val;
+				}
+				continue;
+			}
+
 			// Optimistic: If the global is not set, or is an empty array, replace it entirely.
 			// Will be O(1) performance.
 			if ( !array_key_exists( $key, $GLOBALS ) || ( is_array( $GLOBALS[$key] ) && !$GLOBALS[$key] ) ) {
@@ -487,7 +492,7 @@ class ExtensionRegistry {
 					$GLOBALS[$key] = array_merge_recursive( $GLOBALS[$key], $val );
 					break;
 				case 'array_replace_recursive':
-					$GLOBALS[$key] = array_replace_recursive( $GLOBALS[$key], $val );
+					$GLOBALS[$key] = array_replace_recursive( $val, $GLOBALS[$key] );
 					break;
 				case 'array_plus_2d':
 					$GLOBALS[$key] = wfArrayPlus2d( $GLOBALS[$key], $val );

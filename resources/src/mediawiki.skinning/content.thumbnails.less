@@ -8,26 +8,13 @@
 
 /* stylelint-disable selector-class-pattern */
 @import 'variables';
+@import 'content.thumbnails-layout.less';
 
 /* Images */
 /* @noflip */
 div.floatright,
 table.floatright {
 	margin: @margin-floatright;
-}
-
-/* @noflip */ div.tright,
-div.floatright,
-table.floatright {
-	clear: right;
-	float: right;
-}
-
-/* @noflip */ div.tleft,
-div.floatleft,
-table.floatleft {
-	float: left;
-	clear: left;
 }
 
 /* @noflip */
@@ -83,13 +70,10 @@ div.thumbinner {
 		width: 15px;
 		height: 11px;
 		/* Default styles when there's no .mw-content-ltr or .mw-content-rtl, overridden below */
-
-		/* Use same SVG support hack as mediawiki.legacy's shared.css */
-		background-image: url( images/magnify-clip-ltr.png );
-		background-image: linear-gradient( transparent, transparent ), url( images/magnify-clip-ltr.svg );
+		background-image: @background-image-magnify-ltr;
 		/* Don't annoy people who copy-paste everything too much */
-		-moz-user-select: none;
 		-webkit-user-select: none;
+		-moz-user-select: none;
 		-ms-user-select: none;
 		user-select: none;
 	}
@@ -102,41 +86,25 @@ div.thumbinner {
 /* Directionality-specific styles for thumbnails - their positioning depends on content language */
 
 /* @noflip */
-.mw-content-ltr .thumbcaption {
-	text-align: left;
-}
-
-/* @noflip */
 .mw-content-ltr .magnify {
-	float: right;
 	margin-left: 3px;
 	margin-right: 0;
 }
 
 /* @noflip */
 .mw-content-ltr .magnify a {
-	/* Use same SVG support hack as mediawiki.legacy's shared.css */
-	background-image: @background-image-magnify-ltr-1;
-	background-image: @background-image-magnify-ltr-2;
-}
-
-/* @noflip */
-.mw-content-rtl .thumbcaption {
-	text-align: right;
+	background-image: @background-image-magnify-ltr;
 }
 
 /* @noflip */
 .mw-content-rtl .magnify {
-	float: left;
 	margin-left: 0;
 	margin-right: 3px;
 }
 
 /* @noflip */
 .mw-content-rtl .magnify a {
-	/* Use same SVG support hack as mediawiki.legacy's shared.css */
-	background-image: @background-image-magnify-rtl-1;
-	background-image: @background-image-magnify-rtl-2;
+	background-image: @background-image-magnify-rtl;
 }
 
 /* @noflip */

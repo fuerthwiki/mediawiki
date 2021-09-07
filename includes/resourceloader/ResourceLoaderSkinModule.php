@@ -55,13 +55,14 @@ class ResourceLoaderSkinModule extends ResourceLoaderLessVarFileModule {
 	 *     content area structures like the TOC themselves.
 	 *
 	 * "content":
-	 *     Deprecated. Alias for "content-thumbnails".
+	 *     Deprecated. Alias for "content-media".
 	 *
 	 * "content-thumbnails":
-	 *     Styles for thumbnails and floated elements.
+	 *     Deprecated. Alias for "content-media".
 	 *
 	 * "content-media":
-	 *     Styles for the new media structure on wikis where $wgUseNewMediaStructure is enabled.
+	 *     Styles for thumbnails and floated elements.
+	 *     Will add styles for the new media structure on wikis where $wgParserEnableLegacyMediaDOM is disabled.
 	 *     See https://www.mediawiki.org/wiki/Parsing/Media_structure
 	 *
 	 * "content-links":
@@ -73,7 +74,7 @@ class ResourceLoaderSkinModule extends ResourceLoaderLessVarFileModule {
 	 * "content-links-external":
 	 *     The skin will apply optional styling rules to links to provide icons for different file types.
 	 *
-	 * "content-parser-output":
+	 * "content-body":
 	 *     Styles for the mw-parser-output class.
 	 *
 	 * "content-tables":
@@ -121,12 +122,9 @@ class ResourceLoaderSkinModule extends ResourceLoaderLessVarFileModule {
 			// Reserves whitespace for the logo in a pseudo element.
 			'print' => [ 'resources/src/mediawiki.skinning/logo-print.less' ],
 		],
-		'content-thumbnails' => [
+		'content-media' => [
 			'screen' => [ 'resources/src/mediawiki.skinning/content.thumbnails.less' ],
 			'print' => [ 'resources/src/mediawiki.skinning/content.thumbnails-print.less' ],
-		],
-		'content-media' => [
-			'screen' => [ 'resources/src/mediawiki.skinning/content.media.less' ],
 		],
 		'content-links' => [
 			'screen' => [ 'resources/src/mediawiki.skinning/content.links.less' ]
@@ -134,9 +132,9 @@ class ResourceLoaderSkinModule extends ResourceLoaderLessVarFileModule {
 		'content-links-external' => [
 			'screen' => [ 'resources/src/mediawiki.skinning/content.externallinks.less' ]
 		],
-		'content-parser-output' => [
-			'screen' => [ 'resources/src/mediawiki.skinning/content.parser-output.less' ],
-			'print' => [ 'resources/src/mediawiki.skinning/content.parser-output-print.less' ],
+		'content-body' => [
+			'screen' => [ 'resources/src/mediawiki.skinning/content.body.less' ],
+			'print' => [ 'resources/src/mediawiki.skinning/content.body-print.less' ],
 		],
 		'content-tables' => [
 			'screen' => [ 'resources/src/mediawiki.skinning/content.tables.less' ],
@@ -181,25 +179,29 @@ class ResourceLoaderSkinModule extends ResourceLoaderLessVarFileModule {
 	/** @var string[] */
 	private $features;
 
-	/** @var array please order alphabetically */
-	private const DEFAULT_FEATURES = [
-		'content-links' => false,
-		'content-links-external' => false,
-		'content-media' => false,  // Will default to `true` when $wgUseNewMediaStructure is enabled everywhere
-		'content-parser-output' => true,
-		'content-tables' => false,
-		'content-thumbnails' => false, // To be consolidated with content-media at a future date.
-		'elements' => false,
-		'i18n-all-lists-margins' => false,
-		'i18n-headings' => false,
-		'i18n-ordered-lists' => false,
-		'interface' => false,
-		'interface-category' => false,
-		'interface-message-box' => false,
-		'legacy' => false,
-		'logo' => false,
-		'normalize' => false,
+	/**
+	 * Defaults for when a 'features' parameter is specified.
+	 *
+	 * When these apply, they are the merged into the specified options.
+	 *
+	 * @var array<string,bool>
+	 */
+	private const DEFAULT_FEATURES_SPECIFIED = [
+		'content-body' => true,
 		'toc' => true,
+	];
+
+	/**
+	 * Default for when the 'features' parameter is absent.
+	 *
+	 * For backward-compatiblity, when the parameter is not declared
+	 * only 'logo' and 'legacy' styles are loaded.
+	 *
+	 * @var string[]
+	 */
+	private const DEFAULT_FEATURES_ABSENT = [
+		'logo',
+		'legacy',
 	];
 
 	private const LESS_MESSAGES = [
@@ -208,89 +210,115 @@ class ResourceLoaderSkinModule extends ResourceLoaderLessVarFileModule {
 		'showtoc',
 	];
 
+	/**
+	 * @param array $options
+	 * - features: Map from feature keys to boolean indicating whether to load
+	 *   or not include the associated styles.
+	 *   Keys not specified get their default from self::DEFAULT_FEATURES_SPECIFIED.
+	 *
+	 *   If this is set to a list of strings, then the defaults do not apply.
+	 *   Use this at your own risk as it means you opt-out from backwards compatibility
+	 *   provided through these defaults. For example, when features are migrated
+	 *   to the SkinModule system from other parts of MediaWiki, those new feature keys
+	 *   may be enabled by default, and opting out means you may be missing some styles
+	 *   after an upgrade until you enable them or implement them by other means.
+	 *
+	 * - lessMessages: Interface message keys to export as LESS variables.
+	 *   See also ResourceLoaderLessVarFileModule.
+	 *
+	 * @param string|null $localBasePath
+	 * @param string|null $remoteBasePath
+	 * @see Additonal options at $wgResourceModules
+	 */
 	public function __construct(
 		array $options = [],
 		$localBasePath = null,
 		$remoteBasePath = null
 	) {
-		$features = self::getBackwardsCompatibleFeatures( $options );
+		$features = $options['features'] ?? self::DEFAULT_FEATURES_ABSENT;
+		$listMode = array_keys( $features ) === range( 0, count( $features ) - 1 );
 
-		$enabledFeatures = [];
-		$compatibilityMode = false;
+		$messages = '';
+		// NOTE: Compatibility is only applied when features are provided
+		// in map-form. The list-form does not currently get these.
+		$features = $listMode ? self::applyFeaturesCompatibility( array_fill_keys( $features, true ), $messages ) :
+			self::applyFeaturesCompatibility( $features, $messages );
+
 		foreach ( $features as $key => $enabled ) {
-			if ( is_bool( $enabled ) ) {
-				$feature = $key;
-				$enabledFeatures[$key] = $enabled;
-			} else {
-				$feature = $enabled;
-				// operating in array mode.
-				$enabledFeatures[$enabled] = true;
-				$compatibilityMode = true;
-			}
-			if ( !isset( self::FEATURE_FILES[$feature] ) || !isset( self::DEFAULT_FEATURES[$feature] ) ) {
-				// We could be an old version of MediaWiki and a new feature is being requested (T271441).
-				continue;
+			if ( !isset( self::FEATURE_FILES[$key] ) ) {
+				throw new InvalidArgumentException( "Feature '$key' is not recognised" );
 			}
 		}
-		// If the module didn't specify an option use the default features values.
-		// This allows new features to be turned on automatically.
-		if ( !$compatibilityMode ) {
-			foreach ( self::DEFAULT_FEATURES as $key => $enabled ) {
-				if ( !isset( $enabledFeatures[$key] ) ) {
-					if ( $key === 'content-media' ) {
-						// Only ship this by default if enabled, since it's going
-						// to be adding some unnecessary overhead where unused.
-						// Also, assume that if a skin is being picky about which
-						// features it wants, it'll pull this in when it's ready
-						// for it.
-						$enabledFeatures[$key] = (bool)$this->getConfig()->get( 'UseNewMediaStructure' );
-					} else {
-						$enabledFeatures[$key] = $enabled;
-					}
-				}
-			}
-		}
-		$this->features = array_filter(
-			array_keys( $enabledFeatures ),
-			static function ( $key ) use ( $enabledFeatures ) {
-				return $enabledFeatures[ $key ];
-			}
-		);
 
-		$options['lessMessages'] = $options['lessMessages'] ?? [];
-		// Only the `toc` feature requires access to messages.
-		// For modules not using the `toc` feature make sure this is set to an empty array.
-		// See T270027.
-		// This is done after construction of the enabled features array.
+		$this->features = $listMode
+			? array_keys( array_filter( $features ) )
+			: array_keys( array_filter( $features + self::DEFAULT_FEATURES_SPECIFIED ) );
+
+		// Only the `toc` feature makes use of interface messages.
+		// For skins not using the `toc` feature, make sure LocalisationCache
+		// remains untouched (T270027).
 		if ( in_array( 'toc', $this->features ) ) {
-			$options['lessMessages'] = array_merge( $options['lessMessages'], self::LESS_MESSAGES );
+			$options['lessMessages'] = array_merge(
+				$options['lessMessages'] ?? [],
+				self::LESS_MESSAGES
+			);
+		}
+
+		if ( $messages !== '' ) {
+			$messages .= 'More information can be found at [[mw:Manual:ResourceLoaderSkinModule]]. ';
+			$options['deprecated'] = $messages;
 		}
 		parent::__construct( $options, $localBasePath, $remoteBasePath );
 	}
 
-	public static function getBackwardsCompatibleFeatures( array $options ) {
-		$features = $options['features'] ??
-			// For historic reasons if nothing is declared logo and legacy features are enabled.
-			[
-				'logo' => true,
-				'legacy' => true
-			];
-
-		// The `content` feature is mapped to `content-thumbnails`.
-		// FIXME: This should log a deprecated notice at a later date (proposed: 1.37 release)
+	/**
+	 * @internal
+	 * @param array $features
+	 * @param string &$messages to report deprecations
+	 * @return array
+	 */
+	protected static function applyFeaturesCompatibility( array $features, &$messages = '' ): array {
+		// The `content` feature is mapped to `content-media`.
 		if ( isset( $features[ 'content' ] ) ) {
-			$features[ 'content-thumbnails' ] = $features[ 'content' ];
+			$features[ 'content-media' ] = $features[ 'content' ];
 			unset( $features[ 'content' ] );
+			$messages .= '[1.37] The use of the `content` feature with ResourceLoaderSkinModule'
+				. ' is deprecated. Use `content-media` instead. ';
 		}
-		// If the content-links feature is set but the user hasn't expressed a preference for `content-links-external`
-		// then we set it to the same value.
+
+		// The `content-thumbnails` feature is mapped to `content-media`.
+		if ( isset( $features[ 'content-thumbnails' ] ) ) {
+			$features[ 'content-media' ] = $features[ 'content-thumbnails' ];
+			$messages .= '[1.37] The use of the `content-thumbnails` feature with ResourceLoaderSkinModule'
+				. ' is deprecated. Use `content-media` instead. ';
+			unset( $features[ 'content-thumbnails' ] );
+		}
+
+		// If `content-links` feature is set but no preference for `content-links-external` is set
 		if ( isset( $features[ 'content-links' ] ) && !isset( $features[ 'content-links-external' ] ) ) {
+			// Assume the same true/false preference for both.
 			$features[ 'content-links-external' ] = $features[ 'content-links' ];
 		}
 
-		// Some styles in content-links were previously in `elements`. Make sure clients getting elements get these.
+		// The legacy feature is deprecated (T89981).
+		if ( isset( $features['legacy'] ) && $features['legacy'] ) {
+			$messages .= '[1.37] The use of the `legacy` feature with ResourceLoaderSkinModule is deprecated'
+				. '(T89981). ';
+		}
+
+		// The `content-links` feature was split out from `elements`.
+		// Make sure skins asking for `elements` also get these by default.
 		if ( isset( $features[ 'element' ] ) && !isset( $features[ 'content-links' ] ) ) {
 			$features[ 'content-links' ] = $features[ 'element' ];
+		}
+
+		// `content-parser-output` was renamed to `content-body`.
+		// No need to go through deprecation process here since content-parser-output added and removed in 1.36.
+		// Remove this check when no matches for
+		// https://codesearch.wmcloud.org/search/?q=content-parser-output&i=nope&files=&excludeFiles=&repos=
+		if ( isset( $features[ 'content-parser-output' ] ) ) {
+			$features[ 'content-body' ] = $features[ 'content-parser-output' ];
+			unset( $features[ 'content-parser-output' ] );
 		}
 
 		return $features;
@@ -305,14 +333,20 @@ class ResourceLoaderSkinModule extends ResourceLoaderLessVarFileModule {
 	public function getStyleFiles( ResourceLoaderContext $context ) {
 		$styles = parent::getStyleFiles( $context );
 
+		// Bypass the current module paths so that these files are served from core,
+		// instead of the individual skin's module directory.
 		list( $defaultLocalBasePath, $defaultRemoteBasePath ) =
-			ResourceLoaderFileModule::extractBasePaths();
+			ResourceLoaderFileModule::extractBasePaths(
+				[],
+				null,
+				$this->getConfig()->get( 'ResourceBasePath' )
+			);
 
 		$featureFilePaths = [];
 
-		foreach ( self::FEATURE_FILES as $feature => $files ) {
+		foreach ( self::FEATURE_FILES as $feature => $featureFiles ) {
 			if ( in_array( $feature, $this->features ) ) {
-				foreach ( $files as $mediaType => $files ) {
+				foreach ( $featureFiles as $mediaType => $files ) {
 					foreach ( $files as $filepath ) {
 						$featureFilePaths[$mediaType][] = new ResourceLoaderFilePath(
 							$filepath,
@@ -320,6 +354,13 @@ class ResourceLoaderSkinModule extends ResourceLoaderLessVarFileModule {
 							$defaultRemoteBasePath
 						);
 					}
+				}
+				if ( $feature === 'content-media' && !$this->getConfig()->get( 'ParserEnableLegacyMediaDOM' ) ) {
+					$featureFilePaths['screen'][] = new ResourceLoaderFilePath(
+						'resources/src/mediawiki.skinning/content.media.less',
+						$defaultLocalBasePath,
+						$defaultRemoteBasePath
+					);
 				}
 			}
 		}
@@ -399,7 +440,7 @@ class ResourceLoaderSkinModule extends ResourceLoaderLessVarFileModule {
 	 * Helper method for getPreloadLinks()
 	 * @return array
 	 */
-	private function getLogoPreloadlinks() : array {
+	private function getLogoPreloadlinks(): array {
 		if ( !in_array( 'logo', $this->features ) ) {
 			return [];
 		}
@@ -483,7 +524,7 @@ class ResourceLoaderSkinModule extends ResourceLoaderLessVarFileModule {
 	 * @param array &$styles Associative array, keys are strings (media queries),
 	 *   values are strings or arrays
 	 */
-	private function normalizeStyles( array &$styles ) : void {
+	private function normalizeStyles( array &$styles ): void {
 		foreach ( $styles as $key => $val ) {
 			if ( !is_array( $val ) ) {
 				$styles[$key] = [ $val ];
@@ -501,7 +542,7 @@ class ResourceLoaderSkinModule extends ResourceLoaderLessVarFileModule {
 	 *  - wordmark: a rectangle logo (wordmark) for print media and skins which desire
 	 *      horizontal logo (optional)
 	 */
-	public static function getAvailableLogos( $conf ) : array {
+	public static function getAvailableLogos( $conf ): array {
 		$logos = $conf->get( 'Logos' );
 		if ( $logos === false ) {
 			// no logos were defined... this will either

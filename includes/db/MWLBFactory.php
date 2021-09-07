@@ -367,7 +367,7 @@ abstract class MWLBFactory {
 		ILBFactory $lbFactory,
 		Config $config,
 		IBufferingStatsdDataFactory $stats
-	) : void {
+	): void {
 		// Use the global WebRequest singleton. The main reason for using this
 		// is to call WebRequest::getIP() which is non-trivial to reproduce statically
 		// because it needs $wgUsePrivateIPs, as well as ProxyLookup and HookRunner services.
@@ -398,7 +398,12 @@ abstract class MWLBFactory {
 			// Add a comment for easy SHOW PROCESSLIST interpretation
 			// TODO: For web requests this is still handled eagerly in MediaWiki.php.
 			if ( function_exists( 'posix_getpwuid' ) ) {
-				$agent = posix_getpwuid( posix_geteuid() )['name'];
+				$uid = posix_geteuid();
+
+				// NOTE: posix_getpwuid will return false if the current user has no name,
+				//       which is common when running inside a Docker container.
+				$pwuid = posix_getpwuid( $uid );
+				$agent = $pwuid['name'] ?? "uid:$uid";
 			} else {
 				$agent = 'sysadmin';
 			}
@@ -419,7 +424,7 @@ abstract class MWLBFactory {
 				}
 			);
 			// Check for other windows to run them. A script may read or do a few writes
-			// to the master but mostly be writing to something else, like a file store.
+			// to the primary DB but mostly be writing to something else, like a file store.
 			$lbFactory->getMainLB()->setTransactionListener(
 				__METHOD__,
 				static function ( $trigger ) use ( $stats, $config ) {

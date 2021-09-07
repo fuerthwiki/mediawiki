@@ -406,7 +406,7 @@ class CheckStorage {
 				print "$msg in old_id $id, revisions " . implode( ', ', $revIds ) . "\n";
 			}
 		}
-		$this->errors[$type] += array_flip( $revIds );
+		$this->errors[$type] += array_fill_keys( $revIds, true );
 	}
 
 	private function checkExternalConcatBlobs( $externalConcatBlobs ) {
@@ -501,10 +501,9 @@ class CheckStorage {
 		$dbw->ping();
 
 		$source = new ImportStreamSource( $file );
-		$importer = new WikiImporter(
-			$source,
-			MediaWikiServices::getInstance()->getMainConfig()
-		);
+		$importer = MediaWikiServices::getInstance()
+			->getWikiImporterFactory()
+			->getWikiImporter( $source );
 		$importer->setRevisionCallback( [ $this, 'importRevision' ] );
 		$importer->setNoticeCallback( static function ( $msg, $params ) {
 			echo wfMessage( $msg, $params )->text() . "\n";

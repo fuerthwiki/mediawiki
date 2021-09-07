@@ -258,7 +258,7 @@ class HistoryAction extends FormlessAction {
 				'name' => 'date-range-to',
 			],
 			[
-				'label-raw' => $this->msg( 'tag-filter' )->parse(),
+				'label-message' => 'tag-filter',
 				'type' => 'tagfilter',
 				'id' => 'tagfilter',
 				'name' => 'tagfilter',
@@ -281,9 +281,9 @@ class HistoryAction extends FormlessAction {
 			->setAction( wfScript() )
 			->setCollapsibleOptions( true )
 			->setId( 'mw-history-searchform' )
-			->setSubmitText( $this->msg( 'historyaction-submit' )->text() )
+			->setSubmitTextMsg( 'historyaction-submit' )
 			->setWrapperAttributes( [ 'id' => 'mw-history-search' ] )
-			->setWrapperLegend( $this->msg( 'history-fieldset-title' )->text() );
+			->setWrapperLegendMsg( 'history-fieldset-title' );
 		$htmlForm->loadData();
 
 		$out->addHTML( $htmlForm->getHTML( false ) );

@@ -1,10 +1,19 @@
 <?php
 
+use MediaWiki\Auth\AuthManager;
+use MediaWiki\Config\ServiceOptions;
+use MediaWiki\HookContainer\HookContainer;
+use MediaWiki\Languages\LanguageConverterFactory;
+use MediaWiki\Languages\LanguageNameUtils;
+use MediaWiki\Linker\LinkRenderer;
 use MediaWiki\MediaWikiServices;
 use MediaWiki\Permissions\PermissionManager;
 use MediaWiki\Preferences\DefaultPreferencesFactory;
+use MediaWiki\Tests\Unit\DummyServicesTrait;
+use MediaWiki\User\UserGroupManager;
+use MediaWiki\User\UserIdentity;
 use MediaWiki\User\UserOptionsLookup;
-use PHPUnit\Framework\MockObject\MockObject;
+use MediaWiki\User\UserOptionsManager;
 use Wikimedia\TestingAccessWrapper;
 
 /**
@@ -31,6 +40,7 @@ use Wikimedia\TestingAccessWrapper;
  * @coversDefaultClass MediaWiki\Preferences\DefaultPreferencesFactory
  */
 class DefaultPreferencesFactoryTest extends \MediaWikiIntegrationTestCase {
+	use DummyServicesTrait;
 	use TestAllServiceOptionsUsed;
 
 	/** @var IContextSource */
@@ -39,7 +49,7 @@ class DefaultPreferencesFactoryTest extends \MediaWikiIntegrationTestCase {
 	/** @var Config */
 	protected $config;
 
-	protected function setUp() : void {
+	protected function setUp(): void {
 		parent::setUp();
 		$this->context = new RequestContext();
 		$this->context->setTitle( Title::newFromText( self::class ) );
@@ -52,55 +62,88 @@ class DefaultPreferencesFactoryTest extends \MediaWikiIntegrationTestCase {
 	}
 
 	/**
-	 * Get a permission manager for a user with either all or just specified rights - assumes
-	 * everything is for the same user
-	 *
-	 * @param string[]|bool $permissions either `true` for everything, or a list of permissions
-	 * @return PermissionManager|MockObject
+	 * @covers ::__construct
 	 */
-	private function getPermissionManager( $permissions ) {
-		$permManager = $this->createMock( PermissionManager::class );
-		$permManager->method( 'userHasRight' )->willReturnCallback(
-			static function ( $user, $action ) use ( $permissions ) {
-				if ( $permissions === true ) {
-					return true;
-				}
-				return in_array( $action, $permissions, true );
-			}
+	public function testConstruct() {
+		// Make sure if the optional services are not provided, stuff still works, so that
+		// the GlobalPreferences extension isn't broken
+		$params = [
+			$this->createMock( ServiceOptions::class ),
+			$this->createMock( Language::class ),
+			$this->createMock( AuthManager::class ),
+			$this->createMock( LinkRenderer::class ),
+			$this->createMock( NamespaceInfo::class ),
+			$this->createMock( PermissionManager::class ),
+			$this->createMock( ILanguageConverter::class ),
+			$this->createMock( LanguageNameUtils::class ),
+			$this->createMock( HookContainer::class ),
+			$this->createMock( UserOptionsLookup::class ),
+		];
+		$preferencesFactory = new DefaultPreferencesFactory( ...$params );
+		$this->assertInstanceOf(
+			DefaultPreferencesFactory::class,
+			$preferencesFactory,
+			'Created with some services missing'
 		);
-		$permManager->method( 'userHasAnyRight' )->willReturnCallback(
-			static function ( $user, ...$actions ) use ( $permManager ) {
-				foreach ( $actions as $action ) {
-					if ( $permManager->userHasRight( $user, $action ) ) {
-						return true;
-					}
-				}
-				return false;
-			}
+
+		// Now, make sure that MediaWikiServices isn't used
+		// Switch the UserOptionsLookup to a UserOptionsManager
+		$params[9] = $this->createMock( UserOptionsManager::class );
+		$params[] = $this->createMock( LanguageConverterFactory::class );
+		$params[] = $this->createMock( Parser::class );
+		$params[] = $this->createMock( SkinFactory::class );
+		$params[] = $this->createMock( UserGroupManager::class );
+		$oldMwServices = MediaWikiServices::forceGlobalInstance(
+			$this->createNoOpMock( MediaWikiServices::class )
 		);
-		return $permManager;
+		// Wrap in a try-finally block to make sure the real MediaWikiServices is
+		// always put back even if something goes wrong
+		try {
+			$preferencesFactory = new DefaultPreferencesFactory( ...$params );
+			$this->assertInstanceOf(
+				DefaultPreferencesFactory::class,
+				$preferencesFactory,
+				'Created with all services, MediaWikiServices not used'
+			);
+		} finally {
+			// Put back the real MediaWikiServices
+			MediaWikiServices::forceGlobalInstance( $oldMwServices );
+		}
 	}
 
 	/**
 	 * Get a basic PreferencesFactory for testing with.
-	 * @param PermissionManager $mockPM
-	 * @param Language $language
-	 * @param UserOptionsLookup|null $userOptionsLookup
+	 * @param array $options Supported options are:
+	 *    'language' - A Language object, falls back to `new Language()`
+	 *    'userOptionsManager' - A UserOptionsManager service, falls back to using MediaWikiServices
+	 *    'userGroupManager' - A UserGroupManager service, falls back to a mock where no users
+	 *                         have any extra groups, just `*` and `user`
 	 * @return DefaultPreferencesFactory
 	 */
-	protected function getPreferencesFactory(
-		PermissionManager $mockPM,
-		Language $language,
-		UserOptionsLookup $userOptionsLookup = null
-	) {
-		$mockNsInfo = $this->createMock( NamespaceInfo::class );
-		$mockNsInfo->method( 'getValidNamespaces' )->willReturn( [
-			NS_MAIN, NS_TALK, NS_USER, NS_USER_TALK
-		] );
-		$mockNsInfo->expects( $this->never() )
-			->method( $this->anythingBut( 'getValidNamespaces', '__destruct' ) );
+	protected function getPreferencesFactory( array $options = [] ) {
+		// DummyServicesTrait::getDummyNamespaceInfo
+		$nsInfo = $this->getDummyNamespaceInfo();
 
 		$services = MediaWikiServices::getInstance();
+
+		// The PermissionManager should not be used for anything, its only a parameter
+		// until we figure out how to remove it without breaking the GlobalPreferences
+		// extension (GlobalPreferencesFactory extends DefaultPreferencesFactory)
+		$permissionManager = $this->createNoOpMock( PermissionManager::class );
+
+		$language = $options['language'] ?? new Language();
+		$userOptionsManager = $options['userOptionsManager'] ?? $services->getUserOptionsManager();
+
+		$userGroupManager = $options['userGroupManager'] ?? false;
+		if ( !$userGroupManager ) {
+			$userGroupManager = $this->createMock( UserGroupManager::class );
+			$userGroupManager->method( 'getUserGroupMemberships' )->willReturn( [] );
+			$userGroupManager->method( 'getUserEffectiveGroups' )->willReturnCallback(
+				static function ( UserIdentity $user ) {
+					return $user->isRegistered() ? [ '*', 'user' ] : [ '*' ];
+				}
+			);
+		}
 
 		return new DefaultPreferencesFactory(
 			new LoggedServiceOptions( self::$serviceOptionsAccessLog,
@@ -108,12 +151,16 @@ class DefaultPreferencesFactoryTest extends \MediaWikiIntegrationTestCase {
 			$language,
 			$services->getAuthManager(),
 			$services->getLinkRenderer(),
-			$mockNsInfo,
-			$mockPM,
+			$nsInfo,
+			$permissionManager,
 			$services->getLanguageConverterFactory()->getLanguageConverter( $language ),
 			$services->getLanguageNameUtils(),
 			$services->getHookContainer(),
-			$userOptionsLookup ?? $services->getUserOptionsLookup()
+			$userOptionsManager,
+			$services->getLanguageConverterFactory(),
+			$services->getParser(),
+			$services->getSkinFactory(),
+			$userGroupManager
 		);
 	}
 
@@ -125,8 +172,7 @@ class DefaultPreferencesFactoryTest extends \MediaWikiIntegrationTestCase {
 		$this->setTemporaryHook( 'GetPreferences', null );
 
 		$testUser = $this->getTestUser();
-		$pm = $this->getPermissionManager( true );
-		$prefFactory = $this->getPreferencesFactory( $pm, new Language() );
+		$prefFactory = $this->getPreferencesFactory();
 		$form = $prefFactory->getForm( $testUser->getUser(), $this->context );
 		$this->assertInstanceOf( PreferencesFormOOUI::class, $form );
 		$this->assertCount( 5, $form->getPreferenceSections() );
@@ -140,8 +186,7 @@ class DefaultPreferencesFactoryTest extends \MediaWikiIntegrationTestCase {
 	 * @dataProvider emailAuthenticationProvider
 	 */
 	public function testEmailAuthentication( $user, $cssClass ) {
-		$pm = $this->getPermissionManager( true );
-		$prefs = $this->getPreferencesFactory( $pm, new Language() )
+		$prefs = $this->getPreferencesFactory()
 			->getFormDescriptor( $user, $this->context );
 		$this->assertArrayHasKey( 'cssclass', $prefs['emailauthentication'] );
 		$this->assertEquals( $cssClass, $prefs['emailauthentication']['cssclass'] );
@@ -154,16 +199,16 @@ class DefaultPreferencesFactoryTest extends \MediaWikiIntegrationTestCase {
 		$userMock = $this->getMockBuilder( User::class )
 			->disableOriginalConstructor()
 			->getMock();
-		$userMock->method( 'getEffectiveGroups' )
-			->willReturn( [] );
-		$userMock->method( 'getGroupMemberships' )
-			->willReturn( [] );
+		$userMock->method( 'isAllowed' )->willReturnCallback(
+			static function ( $permission ) {
+				return $permission === 'editmyoptions';
+			}
+		);
 
-		$pm = $this->getPermissionManager( [ 'editmyoptions' ] );
-
-		$userOptionsLookupMock = $this->createUserOptionsLookupMock( [ 'test' => 'yes' ], true );
-		$prefs = $this->getPreferencesFactory( $pm, new Language(), $userOptionsLookupMock )
-			->getFormDescriptor( $userMock, $this->context );
+		$userOptionsManagerMock = $this->createUserOptionsManagerMock( [ 'test' => 'yes' ], true );
+		$prefs = $this->getPreferencesFactory( [
+			'userOptionsManager' => $userOptionsManagerMock,
+		] )->getFormDescriptor( $userMock, $this->context );
 		$this->assertArrayNotHasKey( 'showrollbackconfirmation', $prefs );
 	}
 
@@ -174,16 +219,16 @@ class DefaultPreferencesFactoryTest extends \MediaWikiIntegrationTestCase {
 		$userMock = $this->getMockBuilder( User::class )
 			->disableOriginalConstructor()
 			->getMock();
-		$userMock->method( 'getEffectiveGroups' )
-			->willReturn( [] );
-		$userMock->method( 'getGroupMemberships' )
-			->willReturn( [] );
+		$userMock->method( 'isAllowed' )->willReturnCallback(
+			static function ( $permission ) {
+				return $permission === 'editmyoptions' || $permission === 'rollback';
+			}
+		);
 
-		$pm = $this->getPermissionManager( [ 'editmyoptions', 'rollback' ] );
-
-		$userOptionsLookupMock = $this->createUserOptionsLookupMock( [ 'test' => 'yes' ], true );
-		$prefs = $this->getPreferencesFactory( $pm, new Language(), $userOptionsLookupMock )
-			->getFormDescriptor( $userMock, $this->context );
+		$userOptionsManagerMock = $this->createUserOptionsManagerMock( [ 'test' => 'yes' ], true );
+		$prefs = $this->getPreferencesFactory( [
+			'userOptionsManager' => $userOptionsManagerMock,
+		] )->getFormDescriptor( $userMock, $this->context );
 		$this->assertArrayHasKey( 'showrollbackconfirmation', $prefs );
 		$this->assertEquals(
 			'rendering/advancedrendering',
@@ -234,12 +279,28 @@ class DefaultPreferencesFactoryTest extends \MediaWikiIntegrationTestCase {
 			->disableOriginalConstructor()
 			->getMock();
 
-		$userMock->expects( $this->exactly( 2 ) )
+		$userOptionsManagerMock = $this->createUserOptionsManagerMock( $oldOptions );
+		$userOptionsManagerMock->expects( $this->exactly( 2 ) )
 			->method( 'setOption' )
 			->withConsecutive(
-				[ 'test', $newOptions[ 'test' ] ],
-				[ 'option', $newOptions[ 'option' ] ]
+				[ $userMock, 'test', $newOptions[ 'test' ] ],
+				[ $userMock, 'option', $newOptions[ 'option' ] ]
 			);
+		$userMock->method( 'isAllowed' )->willReturnCallback(
+			static function ( $permission ) {
+				return $permission === 'editmyprivateinfo' || $permission === 'editmyoptions';
+			}
+		);
+		$userMock->method( 'isAllowedAny' )->willReturnCallback(
+			static function ( ...$permissions ) {
+				foreach ( $permissions as $perm ) {
+					if ( $perm === 'editmyprivateinfo' || $perm === 'editmyoptions' ) {
+						return true;
+					}
+				}
+				return false;
+			}
+		);
 
 		$form->method( 'getModifiedUser' )
 			->willReturn( $userMock );
@@ -249,10 +310,6 @@ class DefaultPreferencesFactoryTest extends \MediaWikiIntegrationTestCase {
 
 		$form->method( 'getConfig' )
 			->willReturn( $configMock );
-
-		$pm = $this->getPermissionManager( [ 'editmyprivateinfo', 'editmyoptions' ] );
-
-		$userOptionsLookupMock = $this->createUserOptionsLookupMock( $oldOptions );
 
 		$this->setTemporaryHook( 'PreferencesFormPreSave',
 			function ( $formData, $form, $user, &$result, $oldUserOptions )
@@ -270,7 +327,7 @@ class DefaultPreferencesFactoryTest extends \MediaWikiIntegrationTestCase {
 
 		/** @var DefaultPreferencesFactory $factory */
 		$factory = TestingAccessWrapper::newFromObject(
-			$this->getPreferencesFactory( $pm, new Language(), $userOptionsLookupMock )
+			$this->getPreferencesFactory( [ 'userOptionsManager' => $userOptionsManagerMock ] )
 		);
 		$factory->saveFormData( $newOptions, $form, [] );
 	}
@@ -284,8 +341,7 @@ class DefaultPreferencesFactoryTest extends \MediaWikiIntegrationTestCase {
 		// Test a string with leading zeros (i.e. not octal) and spaces.
 		$this->context->getRequest()->setVal( 'wprclimit', ' 0012 ' );
 		$user = new User;
-		$pm = $this->getPermissionManager( [ 'editmyoptions' ] );
-		$prefFactory = $this->getPreferencesFactory( $pm, new Language() );
+		$prefFactory = $this->getPreferencesFactory();
 		$form = $prefFactory->getForm( $user, $this->context );
 		$form->show();
 		$form->trySubmit();
@@ -299,22 +355,20 @@ class DefaultPreferencesFactoryTest extends \MediaWikiIntegrationTestCase {
 		$userMock = $this->getMockBuilder( User::class )
 			->disableOriginalConstructor()
 			->getMock();
-		$userMock->method( 'getEffectiveGroups' )
-			->willReturn( [] );
-		$userMock->method( 'getGroupMemberships' )
-			->willReturn( [] );
-		$pm = $this->getPermissionManager( true );
+		$userMock->method( 'isAllowed' )->willReturn( true );
 
 		$language = $this->createMock( Language::class );
 		$language->method( 'getCode' )
 			->willReturn( 'sr' );
 
-		$userOptionsLookupMock = $this->createUserOptionsLookupMock(
+		$userOptionsManagerMock = $this->createUserOptionsManagerMock(
 			[ 'LanguageCode' => 'sr', 'variant' => 'sr' ], true
 		);
 
-		$prefs = $this->getPreferencesFactory( $pm, $language, $userOptionsLookupMock )
-			->getFormDescriptor( $userMock, $this->context );
+		$prefs = $this->getPreferencesFactory( [
+			'language' => $language,
+			'userOptionsManager' => $userOptionsManagerMock,
+		] )->getFormDescriptor( $userMock, $this->context );
 		$this->assertArrayHasKey( 'default', $prefs['variant'] );
 		$this->assertEquals( 'sr', $prefs['variant']['default'] );
 	}
@@ -326,22 +380,25 @@ class DefaultPreferencesFactoryTest extends \MediaWikiIntegrationTestCase {
 		$userMock = $this->getMockBuilder( User::class )
 			->disableOriginalConstructor()
 			->getMock();
-		$userMock->method( 'getEffectiveGroups' )
-			->willReturn( [ 'users' ] );
-		$userMock->method( 'getGroupMemberships' )
-			->willReturn( [ 'users' ] );
-		$pm = $this->getPermissionManager( true );
+		$userMock->method( 'isAllowed' )->willReturn( true );
+		$userMock->method( 'isAllowedAny' )->willReturn( true );
+		$userMock->method( 'isRegistered' )->willReturn( true );
 
 		$language = $this->createMock( Language::class );
 		$language->method( 'getCode' )
 			->willReturn( 'en' );
 
-		$userOptionsLookupMock = $this->createUserOptionsLookupMock( [], true );
+		$userOptionsManagerMock = $this->createUserOptionsManagerMock( [], true );
 
-		$prefs = $this->getPreferencesFactory( $pm, $language, $userOptionsLookupMock )
-			->getFormDescriptor( $userMock, $this->context );
+		$prefs = $this->getPreferencesFactory( [
+			'language' => $language,
+			'userOptionsManager' => $userOptionsManagerMock,
+		] )->getFormDescriptor( $userMock, $this->context );
 		$this->assertArrayHasKey( 'default', $prefs['usergroups'] );
-		$this->assertEquals( 'users', $prefs['usergroups']['default'] );
+		$this->assertEquals(
+			UserGroupMembership::getLink( 'user', $this->context, 'html' ),
+			( $prefs['usergroups']['default'] )()
+		);
 	}
 
 	/**
@@ -361,10 +418,10 @@ class DefaultPreferencesFactoryTest extends \MediaWikiIntegrationTestCase {
 	/**
 	 * @param array $userOptions
 	 * @param bool $defaultOptions
-	 * @return UserOptionsLookup
+	 * @return UserOptionsManager
 	 */
-	private function createUserOptionsLookupMock( array $userOptions, bool $defaultOptions = false ) {
-		$mock = $this->createMock( UserOptionsLookup::class );
+	private function createUserOptionsManagerMock( array $userOptions, bool $defaultOptions = false ) {
+		$mock = $this->createMock( UserOptionsManager::class );
 		$mock->method( 'getOptions' )->willReturn( $userOptions );
 		$services = $this->getServiceContainer();
 		if ( $defaultOptions ) {

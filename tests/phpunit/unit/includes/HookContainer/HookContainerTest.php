@@ -7,7 +7,6 @@ namespace MediaWiki\HookContainer {
 	use UnexpectedValueException;
 	use Wikimedia\ObjectFactory;
 	use Wikimedia\ScopedCallback;
-	use Wikimedia\TestingAccessWrapper;
 
 	class HookContainerTest extends MediaWikiUnitTestCase {
 
@@ -59,6 +58,10 @@ namespace MediaWiki\HookContainer {
 				'Object with no method' => [ 'MWTestHook', $fooObj ],
 				'Object with no method in array' => [ 'MWTestHook', [ $fooObj ], $arguments ],
 				'Object and method' => [ 'MWTestHook', [ $fooObj, 'FooMethod' ] ],
+				'Class name and static method' => [
+					'MWTestHook',
+					[ 'MediaWiki\HookContainer\FooClass', 'FooStaticMethod' ]
+				],
 				'Object and static method' => [
 					'MWTestHook',
 					[ 'MediaWiki\HookContainer\FooClass::FooStaticMethod' ]
@@ -101,7 +104,7 @@ namespace MediaWiki\HookContainer {
 						'name' => 'FooExtension-FooActionHandler',
 						'class' => 'FooExtension\\Hooks',
 						'services' => [] ],
-					  'deprecated' => true
+					'deprecated' => true
 					],
 					[]
 				],

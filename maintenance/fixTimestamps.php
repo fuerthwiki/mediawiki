@@ -87,11 +87,9 @@ class FixTimestamps extends Maintenance {
 				// Monotonic change
 				$lastNormal = $timestamp;
 				++$numGoodRevs;
-				continue;
 			} elseif ( abs( $delta ) <= $grace ) {
 				// Non-monotonic change within grace interval
 				++$numGoodRevs;
-				continue;
 			} else {
 				// Non-monotonic change larger than grace interval
 				$badRevs[] = $row->rev_id;
@@ -110,7 +108,7 @@ class FixTimestamps extends Maintenance {
 		good revisions to provide a majority reference." );
 		} elseif ( $numBadRevs == 0 ) {
 			$this->output( "No bad revisions found.\n" );
-			exit( 0 );
+			return;
 		}
 
 		$this->output( sprintf( "Fixing %d revisions (%.2f%% of revisions in search interval)\n",

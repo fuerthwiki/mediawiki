@@ -39,7 +39,7 @@ class SiteStatsInit {
 
 	/**
 	 * @param bool|IDatabase $database
-	 * - bool: Whether to use the master DB
+	 * - bool: Whether to use the primary DB
 	 * - IDatabase: Database connection to use
 	 */
 	public function __construct( $database = false ) {
@@ -126,7 +126,7 @@ class SiteStatsInit {
 	 * for the original initStats, but without output.
 	 *
 	 * @param IDatabase|bool $database
-	 * - bool: Whether to use the master DB
+	 * - bool: Whether to use the primary DB
 	 * - IDatabase: Database connection to use
 	 * @param array $options Array of options, may contain the following values
 	 * - activeUsers bool: Whether to update the number of active users (default: false)
@@ -156,8 +156,8 @@ class SiteStatsInit {
 	 */
 	public static function doPlaceholderInit() {
 		$dbw = self::getDB( DB_PRIMARY );
-		$exists = $dbw->selectField( 'site_stats', '1', [ 'ss_row_id' => 1 ],  __METHOD__ );
-		if ( $exists === false ) {
+		$exists = (bool)$dbw->selectField( 'site_stats', '1', [ 'ss_row_id' => 1 ],  __METHOD__ );
+		if ( !$exists ) {
 			$dbw->insert(
 				'site_stats',
 				[ 'ss_row_id' => 1 ] + array_fill_keys( SiteStats::selectFields(), 0 ),
@@ -172,11 +172,11 @@ class SiteStatsInit {
 	 */
 	public function refresh() {
 		$set = [
-			'ss_total_edits' => $this->edits === null ? $this->edits() : $this->edits,
-			'ss_good_articles' => $this->articles === null ? $this->articles() : $this->articles,
-			'ss_total_pages' => $this->pages === null ? $this->pages() : $this->pages,
-			'ss_users' => $this->users === null ? $this->users() : $this->users,
-			'ss_images' => $this->files === null ? $this->files() : $this->files,
+			'ss_total_edits' => $this->edits ?? $this->edits(),
+			'ss_good_articles' => $this->articles ?? $this->articles(),
+			'ss_total_pages' => $this->pages ?? $this->pages(),
+			'ss_users' => $this->users ?? $this->users(),
+			'ss_images' => $this->files ?? $this->files(),
 		];
 		$row = [ 'ss_row_id' => 1 ] + $set;
 

@@ -3,9 +3,9 @@
 namespace MediaWiki\Auth;
 
 use MediaWiki\MediaWikiServices;
+use MediaWiki\Tests\Unit\Auth\AuthenticationProviderTestTrait;
 use MediaWiki\User\UserNameUtils;
 use Psr\Container\ContainerInterface;
-use Psr\Log\NullLogger;
 use Wikimedia\TestingAccessWrapper;
 
 /**
@@ -14,6 +14,7 @@ use Wikimedia\TestingAccessWrapper;
  * @covers \MediaWiki\Auth\LocalPasswordPrimaryAuthenticationProvider
  */
 class LocalPasswordPrimaryAuthenticationProviderTest extends \MediaWikiIntegrationTestCase {
+	use AuthenticationProviderTestTrait;
 
 	private $manager = null;
 	private $config = null;
@@ -35,7 +36,7 @@ class LocalPasswordPrimaryAuthenticationProviderTest extends \MediaWikiIntegrati
 		}
 		$config = new \MultiConfig( [
 			$this->config,
-			MediaWikiServices::getInstance()->getMainConfig()
+			$mwServices->getMainConfig()
 		] );
 
 		// We need a real HookContainer since testProviderChangeAuthenticationData()
@@ -55,26 +56,31 @@ class LocalPasswordPrimaryAuthenticationProviderTest extends \MediaWikiIntegrati
 				$mwServices->getReadOnlyMode(),
 				$userNameUtils,
 				$mwServices->getBlockManager(),
-				$mwServices->getBlockErrorFormatter(),
-				$mwServices->getWatchlistManager()
+				$mwServices->getWatchlistManager(),
+				$mwServices->getDBLoadBalancer(),
+				$mwServices->getContentLanguage(),
+				$mwServices->getLanguageConverterFactory(),
+				$mwServices->getBotPasswordStore(),
+				$mwServices->getUserFactory(),
+				$mwServices->getUserIdentityLookup(),
+				$mwServices->getUserOptionsManager()
 			);
 		}
 		$this->validity = \Status::newGood();
 		$provider = $this->getMockBuilder( LocalPasswordPrimaryAuthenticationProvider::class )
 			->onlyMethods( [ 'checkPasswordValidity' ] )
-			->setConstructorArgs( [ [ 'loginOnly' => $loginOnly ] ] )
+			->setConstructorArgs( [
+				$mwServices->getDBLoadBalancer(),
+				[ 'loginOnly' => $loginOnly ]
+			] )
 			->getMock();
 
 		$provider->method( 'checkPasswordValidity' )
 			->will( $this->returnCallback( function () {
 				return $this->validity;
 			} ) );
-		$provider->init(
-			new NullLogger(),
-			$this->manager,
-			$hookContainer,
-			$config,
-			$this->createNoOpMock( UserNameUtils::class )
+		$this->initProvider(
+			$provider, $config, null, $this->manager, $hookContainer, $this->getServiceContainer()->getUserNameUtils()
 		);
 
 		return $provider;
@@ -154,14 +160,10 @@ class LocalPasswordPrimaryAuthenticationProviderTest extends \MediaWikiIntegrati
 		$this->config->set( 'PasswordExpireGrace', 100 );
 		$this->config->set( 'InvalidPasswordReset', true );
 
-		$provider = new LocalPasswordPrimaryAuthenticationProvider();
-		$provider->init(
-			new NullLogger(),
-			$this->manager,
-			$this->createHookContainer(),
-			$this->config,
-			$this->createNoOpMock( UserNameUtils::class )
+		$provider = new LocalPasswordPrimaryAuthenticationProvider(
+			$this->getServiceContainer()->getDBLoadBalancer()
 		);
+		$this->initProvider( $provider, $this->config, null, $this->manager );
 		$providerPriv = TestingAccessWrapper::newFromObject( $provider );
 
 		$user = $this->getMutableTestUser()->getUser();

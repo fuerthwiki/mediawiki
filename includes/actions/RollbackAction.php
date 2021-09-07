@@ -20,9 +20,12 @@
  * @ingroup Actions
  */
 
-use MediaWiki\MediaWikiServices;
+use MediaWiki\Content\IContentHandlerFactory;
+use MediaWiki\Page\RollbackPageFactory;
 use MediaWiki\Revision\RevisionRecord;
 use MediaWiki\Revision\SlotRecord;
+use MediaWiki\User\UserOptionsLookup;
+use MediaWiki\Watchlist\WatchlistManager;
 
 /**
  * User interface for the rollback action
@@ -30,6 +33,41 @@ use MediaWiki\Revision\SlotRecord;
  * @ingroup Actions
  */
 class RollbackAction extends FormAction {
+
+	/** @var IContentHandlerFactory */
+	private $contentHandlerFactory;
+
+	/** @var RollbackPageFactory */
+	private $rollbackPageFactory;
+
+	/** @var UserOptionsLookup */
+	private $userOptionsLookup;
+
+	/** @var WatchlistManager */
+	private $watchlistManager;
+
+	/**
+	 * @param Page $page
+	 * @param IContextSource|null $context
+	 * @param IContentHandlerFactory $contentHandlerFactory
+	 * @param RollbackPageFactory $rollbackPageFactory
+	 * @param UserOptionsLookup $userOptionsLookup
+	 * @param WatchlistManager $watchlistManager
+	 */
+	public function __construct(
+		Page $page,
+		?IContextSource $context,
+		IContentHandlerFactory $contentHandlerFactory,
+		RollbackPageFactory $rollbackPageFactory,
+		UserOptionsLookup $userOptionsLookup,
+		WatchlistManager $watchlistManager
+	) {
+		parent::__construct( $page, $context );
+		$this->contentHandlerFactory = $contentHandlerFactory;
+		$this->rollbackPageFactory = $rollbackPageFactory;
+		$this->userOptionsLookup = $userOptionsLookup;
+		$this->watchlistManager = $watchlistManager;
+	}
 
 	public function getName() {
 		return 'rollback';
@@ -82,8 +120,9 @@ class RollbackAction extends FormAction {
 	 * @throws ThrottledError
 	 */
 	public function show() {
-		if ( $this->getUser()->getOption( 'showrollbackconfirmation' ) == false ||
-			 $this->getRequest()->wasPosted() ) {
+		if ( !$this->userOptionsLookup->getOption( $this->getUser(), 'showrollbackconfirmation' ) ||
+			$this->getRequest()->wasPosted()
+		) {
 			$this->handleRollbackRequest();
 		} else {
 			$this->showRollbackConfirmationForm();
@@ -125,8 +164,7 @@ class RollbackAction extends FormAction {
 			$revUser = $rev->getUser( RevisionRecord::RAW );
 		}
 
-		$rollbackResult = MediaWikiServices::getInstance()
-			->getRollbackPageFactory()
+		$rollbackResult = $this->rollbackPageFactory
 			->newRollbackPage( $this->getWikiPage(), $this->getContext()->getAuthority(), $revUser )
 			->setSummary( $request->getText( 'summary' ) )
 			->markAsBot( $request->getBool( 'bot' ) )
@@ -192,21 +230,18 @@ class RollbackAction extends FormAction {
 				->parseAsBlock()
 		);
 
-		$services = MediaWikiServices::getInstance();
-		$userOptionsLookup = $services->getUserOptionsLookup();
-
-		if ( $userOptionsLookup->getBoolOption( $user, 'watchrollback' ) ) {
-			$services->getWatchlistManager()->addWatchIgnoringRights( $user, $this->getTitle() );
+		if ( $this->userOptionsLookup->getBoolOption( $user, 'watchrollback' ) ) {
+			$this->watchlistManager->addWatchIgnoringRights( $user, $this->getTitle() );
 		}
 
 		$this->getOutput()->returnToMain( false, $this->getTitle() );
 
 		if ( !$request->getBool( 'hidediff', false ) &&
-			!$userOptionsLookup->getBoolOption( $this->getUser(), 'norollbackdiff' )
+			!$this->userOptionsLookup->getBoolOption( $this->getUser(), 'norollbackdiff' )
 		) {
 			$contentModel = $current->getSlot( SlotRecord::MAIN, RevisionRecord::RAW )
 				->getModel();
-			$contentHandler = $services->getContentHandlerFactory()->getContentHandler( $contentModel );
+			$contentHandler = $this->contentHandlerFactory->getContentHandler( $contentModel );
 			$de = $contentHandler->createDifferenceEngine(
 				$this->getContext(),
 				$current->getId(),
@@ -252,7 +287,6 @@ class RollbackAction extends FormAction {
 		return [
 			'intro' => [
 				'type' => 'info',
-				'vertical-label' => true,
 				'raw' => true,
 				'default' => $this->msg( 'confirm-rollback-bottom' )->parse()
 			]

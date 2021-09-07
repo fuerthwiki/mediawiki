@@ -23,10 +23,15 @@
  * @file
  */
 
-use MediaWiki\MediaWikiServices;
+use MediaWiki\Cache\LinkBatchFactory;
+use MediaWiki\Content\IContentHandlerFactory;
+use MediaWiki\Content\Transform\ContentTransformer;
 use MediaWiki\ParamValidator\TypeDef\UserDef;
 use MediaWiki\Revision\RevisionRecord;
+use MediaWiki\Revision\RevisionStore;
+use MediaWiki\Revision\SlotRoleRegistry;
 use MediaWiki\Storage\NameTableAccessException;
+use MediaWiki\Storage\NameTableStore;
 
 /**
  * Query module to enumerate deleted revisions for pages.
@@ -35,12 +40,50 @@ use MediaWiki\Storage\NameTableAccessException;
  */
 class ApiQueryDeletedRevisions extends ApiQueryRevisionsBase {
 
+	/** @var RevisionStore */
+	private $revisionStore;
+
+	/** @var NameTableStore */
+	private $changeTagDefStore;
+
+	/** @var LinkBatchFactory */
+	private $linkBatchFactory;
+
 	/**
 	 * @param ApiQuery $query
 	 * @param string $moduleName
+	 * @param RevisionStore $revisionStore
+	 * @param IContentHandlerFactory $contentHandlerFactory
+	 * @param ParserFactory $parserFactory
+	 * @param SlotRoleRegistry $slotRoleRegistry
+	 * @param NameTableStore $changeTagDefStore
+	 * @param LinkBatchFactory $linkBatchFactory
+	 * @param ContentTransformer $contentTransformer
 	 */
-	public function __construct( ApiQuery $query, $moduleName ) {
-		parent::__construct( $query, $moduleName, 'drv' );
+	public function __construct(
+		ApiQuery $query,
+		$moduleName,
+		RevisionStore $revisionStore,
+		IContentHandlerFactory $contentHandlerFactory,
+		ParserFactory $parserFactory,
+		SlotRoleRegistry $slotRoleRegistry,
+		NameTableStore $changeTagDefStore,
+		LinkBatchFactory $linkBatchFactory,
+		ContentTransformer $contentTransformer
+	) {
+		parent::__construct(
+			$query,
+			$moduleName,
+			'drv',
+			$revisionStore,
+			$contentHandlerFactory,
+			$parserFactory,
+			$slotRoleRegistry,
+			$contentTransformer
+		);
+		$this->revisionStore = $revisionStore;
+		$this->changeTagDefStore = $changeTagDefStore;
+		$this->linkBatchFactory = $linkBatchFactory;
 	}
 
 	protected function run( ApiPageSet $resultPageSet = null ) {
@@ -48,7 +91,7 @@ class ApiQueryDeletedRevisions extends ApiQueryRevisionsBase {
 
 		$pageSet = $this->getPageSet();
 		$pageMap = $pageSet->getGoodAndMissingTitlesByNamespace();
-		$pageCount = count( $pageSet->getGoodAndMissingTitles() );
+		$pageCount = count( $pageSet->getGoodAndMissingPages() );
 		$revCount = $pageSet->getRevisionCount();
 		if ( $revCount === 0 && $pageCount === 0 ) {
 			// Nothing to do
@@ -62,13 +105,12 @@ class ApiQueryDeletedRevisions extends ApiQueryRevisionsBase {
 		$params = $this->extractRequestParams( false );
 
 		$db = $this->getDB();
-		$revisionStore = MediaWikiServices::getInstance()->getRevisionStore();
 
 		$this->requireMaxOneParameter( $params, 'user', 'excludeuser' );
 
 		if ( $resultPageSet === null ) {
 			$this->parseParameters( $params );
-			$arQuery = $revisionStore->getArchiveQueryInfo();
+			$arQuery = $this->revisionStore->getArchiveQueryInfo();
 			$this->addTables( $arQuery['tables'] );
 			$this->addFields( $arQuery['fields'] );
 			$this->addJoinConds( $arQuery['joins'] );
@@ -88,9 +130,8 @@ class ApiQueryDeletedRevisions extends ApiQueryRevisionsBase {
 			$this->addJoinConds(
 				[ 'change_tag' => [ 'JOIN', [ 'ar_rev_id=ct_rev_id' ] ] ]
 			);
-			$changeTagDefStore = MediaWikiServices::getInstance()->getChangeTagDefStore();
 			try {
-				$this->addWhereFld( 'ct_tag_id', $changeTagDefStore->getId( $params['tag'] ) );
+				$this->addWhereFld( 'ct_tag_id', $this->changeTagDefStore->getId( $params['tag'] ) );
 			} catch ( NameTableAccessException $exception ) {
 				// Return nothing.
 				$this->addWhere( '1=0' );
@@ -115,8 +156,7 @@ class ApiQueryDeletedRevisions extends ApiQueryRevisionsBase {
 			] );
 		} else {
 			// We need a custom WHERE clause that matches all titles.
-			$linkBatchFactory = MediaWikiServices::getInstance()->getLinkBatchFactory();
-			$lb = $linkBatchFactory->newLinkBatch( $pageSet->getGoodAndMissingTitles() );
+			$lb = $this->linkBatchFactory->newLinkBatch( $pageSet->getGoodAndMissingPages() );
 			$where = $lb->constructSet( 'ar', $db );
 			$this->addWhere( $where );
 		}
@@ -239,7 +279,7 @@ class ApiQueryDeletedRevisions extends ApiQueryRevisionsBase {
 
 				$fit = $this->addPageSubItem(
 					$pageMap[$row->ar_namespace][$row->ar_title],
-					$this->extractRevisionInfo( $revisionStore->newRevisionFromArchiveRow( $row ), $row ),
+					$this->extractRevisionInfo( $this->revisionStore->newRevisionFromArchiveRow( $row ), $row ),
 					'rev'
 				);
 				if ( !$fit ) {

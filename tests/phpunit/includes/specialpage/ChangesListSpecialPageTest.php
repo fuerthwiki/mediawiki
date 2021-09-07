@@ -19,7 +19,7 @@ class ChangesListSpecialPageTest extends AbstractChangesListSpecialPageTestCase 
 	/**
 	 * @return ChangesListSpecialPage
 	 */
-	protected function getPage() {
+	protected function getPageAccessWrapper() {
 		$mock = $this->getMockBuilder( ChangesListSpecialPage::class )
 			->setConstructorArgs(
 				[
@@ -44,7 +44,7 @@ class ChangesListSpecialPageTest extends AbstractChangesListSpecialPageTestCase 
 	private function buildQuery(
 		array $requestOptions,
 		User $user = null
-	) : array {
+	): array {
 		$context = new RequestContext;
 		$context->setRequest( new FauxRequest( $requestOptions ) );
 		if ( $user ) {
@@ -107,7 +107,7 @@ class ChangesListSpecialPageTest extends AbstractChangesListSpecialPageTestCase 
 		);
 	}
 
-	private static function normalizeCondition( array $conds ) : array {
+	private static function normalizeCondition( array $conds ): array {
 		$dbr = wfGetDB( DB_REPLICA );
 		$normalized = array_map(
 			static function ( $k, $v ) use ( $dbr ) {
@@ -128,7 +128,7 @@ class ChangesListSpecialPageTest extends AbstractChangesListSpecialPageTestCase 
 	 * @param array|string $var
 	 * @return bool false if condition begins with 'rc_timestamp '
 	 */
-	private static function filterOutRcTimestampCondition( $var ) : bool {
+	private static function filterOutRcTimestampCondition( $var ): bool {
 		return ( is_array( $var ) || strpos( $var, 'rc_timestamp ' ) === false );
 	}
 
@@ -185,7 +185,7 @@ class ChangesListSpecialPageTest extends AbstractChangesListSpecialPageTestCase 
 	public function testRcNsFilterAssociatedSpecial() {
 		$this->assertConditions(
 			[ # expected
-			  'rc_namespace IN (-1,0,1)',
+				'rc_namespace IN (-1,0,1)',
 			],
 			[
 				'namespace' => '1;-1',
@@ -265,9 +265,10 @@ class ChangesListSpecialPageTest extends AbstractChangesListSpecialPageTestCase 
 
 	public function testRcHidemyselfFilter() {
 		$user = $this->getTestUser()->getUser();
+		$encName = $this->db->addQuotes( $user->getName() );
 		$this->assertConditions(
 			[ # expected
-				"actor_user<>{$user->getId()}",
+				"actor_name<>$encName",
 			],
 			[
 				'hidemyself' => 1,
@@ -661,7 +662,7 @@ class ChangesListSpecialPageTest extends AbstractChangesListSpecialPageTestCase 
 		}
 	}
 
-	private function fetchUsers( array $filters, int $now ) : array {
+	private function fetchUsers( array $filters, int $now ): array {
 		$tables = [];
 		$conds = [];
 		$fields = [];
@@ -702,7 +703,7 @@ class ChangesListSpecialPageTest extends AbstractChangesListSpecialPageTestCase 
 		return $usernames;
 	}
 
-	private function daysAgo( int $days, int $now ) : int {
+	private function daysAgo( int $days, int $now ): int {
 		$secondsPerDay = 86400;
 		return $now - $days * $secondsPerDay;
 	}

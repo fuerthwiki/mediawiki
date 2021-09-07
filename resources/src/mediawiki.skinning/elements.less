@@ -11,13 +11,14 @@
  */
 
 @import 'mediawiki.mixins';
+@import 'mediawiki.skin.variables.less';
 
 /* stylelint-disable selector-class-pattern */
 
 /* Links */
 a {
 	text-decoration: none;
-	color: #0645ad;
+	color: @color-link;
 	background: none;
 }
 
@@ -26,11 +27,11 @@ a:not( [ href ] ) {
 }
 
 a:visited {
-	color: #0b0080;
+	color: @color-link--visited;
 }
 
 a:active {
-	color: #faa700;
+	color: @color-link--active;
 }
 
 a:hover,
@@ -211,6 +212,9 @@ textarea {
 	display: block;
 	.box-sizing( border-box );
 	width: 100%;
+	/* Support: Firefox */
+	/* Border rule required to override system appearance on Linux. T13641. */
+	border: 1px solid #c8ccd1;
 	padding: 0.1em;
 }
 

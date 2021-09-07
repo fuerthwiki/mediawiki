@@ -14,6 +14,7 @@ use Wikimedia\TestingAccessWrapper;
  * @covers MediaWiki\Session\SessionManager
  */
 class SessionManagerTest extends MediaWikiIntegrationTestCase {
+	use SessionProviderTestTrait;
 
 	/** @var \HashConfig */
 	private $config;
@@ -771,7 +772,7 @@ class SessionManagerTest extends MediaWikiIntegrationTestCase {
 		$this->assertArrayHasKey( 'DummySessionProvider', $providers );
 		$provider = TestingAccessWrapper::newFromObject( $providers['DummySessionProvider'] );
 		$this->assertSame( $manager->logger, $provider->logger );
-		$this->assertSame( $manager->config, $provider->config );
+		$this->assertSame( $manager->config, $provider->getConfig() );
 		$this->assertSame( $realManager, $provider->getManager() );
 
 		$this->config->set( 'SessionProviders', [
@@ -932,7 +933,7 @@ class SessionManagerTest extends MediaWikiIntegrationTestCase {
 			->onlyMethods( [ '__toString', 'mergeMetadata', 'refreshSessionInfo' ] );
 
 		$provider = $builder->getMockForAbstractClass();
-		$provider->setManager( $manager );
+		$this->initProvider( $provider, null, null, $manager );
 		$provider->method( 'persistsSessionId' )
 			->willReturn( true );
 		$provider->method( 'canChangeUser' )
@@ -950,7 +951,7 @@ class SessionManagerTest extends MediaWikiIntegrationTestCase {
 			} ) );
 
 		$provider2 = $builder->getMockForAbstractClass();
-		$provider2->setManager( $manager );
+		$this->initProvider( $provider2, null, null, $manager );
 		$provider2->method( 'persistsSessionId' )
 			->willReturn( false );
 		$provider2->method( 'canChangeUser' )
@@ -964,7 +965,7 @@ class SessionManagerTest extends MediaWikiIntegrationTestCase {
 			} ) );
 
 		$provider3 = $builder->getMockForAbstractClass();
-		$provider3->setManager( $manager );
+		$this->initProvider( $provider3, null, null, $manager );
 		$provider3->method( 'persistsSessionId' )
 			->willReturn( true );
 		$provider3->method( 'canChangeUser' )

@@ -200,8 +200,7 @@ class PostgresUpdater extends DatabaseUpdater {
 			[ 'addPgIndex', 'recentchanges', 'rc_this_oldid', '(rc_this_oldid)' ],
 			[ 'dropTable', 'transcache' ],
 			[ 'runMaintenance', PopulateChangeTagDef::class, 'maintenance/populateChangeTagDef.php' ],
-			[ 'addIndex', 'change_tag', 'change_tag_rc_tag_id',
-				'patch-change_tag-change_tag_rc_tag_id.sql' ],
+			[ 'dropIndex', 'change_tag', 'change_tag_rc_tag', 'patch-change_tag-change_tag_rc_tag_id.sql' ],
 			[ 'addPgField', 'ipblocks', 'ipb_sitewide', 'SMALLINT NOT NULL DEFAULT 1' ],
 			[ 'addTable', 'ipblocks_restrictions', 'patch-ipblocks_restrictions-table.sql' ],
 			[ 'migrateImageCommentTemp' ],
@@ -444,7 +443,7 @@ class PostgresUpdater extends DatabaseUpdater {
 			[ 'changeField', 'content_models', 'model_id', 'INTEGER', '' ],
 			[ 'renameIndex', 'page', 'page_len_idx', 'page_len' ],
 			[ 'renameIndex', 'page', 'page_random_idx', 'page_random' ],
-			[ 'renameIndex', 'page', 'page_unique_name', 'name_title' ],
+			[ 'renameIndex', 'page', 'page_unique_name', 'page_name_title' ],
 			[ 'addPGIndex', 'page', 'page_redirect_namespace_len', '(page_is_redirect, page_namespace, page_len)' ],
 			[ 'dropFkey', 'categorylinks', 'cl_from' ],
 			[ 'setDefault','categorylinks', 'cl_from', 0 ],
@@ -613,7 +612,6 @@ class PostgresUpdater extends DatabaseUpdater {
 			[ 'changeNullableField', 'user', 'user_touched', 'NOT NULL', true ],
 
 			// 1.37
-			[ 'updateUserTableSequence' ],
 			[ 'changeNullableField', 'user', 'user_token', 'NOT NULL', true ],
 			[ 'changeNullableField', 'user', 'user_real_name', 'NOT NULL', true ],
 			[ 'changeNullableField', 'user', 'user_email', 'NOT NULL', true ],
@@ -623,6 +621,23 @@ class PostgresUpdater extends DatabaseUpdater {
 			[ 'setDefault', 'user', 'user_token', '' ],
 			[ 'setDefault', 'user', 'user_real_name', '' ],
 			[ 'dropConstraint', 'user', 'user_name', 'unique' ],
+			[ 'addField', 'objectcache', 'modtoken', 'patch-objectcache-modtoken.sql' ],
+			[ 'dropFkey', 'revision', 'rev_page' ],
+			[ 'changeNullableField', 'revision', 'rev_page', 'NOT NULL', true ],
+			[ 'changeField', 'revision', 'rev_comment_id', 'BIGINT', 'DEFAULT 0' ],
+			[ 'changeField', 'revision', 'rev_actor', 'BIGINT', 'DEFAULT 0' ],
+			[ 'checkIndex', 'rev_page_id', [
+				[ 'rev_page', 'int4_ops', 'btree', 1 ],
+				[ 'rev_id', 'int4_ops', 'btree', 1 ],
+			],
+				'CREATE INDEX rev_page_id ON revision (rev_page,rev_id)' ],
+			[ 'addTable', 'searchindex', 'patch-searchindex-table.sql' ],
+			[ 'addPgIndex', 'oldimage', 'oi_timestamp', '(oi_timestamp)' ],
+			[ 'renameIndex', 'page', 'name_title', 'page_name_title' ],
+			[ 'renameIndex', 'change_tag', 'change_tag_rc_tag_id', 'ct_rc_tag_id' ],
+			[ 'renameIndex', 'change_tag', 'change_tag_log_tag_id', 'ct_log_tag_id' ],
+			[ 'renameIndex', 'change_tag', 'change_tag_rev_tag_id', 'ct_rev_tag_id' ],
+			[ 'renameIndex', 'change_tag', 'change_tag_tag_id_id', 'ct_tag_id_id' ],
 		];
 	}
 
@@ -846,8 +861,6 @@ END;
 		$fi = $this->db->fieldInfo( $table, $field );
 		if ( $fi === null ) {
 			$this->output( "...$table table does not contain $field field.\n" );
-
-			return;
 		} else {
 			$this->output( "Dropping column '$table.$field'\n" );
 			$table = $this->db->addIdentifierQuotes( $table );
@@ -859,8 +872,6 @@ END;
 		$fi = $this->db->fieldInfo( $table, $field );
 		if ( $fi !== null ) {
 			$this->output( "...column '$table.$field' already exists\n" );
-
-			return;
 		} else {
 			$this->output( "Adding column '$table.$field'\n" );
 			$table = $this->db->addIdentifierQuotes( $table );
@@ -1117,7 +1128,8 @@ END;
 				"JOIN pg_attribute a ON a.attrelid = i.indrelid " .
 				"AND a.attnum = ANY(i.indkey) " .
 				"WHERE i.indrelid = '\"$table\"'::regclass " .
-				"AND i.indisprimary"
+				"AND i.indisprimary",
+			__METHOD__
 		);
 		$currentColumns = [];
 		foreach ( $result as $row ) {
@@ -1171,39 +1183,5 @@ END;
 		}
 
 		return false;
-	}
-
-	/**
-	 * Update `user` table sequence to convert `user_id` field from INT to SERIAL
-	 */
-	protected function updateUserTableSequence() {
-		if ( $this->updateRowExists( 'UserTableSequenceUpdate' ) ) {
-			return;
-		}
-
-		$this->output( "Updating user table sequence\n" );
-
-		$table = $this->db->addIdentifierQuotes( 'user' );
-		$seqName = 'user_user_id_seq';
-		$this->dropSequence( $table, $seqName );
-
-		$res = $this->db->query( "SELECT max(user_id) AS max_id FROM $table", __METHOD__ );
-		$max_id = intval( $this->db->fetchRow( $res )['max_id'] );
-
-		if ( $max_id > 0 ) {
-			$next_id = $max_id + 1;
-
-			$this->db->query(
-				"CREATE SEQUENCE $seqName START WITH $next_id OWNED BY $table.user_id;",
-				__METHOD__
-			);
-
-			$this->db->query(
-				"ALTER TABLE $table ALTER user_id SET DEFAULT nextval( '$seqName' )",
-				 __METHOD__
-			);
-		}
-
-		$this->insertUpdateRow( 'UserTableSequenceUpdate' );
 	}
 }

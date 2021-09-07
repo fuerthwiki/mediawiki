@@ -37,7 +37,7 @@ class RevDelRevisionItem extends RevDelItem {
 	}
 
 	/**
-	 * Create revision object from $row sourced from $list
+	 * Create RevisionRecord object from $row sourced from $list
 	 *
 	 * @param RevisionListBase $list
 	 * @param mixed $row
@@ -54,7 +54,7 @@ class RevDelRevisionItem extends RevDelItem {
 	 *
 	 * @return RevisionRecord
 	 */
-	protected function getRevisionRecord() : RevisionRecord {
+	protected function getRevisionRecord(): RevisionRecord {
 		return $this->revisionRecord;
 	}
 
@@ -154,7 +154,7 @@ class RevDelRevisionItem extends RevDelItem {
 		}
 
 		return $this->getLinkRenderer()->makeKnownLink(
-			$this->list->title,
+			$this->list->getPage(),
 			$date,
 			[],
 			[
@@ -174,7 +174,7 @@ class RevDelRevisionItem extends RevDelItem {
 			return $this->list->msg( 'diff' )->escaped();
 		} else {
 			return $this->getLinkRenderer()->makeKnownLink(
-				$this->list->title,
+				$this->list->getPage(),
 				$this->list->msg( 'diff' )->text(),
 				[],
 				[

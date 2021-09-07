@@ -74,7 +74,7 @@ class TrackBlobs {
 
 		// Scan for HistoryBlobStub objects in the text table (T22757)
 
-		$exists = $dbr->selectField( 'text', '1',
+		$exists = (bool)$dbr->selectField( 'text', '1',
 			'old_flags LIKE \'%object%\' AND old_flags NOT LIKE \'%external%\' ' .
 			'AND LOWER(CONVERT(LEFT(old_text,22) USING latin1)) = \'o:15:"historyblobstub"\'',
 			__METHOD__
@@ -220,8 +220,8 @@ class TrackBlobs {
 		# Wait until the blob_tracking table is available in the replica DB
 		$dbw = wfGetDB( DB_PRIMARY );
 		$dbr = wfGetDB( DB_REPLICA );
-		$pos = $dbw->getMasterPos();
-		$dbr->masterPosWait( $pos, 100000 );
+		$pos = $dbw->getPrimaryPos();
+		$dbr->primaryPosWait( $pos, 100000 );
 
 		$textClause = $this->getTextClause();
 		$startId = 0;

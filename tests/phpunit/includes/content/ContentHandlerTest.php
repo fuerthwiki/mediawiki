@@ -9,7 +9,7 @@ use Wikimedia\TestingAccessWrapper;
  */
 class ContentHandlerTest extends MediaWikiIntegrationTestCase {
 
-	protected function setUp() : void {
+	protected function setUp(): void {
 		parent::setUp();
 
 		$this->setMwGlobals( [
@@ -39,7 +39,7 @@ class ContentHandlerTest extends MediaWikiIntegrationTestCase {
 		MediaWikiServices::getInstance()->resetServiceForTesting( 'LinkCache' );
 	}
 
-	protected function tearDown() : void {
+	protected function tearDown(): void {
 		// Reset LinkCache
 		MediaWikiServices::getInstance()->resetServiceForTesting( 'LinkCache' );
 
@@ -93,6 +93,7 @@ class ContentHandlerTest extends MediaWikiIntegrationTestCase {
 	 * @covers ContentHandler::getForTitle
 	 */
 	public function testGetForTitle( $title, $expectedContentModel ) {
+		$this->hideDeprecated( 'ContentHandler::getForTitle' );
 		$title = Title::newFromText( $title );
 		MediaWikiServices::getInstance()->getLinkCache()->addBadLinkObj( $title );
 		$handler = ContentHandler::getForTitle( $title );
@@ -156,7 +157,9 @@ class ContentHandlerTest extends MediaWikiIntegrationTestCase {
 
 		$expected = wfGetLangObj( $expected );
 
-		$handler = ContentHandler::getForTitle( $title );
+		$handler = MediaWikiServices::getInstance()
+			->getContentHandlerFactory()
+			->getContentHandler( $title->getContentModel() );
 		$lang = $handler->getPageLanguage( $title );
 
 		$this->assertInstanceOf( Language::class, $lang );

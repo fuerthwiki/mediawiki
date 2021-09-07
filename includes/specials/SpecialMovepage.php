@@ -156,11 +156,10 @@ class MovePageForm extends UnlistedSpecialPage {
 		$this->outputHeader();
 
 		$request = $this->getRequest();
-		$target = $par ?? $request->getVal( 'target' );
 
-		// Yes, the use of getVal() and getText() is wanted, see T22365
-
-		$oldTitleText = $request->getVal( 'wpOldTitle', $target );
+		// Beware: The use of WebRequest::getText() is wanted! See T22365
+		$target = $par ?? $request->getText( 'target' );
+		$oldTitleText = $request->getText( 'wpOldTitle', $target );
 		$this->oldTitle = Title::newFromText( $oldTitleText );
 
 		if ( !$this->oldTitle ) {
@@ -176,7 +175,7 @@ class MovePageForm extends UnlistedSpecialPage {
 		$newTitleTextMain = $request->getText( 'wpNewTitleMain' );
 		$newTitleTextNs = $request->getInt( 'wpNewTitleNs', $this->oldTitle->getNamespace() );
 		// Backwards compatibility for forms submitting here from other sources
-		// which is more common than it should be..
+		// which is more common than it should be.
 		$newTitleText_bc = $request->getText( 'wpNewTitle' );
 		$this->newTitle = strlen( $newTitleText_bc ) > 0
 			? Title::newFromText( $newTitleText_bc )
@@ -205,7 +204,7 @@ class MovePageForm extends UnlistedSpecialPage {
 		$this->moveOverShared = $request->getBool( 'wpMoveOverSharedFile' );
 		$this->watch = $request->getCheck( 'wpWatch' ) && $user->isRegistered();
 
-		if ( $request->getVal( 'action' ) == 'submit' && $request->wasPosted()
+		if ( $request->getRawVal( 'action' ) == 'submit' && $request->wasPosted()
 			&& $user->matchEditToken( $request->getVal( 'wpEditToken' ) )
 		) {
 			$this->doSubmit();
@@ -333,7 +332,7 @@ class MovePageForm extends UnlistedSpecialPage {
 
 		$dbr = $this->loadBalancer->getConnectionRef( ILoadBalancer::DB_REPLICA );
 		if ( $this->getConfig()->get( 'FixDoubleRedirects' ) ) {
-			$hasRedirects = $dbr->selectField( 'redirect', '1',
+			$hasRedirects = (bool)$dbr->selectField( 'redirect', '1',
 				[
 					'rd_namespace' => $this->oldTitle->getNamespace(),
 					'rd_title' => $this->oldTitle->getDBkey(),
@@ -732,7 +731,7 @@ class MovePageForm extends UnlistedSpecialPage {
 		}
 
 		if ( $this->getConfig()->get( 'FixDoubleRedirects' ) && $this->fixRedirects ) {
-			DoubleRedirectJob::fixRedirects( 'move', $ot, $nt );
+			DoubleRedirectJob::fixRedirects( 'move', $ot );
 		}
 
 		$out = $this->getOutput();
@@ -869,7 +868,7 @@ class MovePageForm extends UnlistedSpecialPage {
 
 				if ( $status->isOK() ) {
 					if ( $this->fixRedirects ) {
-						DoubleRedirectJob::fixRedirects( 'move', $oldSubpage, $newSubpage );
+						DoubleRedirectJob::fixRedirects( 'move', $oldSubpage );
 					}
 					$oldLink = $linkRenderer->makeLink(
 						$oldSubpage,

@@ -35,6 +35,7 @@ use Psr\Log\NullLogger;
 use RuntimeException;
 use Throwable;
 use UnexpectedValueException;
+use Wikimedia\Assert\Assert;
 use Wikimedia\AtEase\AtEase;
 use Wikimedia\RequestTimeout\CriticalSectionProvider;
 use Wikimedia\RequestTimeout\CriticalSectionScope;
@@ -75,7 +76,7 @@ abstract class Database implements IDatabase, IMaintainableDatabase, LoggerAware
 	/** @var object|resource|null Database connection */
 	protected $conn;
 
-	/** @var IDatabase|null Lazy handle to the master DB this server replicates from */
+	/** @var IDatabase|null Lazy handle to the primary DB this server replicates from */
 	private $lazyMasterHandle;
 
 	/** @var string|null Server that this instance is currently connected to */
@@ -84,15 +85,17 @@ abstract class Database implements IDatabase, IMaintainableDatabase, LoggerAware
 	protected $user;
 	/** @var string|null Password used to establish the current connection */
 	protected $password;
+	/** @var string|null Readible name or host/IP of the database server */
+	protected $serverName;
 	/** @var bool Whether this PHP instance is for a CLI script */
 	protected $cliMode;
 	/** @var string Agent name for query profiling */
 	protected $agent;
 	/** @var string Replication topology role of the server; one of the class ROLE_* constants */
 	protected $topologyRole;
-	/** @var string|null Host (or address) of the root master server for the replication topology */
+	/** @var string|null Host (or address) of the root primary server for the replication topology */
 	protected $topologyRootMaster;
-	/** @var array Parameters used by initConnection() to establish a connection */
+	/** @var array<string,mixed> Connection parameters used by initConnection() and open() */
 	protected $connectionParams;
 	/** @var string[]|int[]|float[] SQL variables values to use for all new connections */
 	protected $connectionVariables;
@@ -117,7 +120,7 @@ abstract class Database implements IDatabase, IMaintainableDatabase, LoggerAware
 	/** @var int[] Prior flags member variable values */
 	private $priorFlags = [];
 
-	/** @var array Map of (name => 1) for locks obtained via lock() */
+	/** @var array<string,float> Map of (name => UNIX timestamp) for locks obtained via lock() */
 	protected $sessionNamedLocks = [];
 	/** @var array Map of (table name => 1) for current TEMPORARY tables */
 	protected $sessionTempTables = [];
@@ -134,8 +137,8 @@ abstract class Database implements IDatabase, IMaintainableDatabase, LoggerAware
 	private $trxStatusIgnoredCause;
 	/** @var float|null UNIX timestamp at the time of BEGIN for the last transaction */
 	private $trxTimestamp = null;
-	/** @var float Replication lag estimate at the time of BEGIN for the last transaction */
-	private $trxReplicaLag = null;
+	/** @var array|null Replication lag estimate at the time of BEGIN for the last transaction */
+	private $trxReplicaLagStatus = null;
 	/** @var string|null Name of the function that start the last transaction */
 	private $trxFname = null;
 	/** @var bool Whether possible write queries were done in the last transaction started */
@@ -260,6 +263,19 @@ abstract class Database implements IDatabase, IMaintainableDatabase, LoggerAware
 		self::DBO_DEBUG | self::DBO_NOBUFFER | self::DBO_TRX | self::DBO_DDLMODE
 	);
 
+	/** Hostname or IP address to use on all connections */
+	protected const CONN_HOST = 'host';
+	/** Database server username to use on all connections */
+	protected const CONN_USER = 'user';
+	/** Database server password to use on all connections */
+	protected const CONN_PASSWORD = 'password';
+	/** Database name to use on initial connection */
+	protected const CONN_INITIAL_DB = 'dbname';
+	/** Schema name to use on initial connection */
+	protected const CONN_INITIAL_SCHEMA = 'schema';
+	/** Table prefix to use on initial connection */
+	protected const CONN_INITIAL_TABLE_PREFIX = 'tablePrefix';
+
 	/**
 	 * @note exceptions for missing libraries/drivers should be thrown in initConnection()
 	 * @stable to call
@@ -267,20 +283,20 @@ abstract class Database implements IDatabase, IMaintainableDatabase, LoggerAware
 	 */
 	public function __construct( array $params ) {
 		$this->connectionParams = [
-			'host' => ( isset( $params['host'] ) && $params['host'] !== '' )
+			self::CONN_HOST => ( isset( $params['host'] ) && $params['host'] !== '' )
 				? $params['host']
 				: null,
-			'user' => ( isset( $params['user'] ) && $params['user'] !== '' )
+			self::CONN_USER => ( isset( $params['user'] ) && $params['user'] !== '' )
 				? $params['user']
 				: null,
-			'dbname' => ( isset( $params['dbname'] ) && $params['dbname'] !== '' )
+			self::CONN_INITIAL_DB => ( isset( $params['dbname'] ) && $params['dbname'] !== '' )
 				? $params['dbname']
 				: null,
-			'schema' => ( isset( $params['schema'] ) && $params['schema'] !== '' )
+			self::CONN_INITIAL_SCHEMA => ( isset( $params['schema'] ) && $params['schema'] !== '' )
 				? $params['schema']
 				: null,
-			'password' => is_string( $params['password'] ) ? $params['password'] : null,
-			'tablePrefix' => (string)$params['tablePrefix']
+			self::CONN_PASSWORD => is_string( $params['password'] ) ? $params['password'] : null,
+			self::CONN_INITIAL_TABLE_PREFIX => (string)$params['tablePrefix']
 		];
 
 		$this->lbInfo = $params['lbInfo'] ?? [];
@@ -290,8 +306,9 @@ abstract class Database implements IDatabase, IMaintainableDatabase, LoggerAware
 		$this->flags = (int)$params['flags'];
 		$this->cliMode = (bool)$params['cliMode'];
 		$this->agent = (string)$params['agent'];
-		$this->topologyRole = (string)$params['topologyRole'];
-		$this->topologyRootMaster = (string)$params['topologicalMaster'];
+		$this->serverName = $params['serverName'];
+		$this->topologyRole = $params['topologyRole'];
+		$this->topologyRootMaster = $params['topologicalMaster'];
 		$this->nonNativeInsertSelectBatchSize = $params['nonNativeInsertSelectBatchSize'] ?? 10000;
 
 		$this->srvCache = $params['srvCache'];
@@ -339,27 +356,27 @@ abstract class Database implements IDatabase, IMaintainableDatabase, LoggerAware
 	 */
 	protected function doInitConnection() {
 		$this->open(
-			$this->connectionParams['host'],
-			$this->connectionParams['user'],
-			$this->connectionParams['password'],
-			$this->connectionParams['dbname'],
-			$this->connectionParams['schema'],
-			$this->connectionParams['tablePrefix']
+			$this->connectionParams[self::CONN_HOST],
+			$this->connectionParams[self::CONN_USER],
+			$this->connectionParams[self::CONN_PASSWORD],
+			$this->connectionParams[self::CONN_INITIAL_DB],
+			$this->connectionParams[self::CONN_INITIAL_SCHEMA],
+			$this->connectionParams[self::CONN_INITIAL_TABLE_PREFIX]
 		);
 	}
 
 	/**
 	 * Open a new connection to the database (closing any existing one)
 	 *
-	 * @param string|null $server Database server host
-	 * @param string|null $user Database user name
-	 * @param string|null $password Database user password
-	 * @param string|null $dbName Database name
+	 * @param string|null $server Server host/address and optional port {@see connectionParams}
+	 * @param string|null $user User name {@see connectionParams}
+	 * @param string|null $password User password {@see connectionParams}
+	 * @param string|null $db Database name
 	 * @param string|null $schema Database schema name
 	 * @param string $tablePrefix Table prefix
 	 * @throws DBConnectionError
 	 */
-	abstract protected function open( $server, $user, $password, $dbName, $schema, $tablePrefix );
+	abstract protected function open( $server, $user, $password, $db, $schema, $tablePrefix );
 
 	/**
 	 * Construct a Database subclass instance given a database type and parameters
@@ -368,7 +385,7 @@ abstract class Database implements IDatabase, IMaintainableDatabase, LoggerAware
 	 *
 	 * @param string $type A possible DB type (sqlite, mysql, postgres,...)
 	 * @param array $params Parameter map with keys:
-	 *   - host : The hostname of the DB server
+	 *   - host : The hostname or IP address of the database server
 	 *   - user : The name of the database user the client operates under
 	 *   - password : The password for the database user
 	 *   - dbname : The name of the database to use where queries do not specify one.
@@ -388,12 +405,13 @@ abstract class Database implements IDatabase, IMaintainableDatabase, LoggerAware
 	 *      'mysqli' driver; the old one 'mysql' has been removed.
 	 *   - variables: Optional map of session variables to set after connecting. This can be
 	 *      used to adjust lock timeouts or encoding modes and the like.
-	 *   - topologyRole: Optional IDatabase::ROLE_* constant for the server.
-	 *   - topologicalMaster: Optional name of the master server within the replication topology.
+	 *   - serverName : Optional readable name for the database server.
+	 *   - topologyRole: Optional IDatabase::ROLE_* constant for the database server.
+	 *   - topologicalMaster: Optional name of the primary server within the replication topology.
 	 *   - lbInfo: Optional map of field/values for the managing load balancer instance.
 	 *      The "master" and "replica" fields are used to flag the replication role of this
 	 *      database server and whether methods like getLag() should actually issue queries.
-	 *   - lazyMasterHandle: lazy-connecting IDatabase handle to the master DB for the cluster
+	 *   - lazyMasterHandle: lazy-connecting IDatabase handle to the primary DB for the cluster
 	 *      that this database belongs to. This is used for replication status purposes.
 	 *   - connLogger: Optional PSR-3 logger interface instance.
 	 *   - queryLogger: Optional PSR-3 logger interface instance.
@@ -433,6 +451,7 @@ abstract class Database implements IDatabase, IMaintainableDatabase, LoggerAware
 				'cliMode' => ( PHP_SAPI === 'cli' || PHP_SAPI === 'phpdbg' ),
 				'agent' => '',
 				'ownerId' => null,
+				'serverName' => null,
 				'topologyRole' => null,
 				'topologicalMaster' => null,
 				// Objects and callbacks
@@ -560,11 +579,20 @@ abstract class Database implements IDatabase, IMaintainableDatabase, LoggerAware
 		return $this->getServerVersion();
 	}
 
+	public function getTopologyBasedServerId() {
+		return null;
+	}
+
 	public function getTopologyRole() {
 		return $this->topologyRole;
 	}
 
+	public function getTopologyRootPrimary() {
+		return $this->topologyRootMaster;
+	}
+
 	public function getTopologyRootMaster() {
+		wfDeprecated( __METHOD__, '1.37' );
 		return $this->topologyRootMaster;
 	}
 
@@ -655,7 +683,7 @@ abstract class Database implements IDatabase, IMaintainableDatabase, LoggerAware
 	}
 
 	/**
-	 * Get a handle to the master server of the cluster to which this server belongs
+	 * Get a handle to the primary DB server of the cluster to which this server belongs
 	 *
 	 * @return IDatabase|null
 	 * @since 1.27
@@ -841,6 +869,38 @@ abstract class Database implements IDatabase, IMaintainableDatabase, LoggerAware
 		return $this->currentDomain->getId();
 	}
 
+	public function fetchObject( IResultWrapper $res ) {
+		return $res->fetchObject();
+	}
+
+	public function fetchRow( IResultWrapper $res ) {
+		return $res->fetchRow();
+	}
+
+	public function numRows( $res ) {
+		if ( is_bool( $res ) ) {
+			return 0;
+		} else {
+			return $res->numRows();
+		}
+	}
+
+	public function numFields( IResultWrapper $res ) {
+		return count( $res->getFieldNames() );
+	}
+
+	public function fieldName( IResultWrapper $res, $n ) {
+		return $res->getFieldNames()[$n];
+	}
+
+	public function dataSeek( IResultWrapper $res, $pos ) {
+		$res->seek( $pos );
+	}
+
+	public function freeResult( IResultWrapper $res ) {
+		$res->free();
+	}
+
 	/**
 	 * Get information about an index into an object
 	 *
@@ -919,9 +979,9 @@ abstract class Database implements IDatabase, IMaintainableDatabase, LoggerAware
 	protected function getLogContext( array $extras = [] ) {
 		return array_merge(
 			[
-				'db_server' => $this->server,
+				'db_server' => $this->getServerName(),
 				'db_name' => $this->getDBname(),
-				'db_user' => $this->user,
+				'db_user' => $this->connectionParams[self::CONN_USER],
 			],
 			$extras
 		);
@@ -1016,8 +1076,9 @@ abstract class Database implements IDatabase, IMaintainableDatabase, LoggerAware
 	 * Make sure that this server is not marked as a replica nor read-only as a sanity check
 	 *
 	 * @throws DBReadOnlyError
+	 * @since 1.37
 	 */
-	protected function assertIsWritableMaster() {
+	protected function assertIsWritablePrimary() {
 		$info = $this->getReadOnlyReason();
 		if ( $info ) {
 			list( $reason, $source ) = $info;
@@ -1027,6 +1088,15 @@ abstract class Database implements IDatabase, IMaintainableDatabase, LoggerAware
 				throw new DBReadOnlyError( $this, "Database is read-only: $reason" );
 			}
 		}
+	}
+
+	/**
+	 * @deprecated since 1.37; please use assertIsWritablePrimary() instead.
+	 * @throws DBReadOnlyError
+	 */
+	protected function assertIsWritableMaster() {
+		wfDeprecated( __METHOD__, '1.37' );
+		$this->assertIsWritablePrimary();
 	}
 
 	/**
@@ -1051,10 +1121,7 @@ abstract class Database implements IDatabase, IMaintainableDatabase, LoggerAware
 	 * meaningfully reflects any error that occurred during that public query method call.
 	 *
 	 * For SELECT queries, this returns either:
-	 *   - a) A driver-specific value/resource, only on success. This can be iterated
-	 *        over by calling fetchObject()/fetchRow() until there are no more rows.
-	 *        Alternatively, the result can be passed to resultObject() to obtain an
-	 *        IResultWrapper instance which can then be iterated over via "foreach".
+	 *   - a) An IResultWrapper describing the query results
 	 *   - b) False, on any query failure
 	 *
 	 * For non-SELECT queries, this returns either:
@@ -1063,7 +1130,7 @@ abstract class Database implements IDatabase, IMaintainableDatabase, LoggerAware
 	 *   - c) False, on any query failure
 	 *
 	 * @param string $sql SQL query
-	 * @return mixed|bool An object, resource, or true on success; false on failure
+	 * @return IResultWrapper|bool An IResultWrapper, or true on success; false on failure
 	 */
 	abstract protected function doQuery( $sql );
 
@@ -1073,8 +1140,8 @@ abstract class Database implements IDatabase, IMaintainableDatabase, LoggerAware
 	 * Main use cases:
 	 *
 	 * - Subsequent web requests should not need to wait for replication from
-	 *   the master position seen by this web request, unless this request made
-	 *   changes to the master. This is handled by ChronologyProtector by checking
+	 *   the primary position seen by this web request, unless this request made
+	 *   changes to the primary DB. This is handled by ChronologyProtector by checking
 	 *   doneWrites() at the end of the request. doneWrites() returns true if any
 	 *   query set lastWriteTime; which query() does based on isWriteQuery().
 	 *
@@ -1098,7 +1165,7 @@ abstract class Database implements IDatabase, IMaintainableDatabase, LoggerAware
 		// treat these as write queries, in that their results have "affected rows"
 		// as meta data as from writes, instead of "num rows" as from reads.
 		// But, we treat them as read queries because when reading data (from
-		// either replica or master) we use transactions to enable repeatable-read
+		// either replica or primary DB) we use transactions to enable repeatable-read
 		// snapshots, which ensures we get consistent results from the same snapshot
 		// for all queries within a request. Use cases:
 		// - Treating these as writes would trigger ChronologyProtector (see method doc).
@@ -1260,7 +1327,7 @@ abstract class Database implements IDatabase, IMaintainableDatabase, LoggerAware
 			$this->reportQueryError( $err, $errno, $sql, $fname, $ignoreErrors && !$unignorable );
 		}
 
-		return $this->resultObject( $ret );
+		return $ret;
 	}
 
 	/**
@@ -1300,9 +1367,9 @@ abstract class Database implements IDatabase, IMaintainableDatabase, LoggerAware
 			}
 
 			// Permit temporary table writes on replica DB connections
-			// but require a writable master connection for any persistent writes.
+			// but require a writable primary DB connection for any persistent writes.
 			if ( $isPermWrite ) {
-				$this->assertIsWritableMaster();
+				$this->assertIsWritablePrimary();
 
 				// DBConnRef uses QUERY_REPLICA_ROLE to enforce the replica role for raw SQL queries
 				if ( $this->fieldHasBit( $flags, self::QUERY_REPLICA_ROLE ) ) {
@@ -1318,8 +1385,8 @@ abstract class Database implements IDatabase, IMaintainableDatabase, LoggerAware
 
 		// Add trace comment to the begin of the sql string, right after the operator.
 		// Or, for one-word queries (like "BEGIN" or COMMIT") add it to the end (T44598).
-		$encAgent = str_replace( '/', '-', $this->agent );
-		$commentedSql = preg_replace( '/\s|$/', " /* $fname $encAgent */ ", $sql, 1 );
+		$encName = preg_replace( '/[\x00-\x1F\/]/', '-', "$fname {$this->agent}" );
+		$commentedSql = preg_replace( '/\s|$/', " /* $encName */ ", $sql, 1 );
 
 		$corruptedTrx = false;
 
@@ -1394,7 +1461,7 @@ abstract class Database implements IDatabase, IMaintainableDatabase, LoggerAware
 			if ( $this->trxLevel() && !$this->trxDoneWrites ) {
 				$this->trxDoneWrites = true;
 				$this->trxProfiler->transactionWritingIn(
-					$this->getServer(),
+					$this->getServerName(),
 					$this->getDomainID(),
 					$this->trxShortId
 				);
@@ -1452,15 +1519,19 @@ abstract class Database implements IDatabase, IMaintainableDatabase, LoggerAware
 		// Avoid the overhead of logging calls unless debug mode is enabled
 		if ( $this->getFlag( self::DBO_DEBUG ) ) {
 			$this->queryLogger->debug(
-				"{method} [{runtime}s] {db_host}: {sql}",
-				[
+				"{method} [{runtime}s] {db_server}: {sql}",
+				$this->getLogContext( [
 					'method' => $fname,
-					'db_host' => $this->getServer(),
 					'sql' => $sql,
 					'domain' => $this->getDomainID(),
 					'runtime' => round( $queryRuntime, 3 )
-				]
+				] )
 			);
+		}
+
+		if ( !is_bool( $ret ) && $ret !== null && !( $ret instanceof IResultWrapper ) ) {
+			throw new DBUnexpectedError( $this,
+				static::class . '::doQuery() should return an IResultWrapper' );
 		}
 
 		return [ $ret, $lastError, $lastErrno, $recoverableSR, $recoverableCL, $reconnected ];
@@ -1624,7 +1695,7 @@ abstract class Database implements IDatabase, IMaintainableDatabase, LoggerAware
 		// @note: leave trxRecurringCallbacks in place
 		if ( $this->trxDoneWrites ) {
 			$this->trxProfiler->transactionWritingOut(
-				$this->getServer(),
+				$this->getServerName(),
 				$this->getDomainID(),
 				$oldTrxShortId,
 				$this->pendingWriteQueryDuration( self::ESTIMATE_TOTAL ),
@@ -1760,13 +1831,6 @@ abstract class Database implements IDatabase, IMaintainableDatabase, LoggerAware
 
 	/**
 	 * @inheritDoc
-	 * @stable to override
-	 */
-	public function freeResult( $res ) {
-	}
-
-	/**
-	 * @inheritDoc
 	 */
 	public function newSelectQueryBuilder() {
 		return new SelectQueryBuilder( $this );
@@ -1799,7 +1863,7 @@ abstract class Database implements IDatabase, IMaintainableDatabase, LoggerAware
 
 	public function selectFieldValues(
 		$table, $var, $cond = '', $fname = __METHOD__, $options = [], $join_conds = []
-	) {
+	): array {
 		if ( $var === '*' ) { // sanity
 			throw new DBUnexpectedError( $this, "Cannot use a * field" );
 		} elseif ( !is_string( $var ) ) { // sanity
@@ -2198,55 +2262,75 @@ abstract class Database implements IDatabase, IMaintainableDatabase, LoggerAware
 	}
 
 	/**
-	 * @param string|string[]|string[][] $uniqueKeys Unique indexes (first is identity key)
-	 * @return string[][] Unique indexes as column lists (first index is the identity key)
+	 * Validate and normalize parameters to upsert() or replace()
+	 *
+	 * @param string|string[]|string[][] $uniqueKeys Unique indexes (only one is allowed)
+	 * @param array[] &$rows The row array, which will be replaced with a normalized version.
+	 * @return string[]|null List of columns that defines a single unique index, or null for
+	 *   a legacy fallback to plain insert.
 	 * @since 1.35
 	 */
-	final protected function normalizeUpsertKeys( $uniqueKeys ) {
+	final protected function normalizeUpsertParams( $uniqueKeys, &$rows ) {
+		$rows = $this->normalizeRowArray( $rows );
+		if ( !$rows ) {
+			return null;
+		}
+		if ( !$uniqueKeys ) {
+			// For backwards compatibility, allow insertion of rows with no applicable key
+			$this->queryLogger->warning(
+				"upsert/replace called with no unique key",
+				[ 'exception' => new RuntimeException() ]
+			);
+			return null;
+		}
+		$identityKey = $this->normalizeUpsertKeys( $uniqueKeys );
+		if ( $identityKey ) {
+			$allDefaultKeyValues = $this->assertValidUpsertRowArray( $rows, $identityKey );
+			if ( $allDefaultKeyValues ) {
+				// For backwards compatibility, allow insertion of rows with all-NULL
+				// values for the unique columns (e.g. for an AUTOINCREMENT column)
+				$this->queryLogger->warning(
+					"upsert/replace called with all-null values for unique key",
+					[ 'exception' => new RuntimeException() ]
+				);
+				return null;
+			}
+		}
+		return $identityKey;
+	}
+
+	/**
+	 * @param string|string[]|string[][] $uniqueKeys Unique indexes (only one is allowed)
+	 * @return string[]|null List of columns that defines a single unique index,
+	 *   or null for a legacy fallback to plain insert.
+	 * @since 1.35
+	 */
+	private function normalizeUpsertKeys( $uniqueKeys ) {
 		if ( is_string( $uniqueKeys ) ) {
-			return [ [ $uniqueKeys ] ];
-		}
+			return [ $uniqueKeys ];
+		} elseif ( !is_array( $uniqueKeys ) ) {
+			throw new DBUnexpectedError( $this, 'Invalid unique key array' );
+		} else {
+			if ( count( $uniqueKeys ) !== 1 || !isset( $uniqueKeys[0] ) ) {
+				throw new DBUnexpectedError( $this,
+					"The unique key array should contain a single unique index" );
+			}
 
-		if ( !is_array( $uniqueKeys ) || !$uniqueKeys ) {
-			throw new DBUnexpectedError( $this, 'Invalid or empty unique key array' );
-		}
-
-		$oldStyle = false;
-		$uniqueColumnSets = [];
-		foreach ( $uniqueKeys as $i => $uniqueKey ) {
-			if ( !is_int( $i ) ) {
-				throw new DBUnexpectedError( $this, 'Unique key array should be a list' );
-			} elseif ( is_string( $uniqueKey ) ) {
-				$oldStyle = true;
-				$uniqueColumnSets[] = [ $uniqueKey ];
-			} elseif ( is_array( $uniqueKey ) && $uniqueKey ) {
-				$uniqueColumnSets[] = $uniqueKey;
+			$uniqueKey = $uniqueKeys[0];
+			if ( is_string( $uniqueKey ) ) {
+				// Passing a list of strings for single-column unique keys is too
+				// easily confused with passing the columns of composite unique key
+				$this->queryLogger->warning( __METHOD__ .
+					" called with deprecated parameter style: " .
+					"the unique key array should be a string or array of string arrays",
+					[ 'exception' => new RuntimeException() ] );
+				return $uniqueKeys;
+			} elseif ( is_array( $uniqueKey ) ) {
+				return $uniqueKey;
 			} else {
 				throw new DBUnexpectedError( $this, 'Invalid unique key array entry' );
 			}
 		}
-
-		if ( count( $uniqueColumnSets ) > 1 ) {
-			// If an existing row conflicts with new row X on key A and new row Y on key B,
-			// it is not well defined how many UPDATEs should apply to the existing row and
-			// in what order the new rows are checked
-			$this->queryLogger->warning(
-				__METHOD__ . " called with multiple unique keys",
-				[ 'exception' => new RuntimeException() ]
-			);
-		}
-
-		if ( $oldStyle ) {
-			// Passing a list of strings for single-column unique keys is too
-			// easily confused with passing the columns of composite unique key
-			$this->queryLogger->warning(
-				__METHOD__ . " called with deprecated parameter style: " .
-				"the unique key array should be a string or array of string arrays",
-				[ 'exception' => new RuntimeException() ]
-			);
-		}
-
-		return $uniqueColumnSets;
 	}
 
 	/**
@@ -2261,6 +2345,78 @@ abstract class Database implements IDatabase, IMaintainableDatabase, LoggerAware
 			return ( $options === '' ) ? [] : [ $options ];
 		} else {
 			throw new DBUnexpectedError( $this, __METHOD__ . ': expected string or array' );
+		}
+	}
+
+	/**
+	 * @param array<int,array> $rows Normalized list of rows to insert
+	 * @param string[] $identityKey Columns of the (unique) identity key to UPSERT upon
+	 * @return bool Whether all the rows have NULL/absent values for all identity key columns
+	 * @since 1.37
+	 */
+	final protected function assertValidUpsertRowArray( array $rows, array $identityKey ) {
+		$numNulls = 0;
+		foreach ( $rows as $row ) {
+			foreach ( $identityKey as $column ) {
+				$numNulls += ( isset( $row[$column] ) ? 0 : 1 );
+			}
+		}
+
+		if (
+			$numNulls &&
+			$numNulls !== ( count( $rows ) * count( $identityKey ) )
+		) {
+			throw new DBUnexpectedError(
+				$this,
+				"NULL/absent values for unique key (" . implode( ',', $identityKey ) . ")"
+			);
+		}
+
+		return (bool)$numNulls;
+	}
+
+	/**
+	 * @param array $set Combined column/literal assignment map and SQL assignment list
+	 * @param string[] $identityKey Columns of the (unique) identity key to UPSERT upon
+	 * @param array<int,array> $rows List of rows to upsert
+	 * @since 1.37
+	 */
+	final protected function assertValidUpsertSetArray(
+		array $set,
+		array $identityKey,
+		array $rows
+	) {
+		// Sloppy callers might construct the SET array using the ROW array, leaving redundant
+		// column definitions for identity key columns. Detect this for backwards compatibility.
+		$soleRow = ( count( $rows ) == 1 ) ? reset( $rows ) : null;
+		// Disallow value changes for any columns in the identity key. This avoids additional
+		// insertion order dependencies that are unwieldy and difficult to implement efficiently
+		// in PostgreSQL.
+		foreach ( $set as $k => $v ) {
+			if ( is_string( $k ) ) {
+				// Key is a column name and value is a literal (e.g. string, int, null, ...)
+				if ( in_array( $k, $identityKey, true ) ) {
+					if ( $soleRow && array_key_exists( $k, $soleRow ) && $soleRow[$k] === $v ) {
+						$this->queryLogger->warning(
+							__METHOD__ . " called with redundant assignment to column '$k'",
+							[ 'exception' => new RuntimeException() ]
+						);
+					} else {
+						throw new DBUnexpectedError(
+							$this,
+							"Cannot reassign column '$k' since it belongs to identity key"
+						);
+					}
+				}
+			} elseif ( preg_match( '/^([a-zA-Z0-9_]+)\s*=/', $v, $m ) ) {
+				// Value is of the form "<unquoted alphanumeric column> = <SQL expression>"
+				if ( in_array( $m[1], $identityKey, true ) ) {
+					throw new DBUnexpectedError(
+						$this,
+						"Cannot reassign column '{$m[1]}' since it belongs to identity key"
+					);
+				}
+			}
 		}
 	}
 
@@ -2677,7 +2833,7 @@ abstract class Database implements IDatabase, IMaintainableDatabase, LoggerAware
 	 * @param string $sqlfunc Name of a SQL function
 	 * @param string|string[] $fields Name(s) of column(s) with values to compare
 	 * @param string|int|float|string[]|int[]|float[] $values Values to compare
-	 * @return mixed
+	 * @return string
 	 * @since 1.35
 	 */
 	protected function buildSuperlative( $sqlfunc, $fields, $values ) {
@@ -2847,7 +3003,11 @@ abstract class Database implements IDatabase, IMaintainableDatabase, LoggerAware
 	}
 
 	public function getServer() {
-		return $this->server;
+		return $this->connectionParams[self::CONN_HOST] ?? null;
+	}
+
+	public function getServerName() {
+		return $this->serverName ?? $this->getServer();
 	}
 
 	/**
@@ -3098,6 +3258,7 @@ abstract class Database implements IDatabase, IMaintainableDatabase, LoggerAware
 
 			// Is there a JOIN clause for this table?
 			if ( isset( $join_conds[$alias] ) ) {
+				Assert::parameterType( 'array', $join_conds[$alias], "join_conds[$alias]" );
 				list( $joinType, $conds ) = $join_conds[$alias];
 				$tableClause = $joinType;
 				$tableClause .= ' ' . $joinedTable;
@@ -3290,39 +3451,33 @@ abstract class Database implements IDatabase, IMaintainableDatabase, LoggerAware
 	}
 
 	public function replace( $table, $uniqueKeys, $rows, $fname = __METHOD__ ) {
-		$rows = $this->normalizeRowArray( $rows );
+		$identityKey = $this->normalizeUpsertParams( $uniqueKeys, $rows );
 		if ( !$rows ) {
 			return;
 		}
-
-		if ( $uniqueKeys ) {
-			$uniqueKeys = $this->normalizeUpsertKeys( $uniqueKeys );
-			$this->doReplace( $table, $uniqueKeys, $rows, $fname );
+		if ( $identityKey ) {
+			$this->doReplace( $table, $identityKey, $rows, $fname );
 		} else {
-			$this->queryLogger->warning(
-				__METHOD__ . " called with no unique keys",
-				[ 'exception' => new RuntimeException() ]
-			);
 			$this->doInsert( $table, $rows, $fname );
 		}
 	}
 
 	/**
-	 * @see Database::replace()
-	 * @stable to override
 	 * @param string $table
-	 * @param string[][] $uniqueKeys Non-empty list of unique keys
+	 * @param string[] $identityKey List of columns defining a unique key
 	 * @param array $rows Non-empty list of rows
 	 * @param string $fname
+	 * @see Database::replace()
+	 * @stable to override
 	 * @since 1.35
 	 */
-	protected function doReplace( $table, array $uniqueKeys, array $rows, $fname ) {
+	protected function doReplace( $table, array $identityKey, array $rows, $fname ) {
 		$affectedRowCount = 0;
 		$this->startAtomic( $fname, self::ATOMIC_CANCELABLE );
 		try {
 			foreach ( $rows as $row ) {
 				// Delete any conflicting rows (including ones inserted from $rows)
-				$sqlCondition = $this->makeConditionCollidesUponKeys( [ $row ], $uniqueKeys );
+				$sqlCondition = $this->makeKeyCollisionCondition( [ $row ], $identityKey );
 				$this->delete( $table, [ $sqlCondition ], $fname );
 				$affectedRowCount += $this->affectedRows();
 				// Now insert the row
@@ -3338,11 +3493,13 @@ abstract class Database implements IDatabase, IMaintainableDatabase, LoggerAware
 	}
 
 	/**
+	 * Build an SQL condition to find rows with matching key values to those in $rows.
+	 *
 	 * @param array[] $rows Non-empty list of rows
 	 * @param string[] $uniqueKey List of columns that define a single unique index
-	 * @return string SQL conditions to filter existing rows to those with counterparts in $rows
+	 * @return string
 	 */
-	private function makeConditionCollidesUponKey( array $rows, array $uniqueKey ) {
+	private function makeKeyCollisionCondition( array $rows, array $uniqueKey ) {
 		if ( !$rows ) {
 			throw new DBUnexpectedError( $this, "Empty row array" );
 		} elseif ( !$uniqueKey ) {
@@ -3360,58 +3517,34 @@ abstract class Database implements IDatabase, IMaintainableDatabase, LoggerAware
 			return $this->makeList( [ $column => $values ], self::LIST_AND );
 		}
 
-		$disjunctions = [];
+		$nullByUniqueKeyColumn = array_fill_keys( $uniqueKey, null );
+
+		$orConds = [];
 		foreach ( $rows as $row ) {
-			$rowKeyMap = array_intersect_key( $row, array_flip( $uniqueKey ) );
+			$rowKeyMap = array_intersect_key( $row, $nullByUniqueKeyColumn );
 			if ( count( $rowKeyMap ) != count( $uniqueKey ) ) {
 				throw new DBUnexpectedError(
 					$this,
 					"Missing values for unique key (" . implode( ',', $uniqueKey ) . ")"
 				);
 			}
-			$disjunctions[] = $this->makeList( $rowKeyMap, self::LIST_AND );
+			$orConds[] = $this->makeList( $rowKeyMap, self::LIST_AND );
 		}
 
-		return count( $disjunctions ) > 1
-			? $this->makeList( $disjunctions, self::LIST_OR )
-			: $disjunctions[0];
-	}
-
-	/**
-	 * @param array[] $rows Non-empty list of rows
-	 * @param string[][] $uniqueKeys List of column lists that each define a unique index
-	 * @return string SQL conditions to filter existing rows to those with counterparts in $rows
-	 * @since 1.35
-	 */
-	final protected function makeConditionCollidesUponKeys( array $rows, array $uniqueKeys ) {
-		if ( !$uniqueKeys ) {
-			throw new DBUnexpectedError( $this, "Empty unique key array" );
-		}
-
-		$disjunctions = [];
-		foreach ( $uniqueKeys as $uniqueKey ) {
-			$disjunctions[] = $this->makeConditionCollidesUponKey( $rows, $uniqueKey );
-		}
-
-		return count( $disjunctions ) > 1
-			? $this->makeList( $disjunctions, self::LIST_OR )
-			: $disjunctions[0];
+		return count( $orConds ) > 1
+			? $this->makeList( $orConds, self::LIST_OR )
+			: $orConds[0];
 	}
 
 	public function upsert( $table, array $rows, $uniqueKeys, array $set, $fname = __METHOD__ ) {
-		$rows = $this->normalizeRowArray( $rows );
+		$identityKey = $this->normalizeUpsertParams( $uniqueKeys, $rows );
 		if ( !$rows ) {
 			return true;
 		}
-
-		if ( $uniqueKeys ) {
-			$uniqueKeys = $this->normalizeUpsertKeys( $uniqueKeys );
-			$this->doUpsert( $table, $rows, $uniqueKeys, $set, $fname );
+		if ( $identityKey ) {
+			$this->assertValidUpsertSetArray( $set, $identityKey, $rows );
+			$this->doUpsert( $table, $rows, $identityKey, $set, $fname );
 		} else {
-			$this->queryLogger->warning(
-				__METHOD__ . " called with no unique keys",
-				[ 'exception' => new RuntimeException() ]
-			);
 			$this->doInsert( $table, $rows, $fname );
 		}
 
@@ -3419,22 +3552,28 @@ abstract class Database implements IDatabase, IMaintainableDatabase, LoggerAware
 	}
 
 	/**
-	 * @see Database::upsert()
-	 * @stable to override
 	 * @param string $table
 	 * @param array[] $rows Non-empty list of rows
-	 * @param string[][] $uniqueKeys Non-empty list of unique keys
-	 * @param array $set
+	 * @param string[] $identityKey List of columns defining a unique key
+	 * @param string[] $set Non-empty combined column/literal map and SQL assignment list
 	 * @param string $fname
+	 * @see Database::upsert()
+	 * @stable to override
 	 * @since 1.35
 	 */
-	protected function doUpsert( $table, array $rows, array $uniqueKeys, array $set, $fname ) {
+	protected function doUpsert(
+		string $table,
+		array $rows,
+		array $identityKey,
+		array $set,
+		string $fname
+	) {
 		$affectedRowCount = 0;
 		$this->startAtomic( $fname, self::ATOMIC_CANCELABLE );
 		try {
 			foreach ( $rows as $row ) {
 				// Update any existing conflicting rows (including ones inserted from $rows)
-				$sqlConditions = $this->makeConditionCollidesUponKeys( [ $row ], $uniqueKeys );
+				$sqlConditions = $this->makeKeyCollisionCondition( [ $row ], $identityKey );
 				$this->update( $table, $set, [ $sqlConditions ], $fname );
 				$rowsUpdated = $this->affectedRows();
 				$affectedRowCount += $rowsUpdated;
@@ -3598,7 +3737,7 @@ abstract class Database implements IDatabase, IMaintainableDatabase, LoggerAware
 		$selectJoinConds
 	) {
 		// For web requests, do a locking SELECT and then INSERT. This puts the SELECT burden
-		// on only the master (without needing row-based-replication). It also makes it easy to
+		// on only the primary DB (without needing row-based-replication). It also makes it easy to
 		// know how big the INSERT is going to be.
 		$fields = [];
 		foreach ( $varMap as $dstColumn => $sourceColumnOrSql ) {
@@ -3924,11 +4063,20 @@ abstract class Database implements IDatabase, IMaintainableDatabase, LoggerAware
 
 	/**
 	 * @inheritDoc
+	 * @since 1.37
 	 * @stable to override
 	 */
-	public function masterPosWait( DBMasterPos $pos, $timeout ) {
+	public function primaryPosWait( DBPrimaryPos $pos, $timeout ) {
 		# Real waits are implemented in the subclass.
 		return 0;
+	}
+
+	/**
+	 * @inheritDoc
+	 */
+	public function masterPosWait( DBPrimaryPos $pos, $timeout ) {
+		wfDeprecated( __METHOD__, '1.37' );
+		return $this->primaryPosWait( $pos, $timeout );
 	}
 
 	/**
@@ -3944,9 +4092,14 @@ abstract class Database implements IDatabase, IMaintainableDatabase, LoggerAware
 	 * @inheritDoc
 	 * @stable to override
 	 */
-	public function getMasterPos() {
+	public function getPrimaryPos() {
 		# Stub
 		return false;
+	}
+
+	public function getMasterPos() {
+		// wfDeprecated( __METHOD__, '1.37' );
+		return $this->getPrimaryPos();
 	}
 
 	/**
@@ -4692,8 +4845,8 @@ abstract class Database implements IDatabase, IMaintainableDatabase, LoggerAware
 		// so get the replication lag estimate before any transaction SELECT queries come in.
 		// This way, the lag estimate reflects what will actually be read. Also, if heartbeat
 		// tables are used, this avoids counting snapshot lag as part of replication lag.
-		$this->trxReplicaLag = null; // clear cached value first
-		$this->trxReplicaLag = $this->getApproximateLagStatus()['lag'];
+		$this->trxReplicaLagStatus = null; // clear cached value first
+		$this->trxReplicaLagStatus = $this->getApproximateLagStatus();
 		// T147697: make explicitTrxActive() return true until begin() finishes. This way,
 		// no caller triggered by getApproximateLagStatus() will think its OK to muck around
 		// with the transaction just because startAtomic() has not yet finished updating the
@@ -4769,7 +4922,7 @@ abstract class Database implements IDatabase, IMaintainableDatabase, LoggerAware
 		if ( $this->trxDoneWrites ) {
 			$this->lastWriteTime = microtime( true );
 			$this->trxProfiler->transactionWritingOut(
-				$this->getServer(),
+				$this->getServerName(),
 				$this->getDomainID(),
 				$oldTrxShortId,
 				$writeTime,
@@ -4833,7 +4986,7 @@ abstract class Database implements IDatabase, IMaintainableDatabase, LoggerAware
 		$writeTime = $this->pingAndCalculateLastTrxApplyTime();
 		if ( $this->trxDoneWrites ) {
 			$this->trxProfiler->transactionWritingOut(
-				$this->getServer(),
+				$this->getServerName(),
 				$this->getDomainID(),
 				$oldTrxShortId,
 				$writeTime,
@@ -4948,39 +5101,13 @@ abstract class Database implements IDatabase, IMaintainableDatabase, LoggerAware
 	}
 
 	public function affectedRows() {
-		return ( $this->affectedRowCount === null )
-			? $this->fetchAffectedRowCount() // default to driver value
-			: $this->affectedRowCount;
+		return $this->affectedRowCount ?? $this->fetchAffectedRowCount();
 	}
 
 	/**
 	 * @return int Number of retrieved rows according to the driver
 	 */
 	abstract protected function fetchAffectedRowCount();
-
-	/**
-	 * Take a query result and wrap it in an iterable result wrapper if necessary.
-	 * Booleans are passed through as-is to indicate success/failure of write queries.
-	 *
-	 * Once upon a time, Database::query() returned a bare MySQL result
-	 * resource, and it was necessary to call this function to convert it to
-	 * a wrapper. Nowadays, raw database objects are never exposed to external
-	 * callers, so this is unnecessary in external code.
-	 *
-	 * @param bool|IResultWrapper|resource $result
-	 * @return bool|IResultWrapper
-	 */
-	protected function resultObject( $result ) {
-		if ( !$result ) {
-			return false; // failed query
-		} elseif ( $result instanceof IResultWrapper ) {
-			return $result;
-		} elseif ( $result === true ) {
-			return $result; // successful write query
-		} else {
-			return new ResultWrapper( $this, $result );
-		}
-	}
 
 	public function ping( &$rtt = null ) {
 		// Avoid hitting the server if it was hit recently
@@ -5015,9 +5142,9 @@ abstract class Database implements IDatabase, IMaintainableDatabase, LoggerAware
 
 		try {
 			$this->open(
-				$this->server,
-				$this->user,
-				$this->password,
+				$this->connectionParams[self::CONN_HOST],
+				$this->connectionParams[self::CONN_USER],
+				$this->connectionParams[self::CONN_PASSWORD],
 				$this->currentDomain->getDatabase(),
 				$this->currentDomain->getSchema(),
 				$this->tablePrefix()
@@ -5026,18 +5153,15 @@ abstract class Database implements IDatabase, IMaintainableDatabase, LoggerAware
 			$ok = true;
 
 			$this->connLogger->warning(
-				$fname . ': lost connection to {dbserver}; reconnected',
-				[
-					'dbserver' => $this->getServer(),
-					'exception' => new RuntimeException()
-				]
+				$fname . ': lost connection to {db_server}; reconnected',
+				$this->getLogContext( [ 'exception' => new RuntimeException() ] )
 			);
 		} catch ( DBConnectionError $e ) {
 			$ok = false;
 
 			$this->connLogger->error(
-				$fname . ': lost connection to {dbserver} permanently',
-				[ 'dbserver' => $this->getServer() ]
+				$fname . ': lost connection to {db_server} permanently',
+				$this->getLogContext( [ 'exception' => new RuntimeException() ] )
 			);
 		}
 
@@ -5064,9 +5188,7 @@ abstract class Database implements IDatabase, IMaintainableDatabase, LoggerAware
 	 * @since 1.27
 	 */
 	final protected function getRecordedTransactionLagStatus() {
-		return ( $this->trxLevel() && $this->trxReplicaLag !== null )
-			? [ 'lag' => $this->trxReplicaLag, 'since' => $this->trxTimestamp() ]
-			: null;
+		return $this->trxLevel() ? $this->trxReplicaLagStatus : null;
 	}
 
 	/**
@@ -5137,7 +5259,7 @@ abstract class Database implements IDatabase, IMaintainableDatabase, LoggerAware
 
 	public function getLag() {
 		if ( $this->topologyRole === self::ROLE_STREAMING_MASTER ) {
-			return 0; // this is the master
+			return 0; // this is the primary DB
 		} elseif ( $this->topologyRole === self::ROLE_STATIC_CLONE ) {
 			return 0; // static dataset
 		}
@@ -5149,6 +5271,8 @@ abstract class Database implements IDatabase, IMaintainableDatabase, LoggerAware
 	 * Get the amount of replication lag for this database server
 	 *
 	 * Callers should avoid using this method while a transaction is active
+	 *
+	 * @see getLag()
 	 *
 	 * @stable to override
 	 * @return float|int|false Database replication lag in seconds or false on error
@@ -5402,33 +5526,93 @@ abstract class Database implements IDatabase, IMaintainableDatabase, LoggerAware
 
 	/**
 	 * @inheritDoc
-	 * @stable to override
 	 */
 	public function lockIsFree( $lockName, $method ) {
 		// RDBMs methods for checking named locks may or may not count this thread itself.
 		// In MySQL, IS_FREE_LOCK() returns 0 if the thread already has the lock. This is
 		// the behavior chosen by the interface for this method.
-		return !isset( $this->sessionNamedLocks[$lockName] );
+		if ( isset( $this->sessionNamedLocks[$lockName] ) ) {
+			$lockIsFree = false;
+		} else {
+			$lockIsFree = $this->doLockIsFree( $lockName, $method );
+		}
+
+		return $lockIsFree;
 	}
 
 	/**
-	 * @inheritDoc
+	 * @see lockIsFree()
+	 *
+	 * @param string $lockName
+	 * @param string $method
+	 * @return bool Success
+	 * @throws DBError
 	 * @stable to override
 	 */
-	public function lock( $lockName, $method, $timeout = 5 ) {
-		$this->sessionNamedLocks[$lockName] = 1;
-
-		return true;
+	protected function doLockIsFree( string $lockName, string $method ) {
+		return true; // not implemented
 	}
 
 	/**
 	 * @inheritDoc
+	 */
+	public function lock( $lockName, $method, $timeout = 5, $flags = 0 ) {
+		$lockTsUnix = $this->doLock( $lockName, $method, $timeout );
+		if ( $lockTsUnix !== null ) {
+			$locked = true;
+			$this->sessionNamedLocks[$lockName] = $lockTsUnix;
+		} else {
+			$locked = false;
+			$this->queryLogger->info( __METHOD__ . " failed to acquire lock '{lockname}'",
+				[ 'lockname' => $lockName ] );
+		}
+
+		if ( $this->fieldHasBit( $flags, self::LOCK_TIMESTAMP ) ) {
+			return $lockTsUnix;
+		} else {
+			return $locked;
+		}
+	}
+
+	/**
+	 * @see lock()
+	 *
+	 * @param string $lockName
+	 * @param string $method
+	 * @param int $timeout
+	 * @return float|null UNIX timestamp of lock acquisition; null on failure
+	 * @throws DBError
 	 * @stable to override
+	 */
+	protected function doLock( string $lockName, string $method, int $timeout ) {
+		return microtime( true ); // not implemented
+	}
+
+	/**
+	 * @inheritDoc
 	 */
 	public function unlock( $lockName, $method ) {
-		unset( $this->sessionNamedLocks[$lockName] );
+		$released = $this->doUnlock( $lockName, $method );
+		if ( $released ) {
+			unset( $this->sessionNamedLocks[$lockName] );
+		} else {
+			$this->queryLogger->warning( __METHOD__ . " failed to release lock '$lockName'\n" );
+		}
 
-		return true;
+		return $released;
+	}
+
+	/**
+	 * @see unlock()
+	 *
+	 * @param string $lockName
+	 * @param string $method
+	 * @return bool Success
+	 * @throws DBError
+	 * @stable to override
+	 */
+	protected function doUnlock( string $lockName, string $method ) {
+		return true; // not implemented
 	}
 
 	public function getScopedLockAndFlush( $lockKey, $fname, $timeout ) {
@@ -5835,9 +6019,9 @@ abstract class Database implements IDatabase, IMaintainableDatabase, LoggerAware
 			$this->trxSectionCancelCallbacks = []; // don't copy
 			$this->handleSessionLossPreconnect(); // no trx or locks anymore
 			$this->open(
-				$this->server,
-				$this->user,
-				$this->password,
+				$this->connectionParams[self::CONN_HOST],
+				$this->connectionParams[self::CONN_USER],
+				$this->connectionParams[self::CONN_PASSWORD],
 				$this->currentDomain->getDatabase(),
 				$this->currentDomain->getSchema(),
 				$this->tablePrefix()

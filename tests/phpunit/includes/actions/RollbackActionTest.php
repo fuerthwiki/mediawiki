@@ -45,7 +45,15 @@ class RollbackActionTest extends MediaWikiIntegrationTestCase {
 		$context->setTitle( $this->testPage );
 		$context->setRequest( $request );
 		$context->setUser( $this->sysop );
-		return new RollbackAction( Article::newFromTitle( $this->testPage, $context ), $context );
+		$mwServices = $this->getServiceContainer();
+		return new RollbackAction(
+			Article::newFromTitle( $this->testPage, $context ),
+			$context,
+			$mwServices->getContentHandlerFactory(),
+			$mwServices->getRollbackPageFactory(),
+			$mwServices->getUserOptionsLookup(),
+			$mwServices->getWatchlistManager()
+		);
 	}
 
 	public function provideRollbackParamFail() {

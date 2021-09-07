@@ -15,12 +15,12 @@ The default environment provides PHP, Apache, Xdebug and a SQLite database.
 More documentation as well as example overrides and configuration recipes
 are available at [mediawiki.org/wiki/MediaWiki-Docker][mw-docker].
 
-Support is available on the [Freenode IRC network][freenode] at `#mediawiki`
+Support is available on the [Libera IRC network][Libera] at `#mediawiki`
 and on Wikimedia Phabricator at [#MediaWiki-Docker][mw-docker-phab].
 
 [mw-docker]: https://www.mediawiki.org/wiki/MediaWiki-Docker
 [mw-docker-phab]: https://phabricator.wikimedia.org/project/profile/3094/
-[freenode]: https://freenode.net/
+[Libera]: https://libera.chat/
 
 ### Requirements
 
@@ -29,7 +29,7 @@ You'll need a locally running Docker and Docker Compose:
   - [Docker installation instructions][docker-install]
   - [Docker Compose installation instructions][docker-compose]
 
-[docker-install]: https://docs.docker.com/install/
+[docker-install]: https://docs.docker.com/get-docker/
 [docker-compose]: https://docs.docker.com/compose/install/
 
 ---
@@ -63,28 +63,22 @@ XDEBUG_ENABLE=true
 XHPROF_ENABLE=true
 ```
 
-Next, create a `docker-compose.override.yml` containing the following:
-
-```yaml
-version: '3.7'
-services:
-  # These lines ensure file ownership is set to your host user/group
-  mediawiki:
-    user: "${MW_DOCKER_UID}:${MW_DOCKER_GID}"
-    # Linux users only: this extra_hosts section is necessary for Xdebug:
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-  mediawiki-web:
-    user: "${MW_DOCKER_UID}:${MW_DOCKER_GID}"
-  mediawiki-jobrunner:
-    user: "${MW_DOCKER_UID}:${MW_DOCKER_GID}"
-```
-
-Run the following command to add your user ID and group ID to your `.env` file:
+Next, run the following command to add your user ID and group ID to your `.env` file:
 
 ```sh
 echo "MW_DOCKER_UID=$(id -u)
 MW_DOCKER_GID=$(id -g)" >> .env
+```
+
+Linux users only: create a `docker-compose.override.yml` containing the following:
+
+```yaml
+version: '3.7'
+services:
+  mediawiki:
+    # Linux users only: this extra_hosts section is necessary for Xdebug:
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 ```
 
 #### Start environment and install MediaWiki
@@ -140,7 +134,7 @@ docker-compose exec mediawiki php tests/phpunit/phpunit.php /path/to/test
 
 See [PHPUnit Testing][phpunit-testing] on MediaWiki.org for more help.
 
-[phpunit-testing]: https://www.mediawiki.org/wiki/Manual:PHP_unit_testing/Running_the_unit_tests
+[phpunit-testing]: https://www.mediawiki.org/wiki/Manual:PHP_unit_testing/Running_the_tests
 
 ##### Selenium
 
@@ -153,7 +147,7 @@ npm ci
 npm run selenium-test
 ```
 
-[selenium-dedicated]: https://www.mediawiki.org/wiki/Selenium/Node.js/Target_Local_MediaWiki_(Container)
+[selenium-dedicated]: https://www.mediawiki.org/wiki/Selenium/Getting_Started/Run_tests_using_Fresh
 
 #### API Testing
 
@@ -192,19 +186,35 @@ If you need root on the container to install packages for troubleshooting,
 you can open a shell as root with `docker-compose exec --user root mediawiki
 bash`.
 
-#### Use Vector skin
+#### Using Extensions and Skins
+Using extensions and skins requires the extension or skin directory to exist
+in the appropriate folder within the core directory, or added as a volume in
+`docker-compose.override.yml`
 
-Clone the skin to `skins/Vector`:
+##### Example: Use Vector skin
 
-```sh
-git clone "https://gerrit.wikimedia.org/r/mediawiki/skins/Vector" skins/Vector
-```
+1. Clone the skin to `skins/Vector`:
 
-Configure MediaWiki to use the skin:
+    ```sh
+    git clone "https://gerrit.wikimedia.org/r/mediawiki/skins/Vector" skins/Vector
+    ```
 
-```sh
-echo "wfLoadSkin( 'Vector' );" >> LocalSettings.php
-```
+    OR
+
+    mount the directory as a volume in `docker-compose.override.yml`:
+    ```yaml
+   version: '3.7'
+   services:
+     mediawiki:
+       volumes:
+         - ~/vector:/var/www/html/w/skins/vector:cached
+    ```
+
+2. Configure MediaWiki to use the skin:
+
+    ```sh
+    echo "wfLoadSkin( 'Vector' );" >> LocalSettings.php
+    ```
 
 #### Xdebug
 

@@ -23,10 +23,8 @@
 use MediaWiki\HookContainer\ProtectedHookAccessorTrait;
 use MediaWiki\Linker\LinkTarget;
 use MediaWiki\MediaWikiServices;
-use MediaWiki\Page\PageIdentity;
 use MediaWiki\Page\PageRecord;
 use MediaWiki\Page\PageReference;
-use MediaWiki\Permissions\Authority;
 use MediaWiki\Permissions\PermissionStatus;
 use MediaWiki\Session\SessionManager;
 use Wikimedia\Rdbms\IResultWrapper;
@@ -608,16 +606,16 @@ class OutputPage extends ContextSource {
 	}
 
 	/**
-	 * Add a mapping from a LinkTarget to a Content, for things like page preview.
+	 * Force the given Content object for the given page, for things like page preview.
 	 * @see self::addContentOverrideCallback()
 	 * @since 1.32
-	 * @param LinkTarget $target
+	 * @param LinkTarget|PageReference $target
 	 * @param Content $content
 	 */
-	public function addContentOverride( LinkTarget $target, Content $content ) {
+	public function addContentOverride( $target, Content $content ) {
 		if ( !$this->contentOverrides ) {
 			// Register a callback for $this->contentOverrides on the first call
-			$this->addContentOverrideCallback( function ( LinkTarget $target ) {
+			$this->addContentOverrideCallback( function ( $target ) {
 				$key = $target->getNamespace() . ':' . $target->getDBkey();
 				return $this->contentOverrides[$key] ?? null;
 			} );
@@ -2122,7 +2120,6 @@ class OutputPage extends ContextSource {
 
 		$oldInterface = $popts->setInterfaceMessage( (bool)$interface );
 
-		$title = Title::castFromPageReference( $title );
 		$parserOutput = MediaWikiServices::getInstance()->getParser()->getFreshParser()->parse(
 			$text, $title, $popts,
 			$linestart, true, $this->mRevisionId
@@ -2757,7 +2754,7 @@ class OutputPage extends ContextSource {
 			# not especially useful as a returnto parameter. Use the title
 			# from the request instead, if there was one.
 			$request = $this->getRequest();
-			$returnto = Title::newFromText( $request->getVal( 'title', '' ) );
+			$returnto = Title::newFromText( $request->getText( 'title' ) );
 			if ( $action == 'edit' ) {
 				$msg = 'whitelistedittext';
 				$displayReturnto = $returnto;
@@ -2978,7 +2975,7 @@ class OutputPage extends ContextSource {
 			);
 			if ( $this->contentOverrideCallbacks ) {
 				$this->rlClientContext = new DerivativeResourceLoaderContext( $this->rlClientContext );
-				$this->rlClientContext->setContentOverrideCallback( function ( Title $title ) {
+				$this->rlClientContext->setContentOverrideCallback( function ( $title ) {
 					foreach ( $this->contentOverrideCallbacks as $callback ) {
 						$content = $callback( $title );
 						if ( $content !== null ) {
@@ -2987,10 +2984,9 @@ class OutputPage extends ContextSource {
 								// Proactively replace this so that we can display a message
 								// to the user, instead of letting it go to Html::inlineScript(),
 								// where it would be considered a server-side issue.
-								$titleFormatted = $title->getPrefixedText();
 								$content = new JavaScriptContent(
 									Xml::encodeJsCall( 'mw.log.error', [
-										"Cannot preview $titleFormatted due to script-closing tag."
+										"Cannot preview $title due to script-closing tag."
 									] )
 								);
 							}
@@ -3028,7 +3024,6 @@ class OutputPage extends ContextSource {
 				'noscript',
 				'user.styles',
 			] );
-			$this->getSkin()->doSetupSkinUserCss( $this );
 
 			// Prepare exempt modules for buildExemptModules()
 			$exemptGroups = [ 'site' => [], 'noscript' => [], 'private' => [], 'user' => [] ];
@@ -3144,11 +3139,6 @@ class OutputPage extends ContextSource {
 			$bodyClasses[] = 'mw-underline-' . ( $underline ? 'always' : 'never' );
 		}
 
-		if ( $this->getLanguage()->capitalizeAllNouns() ) {
-			# A <body> class is probably not the best way to do this . . .
-			$bodyClasses[] = 'capitalize-all-nouns';
-		}
-
 		// Parser feature migration class
 		// The idea is that this will eventually be removed, after the wikitext
 		// which requires it is cleaned up.
@@ -3234,9 +3224,10 @@ class OutputPage extends ContextSource {
 	 * JS stuff to put at the bottom of the `<body>`.
 	 * These are legacy scripts ($this->mScripts), and user JS.
 	 *
+	 * @param string $extraHtml (only for use by this->tailElement(); will be removed in future)
 	 * @return string|WrappedStringList HTML
 	 */
-	public function getBottomScripts() {
+	public function getBottomScripts( $extraHtml = '' ) {
 		$chunks = [];
 		$chunks[] = $this->getRlClient()->getBodyHtml();
 
@@ -3251,6 +3242,10 @@ class OutputPage extends ContextSource {
 				$this->CSP->getNonce()
 			);
 		}
+		// This should be added last because the extra html comes from
+		// SkinAfterBottomScripts hook.
+		// TODO: Run the hook here directly and remove the parameter.
+		$chunks[] = $extraHtml;
 
 		return self::combineWrappedStrings( $chunks );
 	}
@@ -3397,9 +3392,9 @@ class OutputPage extends ContextSource {
 			$vars['wgUserVariant'] = $languageConverter->getPreferredVariant();
 		}
 		// Same test as SkinTemplate
-		$vars['wgIsProbablyEditable'] = $this->performerCanEditOrCreate( $this->getAuthority(), $title );
+		$vars['wgIsProbablyEditable'] = $this->getAuthority()->probablyCan( 'edit', $title );
 		$vars['wgRelevantPageIsProbablyEditable'] = $relevantTitle &&
-			$this->performerCanEditOrCreate( $this->getAuthority(), $relevantTitle );
+			$this->getAuthority()->probablyCan( 'edit', $relevantTitle );
 		foreach ( $title->getRestrictionTypes() as $type ) {
 			// Following keys are set in $vars:
 			// wgRestrictionCreate, wgRestrictionEdit, wgRestrictionMove, wgRestrictionUpload
@@ -3479,7 +3474,7 @@ class OutputPage extends ContextSource {
 	public function userCanPreview() {
 		$request = $this->getRequest();
 		if (
-			$request->getVal( 'action' ) !== 'submit' ||
+			$request->getRawVal( 'action' ) !== 'submit' ||
 			!$request->wasPosted()
 		) {
 			return false;
@@ -3501,19 +3496,6 @@ class OutputPage extends ContextSource {
 		}
 
 		return true;
-	}
-
-	/**
-	 * @param Authority $performer
-	 * @param PageIdentity $page
-	 * @return bool
-	 */
-	private function performerCanEditOrCreate(
-		Authority $performer,
-		PageIdentity $page
-	) {
-		return $performer->probablyCan( 'edit', $page )
-		&& ( $page->exists() || $performer->probablyCan( 'create', $page ) );
 	}
 
 	/**
@@ -3551,6 +3533,14 @@ class OutputPage extends ContextSource {
 			] );
 		}
 
+		# Browser based phonenumber detection
+		if ( $config->get( 'BrowserFormatDetection' ) !== false ) {
+			$tags['meta-format-detection'] = Html::element( 'meta', [
+				'name' => 'format-detection',
+				'content' => $config->get( 'BrowserFormatDetection' ),
+			] );
+		}
+
 		foreach ( $this->mMetatags as $tag ) {
 			if ( strncasecmp( $tag[0], 'http:', 5 ) === 0 ) {
 				$a = 'http-equiv';
@@ -3578,7 +3568,7 @@ class OutputPage extends ContextSource {
 
 		# Universal edit button
 		if ( $config->get( 'UniversalEditButton' ) && $this->isArticleRelated() ) {
-			if ( $this->performerCanEditOrCreate( $this->getAuthority(), $this->getTitle() ) ) {
+			if ( $this->getAuthority()->probablyCan( 'edit', $this->getTitle() ) ) {
 				// Original UniversalEditButton
 				$msg = $this->msg( 'edit' )->text();
 				$tags['universal-edit-button'] = Html::element( 'link', [
@@ -4024,12 +4014,17 @@ class OutputPage extends ContextSource {
 	 */
 	public static function transformFilePath( $remotePathPrefix, $localPath, $file ) {
 		// This MUST match the equivalent logic in CSSMin::remapOne()
-		$hash = md5_file( "$localPath/$file" );
-		if ( $hash === false ) {
-			wfLogWarning( __METHOD__ . ": Failed to hash $localPath/$file" );
-			$hash = '';
+		$localFile = "$localPath/$file";
+		$url = "$remotePathPrefix/$file";
+		if ( file_exists( $localFile ) ) {
+			$hash = md5_file( $localFile );
+			if ( $hash === false ) {
+				wfLogWarning( __METHOD__ . ": Failed to hash $localFile" );
+				$hash = '';
+			}
+			$url .= '?' . substr( $hash, 0, 5 );
 		}
-		return "$remotePathPrefix/$file?" . substr( $hash, 0, 5 );
+		return $url;
 	}
 
 	/**
@@ -4210,5 +4205,32 @@ class OutputPage extends ContextSource {
 	 */
 	public function getCSP() {
 		return $this->CSP;
+	}
+
+	/**
+	 * The final bits that go to the bottom of a page
+	 * HTML document including the closing tags
+	 *
+	 * @internal
+	 * @since 1.37
+	 * @param Skin $skin
+	 * @return string
+	 */
+	public function tailElement( $skin ) {
+		// T257704: Temporarily run skin hook here pending
+		// creation dedicated outputpage hook for this
+		$extraHtml = '';
+		$this->getHookRunner()->onSkinAfterBottomScripts( $skin, $extraHtml );
+
+		$tail = [
+			MWDebug::getDebugHTML( $skin ),
+			$this->getBottomScripts( $extraHtml ),
+			wfReportTime( $this->getCSP()->getNonce() ),
+			MWDebug::getHTMLDebugLog()
+			. Html::closeElement( 'body' )
+			. Html::closeElement( 'html' )
+		];
+
+		return WrappedStringList::join( "\n", $tail );
 	}
 }

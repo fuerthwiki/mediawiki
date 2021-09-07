@@ -20,10 +20,11 @@
  * @file
  */
 
-use MediaWiki\MediaWikiServices;
 use MediaWiki\ParamValidator\TypeDef\UserDef;
 use MediaWiki\Revision\RevisionRecord;
+use MediaWiki\Revision\SlotRoleRegistry;
 use MediaWiki\Storage\NameTableAccessException;
+use MediaWiki\Storage\NameTableStore;
 
 /**
  * A query action to enumerate the recent changes that were done to the wiki.
@@ -36,18 +37,36 @@ class ApiQueryRecentChanges extends ApiQueryGeneratorBase {
 	/** @var CommentStore */
 	private $commentStore;
 
+	/** @var NameTableStore */
+	private $changeTagDefStore;
+
+	/** @var NameTableStore */
+	private $slotRoleStore;
+
+	/** @var SlotRoleRegistry */
+	private $slotRoleRegistry;
+
 	/**
 	 * @param ApiQuery $query
 	 * @param string $moduleName
 	 * @param CommentStore $commentStore
+	 * @param NameTableStore $changeTagDefStore
+	 * @param NameTableStore $slotRoleStore
+	 * @param SlotRoleRegistry $slotRoleRegistry
 	 */
 	public function __construct(
 		ApiQuery $query,
 		$moduleName,
-		CommentStore $commentStore
+		CommentStore $commentStore,
+		NameTableStore $changeTagDefStore,
+		NameTableStore $slotRoleStore,
+		SlotRoleRegistry $slotRoleRegistry
 	) {
 		parent::__construct( $query, $moduleName, 'rc' );
 		$this->commentStore = $commentStore;
+		$this->changeTagDefStore = $changeTagDefStore;
+		$this->slotRoleStore = $slotRoleStore;
+		$this->slotRoleRegistry = $slotRoleRegistry;
 	}
 
 	private $fld_comment = false, $fld_parsedcomment = false, $fld_user = false, $fld_userid = false,
@@ -204,7 +223,7 @@ class ApiQueryRecentChanges extends ApiQueryGeneratorBase {
 		}
 
 		if ( $params['show'] !== null ) {
-			$show = array_flip( $params['show'] );
+			$show = array_fill_keys( $params['show'], true );
 
 			/* Check for conflicting parameters. */
 			if ( ( isset( $show['minor'] ) && isset( $show['!minor'] ) )
@@ -276,7 +295,7 @@ class ApiQueryRecentChanges extends ApiQueryGeneratorBase {
 		$this->requireMaxOneParameter( $params, 'user', 'excludeuser' );
 
 		if ( $params['prop'] !== null ) {
-			$prop = array_flip( $params['prop'] );
+			$prop = array_fill_keys( $params['prop'], true );
 
 			/* Set up internal members based upon params. */
 			$this->initProperties( $prop );
@@ -360,9 +379,8 @@ class ApiQueryRecentChanges extends ApiQueryGeneratorBase {
 		if ( $params['tag'] !== null ) {
 			$this->addTables( 'change_tag' );
 			$this->addJoinConds( [ 'change_tag' => [ 'JOIN', [ 'rc_id=ct_rc_id' ] ] ] );
-			$changeTagDefStore = MediaWikiServices::getInstance()->getChangeTagDefStore();
 			try {
-				$this->addWhereFld( 'ct_tag_id', $changeTagDefStore->getId( $params['tag'] ) );
+				$this->addWhereFld( 'ct_tag_id', $this->changeTagDefStore->getId( $params['tag'] ) );
 			} catch ( NameTableAccessException $exception ) {
 				// Return nothing.
 				$this->addWhere( '1=0' );
@@ -410,9 +428,7 @@ class ApiQueryRecentChanges extends ApiQueryGeneratorBase {
 
 		if ( $params['slot'] !== null ) {
 			try {
-				$slotId = MediaWikiServices::getInstance()->getSlotRoleStore()->getId(
-					$params['slot']
-				);
+				$slotId = $this->slotRoleStore->getId( $params['slot'] );
 			} catch ( \Exception $e ) {
 				$slotId = null;
 			}
@@ -707,7 +723,7 @@ class ApiQueryRecentChanges extends ApiQueryGeneratorBase {
 
 	public function getCacheMode( $params ) {
 		if ( isset( $params['show'] ) &&
-			$this->includesPatrollingFlags( array_flip( $params['show'] ) )
+			$this->includesPatrollingFlags( array_fill_keys( $params['show'], true ) )
 		) {
 			return 'private';
 		}
@@ -726,7 +742,7 @@ class ApiQueryRecentChanges extends ApiQueryGeneratorBase {
 	}
 
 	public function getAllowedParams() {
-		$slotRoles = MediaWikiServices::getInstance()->getSlotRoleRegistry()->getKnownRoles();
+		$slotRoles = $this->slotRoleRegistry->getKnownRoles();
 		sort( $slotRoles, SORT_STRING );
 
 		return [
@@ -752,12 +768,10 @@ class ApiQueryRecentChanges extends ApiQueryGeneratorBase {
 			'user' => [
 				ApiBase::PARAM_TYPE => 'user',
 				UserDef::PARAM_ALLOWED_USER_TYPES => [ 'name', 'ip', 'id', 'interwiki' ],
-				UserDef::PARAM_RETURN_OBJECT => true,
 			],
 			'excludeuser' => [
 				ApiBase::PARAM_TYPE => 'user',
 				UserDef::PARAM_ALLOWED_USER_TYPES => [ 'name', 'ip', 'id', 'interwiki' ],
-				UserDef::PARAM_RETURN_OBJECT => true,
 			],
 			'tag' => null,
 			'prop' => [

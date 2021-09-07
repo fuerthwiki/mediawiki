@@ -1,21 +1,25 @@
 <?php
 
-use MediaWiki\Interwiki\ClassicInterwikiLookup;
-use MediaWiki\Interwiki\InterwikiLookup;
+use MediaWiki\Cache\CacheKeyHelper;
 use MediaWiki\Linker\LinkTarget;
 use MediaWiki\MediaWikiServices;
 use MediaWiki\Page\PageIdentity;
 use MediaWiki\Page\PageIdentityValue;
 use MediaWiki\Page\PageReference;
 use MediaWiki\Page\PageReferenceValue;
+use MediaWiki\Permissions\RestrictionStore;
+use MediaWiki\Tests\Unit\DummyServicesTrait;
 use MediaWiki\User\UserIdentityValue;
+use Wikimedia\TestingAccessWrapper;
 
 /**
  * @group Database
  * @group Title
  */
 class TitleTest extends MediaWikiIntegrationTestCase {
-	protected function setUp() : void {
+	use DummyServicesTrait;
+
+	protected function setUp(): void {
 		parent::setUp();
 
 		$this->setMwGlobals( [
@@ -30,9 +34,34 @@ class TitleTest extends MediaWikiIntegrationTestCase {
 		] );
 		$this->setUserLang( 'en' );
 		$this->setContentLang( 'en' );
+
+		// For testSecureAndSplitValid, testSecureAndSplitInvalid
+		$this->setMwGlobals( 'wgLocalInterwikis', [ 'localtestiw' ] );
+
+		// Define valid interwiki prefixes and their configuration
+		// DummyServicesTrait::getDummyInterwikiLookup
+		$interwikiLookup = $this->getDummyInterwikiLookup( [
+			// testSecureAndSplitValid, testSecureAndSplitInvalid
+			[ 'iw_prefix' => 'localtestiw', 'iw_url' => 'localtestiw' ],
+			[ 'iw_prefix' => 'remotetestiw', 'iw_url' => 'remotetestiw' ],
+
+			// testSubpages
+			'wiki',
+
+			// testIsValid
+			'wikipedia',
+
+			// testIsValidRedirectTarget
+			'acme',
+
+			// testGetFragmentForURL
+			[ 'iw_prefix' => 'de', 'iw_local' => 1 ],
+			[ 'iw_prefix' => 'zz', 'iw_local' => 0 ],
+		] );
+		$this->setService( 'InterwikiLookup', $interwikiLookup );
 	}
 
-	protected function tearDown() : void {
+	protected function tearDown(): void {
 		parent::tearDown();
 		// delete dummy pages
 		$this->getNonexistingTestPage( 'UTest1' );
@@ -99,28 +128,6 @@ class TitleTest extends MediaWikiIntegrationTestCase {
 		);
 		$res = Title::newFromId( $maxPageId + 1 );
 		$this->assertNull( $res, 'newFromID returns null for missing ids' );
-	}
-
-	/**
-	 * @covers Title::legalChars
-	 */
-	public function testLegalChars() {
-		$titlechars = Title::legalChars();
-
-		foreach ( range( 1, 255 ) as $num ) {
-			$chr = chr( $num );
-			if ( strpos( "#[]{}<>|", $chr ) !== false || preg_match( "/[\\x00-\\x1f\\x7f]/", $chr ) ) {
-				$this->assertFalse(
-					(bool)preg_match( "/[$titlechars]/", $chr ),
-					"chr($num) = $chr is not a valid titlechar"
-				);
-			} else {
-				$this->assertTrue(
-					(bool)preg_match( "/[$titlechars]/", $chr ),
-					"chr($num) = $chr is a valid titlechar"
-				);
-			}
-		}
 	}
 
 	public static function provideValidSecureAndSplit() {
@@ -214,22 +221,6 @@ class TitleTest extends MediaWikiIntegrationTestCase {
 		];
 	}
 
-	private function secureAndSplitGlobals() {
-		$this->setMwGlobals( [
-			'wgLocalInterwikis' => [ 'localtestiw' ],
-			'wgInterwikiCache' => ClassicInterwikiLookup::buildCdbHash( [
-				[
-					'iw_prefix' => 'localtestiw',
-					'iw_url' => 'localtestiw',
-				],
-				[
-					'iw_prefix' => 'remotetestiw',
-					'iw_url' => 'remotetestiw',
-				],
-			] ),
-		] );
-	}
-
 	/**
 	 * See also mediawiki.Title.test.js
 	 * @covers Title::secureAndSplit
@@ -237,7 +228,6 @@ class TitleTest extends MediaWikiIntegrationTestCase {
 	 * @note This mainly tests MediaWikiTitleCodec::parseTitle().
 	 */
 	public function testSecureAndSplitValid( $text ) {
-		$this->secureAndSplitGlobals();
 		$this->assertInstanceOf( Title::class, Title::newFromText( $text ), "Valid: $text" );
 	}
 
@@ -248,82 +238,12 @@ class TitleTest extends MediaWikiIntegrationTestCase {
 	 * @note This mainly tests MediaWikiTitleCodec::parseTitle().
 	 */
 	public function testSecureAndSplitInvalid( $text, $expectedErrorMessage ) {
-		$this->secureAndSplitGlobals();
 		try {
 			Title::newFromTextThrow( $text ); // should throw
 			$this->fail( "Title::newFromTextThrow should have thrown with $text" );
 		} catch ( MalformedTitleException $ex ) {
 			$this->assertEquals( $expectedErrorMessage, $ex->getErrorMessage(), "Invalid: $text" );
 		}
-	}
-
-	public static function provideConvertByteClassToUnicodeClass() {
-		return [
-			[
-				' %!"$&\'()*,\\-.\\/0-9:;=?@A-Z\\\\^_`a-z~\\x80-\\xFF+',
-				' %!"$&\'()*,\\-./0-9:;=?@A-Z\\\\\\^_`a-z~+\\u0080-\\uFFFF',
-			],
-			[
-				'QWERTYf-\\xFF+',
-				'QWERTYf-\\x7F+\\u0080-\\uFFFF',
-			],
-			[
-				'QWERTY\\x66-\\xFD+',
-				'QWERTYf-\\x7F+\\u0080-\\uFFFF',
-			],
-			[
-				'QWERTYf-y+',
-				'QWERTYf-y+',
-			],
-			[
-				'QWERTYf-\\x80+',
-				'QWERTYf-\\x7F+\\u0080-\\uFFFF',
-			],
-			[
-				'QWERTY\\x66-\\x80+\\x23',
-				'QWERTYf-\\x7F+#\\u0080-\\uFFFF',
-			],
-			[
-				'QWERTY\\x66-\\x80+\\xD3',
-				'QWERTYf-\\x7F+\\u0080-\\uFFFF',
-			],
-			[
-				'\\\\\\x99',
-				'\\\\\\u0080-\\uFFFF',
-			],
-			[
-				'-\\x99',
-				'\\-\\u0080-\\uFFFF',
-			],
-			[
-				'QWERTY\\-\\x99',
-				'QWERTY\\-\\u0080-\\uFFFF',
-			],
-			[
-				'\\\\x99',
-				'\\\\x99',
-			],
-			[
-				'A-\\x9F',
-				'A-\\x7F\\u0080-\\uFFFF',
-			],
-			[
-				'\\x66-\\x77QWERTY\\x88-\\x91FXZ',
-				'f-wQWERTYFXZ\\u0080-\\uFFFF',
-			],
-			[
-				'\\x66-\\x99QWERTY\\xAA-\\xEEFXZ',
-				'f-\\x7FQWERTYFXZ\\u0080-\\uFFFF',
-			],
-		];
-	}
-
-	/**
-	 * @dataProvider provideConvertByteClassToUnicodeClass
-	 * @covers Title::convertByteClassToUnicodeClass
-	 */
-	public function testConvertByteClassToUnicodeClass( $byteClass, $unicodeClass ) {
-		$this->assertEquals( $unicodeClass, Title::convertByteClassToUnicodeClass( $byteClass ) );
 	}
 
 	/**
@@ -550,16 +470,6 @@ class TitleTest extends MediaWikiIntegrationTestCase {
 	 * @covers Title::getSubpage
 	 */
 	public function testSubpage( $title, $sub, LinkTarget $expected ) {
-		$interwikiLookup = $this->createMock( InterwikiLookup::class );
-		$interwikiLookup->method( 'isValidInterwiki' )
-			->willReturnCallback(
-				static function ( $prefix ) {
-					return $prefix == 'wiki';
-				}
-			);
-
-		$this->setService( 'InterwikiLookup', $interwikiLookup );
-
 		$title = Title::newFromText( $title );
 		$expected = Title::newFromLinkTarget( $expected );
 		$actual = $title->getSubpage( $sub );
@@ -606,10 +516,6 @@ class TitleTest extends MediaWikiIntegrationTestCase {
 	}
 
 	public function provideCastFromPageReference() {
-		$fake = $this->createMock( PageReference::class );
-		$fake->method( 'getNamespace' )->willReturn( NS_MAIN );
-		$fake->method( 'getDBkey' )->willReturn( 'Test' );
-
 		yield [ new PageReferenceValue( NS_MAIN, 'Test', PageReference::LOCAL ) ];
 	}
 
@@ -628,74 +534,6 @@ class TitleTest extends MediaWikiIntegrationTestCase {
 		} else {
 			$this->assertSame( $value->getNamespace(), $title->getNamespace() );
 			$this->assertSame( $value->getDBkey(), $title->getDBkey() );
-		}
-	}
-
-	public static function provideNewFromTitleValue() {
-		return [
-			[ new TitleValue( NS_MAIN, 'Foo' ) ],
-			[ new TitleValue( NS_MAIN, 'Foo', 'bar' ) ],
-			[ new TitleValue( NS_USER, 'Hansi_Maier' ) ],
-		];
-	}
-
-	/**
-	 * @covers Title::newFromTitleValue
-	 * @dataProvider provideNewFromTitleValue
-	 */
-	public function testNewFromTitleValue( TitleValue $value ) {
-		$title = Title::newFromTitleValue( $value );
-
-		$dbkey = str_replace( ' ', '_', $value->getText() );
-		$this->assertEquals( $dbkey, $title->getDBkey() );
-		$this->assertEquals( $value->getNamespace(), $title->getNamespace() );
-		$this->assertEquals( $value->getFragment(), $title->getFragment() );
-	}
-
-	/**
-	 * @covers Title::newFromLinkTarget
-	 * @dataProvider provideNewFromTitleValue
-	 */
-	public function testNewFromLinkTarget( LinkTarget $value ) {
-		$title = Title::newFromLinkTarget( $value );
-
-		$dbkey = str_replace( ' ', '_', $value->getText() );
-		$this->assertEquals( $dbkey, $title->getDBkey() );
-		$this->assertEquals( $value->getNamespace(), $title->getNamespace() );
-		$this->assertEquals( $value->getFragment(), $title->getFragment() );
-	}
-
-	/**
-	 * @covers Title::newFromLinkTarget
-	 */
-	public function testNewFromLinkTarget_clone() {
-		$title = Title::newFromText( __METHOD__ );
-		$this->assertSame( $title, Title::newFromLinkTarget( $title ) );
-
-		// The Title::NEW_CLONE flag should ensure that a fresh instance is returned.
-		$clone = Title::newFromLinkTarget( $title, Title::NEW_CLONE );
-		$this->assertNotSame( $title, $clone );
-		$this->assertTrue( $clone->equals( $title ) );
-	}
-
-	public function provideCastFromLinkTarget() {
-		return array_merge( [ [ null ] ], self::provideNewFromTitleValue() );
-	}
-
-	/**
-	 * @covers Title::castFromLinkTarget
-	 * @dataProvider provideCastFromLinkTarget
-	 */
-	public function testCastFromLinkTarget( $value ) {
-		$title = Title::castFromLinkTarget( $value );
-
-		if ( $value === null ) {
-			$this->assertNull( $title );
-		} else {
-			$dbkey = str_replace( ' ', '_', $value->getText() );
-			$this->assertSame( $dbkey, $title->getDBkey() );
-			$this->assertSame( $value->getNamespace(), $title->getNamespace() );
-			$this->assertSame( $value->getFragment(), $title->getFragment() );
 		}
 	}
 
@@ -781,15 +619,6 @@ class TitleTest extends MediaWikiIntegrationTestCase {
 	 * @param bool $isValid
 	 */
 	public function testIsValid( Title $title, $isValid ) {
-		$iwLookup = $this->createMock( InterwikiLookup::class );
-		$iwLookup->method( 'isValidInterwiki' )
-			->willReturn( true );
-
-		$this->setService(
-			'InterwikiLookup',
-			$iwLookup
-		);
-
 		$this->assertEquals( $isValid, $title->isValid(), $title->getFullText() );
 	}
 
@@ -824,15 +653,7 @@ class TitleTest extends MediaWikiIntegrationTestCase {
 	 * @param bool $isValid
 	 */
 	public function testIsValidRedirectTarget( Title $title, $isValid ) {
-		$iwLookup = $this->createMock( InterwikiLookup::class );
-		$iwLookup->method( 'isValidInterwiki' )
-			->willReturn( true );
-
-		$this->setService(
-			'InterwikiLookup',
-			$iwLookup
-		);
-
+		// InterwikiLookup is configured in setUp()
 		$this->assertEquals( $isValid, $title->isValidRedirectTarget(), $title->getFullText() );
 	}
 
@@ -901,7 +722,11 @@ class TitleTest extends MediaWikiIntegrationTestCase {
 
 		$article = new Article( $title );
 		$page = $article->getPage();
-		$page->doEditContent( new WikitextContent( 'Some [[link]]' ), 'summary' );
+		$page->doUserEditContent(
+			new WikitextContent( 'Some [[link]]' ),
+			$this->getTestSysop()->getUser(),
+			'summary'
+		);
 
 		// Tell Title it doesn't know whether it exists
 		$title->mArticleID = -1;
@@ -931,7 +756,11 @@ class TitleTest extends MediaWikiIntegrationTestCase {
 
 		$article = new Article( $title );
 		$page = $article->getPage();
-		$page->doEditContent( new WikitextContent( 'Some [[link]]' ), 'summary' );
+		$page->doUserEditContent(
+			new WikitextContent( 'Some [[link]]' ),
+			$this->getTestSysop()->getUser(),
+			'summary'
+		);
 
 		$this->assertGreaterThan( 0, $title->getArticleID() );
 		$this->assertSame( $title->getArticleID(), $title->getId() );
@@ -1189,17 +1018,6 @@ class TitleTest extends MediaWikiIntegrationTestCase {
 	 * @dataProvider provideCreateFragmentTitle
 	 */
 	public function testCreateFragmentTitle( Title $title, $fragment ) {
-		$this->setMwGlobals( [
-			'wgInterwikiCache' => ClassicInterwikiLookup::buildCdbHash( [
-				[
-					'iw_prefix' => 'interwiki',
-					'iw_url' => 'http://example.com/',
-					'iw_local' => 0,
-					'iw_trans' => 0,
-				],
-			] ),
-		] );
-
 		$fragmentTitle = $title->createFragmentTarget( $fragment );
 
 		$this->assertEquals( $title->getNamespace(), $fragmentTitle->getNamespace() );
@@ -1306,34 +1124,10 @@ class TitleTest extends MediaWikiIntegrationTestCase {
 			'wgFragmentMode' => [ 'html5' ],
 			'wgExternalInterwikiFragmentMode' => 'legacy',
 		] );
-		$dbw = wfGetDB( DB_PRIMARY );
-		$dbw->insert( 'interwiki',
-			[
-				[
-					'iw_prefix' => 'de',
-					'iw_url' => 'http://de.wikipedia.org/wiki/',
-					'iw_api' => 'http://de.wikipedia.org/w/api.php',
-					'iw_wikiid' => 'dewiki',
-					'iw_local' => 1,
-					'iw_trans' => 0,
-				],
-				[
-					'iw_prefix' => 'zz',
-					'iw_url' => 'http://zzwiki.org/wiki/',
-					'iw_api' => 'http://zzwiki.org/w/api.php',
-					'iw_wikiid' => 'zzwiki',
-					'iw_local' => 0,
-					'iw_trans' => 0,
-				],
-			],
-			__METHOD__,
-			[ 'IGNORE' ]
-		);
+		// InterwikiLookup is configured in setUp()
 
 		$title = Title::newFromText( $titleStr );
 		self::assertEquals( $expected, $title->getFragmentForURL() );
-
-		$dbw->delete( 'interwiki', '*', __METHOD__ );
 	}
 
 	public function provideGetFragmentForURL() {
@@ -1466,24 +1260,6 @@ class TitleTest extends MediaWikiIntegrationTestCase {
 			new UserIdentityValue( 7, 'Foo' ),
 			false
 		];
-	}
-
-	/**
-	 * @covers Title::getPreviousRevisionID
-	 * @covers MediaWiki\Revision\RevisionStore::getRelativeRevision
-	 */
-	public function testGetPreviousRevisionID_deprecated() {
-		$this->expectDeprecation();
-		Title::makeTitle( NS_MAIN, 'Foo' )->getPreviousRevisionID( 2233 );
-	}
-
-	/**
-	 * @covers Title::getNextRevisionID
-	 * @covers Title::getRelativeRevisionID
-	 */
-	public function testGetNextRevisionID_deprecated() {
-		$this->expectDeprecation();
-		Title::makeTitle( NS_MAIN, 'Foo' )->getNextRevisionID( 123456789 );
 	}
 
 	/**
@@ -1641,10 +1417,9 @@ class TitleTest extends MediaWikiIntegrationTestCase {
 		$title = $this->getExistingTestPage( 'UTest1' )->getTitle();
 		$title->loadRestrictions();
 		$this->assertTrue( $title->areRestrictionsLoaded() );
-		$this->assertEquals(
-			$title->getRestrictionExpiry( 'create' ),
-			'infinity'
-		);
+		$this->assertFalse( $title->getRestrictionExpiry( 'create' ),
+			"Existing page can't have create protection" );
+		$this->assertSame( 'infinity', $title->getRestrictionExpiry( 'edit' ) );
 		$page = $this->getNonexistingTestPage( 'UTest1' );
 		$title = $page->getTitle();
 		$protectExpiry = wfTimestamp( TS_MW, time() + 10000 );
@@ -1656,7 +1431,7 @@ class TitleTest extends MediaWikiIntegrationTestCase {
 			'test',
 			$this->getTestSysop()->getUser()
 		);
-		$title->mRestrictionsLoaded = false;
+		$title->flushRestrictions();
 		$title->loadRestrictions();
 		$this->assertSame(
 			$title->getRestrictionExpiry( 'create' ),
@@ -1712,16 +1487,132 @@ class TitleTest extends MediaWikiIntegrationTestCase {
 	}
 
 	/**
+	 * @dataProvider provideRestrictionStoreForwarding
+	 * @covers Title::getFilteredRestrictionTypes
+	 * @covers Title::getRestrictionTypes
+	 * @covers Title::getTitleProtection
+	 * @covers Title::deleteTitleProtection
+	 * @covers Title::isSemiProtected
+	 * @covers Title::isProtected
+	 * @covers Title::isCascadeProtected
+	 * @covers Title::areCascadeProtectionSourcesLoaded
+	 * @covers Title::getCascadeProtectionSources
+	 * @covers Title::areRestrictionsLoaded
+	 * @covers Title::getRestrictions
+	 * @covers Title::getAllRestrictions
+	 * @covers Title::getRestrictionExpiry
+	 * @covers Title::areRestrictionsCascading
+	 * @covers Title::loadRestrictionsFromRows
+	 * @covers Title::loadRestrictions
+	 * @covers Title::flushRestrictions
+	 */
+	public function testRestrictionStoreForwarding(
+		string $method, array $params, $return, array $options = []
+	) {
+		$expectedParams = $options['expectedParams'] ?? $params;
+
+		if ( isset( $options['static'] ) ) {
+			$callee = 'Title';
+		} else {
+			$callee = $this->getExistingTestPage()->getTitle();
+			$expectedParams = array_merge( [ $callee ], $expectedParams );
+		}
+
+		$mockRestrictionStore = $this->createMock( RestrictionStore::class );
+
+		$expectedMethod = $options['expectedMethod'] ?? $method;
+
+		// Don't try to forward to a method that doesn't exist!
+		$this->assertIsCallable( [ $mockRestrictionStore, $expectedMethod ] );
+
+		$expectedCall = $mockRestrictionStore->expects( $this->once() )
+			->method( $expectedMethod )
+			->with( ...$expectedParams );
+		if ( !isset( $options['void'] ) ) {
+			$expectedCall->willReturn( $return );
+		}
+
+		$mockRestrictionStore->expects( $this->never() )
+			->method( $this->anythingBut( $expectedMethod ) );
+
+		$this->setService( 'RestrictionStore', $mockRestrictionStore );
+
+		$options['expectedReturn'] = $options['expectedReturn'] ?? $return;
+
+		$comparisonMethod = isset( $options['weakCompareReturn'] ) ? 'assertEquals' : 'assertSame';
+
+		$this->$comparisonMethod( $options['expectedReturn'], [ $callee, $method ]( ...$params ) );
+	}
+
+	public static function provideRestrictionStoreForwarding() {
+		$pageIdentity = PageIdentityValue::localIdentity( 144, NS_MAIN, 'Sample' );
+		$title = Title::castFromPageIdentity( $pageIdentity );
+		return [
+			[ 'getFilteredRestrictionTypes', [ true ], [ 'abc' ],
+				[ 'static' => true, 'expectedMethod' => 'listAllRestrictionTypes' ] ],
+			[ 'getFilteredRestrictionTypes', [ false ], [ 'def' ],
+				[ 'static' => true, 'expectedMethod' => 'listAllRestrictionTypes' ] ],
+			[ 'getRestrictionTypes', [], [ 'ghi' ],
+				[ 'expectedMethod' => 'listApplicableRestrictionTypes' ] ],
+			[ 'getTitleProtection', [], [ 'jkl' ], [ 'expectedMethod' => 'getCreateProtection' ] ],
+			[ 'getTitleProtection', [], null,
+				[ 'expectedMethod' => 'getCreateProtection', 'expectedReturn' => false ] ],
+			[ 'deleteTitleProtection', [], null,
+				[ 'expectedMethod' => 'deleteCreateProtection', 'void' => true ] ],
+			[ 'isSemiProtected', [ 'phlebotomize' ], true ],
+			[ 'isSemiProtected', [ 'splecotomize' ], false ],
+			[ 'isProtected', [ 'strezotomize' ], true ],
+			[ 'isProtected', [ 'chrelotomize' ], false ],
+			[ 'isCascadeProtected', [], true ],
+			[ 'isCascadeProtected', [], false ],
+			[ 'areCascadeProtectionSourcesLoaded', [ true ], true, [ 'expectedParams' => [] ] ],
+			[ 'areCascadeProtectionSourcesLoaded', [ true ], false, [ 'expectedParams' => [] ] ],
+			[ 'areCascadeProtectionSourcesLoaded', [ false ], true, [ 'expectedParams' => [] ] ],
+			[ 'areCascadeProtectionSourcesLoaded', [ false ], false, [ 'expectedParams' => [] ] ],
+			[ 'getCascadeProtectionSources', [], [ [ $pageIdentity ], [ 'mno' ] ],
+				[ 'expectedReturn' => [ [ $title ], [ 'mno' ] ], 'weakCompareReturn' => true ] ],
+			[ 'getCascadeProtectionSources', [], [ [], [] ],
+				[ 'expectedReturn' => [ false, [] ] ] ],
+			[ 'getCascadeProtectionSources', [ true ], [ [ $pageIdentity ], [ 'mno' ] ],
+				[ 'expectedParams' => [], 'expectedReturn' => [ [ $title ], [ 'mno' ] ],
+				'weakCompareReturn' => true ] ],
+			[ 'getCascadeProtectionSources', [ true ], [ [], [] ],
+				[ 'expectedParams' => [], 'expectedReturn' => [ false, [] ] ] ],
+			[ 'getCascadeProtectionSources', [ false ], false,
+				[ 'expectedMethod' => 'isCascadeProtected', 'expectedParams' => [],
+				'expectedReturn' => [ false, [] ] ] ],
+			[ 'getCascadeProtectionSources', [ false ], true,
+				[ 'expectedMethod' => 'isCascadeProtected', 'expectedParams' => [],
+				'expectedReturn' => [ true, [] ] ] ],
+			[ 'areRestrictionsLoaded', [], true ],
+			[ 'areRestrictionsLoaded', [], false ],
+			[ 'getRestrictions', [ 'stu' ], [ 'vwx' ] ],
+			[ 'getAllRestrictions', [], [ 'yza' ] ],
+			[ 'getRestrictionExpiry', [ 'bcd' ], 'efg' ],
+			[ 'getRestrictionExpiry', [ 'hij' ], null, [ 'expectedReturn' => false ] ],
+			[ 'areRestrictionsCascading', [], true ],
+			[ 'areRestrictionsCascading', [], false ],
+			[ 'loadRestrictionsFromRows', [ [ 'hij' ], 'klm' ], null, [ 'void' => true ] ],
+			[ 'loadRestrictions', [ 'nop', 123 ], null,
+				[ 'void' => true, 'expectedParams' => [ 123, 'nop' ] ] ],
+			[ 'flushRestrictions', [], null, [ 'void' => true ] ],
+		];
+	}
+
+	/**
 	 * @covers Title::getRestrictions
 	 */
 	public function testGetRestrictions() {
 		$title = $this->getExistingTestPage( 'UTest1' )->getTitle();
-		$title->mRestrictions = [
-			'a' => [ 'sysop' ],
-			'b' => [ 'sysop' ],
-			'c' => [ 'sysop' ]
-		];
-		$title->mRestrictionsLoaded = true;
+		$rs = MediaWikiServices::getInstance()->getRestrictionStore();
+		$wrapper = TestingAccessWrapper::newFromObject( $rs );
+		$wrapper->cache = [ CacheKeyHelper::getKeyForPage( $title ) => [
+			'restrictions' => [
+				'a' => [ 'sysop' ],
+				'b' => [ 'sysop' ],
+				'c' => [ 'sysop' ]
+			],
+		] ];
 		$this->assertArrayEquals( [ 'sysop' ], $title->getRestrictions( 'a' ) );
 		$this->assertArrayEquals( [], $title->getRestrictions( 'error' ) );
 		// TODO: maybe test if loadRestrictionsFromRows() is called?
@@ -1731,15 +1622,19 @@ class TitleTest extends MediaWikiIntegrationTestCase {
 	 * @covers Title::getAllRestrictions
 	 */
 	public function testGetAllRestrictions() {
-		$title = $this->getExistingTestPage( 'UTest1' )->getTitle();
-		$title->mRestrictions = [
+		$restrictions = [
 			'a' => [ 'sysop' ],
 			'b' => [ 'sysop' ],
-			'c' => [ 'sysop' ]
+			'c' => [ 'sysop' ],
 		];
-		$title->mRestrictionsLoaded = true;
+		$title = $this->getExistingTestPage( 'UTest1' )->getTitle();
+		$rs = MediaWikiServices::getInstance()->getRestrictionStore();
+		$wrapper = TestingAccessWrapper::newFromObject( $rs );
+		$wrapper->cache = [ CacheKeyHelper::getKeyForPage( $title ) => [
+			'restrictions' => $restrictions
+		] ];
 		$this->assertArrayEquals(
-			$title->mRestrictions,
+			$restrictions,
 			$title->getAllRestrictions()
 		);
 	}
@@ -1749,13 +1644,15 @@ class TitleTest extends MediaWikiIntegrationTestCase {
 	 */
 	public function testGetRestrictionExpiry() {
 		$title = $this->getExistingTestPage( 'UTest1' )->getTitle();
-		$reflection = new ReflectionClass( $title );
-		$reflection_property = $reflection->getProperty( 'mRestrictionsExpiry' );
-		$reflection_property->setAccessible( true );
-		$reflection_property->setValue( $title, [
-			'a' => 'infinity', 'b' => 'infinity', 'c' => 'infinity'
-		] );
-		$title->mRestrictionsLoaded = true;
+		$rs = MediaWikiServices::getInstance()->getRestrictionStore();
+		$wrapper = TestingAccessWrapper::newFromObject( $rs );
+		$wrapper->cache = [ CacheKeyHelper::getKeyForPage( $title ) => [
+			'expiry' => [
+				'a' => 'infinity', 'b' => 'infinity', 'c' => 'infinity'
+			],
+			// XXX This is bogus, restrictions will never be empty when expiry is not
+			'restrictions' => [],
+		] ];
 		$this->assertSame( 'infinity', $title->getRestrictionExpiry( 'a' ) );
 		$this->assertArrayEquals( [], $title->getRestrictions( 'error' ) );
 	}
@@ -1765,7 +1662,6 @@ class TitleTest extends MediaWikiIntegrationTestCase {
 	 */
 	public function testGetTitleProtection() {
 		$title = $this->getNonexistingTestPage( 'UTest1' )->getTitle();
-		$title->mTitleProtection = false;
 		$this->assertFalse( $title->getTitleProtection() );
 	}
 
@@ -1774,17 +1670,19 @@ class TitleTest extends MediaWikiIntegrationTestCase {
 	 */
 	public function testIsSemiProtected() {
 		$title = $this->getExistingTestPage( 'UTest1' )->getTitle();
-		$title->mRestrictions = [
-			'edit' => [ 'sysop' ]
-		];
 		$this->setMwGlobals( [
 			'wgSemiprotectedRestrictionLevels' => [ 'autoconfirmed' ],
 			'wgRestrictionLevels' => [ '', 'autoconfirmed', 'sysop' ]
 		] );
+		$rs = MediaWikiServices::getInstance()->getRestrictionStore();
+		$wrapper = TestingAccessWrapper::newFromObject( $rs );
+		$wrapper->cache = [ CacheKeyHelper::getKeyForPage( $title ) => [
+			'restrictions' => [ 'edit' => [ 'sysop' ] ],
+		] ];
 		$this->assertFalse( $title->isSemiProtected( 'edit' ) );
-		$title->mRestrictions = [
-			'edit' => [ 'autoconfirmed' ]
-		];
+		$wrapper->cache = [ CacheKeyHelper::getKeyForPage( $title ) => [
+			'restrictions' => [ 'edit' => [ 'autoconfirmed' ] ],
+		] ];
 		$this->assertTrue( $title->isSemiProtected( 'edit' ) );
 	}
 
@@ -1805,13 +1703,15 @@ class TitleTest extends MediaWikiIntegrationTestCase {
 			'wgRestrictionLevels' => [ '', 'autoconfirmed', 'sysop' ],
 			'wgRestrictionTypes' => [ 'create', 'edit', 'move', 'upload' ]
 		] );
-		$title->mRestrictions = [
-			'edit' => [ 'sysop' ]
-		];
-		$this->assertFalse( $title->isProtected( 'edit' ) );
-		$title->mRestrictions = [
-			'edit' => [ 'test' ]
-		];
+		$rs = MediaWikiServices::getInstance()->getRestrictionStore();
+		$wrapper = TestingAccessWrapper::newFromObject( $rs );
+		$wrapper->cache = [ CacheKeyHelper::getKeyForPage( $title ) => [
+			'restrictions' => [ 'edit' => [ 'sysop' ] ],
+		] ];
+		$this->assertTrue( $title->isProtected( 'edit' ) );
+		$wrapper->cache = [ CacheKeyHelper::getKeyForPage( $title ) => [
+			'restrictions' => [ 'edit' => [ 'test' ] ],
+		] ];
 		$this->assertFalse( $title->isProtected( 'edit' ) );
 	}
 
@@ -1819,6 +1719,7 @@ class TitleTest extends MediaWikiIntegrationTestCase {
 	 * @covers Title::isNamespaceProtected
 	 */
 	public function testIsNamespaceProtected() {
+		$this->hideDeprecated( 'Title::isNamespaceProtected' );
 		$title = $this->getExistingTestPage( 'UTest1' )->getTitle();
 		$this->setMwGlobals( [
 			'wgNamespaceProtection' => []
@@ -1842,17 +1743,22 @@ class TitleTest extends MediaWikiIntegrationTestCase {
 	public function testIsCascadeProtected() {
 		$page = $this->getExistingTestPage( 'UTest1' );
 		$title = $page->getTitle();
-		$reflection = new ReflectionClass( $title );
-		$reflection_property = $reflection->getProperty( 'mHasCascadingRestrictions' );
-		$reflection_property->setAccessible( true );
-		$reflection_property->setValue( $title, true );
+		$rs = MediaWikiServices::getInstance()->getRestrictionStore();
+		$wrapper = TestingAccessWrapper::newFromObject( $rs );
+		$wrapper->cache = [ CacheKeyHelper::getKeyForPage( $title ) => [
+			'has_cascading' => true,
+		] ];
 		$this->assertTrue( $title->isCascadeProtected() );
-		$reflection_property->setValue( $title, null );
+		$wrapper->cache = [];
 		$this->assertFalse( $title->isCascadeProtected() );
-		$reflection_property->setValue( $title, null );
+		$wrapper->cache = [];
 		$cascade = 1;
 		$anotherPage = $this->getExistingTestPage( 'UTest2' );
-		$anotherPage->doEditContent( new WikitextContent( '{{:UTest1}}' ), 'test' );
+		$anotherPage->doUserEditContent(
+			new WikitextContent( '{{:UTest1}}' ),
+			$this->getTestSysop()->getUser(),
+			'test'
+		);
 		$anotherPage->doUpdateRestrictions(
 			[ 'edit' => 'sysop' ],
 			[],
@@ -1865,6 +1771,7 @@ class TitleTest extends MediaWikiIntegrationTestCase {
 
 	/**
 	 * @covers Title::getCascadeProtectionSources
+	 * @group Broken
 	 */
 	public function testGetCascadeProtectionSources() {
 		$page = $this->getExistingTestPage( 'UTest1' );
@@ -1903,7 +1810,11 @@ class TitleTest extends MediaWikiIntegrationTestCase {
 
 		$cascade = 1;
 		$anotherPage = $this->getExistingTestPage( 'UTest2' );
-		$anotherPage->doEditContent( new WikitextContent( '{{:UTest1}}' ), 'test' );
+		$anotherPage->doUserEditContent(
+			new WikitextContent( '{{:UTest1}}' ),
+			$this->getTestSysop()->getUser(),
+			'test'
+		);
 		$anotherPage->doUpdateRestrictions(
 			[ 'edit' => 'sysop' ],
 			[],
@@ -1976,5 +1887,178 @@ class TitleTest extends MediaWikiIntegrationTestCase {
 		$this->getExistingTestPage( $title->getSubpage( 'B' ) );
 
 		$this->assertEmpty( $title->getSubpages() );
+	}
+
+	/**
+	 * @covers Title::getNsText
+	 * @dataProvider provideNamespaces
+	 */
+	public function testGetNsText( $namespace, $expected ) {
+		if ( $namespace instanceof Title ) {
+			$this->assertSame( $expected, $namespace->getNsText() );
+		} else {
+			$actual = Title::makeTitle( $namespace, 'Title_test' )->getNsText();
+			$this->assertSame( $expected, $actual );
+		}
+	}
+
+	public function provideNamespaces() {
+		// For ->isExternal() code path, construct a title with interwiki
+		$title = Title::makeTitle( NS_FILE, 'test', 'frag', 'meta' );
+		return [
+			[ NS_MAIN, '' ],
+			[ NS_FILE, 'File' ],
+			[ NS_MEDIA, 'Media' ],
+			[ NS_TALK, 'Talk' ],
+			[ NS_CATEGORY, 'Category' ],
+			[ $title, 'File' ],
+		];
+	}
+
+	/**
+	 * @covers Title::getSubjectNsText
+	 * @dataProvider providePagesWithSubjects
+	 */
+	public function testGetSubjectNsText( Title $title, $expected ) {
+		$actual = $title->getSubjectNsText();
+		$this->assertSame( $expected, $actual );
+	}
+
+	public function providePagesWithSubjects() {
+		return [
+			[ Title::makeTitle( NS_USER_TALK, 'User_test' ), 'User' ],
+			[ Title::makeTitle( NS_PROJECT, 'Test' ), 'Project' ],
+			[ Title::makeTitle( NS_MAIN, 'Test' ), '' ],
+			[ Title::makeTitle( NS_CATEGORY, 'Cat_test' ), 'Category' ],
+		];
+	}
+
+	/**
+	 * @covers Title::getTalkNsText
+	 * @dataProvider provideTitlesWithTalkPages
+	 */
+	public function testGetTalkNsText( Title $title, $expected ) {
+		$actual = $title->getTalkNsText();
+		$this->assertSame( $expected, $actual );
+	}
+
+	public function provideTitlesWithTalkPages() {
+		return [
+			[ Title::makeTitle( NS_HELP, 'Help page' ), 'Help_talk' ],
+			[ Title::newMainPage(), 'Talk' ],
+			[ Title::makeTitle( NS_PROJECT, 'Test' ), 'Project_talk' ],
+		];
+	}
+
+	/**
+	 * @covers Title::isSpecial
+	 */
+	public function testIsSpecial() {
+		$title = Title::makeTitle( NS_SPECIAL, 'Recentchanges/Subpage' );
+		$this->assertTrue( $title->isSpecial( 'Recentchanges' ) );
+	}
+
+	/**
+	 * @covers Title::isSpecial
+	 */
+	public function testIsNotSpecial() {
+		$title = Title::newFromText( 'NotSpecialPage/Subpage', NS_SPECIAL );
+		$this->assertFalse( $title->isSpecial( 'NotSpecialPage' ) );
+	}
+
+	/**
+	 * @covers Title::isTalkPage
+	 */
+	public function testIsTalkPage() {
+		$title = Title::newFromText( 'Talk page', NS_TALK );
+		$this->assertTrue( $title->isTalkPage() );
+
+		$titleNotInTalkNs = Title::makeTitle( NS_HELP, 'Test' );
+		$this->assertFalse( $titleNotInTalkNs->isTalkPage() );
+	}
+
+	/**
+	 * @covers Title::getBacklinkCache
+	 */
+	public function testGetBacklinkCache() {
+		$backLinkCache = Title::makeTitle( NS_FILE, 'Test' )->getBacklinkCache();
+		$this->assertInstanceOf( BacklinkCache::class, $backLinkCache );
+	}
+
+	/**
+	 * @covers Title::isSubpage
+	 * @covers Title::isSubpageOf
+	 * @dataProvider provideNsWithSubpagesSupport
+	 */
+	public function testIsSubpageOfWithNamespacesSubpages( $namespace, $pageName, $subpageName ) {
+		$page = Title::makeTitle( $namespace, $pageName, '', 'meta' );
+		$subPage = Title::makeTitle( $namespace, $subpageName, '', 'meta' );
+
+		$this->assertTrue( $subPage->isSubpageOf( $page ) );
+		$this->assertTrue( $subPage->isSubpage() );
+	}
+
+	public function provideNsWithSubpagesSupport() {
+		return [
+			[ NS_HELP, 'Mainhelp', 'Mainhelp/Subhelp' ],
+			[ NS_USER, 'Mainuser', 'Mainuser/Subuser' ],
+			[ NS_TALK, 'Maintalk', 'Maintalk/Subtalk' ],
+			[ NS_PROJECT, 'Mainproject', 'Mainproject/Subproject' ],
+		];
+	}
+
+	/**
+	 * @covers Title::isSubpage
+	 * @covers Title::isSubpageOf
+	 * @dataProvider provideNsWithNoSubpages
+	 */
+	public function testIsSubpageOfWithoutNamespacesSubpages( $namespace, $pageName, $subpageName ) {
+		$page = Title::makeTitle( $namespace, $pageName, '', 'meta' );
+		$subPage = Title::makeTitle( $namespace, $subpageName, '', 'meta' );
+
+		$this->assertFalse( $page->isSubpageOf( $page ) );
+		$this->assertFalse( $subPage->isSubpage() );
+	}
+
+	public function provideNsWithNoSubpages() {
+		return [
+			[ NS_CATEGORY, 'Maincat', 'Maincat/Subcat' ],
+			[ NS_MAIN, 'Mainpage', 'Mainpage/Subpage' ]
+		];
+	}
+
+	/**
+	 * @covers Title::getEditURL
+	 * @dataProvider provideTitleEditURLs
+	 */
+	public function testGetEditURL( Title $title, $expected ) {
+		$actual = $title->getEditURL();
+		$this->assertSame( $expected, $actual );
+	}
+
+	public function provideTitleEditURLs() {
+		return [
+			[ Title::newFromText( 'Title', NS_MAIN ), '/w/index.php?title=Title&action=edit' ],
+			[ Title::makeTitle( NS_HELP, 'Test', '', 'mw' ), '' ],
+			[ Title::newFromText( 'Test', NS_HELP ), '/w/index.php?title=Help:Test&action=edit' ],
+		];
+	}
+
+	/**
+	 * @covers Title::getEditURL
+	 * @dataProvider provideTitleEditURLsWithActionPaths
+	 */
+	public function testGetEditUrlWithActionPaths( Title $title, $expected ) {
+		$this->setMwGlobals( 'wgActionPaths', [ 'edit' => '/wiki/edit/$1' ] );
+		$actual = $title->getEditURL();
+		$this->assertSame( $expected, $actual );
+	}
+
+	public function provideTitleEditURLsWithActionPaths() {
+		return [
+			[ Title::newFromText( 'Title', NS_MAIN ), '/wiki/edit/Title' ],
+			[ Title::makeTitle( NS_HELP, 'Test', '', 'mw' ), '' ],
+			[ Title::newFromText( 'Test', NS_HELP ), '/wiki/edit/Help:Test' ],
+		];
 	}
 }

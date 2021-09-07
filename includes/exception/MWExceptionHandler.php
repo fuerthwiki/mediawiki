@@ -21,6 +21,7 @@
 use MediaWiki\Logger\LoggerFactory;
 use MediaWiki\MediaWikiServices;
 use Psr\Log\LogLevel;
+use Wikimedia\NormalizedException\INormalizedException;
 use Wikimedia\Rdbms\DBError;
 use Wikimedia\Rdbms\DBQueryError;
 
@@ -36,7 +37,7 @@ class MWExceptionHandler {
 	/** @var string Error reported by direct logException() call */
 	public const CAUGHT_BY_OTHER = 'other';
 
-	/** @var string $reservedMemory */
+	/** @var string */
 	protected static $reservedMemory;
 
 	/**
@@ -47,7 +48,7 @@ class MWExceptionHandler {
 	 * As such, these should be sent to MediaWiki's "exception" channel.
 	 * Normally, the error handler logs them to the "error" channel.
 	 *
-	 * @var array $fatalErrorTypes
+	 * @var array
 	 */
 	protected static $fatalErrorTypes = [
 		E_ERROR,
@@ -132,7 +133,7 @@ class MWExceptionHandler {
 			// to rollback some databases due to connection issues or exceptions.
 			// However, any sane DB driver will rollback implicitly anyway.
 			try {
-				$services->getDBLoadBalancerFactory()->rollbackMasterChanges( __METHOD__ );
+				$services->getDBLoadBalancerFactory()->rollbackPrimaryChanges( __METHOD__ );
 			} catch ( DBError $e2 ) {
 				// If the DB is unreacheable, rollback() will throw an error
 				// and the error report() method might need messages from the DB,
@@ -474,7 +475,11 @@ TXT;
 
 		if ( $e instanceof DBQueryError ) {
 			$message = "A database query error has occurred. Did you forget to run"
-				. " your application's database schema updater after upgrading?\n\n"
+				. " your application's database schema updater after upgrading"
+				. " or after adding a new extension?\n\nPlease see"
+				. " https://www.mediawiki.org/wiki/Special:MyLanguage/Manual:Upgrading and"
+				. " https://www.mediawiki.org/wiki/Special:MyLanguage/Manual:How_to_debug"
+				. " for more information.\n\n"
 				. $message;
 		}
 
@@ -491,7 +496,11 @@ TXT;
 	 * @return string
 	 */
 	public static function getLogNormalMessage( Throwable $e ) {
-		$message = $e->getMessage();
+		if ( $e instanceof INormalizedException ) {
+			$message = $e->getNormalizedMessage();
+		} else {
+			$message = $e->getMessage();
+		}
 		if ( !$e instanceof ErrorException ) {
 			// ErrorException is something we use internally to represent
 			// PHP errors (runtime warnings that aren't thrown or caught),
@@ -528,7 +537,7 @@ TXT;
 	 * @return array
 	 */
 	public static function getLogContext( Throwable $e, $catcher = self::CAUGHT_BY_OTHER ) {
-		return [
+		$context = [
 			'exception' => $e,
 			'exception_url' => self::getURL() ?: '[no req]',
 			// The reqId context key use the same familiar name and value as the top-level field
@@ -540,6 +549,10 @@ TXT;
 			'reqId' => WebRequest::getRequestId(),
 			'caught_by' => $catcher
 		];
+		if ( $e instanceof INormalizedException ) {
+			$context += $e->getMessageContext();
+		}
+		return $context;
 	}
 
 	/**

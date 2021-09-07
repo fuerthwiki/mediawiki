@@ -16,6 +16,8 @@ use Wikimedia\TestingAccessWrapper;
  * @covers MediaWiki\Session\SessionBackend
  */
 class SessionBackendTest extends MediaWikiIntegrationTestCase {
+	use SessionProviderTestTrait;
+
 	private const SESSIONID = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
 
 	/** @var SessionManager */
@@ -70,10 +72,7 @@ class SessionBackendTest extends MediaWikiIntegrationTestCase {
 		if ( !$this->provider ) {
 			$this->provider = new \DummySessionProvider();
 		}
-		$this->provider->setLogger( $logger );
-		$this->provider->setConfig( $this->config );
-		$this->provider->setManager( $this->manager );
-		$this->provider->setHookContainer( $hookContainer );
+		$this->initProvider( $this->provider, null, $this->config, $this->manager, $hookContainer );
 
 		$info = new SessionInfo( SessionInfo::MIN_PRIORITY, [
 			'provider' => $this->provider,

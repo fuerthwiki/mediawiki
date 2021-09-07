@@ -139,9 +139,6 @@ class RecentChange implements Taggable {
 	 */
 	private $editResult = null;
 
-	/**
-	 * @var array Array of change types
-	 */
 	private const CHANGE_TYPES = [
 		'edit' => RC_EDIT,
 		'new' => RC_NEW,
@@ -190,7 +187,7 @@ class RecentChange implements Taggable {
 	 * Parsing RC_* constants to human-readable test
 	 * @since 1.24
 	 * @param int $rcType
-	 * @return string $type
+	 * @return string
 	 */
 	public static function parseFromRCType( $rcType ) {
 		return array_search( $rcType, self::CHANGE_TYPES, true ) ?: "$rcType";
@@ -364,11 +361,12 @@ class RecentChange implements Taggable {
 
 	/**
 	 * Get the User object of the person who performed this change.
-	 * @deprecated since 1.36, use getPerformerIdentity() instead.
+	 * @deprecated since 1.36, hard deprecated since 1.37, use getPerformerIdentity() instead.
 	 *
 	 * @return User
 	 */
 	public function getPerformer(): User {
+		wfDeprecated( __METHOD__, '1.36' );
 		if ( !$this->mPerformer instanceof User ) {
 			$this->mPerformer = User::newFromIdentity( $this->getPerformerIdentity() );
 		}
@@ -502,7 +500,8 @@ class RecentChange implements Taggable {
 
 		# E-mail notifications
 		if ( $wgUseEnotif || $wgShowUpdatedMarker ) {
-			$editor = $this->getPerformer();
+			$userFactory = MediaWikiServices::getInstance()->getUserFactory();
+			$editor = $userFactory->newFromUserIdentity( $this->getPerformerIdentity() );
 			$page = $this->getPage();
 			$title = Title::castFromPageReference( $page );
 

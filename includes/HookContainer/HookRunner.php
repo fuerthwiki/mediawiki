@@ -8,6 +8,7 @@ use IContextSource;
 use MediaWiki\Linker\LinkRenderer;
 use MediaWiki\Linker\LinkTarget;
 use MediaWiki\Revision\RevisionRecord;
+use MediaWiki\User\UserIdentity;
 use ParserOptions;
 use ResourceLoaderContext;
 use Skin;
@@ -28,6 +29,7 @@ use Title;
  * @internal
  */
 class HookRunner implements
+	\MediaWiki\Actions\Hook\GetActionNameHook,
 	\MediaWiki\Auth\Hook\AuthManagerLoginAuthenticateAuditHook,
 	\MediaWiki\Auth\Hook\ExemptFromAccountCreationThrottleHook,
 	\MediaWiki\Auth\Hook\LocalUserCreatedHook,
@@ -65,7 +67,6 @@ class HookRunner implements
 	\MediaWiki\Content\Hook\PageContentLanguageHook,
 	\MediaWiki\Content\Hook\PlaceNewSectionHook,
 	\MediaWiki\Content\Hook\SearchDataForIndexHook,
-	\MediaWiki\Content\Hook\SecondaryDataUpdatesHook,
 	\MediaWiki\Diff\Hook\AbortDiffCacheHook,
 	\MediaWiki\Diff\Hook\ArticleContentOnDiffHook,
 	\MediaWiki\Diff\Hook\DifferenceEngineAfterLoadNewTextHook,
@@ -103,7 +104,6 @@ class HookRunner implements
 	\MediaWiki\Hook\ArticleUpdateBeforeRedirectHook,
 	\MediaWiki\Hook\BadImageHook,
 	\MediaWiki\Hook\BaseTemplateAfterPortletHook,
-	\MediaWiki\Hook\BaseTemplateToolboxHook,
 	\MediaWiki\Hook\BeforeInitializeHook,
 	\MediaWiki\Hook\BeforePageDisplayHook,
 	\MediaWiki\Hook\BeforePageRedirectHook,
@@ -244,8 +244,6 @@ class HookRunner implements
 	\MediaWiki\Hook\MarkPatrolledCompleteHook,
 	\MediaWiki\Hook\MarkPatrolledHook,
 	\MediaWiki\Hook\MediaWikiPerformActionHook,
-	\MediaWiki\Hook\MediaWikiPHPUnitTest__endTestHook,
-	\MediaWiki\Hook\MediaWikiPHPUnitTest__startTestHook,
 	\MediaWiki\Hook\MediaWikiServicesHook,
 	\MediaWiki\Hook\MimeMagicGuessFromContentHook,
 	\MediaWiki\Hook\MimeMagicImproveFromExtensionHook,
@@ -323,15 +321,10 @@ class HookRunner implements
 	\MediaWiki\Hook\SkinGetPoweredByHook,
 	\MediaWiki\Hook\SkinPreloadExistenceHook,
 	\MediaWiki\Hook\SkinSubPageSubtitleHook,
-	\MediaWiki\Hook\SkinTemplateBuildNavUrlsNav_urlsAfterPermalinkHook,
 	\MediaWiki\Hook\SkinTemplateGetLanguageLinkHook,
 	\MediaWiki\Hook\SkinTemplateNavigationHook,
 	\MediaWiki\Hook\SkinTemplateNavigation__SpecialPageHook,
 	\MediaWiki\Hook\SkinTemplateNavigation__UniversalHook,
-	\MediaWiki\Hook\SkinTemplateOutputPageBeforeExecHook,
-	\MediaWiki\Hook\SkinTemplatePreventOtherActiveTabsHook,
-	\MediaWiki\Hook\SkinTemplateTabActionHook,
-	\MediaWiki\Hook\SkinTemplateToolboxEndHook,
 	\MediaWiki\Hook\SoftwareInfoHook,
 	\MediaWiki\Hook\SpecialBlockModifyFormFieldsHook,
 	\MediaWiki\Hook\SpecialContributionsBeforeMainOutputHook,
@@ -367,7 +360,6 @@ class HookRunner implements
 	\MediaWiki\Hook\SpecialWatchlistGetNonRevisionTypesHook,
 	\MediaWiki\Hook\TestCanonicalRedirectHook,
 	\MediaWiki\Hook\ThumbnailBeforeProduceHTMLHook,
-	\MediaWiki\Hook\TitleArrayFromResultHook,
 	\MediaWiki\Hook\TitleExistsHook,
 	\MediaWiki\Hook\TitleGetEditNoticesHook,
 	\MediaWiki\Hook\TitleGetRestrictionTypesHook,
@@ -514,7 +506,6 @@ class HookRunner implements
 	\MediaWiki\SpecialPage\Hook\SpecialPage_initListHook,
 	\MediaWiki\SpecialPage\Hook\WgQueryPagesHook,
 	\MediaWiki\Storage\Hook\ArticleEditUpdateNewTalkHook,
-	\MediaWiki\Storage\Hook\ArticleEditUpdatesHook,
 	\MediaWiki\Storage\Hook\ArticlePrepareTextForEditHook,
 	\MediaWiki\Storage\Hook\BeforeRevertedTagUpdateHook,
 	\MediaWiki\Storage\Hook\MultiContentSaveHook,
@@ -550,13 +541,14 @@ class HookRunner implements
 	\MediaWiki\User\Hook\UserLogoutHook,
 	\MediaWiki\User\Hook\UserRemoveGroupHook,
 	\MediaWiki\User\Hook\UserResetAllOptionsHook,
-	\MediaWiki\User\Hook\UserRetrieveNewTalksHook,
 	\MediaWiki\User\Hook\UserSaveOptionsHook,
 	\MediaWiki\User\Hook\UserSaveSettingsHook,
 	\MediaWiki\User\Hook\UserSendConfirmationMailHook,
 	\MediaWiki\User\Hook\UserSetEmailAuthenticationTimestampHook,
 	\MediaWiki\User\Hook\UserSetEmailHook,
-	\MediaWiki\User\Hook\User__mailPasswordInternalHook
+	\MediaWiki\User\Hook\User__mailPasswordInternalHook,
+	\MediaWiki\User\Options\Hook\LoadUserOptionsHook,
+	\MediaWiki\User\Options\Hook\SaveUserOptionsHook
 {
 	/** @var HookContainer */
 	private $container;
@@ -621,7 +613,7 @@ class HookRunner implements
 		);
 	}
 
-	public function onAfterFinalPageOutput( $output ) : void {
+	public function onAfterFinalPageOutput( $output ): void {
 		$this->container->run(
 			'AfterFinalPageOutput',
 			[ $output ],
@@ -726,13 +718,6 @@ class HookRunner implements
 		return $this->container->run(
 			'ArticleEditUpdateNewTalk',
 			[ $wikiPage, $recipient ]
-		);
-	}
-
-	public function onArticleEditUpdates( $wikiPage, $editInfo, $changed ) {
-		return $this->container->run(
-			'ArticleEditUpdates',
-			[ $wikiPage, $editInfo, $changed ]
 		);
 	}
 
@@ -932,13 +917,6 @@ class HookRunner implements
 		);
 	}
 
-	public function onBaseTemplateToolbox( $sk, &$toolbox ) {
-		return $this->container->run(
-			'BaseTemplateToolbox',
-			[ $sk, &$toolbox ]
-		);
-	}
-
 	public function onBeforeDisplayNoArticleText( $article ) {
 		return $this->container->run(
 			'BeforeDisplayNoArticleText',
@@ -955,7 +933,7 @@ class HookRunner implements
 		);
 	}
 
-	public function onBeforePageDisplay( $out, $skin ) : void {
+	public function onBeforePageDisplay( $out, $skin ): void {
 		$this->container->run(
 			'BeforePageDisplay',
 			[ $out, $skin ],
@@ -1016,7 +994,7 @@ class HookRunner implements
 
 	public function onBeforeRevertedTagUpdate( $wikiPage, $user,
 		$summary, $flags, $revisionRecord, $editResult, &$approved
-	) : void {
+	): void {
 		$this->container->run(
 			'BeforeRevertedTagUpdate',
 			[ $wikiPage, $user, $summary, $flags, $revisionRecord, $editResult,
@@ -1782,6 +1760,14 @@ class HookRunner implements
 		);
 	}
 
+	public function onGetActionName( IContextSource $context, string &$action ): void {
+		$this->container->run(
+			'GetActionName',
+			[ $context, &$action ],
+			[ 'abortable' => false ]
+		);
+	}
+
 	public function onGetCacheVaryCookies( $out, &$cookies ) {
 		return $this->container->run(
 			'GetCacheVaryCookies',
@@ -2474,7 +2460,7 @@ class HookRunner implements
 		);
 	}
 
-	public function onMakeGlobalVariablesScript( &$vars, $out ) : void {
+	public function onMakeGlobalVariablesScript( &$vars, $out ): void {
 		$this->container->run(
 			'MakeGlobalVariablesScript',
 			[ &$vars, $out ],
@@ -2482,7 +2468,7 @@ class HookRunner implements
 		);
 	}
 
-	public function onManualLogEntryBeforePublish( $logEntry ) : void {
+	public function onManualLogEntryBeforePublish( $logEntry ): void {
 		$this->container->run(
 			'ManualLogEntryBeforePublish',
 			[ $logEntry ],
@@ -2517,24 +2503,11 @@ class HookRunner implements
 		);
 	}
 
-	public function onMediaWikiPHPUnitTest__endTest( $test, $time ) {
-		return $this->container->run(
-			'MediaWikiPHPUnitTest::endTest',
-			[ $test, $time ]
-		);
-	}
-
-	public function onMediaWikiPHPUnitTest__startTest( $test ) {
-		return $this->container->run(
-			'MediaWikiPHPUnitTest::startTest',
-			[ $test ]
-		);
-	}
-
 	public function onMediaWikiServices( $services ) {
 		return $this->container->run(
 			'MediaWikiServices',
-			[ $services ]
+			[ $services ],
+			[ 'noServices' => true ]
 		);
 	}
 
@@ -2688,7 +2661,7 @@ class HookRunner implements
 		);
 	}
 
-	public function onOutputPageBodyAttributes( $out, $sk, &$bodyAttrs ) : void {
+	public function onOutputPageBodyAttributes( $out, $sk, &$bodyAttrs ): void {
 		$this->container->run(
 			'OutputPageBodyAttributes',
 			[ $out, $sk, &$bodyAttrs ],
@@ -2710,7 +2683,7 @@ class HookRunner implements
 		);
 	}
 
-	public function onOutputPageParserOutput( $out, $parserOutput ) : void {
+	public function onOutputPageParserOutput( $out, $parserOutput ): void {
 		$this->container->run(
 			'OutputPageParserOutput',
 			[ $out, $parserOutput ],
@@ -2922,7 +2895,7 @@ class HookRunner implements
 
 	public function onParserOutputPostCacheTransform( $parserOutput, &$text,
 		&$options
-	) : void {
+	): void {
 		$this->container->run(
 			'ParserOutputPostCacheTransform',
 			[ $parserOutput, &$text, &$options ],
@@ -2983,7 +2956,7 @@ class HookRunner implements
 		);
 	}
 
-	public function onPersonalUrls( &$personal_urls, &$title, $skin ) : void {
+	public function onPersonalUrls( &$personal_urls, &$title, $skin ): void {
 		$this->container->run(
 			'PersonalUrls',
 			[ &$personal_urls, &$title, $skin ],
@@ -3137,7 +3110,7 @@ class HookRunner implements
 		);
 	}
 
-	public function onResourceLoaderGetConfigVars( array &$vars, $skin, Config $config ) : void {
+	public function onResourceLoaderGetConfigVars( array &$vars, $skin, Config $config ): void {
 		$this->container->run(
 			'ResourceLoaderGetConfigVars',
 			[ &$vars, $skin, $config ],
@@ -3147,7 +3120,7 @@ class HookRunner implements
 
 	public function onResourceLoaderJqueryMsgModuleMagicWords( ResourceLoaderContext $context,
 		array &$magicWords
-	) : void {
+	): void {
 		$this->container->run(
 			'ResourceLoaderJqueryMsgModuleMagicWords',
 			[ $context, &$magicWords ],
@@ -3269,15 +3242,6 @@ class HookRunner implements
 		);
 	}
 
-	public function onSecondaryDataUpdates( $title, $oldContent, $recursive,
-		$parserOutput, &$updates
-	) {
-		return $this->container->run(
-			'SecondaryDataUpdates',
-			[ $title, $oldContent, $recursive, $parserOutput, &$updates ]
-		);
-	}
-
 	public function onSecuritySensitiveOperationStatus( &$status, $operation,
 		$session, $timeSinceAuth
 	) {
@@ -3358,7 +3322,7 @@ class HookRunner implements
 		);
 	}
 
-	public function onSidebarBeforeOutput( $skin, &$sidebar ) : void {
+	public function onSidebarBeforeOutput( $skin, &$sidebar ): void {
 		$this->container->run(
 			'SidebarBeforeOutput',
 			[ $skin, &$sidebar ],
@@ -3382,7 +3346,7 @@ class HookRunner implements
 
 	public function onSkinPageReadyConfig( ResourceLoaderContext $context,
 		array &$config
-	) : void {
+	): void {
 		$this->container->run(
 			'SkinPageReadyConfig',
 			[ $context, &$config ],
@@ -3462,15 +3426,6 @@ class HookRunner implements
 		);
 	}
 
-	public function onSkinTemplateBuildNavUrlsNav_urlsAfterPermalink( $sktemplate,
-		&$nav_urls, &$revid, &$revid2
-	) {
-		return $this->container->run(
-			'SkinTemplateBuildNavUrlsNav_urlsAfterPermalink',
-			[ $sktemplate, &$nav_urls, &$revid, &$revid2 ]
-		);
-	}
-
 	public function onSkinTemplateGetLanguageLink( &$languageLink,
 		$languageLinkTitle, $title, $outputPage
 	) {
@@ -3480,7 +3435,7 @@ class HookRunner implements
 		);
 	}
 
-	public function onSkinTemplateNavigation( $sktemplate, &$links ) : void {
+	public function onSkinTemplateNavigation( $sktemplate, &$links ): void {
 		$this->container->run(
 			'SkinTemplateNavigation',
 			[ $sktemplate, &$links ],
@@ -3488,7 +3443,7 @@ class HookRunner implements
 		);
 	}
 
-	public function onSkinTemplateNavigation__SpecialPage( $sktemplate, &$links ) : void {
+	public function onSkinTemplateNavigation__SpecialPage( $sktemplate, &$links ): void {
 		$this->container->run(
 			'SkinTemplateNavigation::SpecialPage',
 			[ $sktemplate, &$links ],
@@ -3496,42 +3451,11 @@ class HookRunner implements
 		);
 	}
 
-	public function onSkinTemplateNavigation__Universal( $sktemplate, &$links ) : void {
+	public function onSkinTemplateNavigation__Universal( $sktemplate, &$links ): void {
 		$this->container->run(
 			'SkinTemplateNavigation::Universal',
 			[ $sktemplate, &$links ],
 			[ 'abortable' => false ]
-		);
-	}
-
-	public function onSkinTemplateOutputPageBeforeExec( $sktemplate, $tpl ) {
-		return $this->container->run(
-			'SkinTemplateOutputPageBeforeExec',
-			[ $sktemplate, $tpl ]
-		);
-	}
-
-	public function onSkinTemplatePreventOtherActiveTabs( $sktemplate, &$res ) {
-		return $this->container->run(
-			'SkinTemplatePreventOtherActiveTabs',
-			[ $sktemplate, &$res ]
-		);
-	}
-
-	public function onSkinTemplateTabAction( $sktemplate, $title, $message,
-		$selected, $checkEdit, &$classes, &$query, &$text, &$result
-	) {
-		return $this->container->run(
-			'SkinTemplateTabAction',
-			[ $sktemplate, $title, $message, $selected, $checkEdit, &$classes,
-				&$query, &$text, &$result ]
-		);
-	}
-
-	public function onSkinTemplateToolboxEnd( $sk, $dummy ) {
-		return $this->container->run(
-			'SkinTemplateToolboxEnd',
-			[ $sk, $dummy ]
 		);
 	}
 
@@ -3840,13 +3764,6 @@ class HookRunner implements
 		return $this->container->run(
 			'ThumbnailBeforeProduceHTML',
 			[ $thumbnail, &$attribs, &$linkAttribs ]
-		);
-	}
-
-	public function onTitleArrayFromResult( &$titleArray, $res ) {
-		return $this->container->run(
-			'TitleArrayFromResult',
-			[ &$titleArray, $res ]
 		);
 	}
 
@@ -4251,6 +4168,14 @@ class HookRunner implements
 		);
 	}
 
+	public function onLoadUserOptions( UserIdentity $user, array &$options ): void {
+		$this->container->run(
+			'LoadUserOptions',
+			[ $user, &$options ],
+			[ 'abortable' => false ]
+		);
+	}
+
 	public function onUserLoggedIn( $user ) {
 		return $this->container->run(
 			'UserLoggedIn',
@@ -4325,17 +4250,17 @@ class HookRunner implements
 		);
 	}
 
-	public function onUserRetrieveNewTalks( $user, &$talks ) {
-		return $this->container->run(
-			'UserRetrieveNewTalks',
-			[ $user, &$talks ]
-		);
-	}
-
 	public function onUserSaveOptions( $user, &$options, $originalOptions ) {
 		return $this->container->run(
 			'UserSaveOptions',
 			[ $user, &$options, $originalOptions ]
+		);
+	}
+
+	public function onSaveUserOptions( UserIdentity $user, array &$modifiedOptions, array $originalOptions ) {
+		return $this->container->run(
+			'SaveUserOptions',
+			[ $user, &$modifiedOptions, $originalOptions ]
 		);
 	}
 
@@ -4518,7 +4443,7 @@ class HookRunner implements
 		);
 	}
 
-	public function onMaintenanceShellStart() : void {
+	public function onMaintenanceShellStart(): void {
 		$this->container->run(
 			'MaintenanceShellStart',
 			[],

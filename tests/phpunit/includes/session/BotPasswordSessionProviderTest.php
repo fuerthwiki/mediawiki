@@ -4,7 +4,9 @@ namespace MediaWiki\Session;
 
 use MediaWiki\MediaWikiServices;
 use MediaWikiIntegrationTestCase;
+use MultiConfig;
 use Psr\Log\LogLevel;
+use RequestContext;
 use Wikimedia\TestingAccessWrapper;
 
 /**
@@ -13,6 +15,7 @@ use Wikimedia\TestingAccessWrapper;
  * @covers MediaWiki\Session\BotPasswordSessionProvider
  */
 class BotPasswordSessionProviderTest extends MediaWikiIntegrationTestCase {
+	use SessionProviderTestTrait;
 
 	private $config;
 
@@ -42,7 +45,7 @@ class BotPasswordSessionProviderTest extends MediaWikiIntegrationTestCase {
 			] );
 		}
 		$manager = new SessionManager( [
-			'config' => new \MultiConfig( [ $this->config, \RequestContext::getMain()->getConfig() ] ),
+			'config' => new MultiConfig( [ $this->config, RequestContext::getMain()->getConfig() ] ),
 			'logger' => new \Psr\Log\NullLogger,
 			'store' => new TestBagOStuff,
 		] );
@@ -50,7 +53,7 @@ class BotPasswordSessionProviderTest extends MediaWikiIntegrationTestCase {
 		return $manager->getProvider( BotPasswordSessionProvider::class );
 	}
 
-	protected function setUp() : void {
+	protected function setUp(): void {
 		parent::setUp();
 
 		$this->setMwGlobals( [
@@ -68,7 +71,10 @@ class BotPasswordSessionProviderTest extends MediaWikiIntegrationTestCase {
 		$passwordHash = $passwordFactory->newFromPlaintext( 'foobaz' );
 
 		$sysop = static::getTestSysop()->getUser();
-		$userId = \CentralIdLookup::factory( 'local' )->centralIdFromName( $sysop->getName() );
+		$userId = $this->getServiceContainer()
+			->getCentralIdLookupFactory()
+			->getLookup( 'local' )
+			->centralIdFromName( $sysop->getName() );
 
 		$dbw = wfGetDB( DB_PRIMARY );
 		$dbw->delete(
@@ -209,7 +215,7 @@ class BotPasswordSessionProviderTest extends MediaWikiIntegrationTestCase {
 	public function testCheckSessionInfo() {
 		$logger = new \TestLogger( true );
 		$provider = $this->getProvider();
-		$provider->setLogger( $logger );
+		$this->initProvider( $provider, $logger );
 
 		$user = static::getTestSysop()->getUser();
 		$request = $this->getMockBuilder( \FauxRequest::class )
@@ -287,7 +293,7 @@ class BotPasswordSessionProviderTest extends MediaWikiIntegrationTestCase {
 	public function testGetAllowedUserRights() {
 		$logger = new \TestLogger( true );
 		$provider = $this->getProvider();
-		$provider->setLogger( $logger );
+		$this->initProvider( $provider, $logger );
 
 		$backend = TestUtils::getDummySessionBackend();
 		$backendPriv = TestingAccessWrapper::newFromObject( $backend );

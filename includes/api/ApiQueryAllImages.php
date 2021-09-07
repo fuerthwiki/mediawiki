@@ -24,8 +24,8 @@
  * @file
  */
 
-use MediaWiki\MediaWikiServices;
 use MediaWiki\ParamValidator\TypeDef\UserDef;
+use MediaWiki\Permissions\GroupPermissionsLookup;
 use Wikimedia\Rdbms\IDatabase;
 
 /**
@@ -40,13 +40,24 @@ class ApiQueryAllImages extends ApiQueryGeneratorBase {
 	 */
 	protected $mRepo;
 
+	/** @var GroupPermissionsLookup */
+	private $groupPermissionsLookup;
+
 	/**
 	 * @param ApiQuery $query
 	 * @param string $moduleName
+	 * @param RepoGroup $repoGroup
+	 * @param GroupPermissionsLookup $groupPermissionsLookup
 	 */
-	public function __construct( ApiQuery $query, $moduleName ) {
+	public function __construct(
+		ApiQuery $query,
+		$moduleName,
+		RepoGroup $repoGroup,
+		GroupPermissionsLookup $groupPermissionsLookup
+	) {
 		parent::__construct( $query, $moduleName, 'ai' );
-		$this->mRepo = MediaWikiServices::getInstance()->getRepoGroup()->getLocalRepo();
+		$this->mRepo = $repoGroup->getLocalRepo();
+		$this->groupPermissionsLookup = $groupPermissionsLookup;
 	}
 
 	/**
@@ -97,7 +108,7 @@ class ApiQueryAllImages extends ApiQueryGeneratorBase {
 		$params = $this->extractRequestParams();
 
 		// Table and return fields
-		$prop = array_flip( $params['prop'] );
+		$prop = array_fill_keys( $params['prop'], true );
 
 		$fileQuery = LocalFile::getQueryInfo();
 		$this->addTables( $fileQuery['tables'] );
@@ -208,7 +219,7 @@ class ApiQueryAllImages extends ApiQueryGeneratorBase {
 				$this->addJoinConds( [ 'user_groups' => [
 					'LEFT JOIN',
 					[
-						'ug_group' => $this->getGroupPermissionsLookup()->getGroupsWithPermission( 'bot' ),
+						'ug_group' => $this->groupPermissionsLookup->getGroupsWithPermission( 'bot' ),
 						'ug_user = actor_user',
 						'ug_expiry IS NULL OR ug_expiry >= ' . $db->addQuotes( $db->timestamp() )
 					]

@@ -65,19 +65,23 @@ class PageReferenceValue implements PageReference {
 
 		Assert::parameter( $dbKey !== '', '$dbKey', 'must not be empty' );
 
-		// Don't be mad about spaces.
+		// Replace spaces with underscores
 		$dbKey = str_replace( ' ', '_', $dbKey );
-
-		// Not full validation, but catches commons issues:
-		Assert::parameter(
-			!preg_match( '/[\s#|]/', $dbKey ),
-			'$dbKey',
-			'must be a valid title: ' . $dbKey
-		);
 
 		$this->wikiId = $wikiId;
 		$this->namespace = $namespace;
 		$this->dbKey = $dbKey;
+	}
+
+	/**
+	 * Create PageReference for a local page.
+	 *
+	 * @param int $namespace
+	 * @param string $dbKey
+	 * @return PageReferenceValue
+	 */
+	public static function localReference( int $namespace, string $dbKey ): self {
+		return new self( $namespace, $dbKey, self::LOCAL );
 	}
 
 	/**

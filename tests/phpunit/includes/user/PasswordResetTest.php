@@ -6,18 +6,24 @@ use MediaWiki\Block\CompositeBlock;
 use MediaWiki\Block\DatabaseBlock;
 use MediaWiki\Block\SystemBlock;
 use MediaWiki\Config\ServiceOptions;
-use MediaWiki\MediaWikiServices;
-use MediaWiki\Permissions\PermissionManager;
+use MediaWiki\Tests\Unit\DummyServicesTrait;
+use MediaWiki\User\StaticUserOptionsLookup;
 use MediaWiki\User\UserFactory;
+use MediaWiki\User\UserNameUtils;
 use MediaWiki\User\UserOptionsLookup;
 use Psr\Log\NullLogger;
 use Wikimedia\Rdbms\ILoadBalancer;
 
 /**
+ * TODO make this a unit test, all dependencies are injected, but DatabaseBlock::__construct()
+ * can't be used in unit tests.
+ *
  * @covers PasswordReset
  * @group Database
  */
 class PasswordResetTest extends MediaWikiIntegrationTestCase {
+	use DummyServicesTrait;
+
 	private const VALID_IP = '1.2.3.4';
 	private const VALID_EMAIL = 'foo@bar.baz';
 
@@ -38,29 +44,17 @@ class PasswordResetTest extends MediaWikiIntegrationTestCase {
 		$user->method( 'getName' )->willReturn( 'Foo' );
 		$user->method( 'getBlock' )->willReturn( $block );
 		$user->method( 'getGlobalBlock' )->willReturn( $globalBlock );
+		$user->method( 'isAllowed' )->with( 'editmyprivateinfo' )->willReturn( $canEditPrivate );
 
-		$permissionManager = $this->getMockBuilder( PermissionManager::class )
-			->disableOriginalConstructor()
-			->getMock();
-		$permissionManager->method( 'userHasRight' )
-			->with( $user, 'editmyprivateinfo' )
-			->willReturn( $canEditPrivate );
-
-		$loadBalancer = $this->createMock( ILoadBalancer::class );
-
-		$hookContainer = $this->createHookContainer();
-
-		$mwServices = MediaWikiServices::getInstance();
 		$passwordReset = new PasswordReset(
 			$config,
 			new NullLogger(),
 			$authManager,
-			$hookContainer,
-			$loadBalancer,
-			$permissionManager,
-			$mwServices->getUserFactory(),
-			$mwServices->getUserNameUtils(),
-			$mwServices->getUserOptionsLookup()
+			$this->createHookContainer(),
+			$this->createNoOpMock( ILoadBalancer::class ),
+			$this->createNoOpMock( UserFactory::class ),
+			$this->createNoOpMock( UserNameUtils::class ),
+			$this->createNoOpMock( UserOptionsLookup::class )
 		);
 
 		$this->assertSame( $isAllowed, $passwordReset->isAllowed( $user )->isGood() );
@@ -217,7 +211,7 @@ class PasswordResetTest extends MediaWikiIntegrationTestCase {
 			->willReturn( Status::newFatal( 'somestatuscode' ) );
 		/** @var PasswordReset $passwordReset */
 
-		$this->expectException( \LogicException::class );
+		$this->expectException( LogicException::class );
 		$passwordReset->execute( $user );
 	}
 
@@ -226,7 +220,6 @@ class PasswordResetTest extends MediaWikiIntegrationTestCase {
 	 * @param string|bool $expectedError
 	 * @param ServiceOptions $config
 	 * @param User $performingUser
-	 * @param PermissionManager $permissionManager
 	 * @param AuthManager $authManager
 	 * @param string|null $username
 	 * @param string|null $email
@@ -237,32 +230,18 @@ class PasswordResetTest extends MediaWikiIntegrationTestCase {
 		$expectedError,
 		ServiceOptions $config,
 		User $performingUser,
-		PermissionManager $permissionManager,
 		AuthManager $authManager,
 		$username = '',
 		$email = '',
 		array $usersWithEmail = []
 	) {
-		// Unregister the hooks for proper unit testing
-		$this->mergeMwGlobalArrayValue( 'wgHooks', [
-			'User::mailPasswordInternal' => [],
-			'SpecialPasswordResetOnSubmit' => [],
-		] );
-
-		$loadBalancer = $this->createMock( ILoadBalancer::class );
-
 		$users = $this->makeUsers();
 
-		// Only User1 has `requireemail` true, everything else false
-		$userRequiresEmail = function ( $user, $option ) {
-			$this->assertSame( 'requireemail', $option );
-			return ( $user->getName() === 'User1' );
-		};
-		$userOptionsLookup = $this->getMockBuilder( UserOptionsLookup::class )
-			->onlyMethods( [ 'getBoolOption' ] )
-			->getMockForAbstractClass();
-		$userOptionsLookup->method( 'getBoolOption' )
-			->willReturnCallback( $userRequiresEmail );
+		// Only User1 has `requireemail` true, everything else false (so that is the default)
+		$userOptionsLookup = new StaticUserOptionsLookup(
+			[ 'User1' => [ 'requireemail' => true ] ],
+			[ 'requireemail' => false ]
+		);
 
 		// Similar to $lookupUser callback, but with null instead of false
 		$userFactory = $this->createMock( UserFactory::class );
@@ -277,18 +256,16 @@ class PasswordResetTest extends MediaWikiIntegrationTestCase {
 			return $users[ $username ] ?? false;
 		};
 
-		$mwServices = MediaWikiServices::getInstance();
 		$passwordReset = $this->getMockBuilder( PasswordReset::class )
 			->onlyMethods( [ 'getUsersByEmail', 'isAllowed' ] )
 			->setConstructorArgs( [
 				$config,
 				new NullLogger(),
 				$authManager,
-				$mwServices->getHookContainer(),
-				$loadBalancer,
-				$permissionManager,
+				$this->createHookContainer(),
+				$this->createNoOpMock( ILoadBalancer::class ),
 				$userFactory,
-				$mwServices->getUserNameUtils(),
+				$this->getDummyUserNameUtils(),
 				$userOptionsLookup
 			] )
 			->getMock();
@@ -307,14 +284,12 @@ class PasswordResetTest extends MediaWikiIntegrationTestCase {
 		$emailRequiredConfig = $this->makeConfig( true, [ 'username' => true, 'email' => true ], true );
 		$performingUser = $this->makePerformingUser( self::VALID_IP, false );
 		$throttledUser = $this->makePerformingUser( self::VALID_IP, true );
-		$permissionManager = $this->makePermissionManager( $performingUser, true );
 
 		return [
 			'Throttled, pretend everything is ok' => [
 				'expectedError' => false,
 				'config' => $defaultConfig,
 				'performingUser' => $throttledUser,
-				'permissionManager' => $permissionManager,
 				'authManager' => $this->makeAuthManager(),
 				'username' => 'User1',
 				'email' => '',
@@ -324,7 +299,6 @@ class PasswordResetTest extends MediaWikiIntegrationTestCase {
 				'expectedError' => false,
 				'config' => $emailRequiredConfig,
 				'performingUser' => $throttledUser,
-				'permissionManager' => $permissionManager,
 				'authManager' => $this->makeAuthManager(),
 				'username' => 'User1',
 				'email' => '[invalid email]',
@@ -334,7 +308,6 @@ class PasswordResetTest extends MediaWikiIntegrationTestCase {
 				'expectedError' => false,
 				'config' => $defaultConfig,
 				'performingUser' => $performingUser,
-				'permissionManager' => $permissionManager,
 				'authManager' => $this->makeAuthManager(),
 				'username' => '',
 				'email' => '[invalid email]',
@@ -344,7 +317,6 @@ class PasswordResetTest extends MediaWikiIntegrationTestCase {
 				'expectedError' => 'passwordreset-nodata',
 				'config' => $defaultConfig,
 				'performingUser' => $performingUser,
-				'permissionManager' => $permissionManager,
 				'authManager' => $this->makeAuthManager(),
 				'username' => '',
 				'email' => '',
@@ -354,7 +326,6 @@ class PasswordResetTest extends MediaWikiIntegrationTestCase {
 				'expectedError' => 'passwordreset-nodata',
 				'config' => $this->makeConfig( true, [ 'username' => true ], false ),
 				'performingUser' => $performingUser,
-				'permissionManager' => $permissionManager,
 				'authManager' => $this->makeAuthManager(),
 				'username' => '',
 				'email' => self::VALID_EMAIL,
@@ -364,7 +335,6 @@ class PasswordResetTest extends MediaWikiIntegrationTestCase {
 				'expectedError' => 'passwordreset-nodata',
 				'config' => $this->makeConfig( true, [ 'email' => true ], false ),
 				'performingUser' => $performingUser,
-				'permissionManager' => $permissionManager,
 				'authManager' => $this->makeAuthManager(),
 				'username' => 'User1',
 				'email' => '',
@@ -374,7 +344,6 @@ class PasswordResetTest extends MediaWikiIntegrationTestCase {
 				'expectedError' => 'passwordreset-nodata',
 				'config' => $this->makeConfig( true, [], false ),
 				'performingUser' => $performingUser,
-				'permissionManager' => $permissionManager,
 				'authManager' => $this->makeAuthManager(),
 				'username' => 'User1',
 				'email' => self::VALID_EMAIL,
@@ -384,7 +353,6 @@ class PasswordResetTest extends MediaWikiIntegrationTestCase {
 				'expectedError' => false,
 				'config' => $emailRequiredConfig,
 				'performingUser' => $performingUser,
-				'permissionManager' => $permissionManager,
 				'authManager' => $this->makeAuthManager(),
 				'username' => 'User1',
 				'email' => '',
@@ -394,7 +362,6 @@ class PasswordResetTest extends MediaWikiIntegrationTestCase {
 				'expectedError' => false,
 				'config' => $emailRequiredConfig,
 				'performingUser' => $performingUser,
-				'permissionManager' => $permissionManager,
 				'authManager' => $this->makeAuthManager(),
 				'username' => 'User1',
 				'email' => '[invalid email]',
@@ -404,7 +371,6 @@ class PasswordResetTest extends MediaWikiIntegrationTestCase {
 				'expectedError' => false,
 				'config' => $defaultConfig,
 				'performingUser' => $performingUser,
-				'permissionManager' => $permissionManager,
 				'authManager' => $this->makeAuthManager( [ 'User1' ], 0, [], [ 'User1' ] ),
 				'username' => 'User1',
 				'email' => '',
@@ -414,7 +380,6 @@ class PasswordResetTest extends MediaWikiIntegrationTestCase {
 				'expectedError' => false,
 				'config' => $defaultConfig,
 				'performingUser' => $performingUser,
-				'permissionManager' => $permissionManager,
 				'authManager' => $this->makeAuthManager(),
 				'username' => 'Nonexistent user',
 				'email' => '',
@@ -424,7 +389,6 @@ class PasswordResetTest extends MediaWikiIntegrationTestCase {
 				'expectedError' => 'noname',
 				'config' => $defaultConfig,
 				'performingUser' => $performingUser,
-				'permissionManager' => $permissionManager,
 				'authManager' => $this->makeAuthManager(),
 				'username' => 'Invalid|username',
 				'email' => '',
@@ -434,7 +398,6 @@ class PasswordResetTest extends MediaWikiIntegrationTestCase {
 				'expectedError' => false,
 				'config' => $defaultConfig,
 				'performingUser' => $performingUser,
-				'permissionManager' => $permissionManager,
 				'authManager' => $this->makeAuthManager(),
 				'username' => '',
 				'email' => 'some@not.found.email',
@@ -444,7 +407,6 @@ class PasswordResetTest extends MediaWikiIntegrationTestCase {
 				'expectedError' => false,
 				'config' => $defaultConfig,
 				'performingUser' => $performingUser,
-				'permissionManager' => $permissionManager,
 				'authManager' => $this->makeAuthManager(),
 				'username' => 'BadUser',
 				'email' => '',
@@ -454,7 +416,6 @@ class PasswordResetTest extends MediaWikiIntegrationTestCase {
 				'expectedError' => false,
 				'config' => $emailRequiredConfig,
 				'performingUser' => $performingUser,
-				'permissionManager' => $permissionManager,
 				'authManager' => $this->makeAuthManager(),
 				'username' => 'User1',
 				'email' => 'some@other.email',
@@ -464,7 +425,6 @@ class PasswordResetTest extends MediaWikiIntegrationTestCase {
 				'expectedError' => 'badipaddress',
 				'config' => $defaultConfig,
 				'performingUser' => $this->makePerformingUser( null, false ),
-				'permissionManager' => $permissionManager,
 				'authManager' => $this->makeAuthManager(),
 				'username' => 'User1',
 				'email' => '',
@@ -474,7 +434,6 @@ class PasswordResetTest extends MediaWikiIntegrationTestCase {
 				'expectedError' => 'passwordreset-ignored',
 				'config' => $defaultConfig,
 				'performingUser' => $performingUser,
-				'permissionManager' => $permissionManager,
 				'authManager' => $this->makeAuthManager( [ 'User1' ], 0, [ 'User1' ] ),
 				'username' => 'User1',
 				'email' => '',
@@ -484,7 +443,6 @@ class PasswordResetTest extends MediaWikiIntegrationTestCase {
 				'expectedError' => 'passwordreset-ignored',
 				'config' => $defaultConfig,
 				'performingUser' => $performingUser,
-				'permissionManager' => $permissionManager,
 				'authManager' => $this->makeAuthManager( [ 'User1', 'User2' ], 0, [ 'User2' ] ),
 				'username' => '',
 				'email' => self::VALID_EMAIL,
@@ -494,7 +452,6 @@ class PasswordResetTest extends MediaWikiIntegrationTestCase {
 				'expectedError' => 'rejected by test mock',
 				'config' => $defaultConfig,
 				'performingUser' => $performingUser,
-				'permissionManager' => $permissionManager,
 				'authManager' => $this->makeAuthManager(),
 				'username' => 'User1',
 				'email' => '',
@@ -504,7 +461,6 @@ class PasswordResetTest extends MediaWikiIntegrationTestCase {
 				'expectedError' => 'rejected by test mock',
 				'config' => $defaultConfig,
 				'performingUser' => $performingUser,
-				'permissionManager' => $permissionManager,
 				'authManager' => $this->makeAuthManager( [ 'User1' ] ),
 				'username' => '',
 				'email' => self::VALID_EMAIL,
@@ -514,7 +470,6 @@ class PasswordResetTest extends MediaWikiIntegrationTestCase {
 				'expectedError' => false,
 				'config' => $defaultConfig,
 				'performingUser' => $performingUser,
-				'permissionManager' => $permissionManager,
 				'authManager' => $this->makeAuthManager( [ 'User1' ], 1 ),
 				'username' => 'User1',
 				'email' => self::VALID_EMAIL,
@@ -525,7 +480,6 @@ class PasswordResetTest extends MediaWikiIntegrationTestCase {
 				'expectedError' => false,
 				'config' => $defaultConfig,
 				'performingUser' => $performingUser,
-				'permissionManager' => $permissionManager,
 				'authManager' => $this->makeAuthManager( [ 'User1' ], 1 ),
 				'username' => '',
 				'email' => self::VALID_EMAIL,
@@ -535,7 +489,6 @@ class PasswordResetTest extends MediaWikiIntegrationTestCase {
 				'expectedError' => false,
 				'config' => $defaultConfig,
 				'performingUser' => $performingUser,
-				'permissionManager' => $permissionManager,
 				'authManager' => $this->makeAuthManager( [ 'User1', 'User2' ], 2 ),
 				'username' => '',
 				'email' => self::VALID_EMAIL,
@@ -545,7 +498,6 @@ class PasswordResetTest extends MediaWikiIntegrationTestCase {
 				'expectedError' => false,
 				'config' => $emailRequiredConfig,
 				'performingUser' => $performingUser,
-				'permissionManager' => $permissionManager,
 				'authManager' => $this->makeAuthManager( [ 'User2' ], 1 ),
 				'username' => 'User2',
 				'email' => self::VALID_EMAIL,
@@ -555,7 +507,6 @@ class PasswordResetTest extends MediaWikiIntegrationTestCase {
 				'expectedError' => false,
 				'config' => $emailRequiredConfig,
 				'performingUser' => $performingUser,
-				'permissionManager' => $permissionManager,
 				'authManager' => $this->makeAuthManager( [ 'User2', 'User3', 'User4' ], 3, [ 'User1' ] ),
 				'username' => '',
 				'email' => self::VALID_EMAIL,
@@ -598,7 +549,7 @@ class PasswordResetTest extends MediaWikiIntegrationTestCase {
 	 * @param bool $pingLimited
 	 * @return User
 	 */
-	private function makePerformingUser( $ip, $pingLimited ) : User {
+	private function makePerformingUser( $ip, $pingLimited ): User {
 		$request = $this->getMockBuilder( WebRequest::class )
 			->getMock();
 		$request->method( 'getIP' )
@@ -606,7 +557,7 @@ class PasswordResetTest extends MediaWikiIntegrationTestCase {
 		/** @var WebRequest $request */
 
 		$user = $this->getMockBuilder( User::class )
-			->onlyMethods( [ 'getName', 'pingLimiter', 'getRequest' ] )
+			->onlyMethods( [ 'getName', 'pingLimiter', 'getRequest', 'isAllowed' ] )
 			->getMock();
 
 		$user->method( 'getName' )
@@ -617,20 +568,11 @@ class PasswordResetTest extends MediaWikiIntegrationTestCase {
 		$user->method( 'getRequest' )
 			->willReturn( $request );
 
+		// Always has the relevant rights, just checking based on rate limits
+		$user->method( 'isAllowed' )->with( 'editmyprivateinfo' )->willReturn( true );
+
 		/** @var User $user */
 		return $user;
-	}
-
-	private function makePermissionManager( User $performingUser, $isAllowed ) : PermissionManager {
-		$permissionManager = $this->getMockBuilder( PermissionManager::class )
-			->disableOriginalConstructor()
-			->getMock();
-		$permissionManager->method( 'userHasRight' )
-			->with( $performingUser, 'editmyprivateinfo' )
-			->willReturn( $isAllowed );
-
-		/** @var PermissionManager $permissionManager */
-		return $permissionManager;
 	}
 
 	/**
@@ -649,7 +591,7 @@ class PasswordResetTest extends MediaWikiIntegrationTestCase {
 		$numUsersToAuth = 0,
 		array $ignored = [],
 		array $mailThrottledLimited = []
-	) : AuthManager {
+	): AuthManager {
 		$authManager = $this->getMockBuilder( AuthManager::class )
 			->disableOriginalConstructor()
 			->getMock();
@@ -682,26 +624,23 @@ class PasswordResetTest extends MediaWikiIntegrationTestCase {
 	 * @return User[]
 	 */
 	private function makeUsers() {
-		$user1 = $this->getMockBuilder( User::class )->getMock();
-		$user2 = $this->getMockBuilder( User::class )->getMock();
-		$user3 = $this->getMockBuilder( User::class )->getMock();
-		$user4 = $this->getMockBuilder( User::class )->getMock();
-		$user1->method( 'getName' )->willReturn( 'User1' );
-		$user2->method( 'getName' )->willReturn( 'User2' );
-		$user3->method( 'getName' )->willReturn( 'User3' );
-		$user4->method( 'getName' )->willReturn( 'User4' );
-		$user1->method( 'getId' )->willReturn( 1 );
-		$user2->method( 'getId' )->willReturn( 2 );
-		$user3->method( 'getId' )->willReturn( 3 );
-		$user4->method( 'getId' )->willReturn( 4 );
-		$user1->method( 'getEmail' )->willReturn( self::VALID_EMAIL );
-		$user2->method( 'getEmail' )->willReturn( self::VALID_EMAIL );
-		$user3->method( 'getEmail' )->willReturn( self::VALID_EMAIL );
-		$user4->method( 'getEmail' )->willReturn( self::VALID_EMAIL );
+		$getGoodUserCb = function ( int $num ) {
+			$user = $this->getMockBuilder( User::class )->getMock();
+			$user->method( 'getName' )->willReturn( "User$num" );
+			$user->method( 'getId' )->willReturn( $num );
+			$user->method( 'isRegistered' )->willReturn( true );
+			$user->method( 'getEmail' )->willReturn( self::VALID_EMAIL );
+			return $user;
+		};
+		$user1 = $getGoodUserCb( 1 );
+		$user2 = $getGoodUserCb( 2 );
+		$user3 = $getGoodUserCb( 3 );
+		$user4 = $getGoodUserCb( 4 );
 
 		$badUser = $this->getMockBuilder( User::class )->getMock();
 		$badUser->method( 'getName' )->willReturn( 'BadUser' );
 		$badUser->method( 'getId' )->willReturn( 5 );
+		$badUser->method( 'isRegistered' )->willReturn( true );
 		$badUser->method( 'getEmail' )->willReturn( '' );
 
 		return [

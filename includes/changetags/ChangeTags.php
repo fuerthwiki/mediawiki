@@ -538,12 +538,18 @@ class ChangeTags {
 	 * @param int|null $rc_id
 	 * @param int|null $rev_id
 	 * @param int|null $log_id
+	 * @throws MWException When $rc_id, $rev_id and $log_id are all null
 	 * @return string[] Tag name => data. Data format is tag-specific.
 	 * @since 1.36
 	 */
 	public static function getTagsWithData(
 		IDatabase $db, $rc_id = null, $rev_id = null, $log_id = null
 	) {
+		if ( !$rc_id && !$rev_id && !$log_id ) {
+			throw new MWException( 'At least one of: RCID, revision ID, and log ID MUST be ' .
+				'specified when loading tags from a change!' );
+		}
+
 		$conds = array_filter(
 			[
 				'ct_rc_id' => $rc_id,
@@ -623,10 +629,15 @@ class ChangeTags {
 				return Status::newFatal( 'tags-apply-no-permission' );
 			}
 
-			$user = MediaWikiServices::getInstance()->getUserFactory()->newFromAuthority( $performer );
-			if ( $user->getBlock() && $user->getBlock()->isSitewide() ) {
-				return Status::newFatal( 'tags-apply-blocked', $user->getName() );
+			if ( $performer->getBlock() && $performer->getBlock()->isSitewide() ) {
+				return Status::newFatal(
+					'tags-apply-blocked',
+					$performer->getUser()->getName()
+				);
 			}
+
+			// ChangeTagsAllowedAdd hook still needs a full User object
+			$user = MediaWikiServices::getInstance()->getUserFactory()->newFromAuthority( $performer );
 		}
 
 		// to be applied, a tag has to be explicitly defined
@@ -701,9 +712,11 @@ class ChangeTags {
 				return Status::newFatal( 'tags-update-no-permission' );
 			}
 
-			$user = MediaWikiServices::getInstance()->getUserFactory()->newFromAuthority( $performer );
-			if ( $user->getBlock() && $user->getBlock()->isSitewide() ) {
-				return Status::newFatal( 'tags-update-blocked', $performer->getUser()->getName() );
+			if ( $performer->getBlock() && $performer->getBlock()->isSitewide() ) {
+				return Status::newFatal(
+					'tags-update-blocked',
+					$performer->getUser()->getName()
+				);
 			}
 		}
 
@@ -915,17 +928,19 @@ class ChangeTags {
 					// tags for each revision. This does not work with temporary tables
 					// on some versions of MySQL, which causes phpunit tests to fail.
 					// As a hacky workaround, we copy the temporary table, and join
-					// against the copy. It is acknowledge that this is quite horrific.
+					// against the copy. It is acknowledged that this is quite horrific.
 					// Discuss at T256006.
 
 					$tagTable = 'change_tag_for_display_query';
 					$db->query(
 						'CREATE TEMPORARY TABLE IF NOT EXISTS ' . $db->tableName( $tagTable )
-						. ' LIKE ' . $db->tableName( 'change_tag' )
+						. ' LIKE ' . $db->tableName( 'change_tag' ),
+						__METHOD__
 					);
 					$db->query(
 						'INSERT IGNORE INTO ' . $db->tableName( $tagTable )
-						. ' SELECT * FROM ' . $db->tableName( 'change_tag' )
+						. ' SELECT * FROM ' . $db->tableName( 'change_tag' ),
+						__METHOD__
 					);
 				}
 			}
@@ -1149,9 +1164,11 @@ class ChangeTags {
 			if ( !$performer->isAllowed( 'managechangetags' ) ) {
 				return Status::newFatal( 'tags-manage-no-permission' );
 			}
-			$user = MediaWikiServices::getInstance()->getUserFactory()->newFromAuthority( $performer );
-			if ( $user->getBlock() && $user->getBlock()->isSitewide() ) {
-				return Status::newFatal( 'tags-manage-blocked', $user->getName() );
+			if ( $performer->getBlock() && $performer->getBlock()->isSitewide() ) {
+				return Status::newFatal(
+					'tags-manage-blocked',
+					$performer->getUser()->getName()
+				);
 			}
 		}
 
@@ -1223,9 +1240,11 @@ class ChangeTags {
 			if ( !$performer->isAllowed( 'managechangetags' ) ) {
 				return Status::newFatal( 'tags-manage-no-permission' );
 			}
-			$user = MediaWikiServices::getInstance()->getUserFactory()->newFromAuthority( $performer );
-			if ( $user->getBlock() && $user->getBlock()->isSitewide() ) {
-				return Status::newFatal( 'tags-manage-blocked', $performer->getUser()->getName() );
+			if ( $performer->getBlock() && $performer->getBlock()->isSitewide() ) {
+				return Status::newFatal(
+					'tags-manage-blocked',
+					$performer->getUser()->getName()
+				);
 			}
 		}
 
@@ -1323,10 +1342,14 @@ class ChangeTags {
 			if ( !$performer->isAllowed( 'managechangetags' ) ) {
 				return Status::newFatal( 'tags-manage-no-permission' );
 			}
-			$user = MediaWikiServices::getInstance()->getUserFactory()->newFromAuthority( $performer );
-			if ( $user->getBlock() && $user->getBlock()->isSitewide() ) {
-				return Status::newFatal( 'tags-manage-blocked', $performer->getUser()->getName() );
+			if ( $performer->getBlock() && $performer->getBlock()->isSitewide() ) {
+				return Status::newFatal(
+					'tags-manage-blocked',
+					$performer->getUser()->getName()
+				);
 			}
+			// ChangeTagCanCreate hook still needs a full User object
+			$user = MediaWikiServices::getInstance()->getUserFactory()->newFromAuthority( $performer );
 		}
 
 		$status = self::isTagNameValid( $tag );
@@ -1446,10 +1469,14 @@ class ChangeTags {
 			if ( !$performer->isAllowed( 'deletechangetags' ) ) {
 				return Status::newFatal( 'tags-delete-no-permission' );
 			}
-			$user = MediaWikiServices::getInstance()->getUserFactory()->newFromAuthority( $performer );
-			if ( $user->getBlock() && $user->getBlock()->isSitewide() ) {
-				return Status::newFatal( 'tags-manage-blocked', $user->getName() );
+			if ( $performer->getBlock() && $performer->getBlock()->isSitewide() ) {
+				return Status::newFatal(
+					'tags-manage-blocked',
+					$performer->getUser()->getName()
+				);
 			}
+			// ChangeTagCanDelete hook still needs a full User object
+			$user = MediaWikiServices::getInstance()->getUserFactory()->newFromAuthority( $performer );
 		}
 
 		if ( !isset( $tagUsage[$tag] ) && !in_array( $tag, self::listDefinedTags() ) ) {

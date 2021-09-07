@@ -15,7 +15,14 @@ use Wikimedia\TestingAccessWrapper;
  * @covers \MediaWiki\Auth\AbstractAuthenticationProvider
  */
 class AbstractAuthenticationProviderTest extends \MediaWikiUnitTestCase {
+	use AuthenticationProviderTestTrait;
+
 	public function testAbstractAuthenticationProvider() {
+		$this->hideDeprecated( 'MediaWiki\Auth\AbstractAuthenticationProvider::setConfig' );
+		$this->hideDeprecated( 'MediaWiki\Auth\AbstractAuthenticationProvider::setLogger' );
+		$this->hideDeprecated( 'MediaWiki\Auth\AbstractAuthenticationProvider::setManager' );
+		$this->hideDeprecated( 'MediaWiki\Auth\AbstractAuthenticationProvider::setHookContainer' );
+
 		$provider = $this->getMockForAbstractClass( AbstractAuthenticationProvider::class );
 		$providerPriv = TestingAccessWrapper::newFromObject( $provider );
 
@@ -25,7 +32,7 @@ class AbstractAuthenticationProviderTest extends \MediaWikiUnitTestCase {
 		$hookContainer = $this->createMock( HookContainer::class );
 		$config = $this->getMockForAbstractClass( Config::class );
 		$userNameUtils = $this->createNoOpMock( UserNameUtils::class );
-		$provider->init( $logger, $authManager, $hookContainer, $config, $userNameUtils );
+		$this->initProvider( $provider, $config, $logger, $authManager, $hookContainer, $userNameUtils );
 		$this->assertSame( $logger, $providerPriv->logger );
 		$this->assertSame( $authManager, $providerPriv->manager );
 		$this->assertSame( $hookContainer, $providerPriv->hookContainer );
@@ -46,6 +53,11 @@ class AbstractAuthenticationProviderTest extends \MediaWikiUnitTestCase {
 		$obj = $this->getMockForAbstractClass( Config::class );
 		$provider->setConfig( $obj );
 		$this->assertSame( $obj, $providerPriv->config, 'setConfig' );
+
+		// test AbstractAuthenticationProvider::setHookContainer
+		$obj = $this->createHookContainer();
+		$provider->setHookContainer( $obj );
+		$this->assertSame( $obj, $providerPriv->hookContainer, 'setHookContainer' );
 
 		// test AbstractAuthenticationProvider::getUniqueId
 		$this->assertIsString( $provider->getUniqueId(), 'getUniqueId' );

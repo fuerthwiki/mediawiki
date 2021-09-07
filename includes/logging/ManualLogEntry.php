@@ -25,6 +25,7 @@
 
 use MediaWiki\ChangeTags\Taggable;
 use MediaWiki\Linker\LinkTarget;
+use MediaWiki\Page\PageReference;
 use MediaWiki\User\UserIdentity;
 use Wikimedia\Assert\Assert;
 use Wikimedia\IPUtils;
@@ -154,11 +155,18 @@ class ManualLogEntry extends LogEntryBase implements Taggable {
 	/**
 	 * Set the title of the object changed.
 	 *
+	 * @param LinkTarget|PageReference $target calling with LinkTarget
+	 *   is deprecated since 1.37
 	 * @since 1.19
-	 * @param LinkTarget $target
 	 */
-	public function setTarget( LinkTarget $target ) {
-		$this->target = Title::newFromLinkTarget( $target );
+	public function setTarget( $target ) {
+		if ( $target instanceof PageReference ) {
+			$this->target = Title::castFromPageReference( $target );
+		} elseif ( $target instanceof LinkTarget ) {
+			$this->target = Title::newFromLinkTarget( $target );
+		} else {
+			throw new InvalidArgumentException( "Invalid target provided" );
+		}
 	}
 
 	/**
@@ -453,14 +461,6 @@ class ManualLogEntry extends LogEntryBase implements Taggable {
 	 */
 	public function getParameters() {
 		return $this->parameters;
-	}
-
-	/**
-	 * @return User
-	 */
-	public function getPerformer() {
-		wfDeprecated( __METHOD__, '1.36' );
-		return User::newFromIdentity( $this->performer );
 	}
 
 	/**

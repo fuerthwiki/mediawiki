@@ -82,6 +82,7 @@ abbr[ title ], /* Note: Duplicate ruleset if skins load `normalize` and `legacy`
 	cursor: help;
 }
 
+/* stylelint-disable-next-line plugin/no-unsupported-browser-features */
 @supports ( text-decoration: underline dotted ) {
 	abbr[ title ], /* FIXME: Remove similar to `abbr` above. */
 	.explain[ title ] {
@@ -129,7 +130,7 @@ td.mw-submit {
 }
 
 @import 'content.links.less';
-@import 'content.thumbnails.less';
+@import 'content.thumbnails-layout.less';
 @import 'interface.category.less';
 @import '../mediawiki.action/styles.less';
 
@@ -178,14 +179,6 @@ a.new {
 .success {
 	color: #14866d;
 }
-
-/**
- * `HTML::infobox` `.mw-infobox` class.
- *
- * Deprecated since 1.36.
- */
-// Deprecate on directory base to uniquely mark its status.
-@import 'deprecated/mw-infobox.less';
 
 .visualClear {
 	clear: both;

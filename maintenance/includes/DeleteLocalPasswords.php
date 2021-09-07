@@ -86,7 +86,8 @@ ERROR
 
 		$user = $this->getOption( 'user', false );
 		if ( $user !== false ) {
-			$this->user = User::getCanonicalName( $user );
+			$userNameUtils = MediaWikiServices::getInstance()->getUserNameUtils();
+			$this->user = $userNameUtils->getCanonical( $user );
 			if ( $this->user === false ) {
 				$this->fatalError( "Invalid user name\n" );
 			}
@@ -104,7 +105,7 @@ ERROR
 	}
 
 	/**
-	 * Get the master DB handle for the current user batch. This is provided for the benefit
+	 * Get the primary DB handle for the current user batch. This is provided for the benefit
 	 * of authentication extensions which subclass this and work with wiki farms.
 	 * @return IMaintainableDatabase
 	 */

@@ -117,8 +117,7 @@ class GlobalIdGenerator {
 	 * @return string Number
 	 * @throws RuntimeException
 	 */
-	public function newTimestampedUID88( $base = 10 ) {
-		Assert::parameterType( 'integer', $base, '$base' );
+	public function newTimestampedUID88( int $base = 10 ) {
 		Assert::parameter( $base <= 36, '$base', 'must be <= 36' );
 		Assert::parameter( $base >= 2, '$base', 'must be >= 2' );
 
@@ -164,8 +163,7 @@ class GlobalIdGenerator {
 	 * @return string Number
 	 * @throws RuntimeException
 	 */
-	public function newTimestampedUID128( $base = 10 ) {
-		Assert::parameterType( 'integer', $base, '$base' );
+	public function newTimestampedUID128( int $base = 10 ) {
 		Assert::parameter( $base <= 36, '$base', 'must be <= 36' );
 		Assert::parameter( $base >= 2, '$base', 'must be >= 2' );
 
@@ -726,6 +724,7 @@ class GlobalIdGenerator {
 	}
 
 	public function __destruct() {
+		// @phan-suppress-next-line PhanPluginUseReturnValueInternalKnown
 		array_map( 'fclose', array_filter( $this->fileHandles ) );
 	}
 }
