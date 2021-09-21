@@ -119,11 +119,11 @@ class MWExceptionHandler {
 	 *
 	 * This method is used to attempt to recover from exceptions
 	 *
-	 * @since 1.23
+	 * @since 1.37
 	 * @param Throwable $e
 	 * @param string $catcher CAUGHT_BY_* class constant indicating what caught the error
 	 */
-	public static function rollbackMasterChangesAndLog(
+	public static function rollbackPrimaryChangesAndLog(
 		Throwable $e,
 		$catcher = self::CAUGHT_BY_OTHER
 	) {
@@ -148,6 +148,19 @@ class MWExceptionHandler {
 	}
 
 	/**
+	 * @deprecated since 1.37; please use rollbackPrimaryChangesAndLog() instead.
+	 * @param Throwable $e
+	 * @param string $catcher CAUGHT_BY_* class constant indicating what caught the error
+	 */
+	public static function rollbackMasterChangesAndLog(
+		Throwable $e,
+		$catcher = self::CAUGHT_BY_OTHER
+	) {
+		wfDeprecated( __METHOD__, '1.37' );
+		self::rollbackPrimaryChangesAndLog( $e, $catcher );
+	}
+
+	/**
 	 * Callback to use with PHP's set_exception_handler.
 	 *
 	 * @since 1.31
@@ -159,6 +172,9 @@ class MWExceptionHandler {
 		// Make sure we don't claim success on exit for CLI scripts (T177414)
 		if ( wfIsCLI() ) {
 			register_shutdown_function(
+				/**
+				 * @return never
+				 */
 				static function () {
 					exit( 255 );
 				}
@@ -182,7 +198,7 @@ class MWExceptionHandler {
 	 * @param string $catcher CAUGHT_BY_* class constant indicating what caught the error
 	 */
 	public static function handleException( Throwable $e, $catcher = self::CAUGHT_BY_OTHER ) {
-		self::rollbackMasterChangesAndLog( $e, $catcher );
+		self::rollbackPrimaryChangesAndLog( $e, $catcher );
 		self::report( $e );
 	}
 

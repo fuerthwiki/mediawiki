@@ -202,9 +202,6 @@ class ApiMain extends ApiBase {
 				'ContentTransformer',
 			]
 		],
-		'tokens' => [
-			'class' => ApiTokens::class,
-		],
 		'checktoken' => [
 			'class' => ApiCheckToken::class,
 		],
@@ -531,10 +528,9 @@ class ApiMain extends ApiBase {
 			// If we're in a mode that breaks the same-origin policy, strip
 			// user credentials for security.
 			if ( $this->lacksSameOriginSecurity() ) {
-				global $wgUser;
 				wfDebug( "API: stripping user credentials when the same-origin policy is not applied" );
 				$user = new User();
-				$wgUser = $user;
+				StubGlobalUser::setUser( $user );
 				$derivativeContext->setUser( $user );
 				$request->response()->header( 'MediaWiki-Login-Suppressed: true' );
 			}
@@ -814,6 +810,7 @@ class ApiMain extends ApiBase {
 			);
 		}
 
+		// @phan-suppress-next-line PhanTypeMismatchReturnSuperType
 		return $printer;
 	}
 
@@ -902,7 +899,7 @@ class ApiMain extends ApiBase {
 		// T65145: Rollback any open database transactions
 		if ( !$e instanceof ApiUsageException ) {
 			// ApiUsageExceptions are intentional, so don't rollback if that's the case
-			MWExceptionHandler::rollbackMasterChangesAndLog(
+			MWExceptionHandler::rollbackPrimaryChangesAndLog(
 				$e,
 				MWExceptionHandler::CAUGHT_BY_ENTRYPOINT
 			);

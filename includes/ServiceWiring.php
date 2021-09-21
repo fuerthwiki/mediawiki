@@ -58,6 +58,7 @@ use MediaWiki\Block\BlockUtils;
 use MediaWiki\Block\DatabaseBlockStore;
 use MediaWiki\Block\UnblockUserFactory;
 use MediaWiki\Block\UserBlockCommandFactory;
+use MediaWiki\Cache\BacklinkCacheFactory;
 use MediaWiki\Cache\LinkBatchFactory;
 use MediaWiki\Collation\CollationFactory;
 use MediaWiki\Config\ConfigRepository;
@@ -67,6 +68,7 @@ use MediaWiki\Content\IContentHandlerFactory;
 use MediaWiki\Content\Transform\ContentTransformer;
 use MediaWiki\EditPage\Constraint\EditConstraintFactory;
 use MediaWiki\EditPage\SpamChecker;
+use MediaWiki\Export\WikiExporterFactory;
 use MediaWiki\FileBackend\FSFile\TempFSFileFactory;
 use MediaWiki\FileBackend\LockManager\LockManagerGroupFactory;
 use MediaWiki\HookContainer\DeprecatedHooks;
@@ -90,6 +92,7 @@ use MediaWiki\Mail\IEmailer;
 use MediaWiki\MediaWikiServices;
 use MediaWiki\Message\MessageFormatterFactory;
 use MediaWiki\Page\ContentModelChangeFactory;
+use MediaWiki\Page\DeletePageFactory;
 use MediaWiki\Page\MergeHistoryFactory;
 use MediaWiki\Page\MovePageFactory;
 use MediaWiki\Page\PageCommandFactory;
@@ -99,6 +102,8 @@ use MediaWiki\Page\ParserOutputAccess;
 use MediaWiki\Page\RollbackPageFactory;
 use MediaWiki\Page\WikiPageFactory;
 use MediaWiki\Parser\ParserCacheFactory;
+use MediaWiki\Permissions\GrantsInfo;
+use MediaWiki\Permissions\GrantsLocalization;
 use MediaWiki\Permissions\GroupPermissionsLookup;
 use MediaWiki\Permissions\PermissionManager;
 use MediaWiki\Permissions\RestrictionStore;
@@ -208,6 +213,10 @@ return [
 		);
 		$authManager->setLogger( LoggerFactory::getInstance( 'authentication' ) );
 		return $authManager;
+	},
+
+	'BacklinkCacheFactory' => static function ( MediaWikiServices $services ): BacklinkCacheFactory {
+		return new BacklinkCacheFactory( $services->getMainWANObjectCache() );
 	},
 
 	'BadFileLookup' => static function ( MediaWikiServices $services ): BadFileLookup {
@@ -389,7 +398,7 @@ return [
 	'ContributionsLookup' => static function ( MediaWikiServices $services ): ContributionsLookup {
 		return new ContributionsLookup(
 			$services->getRevisionStore(),
-			$services->getLinkRenderer(),
+			$services->getLinkRendererFactory(),
 			$services->getLinkBatchFactory(),
 			$services->getHookContainer(),
 			$services->getDBLoadBalancer(),
@@ -510,6 +519,10 @@ return [
 		return $instance;
 	},
 
+	'DeletePageFactory' => static function ( MediaWikiServices $services ): DeletePageFactory {
+		return $services->getService( '_PageCommandFactory' );
+	},
+
 	'Emailer' => static function ( MediaWikiServices $services ): IEmailer {
 		return new Emailer();
 	},
@@ -589,6 +602,24 @@ return [
 			static function ( $command ) {
 				return wfShellExec( $command );
 			}
+		);
+	},
+
+	'GrantsInfo' => static function ( MediaWikiServices $services ): GrantsInfo {
+		return new GrantsInfo(
+			new ServiceOptions(
+				GrantsInfo::CONSTRUCTOR_OPTIONS,
+				$services->getMainConfig()
+			)
+		);
+	},
+
+	'GrantsLocalization' => static function ( MediaWikiServices $services ): GrantsLocalization {
+		return new GrantsLocalization(
+			$services->getGrantsInfo(),
+			$services->getLinkRenderer(),
+			$services->getLanguageFactory(),
+			$services->getContentLanguage()
 		);
 	},
 
@@ -745,15 +776,7 @@ return [
 	},
 
 	'LinkRenderer' => static function ( MediaWikiServices $services ): LinkRenderer {
-		if ( defined( 'MW_NO_SESSION' ) ) {
-			return $services->getLinkRendererFactory()->create();
-		} else {
-			// Normally information from the current request would not be passed in here;
-			// this is an exception. (See also the class documentation.)
-			return $services->getLinkRendererFactory()->createForUser(
-				RequestContext::getMain()->getUser()
-			);
-		}
+		return $services->getLinkRendererFactory()->create();
 	},
 
 	'LinkRendererFactory' => static function ( MediaWikiServices $services ): LinkRendererFactory {
@@ -1063,7 +1086,9 @@ return [
 			$options,
 			$services->getDBLoadBalancerFactory(),
 			$services->getNamespaceInfo(),
-			$services->getTitleParser()
+			$services->getTitleParser(),
+			$services->getLinkCache(),
+			$services->getStatsdDataFactory()
 		);
 	},
 
@@ -1801,6 +1826,14 @@ return [
 		);
 	},
 
+	'WikiExporterFactory' => static function ( MediaWikiServices $services ): WikiExporterFactory {
+		return new WikiExporterFactory(
+			$services->getHookContainer(),
+			$services->getRevisionStore(),
+			$services->getTitleParser()
+		);
+	},
+
 	'WikiImporterFactory' => static function ( MediaWikiServices $services ): WikiImporterFactory {
 		return new WikiImporterFactory(
 			$services->getMainConfig(),
@@ -1883,7 +1916,7 @@ return [
 	'_PageCommandFactory' => static function ( MediaWikiServices $services ): PageCommandFactory {
 		return new PageCommandFactory(
 			$services->getMainConfig(),
-			$services->getDBLoadBalancer(),
+			$services->getDBLoadBalancerFactory(),
 			$services->getNamespaceInfo(),
 			$services->getWatchedItemStore(),
 			$services->getRepoGroup(),
@@ -1899,7 +1932,13 @@ return [
 			$services->getActorNormalization(),
 			$services->getTitleFactory(),
 			$services->getUserEditTracker(),
-			$services->getCollationFactory()
+			$services->getCollationFactory(),
+			$services->getJobQueueGroup(),
+			$services->getCommentStore(),
+			ObjectCache::getInstance( 'db-replicated' ),
+			WikiMap::getCurrentWikiDbDomain()->getId(),
+			WebRequest::getRequestId(),
+			$services->getBacklinkCacheFactory()
 		);
 	},
 

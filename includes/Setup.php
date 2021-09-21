@@ -124,7 +124,6 @@ if ( !interface_exists( LoggerInterface::class ) ) {
 	);
 	echo $message;
 	trigger_error( $message, E_USER_ERROR );
-	die( 1 );
 }
 
 HeaderCallback::register();
@@ -256,8 +255,30 @@ if ( $wgMainWANCache === false ) {
 	];
 }
 
-// Blacklisted file extensions shouldn't appear on the "allowed" list
-$wgFileExtensions = array_values( array_diff( $wgFileExtensions, $wgFileBlacklist ) );
+// Back-compat
+if ( isset( $wgFileBlacklist ) ) {
+	$wgProhibitedFileExtensions = array_merge( $wgProhibitedFileExtensions, $wgFileBlacklist );
+} else {
+	$wgFileBlacklist = $wgProhibitedFileExtensions;
+}
+if ( isset( $wgMimeTypeBlacklist ) ) {
+	$wgMimeTypeExclusions = array_merge( $wgMimeTypeExclusions, $wgMimeTypeBlacklist );
+} else {
+	$wgMimeTypeBlacklist = $wgMimeTypeExclusions;
+}
+if ( isset( $wgEnableUserEmailBlacklist ) ) {
+	$wgEnableUserEmailMuteList = $wgEnableUserEmailBlacklist;
+} else {
+	$wgEnableUserEmailBlacklist = $wgEnableUserEmailMuteList;
+}
+if ( isset( $wgShortPagesNamespaceBlacklist ) ) {
+	$wgShortPagesNamespaceExclusions = $wgShortPagesNamespaceBlacklist;
+} else {
+	$wgShortPagesNamespaceBlacklist = $wgShortPagesNamespaceExclusions;
+}
+
+// Prohibited file extensions shouldn't appear on the "allowed" list
+$wgFileExtensions = array_values( array_diff( $wgFileExtensions, $wgProhibitedFileExtensions ) );
 
 // Fix path to icon images after they were moved in 1.24
 if ( $wgRightsIcon ) {
@@ -610,7 +631,6 @@ MWExceptionHandler::installHandler();
 
 // Non-trivial validation of: $wgServer
 // The FatalError page only renders cleanly after MWExceptionHandler is installed.
-// @phan-suppress-next-line PhanSuspiciousValueComparisonInGlobalScope
 if ( $wgServer === false ) {
 	// T30798: $wgServer must be explicitly set
 	throw new FatalError(
@@ -800,7 +820,10 @@ if ( !defined( 'MW_NO_SESSION' ) && !$wgCommandLineMode ) {
  * @deprecated since 1.35, use an available context source when possible, or, as a backup,
  * RequestContext::getMain()
  */
-$wgUser = RequestContext::getMain()->getUser(); // BackCompat
+$wgUser = new StubGlobalUser( RequestContext::getMain()->getUser() ); // BackCompat
+register_shutdown_function( static function () {
+	StubGlobalUser::$destructorDeprecationDisarmed = true;
+} );
 
 /**
  * @var Language|StubUserLang $wgLang

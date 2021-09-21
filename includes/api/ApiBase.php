@@ -1374,6 +1374,7 @@ abstract class ApiBase extends ContextSource {
 	 * @param array|null $data See ApiErrorFormatter::addError()
 	 * @param int|null $httpCode HTTP error code to use
 	 * @throws ApiUsageException always
+	 * @return never
 	 */
 	public function dieWithError( $msg, $code = null, $data = null, $httpCode = null ) {
 		throw ApiUsageException::newWithMessage( $this, $msg, $code, $data, $httpCode );
@@ -1386,8 +1387,10 @@ abstract class ApiBase extends ContextSource {
 	 * @param Throwable $exception See ApiErrorFormatter::getMessageFromException()
 	 * @param array $options See ApiErrorFormatter::getMessageFromException()
 	 * @throws ApiUsageException always
+	 * @return never
 	 */
 	public function dieWithException( Throwable $exception, array $options = [] ) {
+		// @phan-suppress-previous-line PhanTypeMissingReturn
 		$this->dieWithError(
 			// @phan-suppress-next-line PhanTypeMismatchArgument
 			$this->getErrorFormatter()->getMessageFromException( $exception, $options )
@@ -1401,8 +1404,10 @@ abstract class ApiBase extends ContextSource {
 	 * @since 1.27
 	 * @param Block $block The block used to generate the ApiUsageException
 	 * @throws ApiUsageException always
+	 * @return never
 	 */
 	public function dieBlocked( Block $block ) {
+		// @phan-suppress-previous-line PhanTypeMissingReturn
 		// Die using the appropriate message depending on block type
 		if ( $block->getType() == Block::TYPE_AUTO ) {
 			$this->dieWithError(
@@ -1432,6 +1437,7 @@ abstract class ApiBase extends ContextSource {
 	 * @since 1.29 Accepts a StatusValue
 	 * @param StatusValue $status
 	 * @throws ApiUsageException always
+	 * @return never
 	 */
 	public function dieStatus( StatusValue $status ) {
 		if ( $status->isGood() ) {
@@ -1460,8 +1466,10 @@ abstract class ApiBase extends ContextSource {
 	 * Helper function for readonly errors
 	 *
 	 * @throws ApiUsageException always
+	 * @return never
 	 */
 	public function dieReadOnly() {
+		// @phan-suppress-previous-line PhanTypeMissingReturn
 		$this->dieWithError(
 			'apierror-readonly',
 			'readonly',
@@ -1569,6 +1577,7 @@ abstract class ApiBase extends ContextSource {
 	 * @param string $method Method or function name
 	 * @param string $message Error message
 	 * @throws MWException always
+	 * @return never
 	 */
 	protected static function dieDebug( $method, $message ) {
 		throw new MWException( "Internal error in $method: $message" );

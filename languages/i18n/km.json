@@ -661,7 +661,6 @@
 	"defaultmessagetext": "អត្ថបទសារតាមលំនាំដើម",
 	"invalid-content-data": "ខ្លឹមសារទិន្នន័យគ្មានសុពលភាព",
 	"content-not-allowed-here": "មិនអនុញ្ញាតិអោយសរសេរខ្លឹមសារ\"$1\" នៅលើទំព័រ [[:$2]] ទេ។",
-	"editwarning-warning": "ចាកចេញពីទំព័រនេះ នឹងធ្វើឲ្យអ្នកបាត់បង់បន្លាស់ប្ដូរដែលអ្នកបានធ្វើ។\nប្រសិនបើអ្នកបាន​កត់ឈ្មោះចូលរួចហើយ អ្នកអាច​បិទ​បម្រាម​នេះ​នៅ​ក្នុងផ្នែក​ \"{{int:prefs-editing}}\" នៃ​ចំណង់ចំណូល​ចិត្ត​របស់​អ្នក​។",
 	"content-model-wikitext": "អត្ថបទវិគី",
 	"content-model-text": "អត្ថបទសុទ្ធ",
 	"content-model-javascript": "JavaScript",
@@ -883,9 +882,6 @@
 	"restoreprefs": "ស្ដារ​ការកំណត់​ទាំងអស់​ទៅ​លំនាំដើម (គ្រប់ផ្នែកទាំងអស់)",
 	"prefs-editing": "កំណែប្រែ",
 	"searchresultshead": "ស្វែងរក",
-	"stub-threshold": "ទំហំអប្បបរមាសម្រាប់ដាក់ជាទម្រង់ទំព័រកំប៉ិចកំប៉ុក($1)៖",
-	"stub-threshold-sample-link": "គំរូ",
-	"stub-threshold-disabled": "មិនប្រើ",
 	"recentchangesdays": "ចំនួនថ្ងៃបង្ហាញក្នុងទំព័របន្លាស់ប្តូរថ្មីៗ៖",
 	"recentchangesdays-max": "(អតិបរមា $1 {{PLURAL:$1|ថ្ងៃ|ថ្ងៃ}})",
 	"recentchangescount": "ចំនួន​កំណែប្រែ​សម្រាប់បង្ហាញក្នុងបន្លាស់ប្ដូរថ្មីៗ ប្រវត្តិទំព័រ និងក្នុងកំណត់ត្រា​តាមលំនាំដើម៖",
@@ -973,7 +969,6 @@
 	"prefs-tokenwatchlist": "កូនសោរ",
 	"prefs-diffs": "ភាពខុសគ្នា",
 	"prefs-help-prefershttps": "ចំណង់ចំណូលចិត្តនេះនឹងមានប្រសិទ្ធិភាពពេលអ្នកកត់ឈ្មោះចូលលើកក្រោយ។",
-	"prefswarning-warning": "អ្នកបានផ្លាស់ប្ដូរចំណង់ចំណូលចិត្តតែមិនទាន់បានរក្សាទុកទេ។ បើសិនជាអ្នកចាកចេញពីទំព័រនេះដោយមិនបានចុច \"$1\" ទេនោះចំណង់ចំណូលចិត្តរបស់អ្នកនឹងមិនត្រូវបន្ទាន់សម័យទេ។",
 	"userrights": "សិទ្ធិអ្នកប្រើប្រាស់",
 	"userrights-lookup-user": "ជ្រើសរើសអ្នកប្រើប្រាស់",
 	"userrights-user-editname": "បញ្ចូលអត្តនាម៖",
@@ -2751,7 +2746,6 @@
 	"passwordpolicies-policies": "គោលការណ៍",
 	"passwordpolicies-policy-minimalpasswordlength": "ពាក្យសម្ងាត់ត្រូវ​តែវែងជាង{{PLURAL:$1|តួអក្សរ|$1តួអក្សរ}}",
 	"passwordpolicies-policy-minimumpasswordlengthtologin": "ពាក្យសម្ងាត់ត្រូវ​តែវែងជាង$1 {{PLURAL:$1|តួអក្សរ|តួអក្សរ}}ទើបអាចកត់ឈ្មោះចូលបាន",
-	"passwordpolicies-policy-passwordcannotmatchusername": "ពាក្យសម្ងាត់មិនត្រូវដូចគ្នានឹងអត្តនាមទេ",
 	"passwordpolicies-policy-passwordcannotmatchdefaults": "ពាក្យសម្ងាត់មិនអាចត្រូវគ្នានឹងបញ្ជីជាក់លាក់មួយដែលចុះនូវពាក្យសម្ងាត់លំនាំដើមទេ",
 	"passwordpolicies-policy-maximalpasswordlength": "ពាក្យសម្ងាត់ត្រូវតែខ្លីជាង $1 {{PLURAL:$1|តួអក្សរ|តួអក្សរ}}"
 }

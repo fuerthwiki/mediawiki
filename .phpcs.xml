@@ -15,7 +15,6 @@
 		<exclude name="MediaWiki.NamingConventions.LowerCamelFunctionsName.FunctionName" />
 		<exclude name="MediaWiki.Usage.DbrQueryUsage.DbrQueryFound" />
 		<exclude name="MediaWiki.Usage.DeprecatedGlobalVariables.Deprecated$wgTitle" />
-		<exclude name="MediaWiki.Usage.DeprecatedGlobalVariables.Deprecated$wgUser" />
 		<exclude name="MediaWiki.Usage.DeprecatedGlobalVariables.Deprecated$wgVersion" />
 		<exclude name="MediaWiki.Usage.ExtendClassUsage.FunctionConfigUsage" />
 		<exclude name="MediaWiki.Usage.ExtendClassUsage.FunctionVarUsage" />
@@ -28,8 +27,6 @@
 	<rule ref="MediaWiki.NamingConventions.PrefixedGlobalFunctions">
 		<properties>
 			<!--
-			includes/GlobalFunctions.php
-			* mimeTypeMatch
 			maintenance/language/transstat.php
 			* showUsage
 			maintenance/mcc.php
@@ -46,7 +43,7 @@
 			tests/qunit/data/styleTest.css.php
 			* cssfilter
 			-->
-			<property name="ignoreList" type="array" value="cssfilter,mccGetHelp,mccShowUsage,mimeTypeMatch,moveToExternal,NothingFunction,NothingFunctionData,resolveStub,resolveStubs,showUsage" />
+			<property name="ignoreList" type="array" value="cssfilter,mccGetHelp,mccShowUsage,moveToExternal,NothingFunction,NothingFunctionData,resolveStub,resolveStubs,showUsage" />
 		</properties>
 	</rule>
 	<rule ref="MediaWiki.NamingConventions.ValidGlobalName">
@@ -177,6 +174,7 @@
 	</rule>
 	<rule ref="PSR2.Methods.MethodDeclaration.Underscore">
 		<exclude-pattern>*/includes/StubObject\.php</exclude-pattern>
+		<exclude-pattern>*/includes/StubGlobalUser\.php</exclude-pattern>
 		<exclude-pattern>*/includes/StubUserLang\.php</exclude-pattern>
 	</rule>
 	<rule ref="MediaWiki.Usage.AssignmentInReturn.AssignmentInReturn">

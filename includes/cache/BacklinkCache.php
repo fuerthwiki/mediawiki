@@ -39,10 +39,10 @@ use Wikimedia\Rdbms\IResultWrapper;
  * partitions. This is a shared cache.
  *
  * Instances of this class should typically be fetched with the method
- * $title->getBacklinkCache().
+ * ::getBacklinkCache() from the BacklinkCacheFactory service.
  *
  * Ideally you should only get your backlinks from here when you think
- * there is some advantage in caching them. Otherwise it's just a waste
+ * there is some advantage in caching them. Otherwise, it's just a waste
  * of memory.
  *
  * Introduced by r47317
@@ -77,9 +77,7 @@ class BacklinkCache {
 	 */
 	protected $fullResultCache = [];
 
-	/**
-	 * @var WANObjectCache
-	 */
+	/** @var WANObjectCache */
 	protected $wanCache;
 
 	/**
@@ -102,11 +100,12 @@ class BacklinkCache {
 	/**
 	 * Create a new BacklinkCache
 	 *
+	 * @param WANObjectCache $wanCache
 	 * @param PageReference $page Page to create a backlink cache for
 	 */
-	public function __construct( PageReference $page ) {
+	public function __construct( WANObjectCache $wanCache, PageReference $page ) {
 		$this->page = $page;
-		$this->wanCache = MediaWikiServices::getInstance()->getMainWANObjectCache();
+		$this->wanCache = $wanCache;
 	}
 
 	/**
@@ -114,14 +113,23 @@ class BacklinkCache {
 	 * Currently, only one cache instance can exist; callers that
 	 * need multiple backlink cache objects should keep them in scope.
 	 *
+	 * @deprecated since 1.37 Use BacklinkCacheFactory::getBacklinkCache() instead
+	 *
 	 * @param PageReference $page Page to get a backlink cache for
 	 * @return BacklinkCache
 	 */
 	public static function get( PageReference $page ): self {
-		if ( !self::$instance || !self::$instance->page->isSamePageAs( $page ) ) {
-			self::$instance = new self( $page );
-		}
-		return self::$instance;
+		$backlinkCacheFactory = MediaWikiServices::getInstance()->getBacklinkCacheFactory();
+
+		return $backlinkCacheFactory->getBacklinkCache( $page );
+	}
+
+	/**
+	 * @since 1.37
+	 * @return PageReference
+	 */
+	public function getPage(): PageReference {
+		return $this->page;
 	}
 
 	/**

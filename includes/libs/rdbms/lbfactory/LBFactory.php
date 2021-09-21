@@ -287,7 +287,7 @@ abstract class LBFactory implements ILBFactory {
 	}
 
 	public function beginMasterChanges( $fname = __METHOD__ ) {
-		// wfDeprecated( __METHOD__, '1.37' );
+		wfDeprecated( __METHOD__, '1.37' );
 		$this->beginPrimaryChanges( $fname );
 	}
 
@@ -328,7 +328,7 @@ abstract class LBFactory implements ILBFactory {
 	}
 
 	final public function commitMasterChanges( $fname = __METHOD__, array $options = [] ) {
-		// wfDeprecated( __METHOD__, '1.37' );
+		wfDeprecated( __METHOD__, '1.37' );
 		$this->commitPrimaryChanges( $fname, $options );
 	}
 
@@ -347,7 +347,7 @@ abstract class LBFactory implements ILBFactory {
 	}
 
 	final public function rollbackMasterChanges( $fname = __METHOD__ ) {
-		// wfDeprecated( __METHOD__, '1.37' );
+		wfDeprecated( __METHOD__, '1.37' );
 		$this->rollbackPrimaryChanges( $fname );
 	}
 
@@ -414,7 +414,7 @@ abstract class LBFactory implements ILBFactory {
 	}
 
 	public function hasMasterChanges() {
-		// wfDeprecated( __METHOD__, '1.37' );
+		wfDeprecated( __METHOD__, '1.37' );
 		return $this->hasPrimaryChanges();
 	}
 
@@ -436,7 +436,7 @@ abstract class LBFactory implements ILBFactory {
 	}
 
 	public function hasOrMadeRecentMasterChanges( $age = null ) {
-		// wfDeprecated( __METHOD__, '1.37' );
+		wfDeprecated( __METHOD__, '1.37' );
 		return $this->hasOrMadeRecentPrimaryChanges( $age );
 	}
 
@@ -448,7 +448,6 @@ abstract class LBFactory implements ILBFactory {
 			'ifWritesSince' => null
 		];
 
-		// @phan-suppress-next-line PhanSuspiciousValueComparison
 		if ( $opts['domain'] === false && isset( $opts['wiki'] ) ) {
 			$opts['domain'] = $opts['wiki']; // b/c
 		}
@@ -456,7 +455,6 @@ abstract class LBFactory implements ILBFactory {
 		// Figure out which clusters need to be checked
 		/** @var ILoadBalancer[] $lbs */
 		$lbs = [];
-		// @phan-suppress-next-line PhanSuspiciousValueComparison
 		if ( $opts['cluster'] !== false ) {
 			$lbs[] = $this->getExternalLB( $opts['cluster'] );
 		} elseif ( $opts['domain'] !== false ) {

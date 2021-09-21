@@ -446,7 +446,7 @@ abstract class Installer {
 	 * @throws MWException
 	 */
 	public function resetMediaWikiServices( Config $installerConfig = null, $serviceOverrides = [] ) {
-		global $wgUser, $wgObjectCaches, $wgLang;
+		global $wgObjectCaches, $wgLang;
 
 		$serviceOverrides += [
 			// Disable interwiki lookup, to avoid database access during parses
@@ -482,7 +482,7 @@ abstract class Installer {
 		// Note that this will reset the context's language,
 		// so set the user before setting the language.
 		$user = User::newFromId( 0 );
-		$wgUser = $user;
+		StubGlobalUser::setUser( $user );
 
 		RequestContext::getMain()->setUser( $user );
 
@@ -1320,7 +1320,7 @@ abstract class Installer {
 			return Status::newGood( [] );
 		}
 
-		// @phan-suppress-next-line SecurityCheck-PathTraversal False positive T268920
+		// @phan-suppress-next-line SecurityCheck-PathTraversal False positive
 		$dh = opendir( $extDir );
 		$exts = [];
 		$status = new Status;
@@ -1396,6 +1396,7 @@ abstract class Installer {
 			$info += $jsonStatus->value;
 		}
 
+		// @phan-suppress-next-line SecurityCheckMulti
 		return Status::newGood( $info );
 	}
 
@@ -1573,6 +1574,7 @@ abstract class Installer {
 		 * but we're not opening that can of worms
 		 * @see https://phabricator.wikimedia.org/T28857
 		 */
+		// @phan-suppress-next-line SecurityCheck-PathTraversal
 		require "$IP/includes/DefaultSettings.php";
 
 		// phpcs:ignore MediaWiki.VariableAnalysis.UnusedGlobalVariables

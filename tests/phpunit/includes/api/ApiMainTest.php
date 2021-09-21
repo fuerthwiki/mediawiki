@@ -2,7 +2,9 @@
 
 use MediaWiki\Permissions\Authority;
 use MediaWiki\Tests\Unit\Permissions\MockAuthorityTrait;
+use Wikimedia\Rdbms\DBConnRef;
 use Wikimedia\Rdbms\DBQueryError;
+use Wikimedia\Rdbms\ILoadBalancer;
 use Wikimedia\TestingAccessWrapper;
 use Wikimedia\Timestamp\ConvertibleTimestamp;
 
@@ -101,8 +103,15 @@ class ApiMainTest extends ApiTestCase {
 	}
 
 	public function testSuppressedLogin() {
+		// Testing some logic that changes the global $wgUser
+		// ApiMain will be setting it to a StubGlobalUser object, it should already
+		// be one but in case its a full User object we will wrap the comparisons
+		// in StubGlobalUser::getRealUser() which will return the inner User object
+		// for a StubGlobalUser, or the actual User object if given a user.
+
+		// phpcs:ignore MediaWiki.Usage.DeprecatedGlobalVariables.Deprecated$wgUser
 		global $wgUser;
-		$origUser = $wgUser;
+		$origUser = StubGlobalUser::getRealUser( $wgUser );
 
 		$api = $this->getNonInternalApiMain( [
 			'action' => 'query',
@@ -114,7 +123,7 @@ class ApiMainTest extends ApiTestCase {
 		$api->execute();
 		ob_end_clean();
 
-		$this->assertNotSame( $origUser, $wgUser );
+		$this->assertNotSame( $origUser, StubGlobalUser::getRealUser( $wgUser ) );
 		$this->assertSame( 'true', $api->getContext()->getRequest()->response()
 			->getHeader( 'MediaWiki-Login-Suppressed' ) );
 	}
@@ -335,12 +344,9 @@ class ApiMainTest extends ApiTestCase {
 	}
 
 	private function doTestCheckMaxLag( $lag ) {
-		$mockLB = $this->getMockBuilder( LoadBalancer::class )
-			->disableOriginalConstructor()
-			->onlyMethods( [ 'getMaxLag', 'getConnectionRef', '__destruct' ] )
-			->getMock();
+		$mockLB = $this->createMock( ILoadBalancer::class );
 		$mockLB->method( 'getMaxLag' )->willReturn( [ 'somehost', $lag ] );
-		$mockLB->method( 'getConnectionRef' )->willReturn( $this->db );
+		$mockLB->method( 'getConnectionRef' )->willReturn( $this->createMock( DBConnRef::class ) );
 		$this->setService( 'DBLoadBalancer', $mockLB );
 
 		$req = new FauxRequest();

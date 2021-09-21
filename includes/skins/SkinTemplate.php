@@ -1,5 +1,7 @@
 <?php
 /**
+ * Copyright © Gabriel Wicke -- http://www.aulinx.de/
+ *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
@@ -22,19 +24,11 @@ use MediaWiki\MediaWikiServices;
 use MediaWiki\Permissions\Authority;
 
 /**
- * Base class for template-based skins.
+ * Base class for QuickTemplate-based skins.
  *
- * Template-filler skin base class
- * Formerly generic PHPTal (http://phptal.sourceforge.net/) skin
- * Based on Brion's smarty skin
- * @copyright Copyright © Gabriel Wicke -- http://www.aulinx.de/
- *
- * @todo Needs some serious refactoring into functions that correspond
- * to the computations individual esi snippets need. Most importantly no body
- * parsing for most of those of course.
+ * The template data is filled in SkinTemplate::prepareQuickTemplate.
  *
  * @stable to extend
- *
  * @ingroup Skins
  */
 class SkinTemplate extends Skin {
@@ -385,8 +379,11 @@ class SkinTemplate extends Skin {
 		$tpl->set( 'credits', $footerData['info']['credits'] ?? false );
 		$tpl->set( 'numberofwatchingusers', false );
 
-		$tpl->set( 'copyrightico', $this->getCopyrightIcon() );
-		$tpl->set( 'poweredbyico', $this->getPoweredBy() );
+		$tpl->set( 'copyrightico', BaseTemplate::getCopyrightIconHTML( $config, $this ) );
+		$poweredBy = BaseTemplate::getPoweredByHTML( $config );
+		// Run deprecated hook.
+		$this->getHookRunner()->onSkinGetPoweredBy( $poweredBy, $this );
+		$tpl->set( 'poweredbyico', $poweredBy );
 
 		$tpl->set( 'disclaimer', $footerData['places']['disclaimer'] ?? false );
 		$tpl->set( 'privacy', $footerData['places']['privacy'] ?? false );
@@ -975,20 +972,49 @@ class SkinTemplate extends Skin {
 	 */
 	private function buildSearchProps(): array {
 		$config = $this->getConfig();
+		$searchButtonAttributes = [
+			'class' => 'searchButton'
+		];
+		$fallbackButtonAttributes = [
+			'class' => 'searchButton mw-fallbackSearchButton'
+		];
+		$buttonAttributes = [
+			'type' => 'submit',
+		];
 
 		$props = [
 			'form-action' => $config->get( 'Script' ),
 			'html-button-search-fallback' => $this->makeSearchButton(
 				'fulltext',
-				[ 'id' => 'mw-searchButton', 'class' => 'searchButton mw-fallbackSearchButton' ]
+				$fallbackButtonAttributes + [
+					'id' => 'mw-searchButton',
+				]
 			),
 			'html-button-search' => $this->makeSearchButton(
 				'go',
-				[ 'id' => 'searchButton', 'class' => 'searchButton' ]
+				$searchButtonAttributes + [
+					'id' => 'searchButton',
+				]
 			),
 			'html-input' => $this->makeSearchInput( [ 'id' => 'searchInput' ] ),
 			'msg-search' => $this->msg( 'search' )->text(),
 			'page-title' => $this->getSearchPageTitle()->getPrefixedDBkey(),
+			// @since 1.38
+			'html-button-go-attributes' => Html::expandAttributes(
+				$searchButtonAttributes + $buttonAttributes + [
+					'name' => 'go',
+				] + Linker::tooltipAndAccesskeyAttribs( 'search-go' )
+			),
+			// @since 1.38
+			'html-button-fulltext-attributes' => Html::expandAttributes(
+				$fallbackButtonAttributes + $buttonAttributes + [
+					'name' => 'fulltext'
+				] + Linker::tooltipAndAccesskeyAttribs( 'search-fulltext' )
+			),
+			// @since 1.38
+			'html-input-attributes' => Html::expandAttributes(
+				$this->getSearchInputAttributes( [] )
+			),
 		];
 
 		return $props;

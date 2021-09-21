@@ -11,6 +11,7 @@
 
 	var StringSet,
 		store,
+		loader,
 		hasOwn = Object.hasOwnProperty;
 
 	function defineFallbacks() {
@@ -327,6 +328,8 @@
 	}
 
 	/**
+	 * See also `ResourceLoader.php#makeVersionQuery` on the server.
+	 *
 	 * @private
 	 * @param {string[]} modules List of module names
 	 * @return {string} Hash of concatenated version hashes.
@@ -348,7 +351,7 @@
 	 */
 	function allReady( modules ) {
 		for ( var i = 0; i < modules.length; i++ ) {
-			if ( mw.loader.getState( modules[ i ] ) !== 'ready' ) {
+			if ( loader.getState( modules[ i ] ) !== 'ready' ) {
 				return false;
 			}
 		}
@@ -378,7 +381,7 @@
 	 */
 	function anyFailed( modules ) {
 		for ( var i = 0; i < modules.length; i++ ) {
-			var state = mw.loader.getState( modules[ i ] );
+			var state = loader.getState( modules[ i ] );
 			if ( state === 'error' || state === 'missing' ) {
 				return modules[ i ];
 			}
@@ -694,7 +697,7 @@
 			var fileName = resolveRelativePath( moduleName, basePath );
 			if ( fileName === null ) {
 				// Not a relative path, so it's a module name
-				return mw.loader.require( moduleName );
+				return loader.require( moduleName );
 			}
 
 			if ( hasOwn.call( moduleObj.packageExports, fileName ) ) {
@@ -764,7 +767,7 @@
 		pendingRequests.push( function () {
 			// Keep in sync with execute()/runScript().
 			if ( moduleName !== 'jquery' ) {
-				window.require = mw.loader.require;
+				window.require = loader.require;
 				window.module = registry[ moduleName ].module;
 			}
 			addScript( src, function () {
@@ -840,7 +843,7 @@
 	function enqueue( dependencies, ready, error ) {
 		if ( allReady( dependencies ) ) {
 			// Run ready immediately
-			if ( ready !== undefined ) {
+			if ( ready ) {
 				ready();
 			}
 			return;
@@ -848,7 +851,7 @@
 
 		var failed = anyFailed( dependencies );
 		if ( failed !== false ) {
-			if ( error !== undefined ) {
+			if ( error ) {
 				// Execute error immediately if any dependencies have errors
 				error(
 					new Error( 'Dependency ' + failed + ' failed to load' ),
@@ -861,7 +864,7 @@
 		// Not all dependencies are ready, add to the load queue...
 
 		// Add ready and error callbacks if they were given
-		if ( ready !== undefined || error !== undefined ) {
+		if ( ready || error ) {
 			jobs.push( {
 				// Narrow down the list to modules that are worth waiting for
 				dependencies: dependencies.filter( function ( module ) {
@@ -881,7 +884,7 @@
 			}
 		} );
 
-		mw.loader.work();
+		loader.work();
 	}
 
 	/**
@@ -938,7 +941,7 @@
 					} else {
 						// Pass jQuery twice so that the signature of the closure which wraps
 						// the script can bind both '$' and 'jQuery'.
-						script( window.$, window.$, mw.loader.require, registry[ module ].module );
+						script( window.$, window.$, loader.require, registry[ module ].module );
 					}
 					markModuleReady();
 				} else if ( typeof script === 'object' && script !== null ) {
@@ -1081,7 +1084,7 @@
 				siteDepErr = e;
 				runScript();
 			}
-			if ( siteDepErr === undefined ) {
+			if ( !siteDepErr ) {
 				enqueue( siteDeps, runScript, runScript );
 			}
 		} else if ( cssPending === 0 ) {
@@ -1253,7 +1256,7 @@
 							modules[ i ].length + 3; // '%7C'.length == 3
 
 					// If the url would become too long, create a new one, but don't create empty requests
-					if ( currReqModules.length && l + bytesAdded > mw.loader.maxQueryLength ) {
+					if ( currReqModules.length && l + bytesAdded > loader.maxQueryLength ) {
 						// Dispatch what we've got...
 						doRequest();
 						// .. and start again.
@@ -1341,12 +1344,12 @@
 			throw new Error( 'module already registered: ' + module );
 		}
 
-		// requiresES6 is encoded as a ! at the end of version
-		var requiresES6 = false;
 		version = String( version || '' );
-		if ( version.slice( -1 ) === '!' ) {
+		// requiresES6 is encoded as a ! at the end of version
+		var requiresES6 = version.slice( -1 ) === '!';
+		if ( requiresES6 ) {
+			// Remove the extra ! at the end to get the real version
 			version = version.slice( 0, -1 );
-			requiresES6 = true;
 		}
 
 		registry[ module ] = {
@@ -1369,7 +1372,9 @@
 
 	/* Public Members */
 
-	mw.loader = {
+	// We use a local variable `loader` so that its easier to access, but also need to set
+	// this as mw.loader so its exported - combine the two
+	mw.loader = loader = {
 		/**
 		 * The module registry is exposed as an aid for debugging and inspecting page
 		 * state; it is not a public interface for modifying the registry.
@@ -1421,7 +1426,7 @@
 				var module = queue[ q ];
 				// Only consider modules which are the initial 'registered' state,
 				// and ignore duplicates
-				if ( mw.loader.getState( module ) === 'registered' &&
+				if ( loader.getState( module ) === 'registered' &&
 					!batch.has( module )
 				) {
 					// Progress the state machine
@@ -1560,7 +1565,7 @@
 		 *  (from #batchRequest and #registry). This avoids race conditions (T117587).
 		 *  For back-compat with MediaWiki 1.27 and earlier, the version may be omitted.
 		 * @param {Function|Array|string|Object} [script] Module code. This can be a function,
-		 *  a list of URLs to load via `<script src>`, a string for `$.globalEval()`, or an
+		 *  a list of URLs to load via `<script src>`, a string for `domEval()`, or an
 		 *  object like {"files": {"foo.js":function, "bar.js": function, ...}, "main": "foo.js"}.
 		 *  If an object is provided, the main file will be executed immediately, and the other
 		 *  files will only be executed if loaded via require(). If a function or string is
@@ -1589,7 +1594,7 @@
 				version = split.version;
 			// Automatically register module
 			if ( !( name in registry ) ) {
-				mw.loader.register( name );
+				loader.register( name );
 			}
 			// Check for duplicate implementation
 			if ( registry[ name ].script !== undefined ) {
@@ -1653,7 +1658,8 @@
 				// Resolve modules into flat list for internal queuing.
 				// This also filters out unknown modules and modules with
 				// unknown dependencies, allowing the rest to continue. (T36853)
-				enqueue( resolveStubbornly( modules ), undefined, undefined );
+				// Omit ready and error parameters, we don't have callbacks
+				enqueue( resolveStubbornly( modules ) );
 			}
 		},
 
@@ -1665,7 +1671,7 @@
 		state: function ( states ) {
 			for ( var module in states ) {
 				if ( !( module in registry ) ) {
-					mw.loader.register( module );
+					loader.register( module );
 				}
 				setAndPropagate( module, states[ module ] );
 			}
@@ -1708,7 +1714,7 @@
 		 */
 		require: function ( moduleName ) {
 			// Only ready modules can be required
-			if ( mw.loader.getState( moduleName ) !== 'ready' ) {
+			if ( loader.getState( moduleName ) !== 'ready' ) {
 				// Module may've forgotten to declare a dependency
 				throw new Error( 'Module "' + moduleName + '" is not loaded' );
 			}
@@ -1768,12 +1774,9 @@
 
 	// We use a local variable `store` so that its easier to access, but also need to set
 	// this in mw.loader so its exported - combine the two
-	mw.loader.store = store = {
+	loader.store = store = {
 		// Whether the store is in use on this page.
 		enabled: null,
-
-		// Modules whose serialised form exceeds 100 kB won't be stored (T66721).
-		MODULE_SIZE_MAX: 1e5,
 
 		// The contents of the store, mapping '[name]@[version]' keys
 		// to module implementations.
@@ -1829,7 +1832,7 @@
 			if ( this.enabled === null ) {
 				this.enabled = false;
 				if (
-					!$VARS.storeEnabled ||
+					$VARS.storeDisabled ||
 
 					// Disabled because localStorage quotas are tight and (in Firefox's case)
 					// shared by multiple origins.
@@ -2008,7 +2011,9 @@
 			}
 
 			var src = 'mw.loader.implement(' + args.join( ',' ) + ');';
-			if ( src.length > this.MODULE_SIZE_MAX ) {
+
+			// Modules whose serialised form exceeds 100 kB won't be stored (T66721).
+			if ( src.length > 1e5 ) {
 				return;
 			}
 			this.items[ key ] = src;
@@ -2025,9 +2030,6 @@
 				// form but with the latest version
 				if ( getModuleKey( key.slice( 0, key.indexOf( '@' ) ) ) !== key ) {
 					this.stats.expired++;
-					delete this.items[ key ];
-				} else if ( this.items[ key ].length > this.MODULE_SIZE_MAX ) {
-					// This value predates the enforcement of a size limit on cached modules.
 					delete this.items[ key ];
 				}
 			}

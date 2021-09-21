@@ -19,6 +19,7 @@
 			"Xexdof",
 			"Ximik1991",
 			"Таржимон",
+			"Шоҳидахоним",
 			"ديفيد"
 		]
 	},
@@ -466,6 +467,7 @@
 	"publishchanges": "Oʻzgarishlarni chop etish",
 	"savearticle-start": "Sahifa saqlanmoqda...",
 	"savechanges-start": "O‘zgarishlar saqlanmoqda...",
+	"publishpage-start": "Sahifani chop etish",
 	"publishchanges-start": "Oʻzgarishlar chop etilmoqda…",
 	"preview": "Koʻrib chiqish",
 	"showpreview": "Koʻrib chiqish",
@@ -687,8 +689,6 @@
 	"restoreprefs": "Barcha moslamalarni dastlabki holatiga qaytarish",
 	"prefs-editing": "Tahrirlash",
 	"searchresultshead": "Qidiruv",
-	"stub-threshold": "<a href=\"#\" class=\"stub\">Chala maqolalarga</a> ishorat keltirish uchun pastki chegara:",
-	"stub-threshold-disabled": "Oʻchirib qoʻyilgan",
 	"recentchangesdays": "Necha kunlik tahrirlar koʻrsatiladi:",
 	"recentchangesdays-max": "Maksimum $1 kun",
 	"recentchangescount": "Sukut boʻyicha koʻrsatiladigan tahrirlar soni:",

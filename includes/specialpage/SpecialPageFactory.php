@@ -756,6 +756,7 @@ class SpecialPageFactory {
 			'class' => \SpecialExport::class,
 			'services' => [
 				'DBLoadBalancer',
+				'WikiExporterFactory',
 			]
 		],
 		'Import' => [
@@ -1386,6 +1387,7 @@ class SpecialPageFactory {
 	public function capturePath(
 		PageReference $page, IContextSource $context, LinkRenderer $linkRenderer = null
 	) {
+		// phpcs:ignore MediaWiki.Usage.DeprecatedGlobalVariables.Deprecated$wgUser
 		global $wgTitle, $wgOut, $wgRequest, $wgUser, $wgLang;
 		$main = RequestContext::getMain();
 

@@ -281,7 +281,7 @@ class LoadBalancer implements ILoadBalancer {
 		];
 	}
 
-	public function getClusterName() {
+	public function getClusterName(): string {
 		if ( $this->clusterName !== null ) {
 			$name = $this->clusterName;
 		} else {
@@ -292,11 +292,11 @@ class LoadBalancer implements ILoadBalancer {
 		return $name;
 	}
 
-	public function getLocalDomainID() {
+	public function getLocalDomainID(): string {
 		return $this->localDomain->getId();
 	}
 
-	public function resolveDomainID( $domain ) {
+	public function resolveDomainID( $domain ): string {
 		return $this->resolveDomainInstance( $domain )->getId();
 	}
 
@@ -304,7 +304,7 @@ class LoadBalancer implements ILoadBalancer {
 	 * @param DatabaseDomain|string|bool $domain
 	 * @return DatabaseDomain
 	 */
-	final protected function resolveDomainInstance( $domain ) {
+	final protected function resolveDomainInstance( $domain ): DatabaseDomain {
 		if ( $domain instanceof DatabaseDomain ) {
 			return $domain; // already a domain instance
 		} elseif ( $domain === false || $domain === $this->localDomain->getId() ) {
@@ -521,7 +521,6 @@ class LoadBalancer implements ILoadBalancer {
 			$this->lastError = 'Unknown error'; // set here in case of worse failure
 			$this->lastError = 'No working replica DB server: ' . $this->lastError;
 			$this->reportConnectionError();
-			return null; // unreachable due to exception
 		}
 
 		return $i;
@@ -1085,7 +1084,7 @@ class LoadBalancer implements ILoadBalancer {
 		}
 	}
 
-	public function getConnectionRef( $i, $groups = [], $domain = false, $flags = 0 ) {
+	public function getConnectionRef( $i, $groups = [], $domain = false, $flags = 0 ): IDatabase {
 		if ( self::fieldHasBit( $flags, self::CONN_SILENCE_ERRORS ) ) {
 			throw new UnexpectedValueException(
 				__METHOD__ . ' CONN_SILENCE_ERRORS is not supported'
@@ -1495,6 +1494,7 @@ class LoadBalancer implements ILoadBalancer {
 
 	/**
 	 * @throws DBConnectionError
+	 * @return never
 	 */
 	private function reportConnectionError() {
 		$conn = $this->errorConnection; // the connection which caused the error
@@ -1576,10 +1576,10 @@ class LoadBalancer implements ILoadBalancer {
 		return (bool)$this->getStreamingReplicaIndexes();
 	}
 
-	public function getServerName( $i ) {
+	public function getServerName( $i ): string {
 		$name = $this->servers[$i]['serverName'] ?? ( $this->servers[$i]['host'] ?? '' );
 
-		return ( $name != '' ) ? $name : 'localhost';
+		return ( $name !== '' ) ? $name : 'localhost';
 	}
 
 	public function getServerInfo( $i ) {
@@ -1601,7 +1601,6 @@ class LoadBalancer implements ILoadBalancer {
 		$conn = $this->getConnection( $index, self::CONN_SILENCE_ERRORS );
 		if ( !$conn ) {
 			$this->reportConnectionError();
-			return null; // unreachable due to exception
 		}
 
 		try {
@@ -1612,7 +1611,7 @@ class LoadBalancer implements ILoadBalancer {
 	}
 
 	public function getMasterPos() {
-		// wfDeprecated( __METHOD__, '1.37' );
+		wfDeprecated( __METHOD__, '1.37' );
 		return $this->getPrimaryPos();
 	}
 
@@ -1736,7 +1735,7 @@ class LoadBalancer implements ILoadBalancer {
 	}
 
 	public function finalizeMasterChanges( $fname = __METHOD__, $owner = null ) {
-		// wfDeprecated( __METHOD__, '1.37' );
+		wfDeprecated( __METHOD__, '1.37' );
 		return $this->finalizePrimaryChanges( $fname, $owner );
 	}
 
@@ -1784,7 +1783,7 @@ class LoadBalancer implements ILoadBalancer {
 	}
 
 	public function approveMasterChanges( array $options, $fname = __METHOD__, $owner = null ) {
-		// wfDeprecated( __METHOD__, '1.37' );
+		wfDeprecated( __METHOD__, '1.37' );
 		$this->approvePrimaryChanges( $options, $fname, $owner );
 	}
 
@@ -1818,7 +1817,7 @@ class LoadBalancer implements ILoadBalancer {
 	}
 
 	public function beginMasterChanges( $fname = __METHOD__, $owner = null ) {
-		// wfDeprecated( __METHOD__, '1.37' );
+		wfDeprecated( __METHOD__, '1.37' );
 		$this->beginPrimaryChanges( $fname, $owner );
 	}
 
@@ -1863,7 +1862,7 @@ class LoadBalancer implements ILoadBalancer {
 	}
 
 	public function commitMasterChanges( $fname = __METHOD__, $owner = null ) {
-		// wfDeprecated( __METHOD__, '1.37' );
+		wfDeprecated( __METHOD__, '1.37' );
 		$this->commitPrimaryChanges( $fname, $owner );
 	}
 
@@ -2001,7 +2000,7 @@ class LoadBalancer implements ILoadBalancer {
 	}
 
 	public function rollbackMasterChanges( $fname = __METHOD__, $owner = null ) {
-		// wfDeprecated( __METHOD__, '1.37' );
+		wfDeprecated( __METHOD__, '1.37' );
 		$this->rollbackPrimaryChanges( $fname, $owner );
 	}
 
@@ -2135,7 +2134,7 @@ class LoadBalancer implements ILoadBalancer {
 	}
 
 	public function hasMasterChanges() {
-		// wfDeprecated( __METHOD__, '1.37' );
+		wfDeprecated( __METHOD__, '1.37' );
 		return $this->hasPrimaryChanges();
 	}
 
@@ -2161,7 +2160,7 @@ class LoadBalancer implements ILoadBalancer {
 	}
 
 	public function hasOrMadeRecentMasterChanges( $age = null ) {
-		// wfDeprecated( __METHOD__, '1.37' );
+		wfDeprecated( __METHOD__, '1.37' );
 		return $this->hasOrMadeRecentPrimaryChanges( $age );
 	}
 
@@ -2349,7 +2348,7 @@ class LoadBalancer implements ILoadBalancer {
 	}
 
 	public function forEachOpenMasterConnection( $callback, array $params = [] ) {
-		// wfDeprecated( __METHOD__, '1.37' );
+		wfDeprecated( __METHOD__, '1.37' );
 		$this->forEachOpenPrimaryConnection( $callback, $params );
 	}
 

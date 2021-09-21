@@ -125,7 +125,7 @@ class DefaultPreferencesFactory implements PreferencesFactory {
 		'EmailConfirmToEdit',
 		'EnableEmail',
 		'EnableUserEmail',
-		'EnableUserEmailBlacklist',
+		'EnableUserEmailMuteList',
 		'EnotifMinorEdits',
 		'EnotifRevealEditorAddress',
 		'EnotifUserTalk',
@@ -785,7 +785,7 @@ class DefaultPreferencesFactory implements PreferencesFactory {
 					'disabled' => $disableEmailPrefs,
 				];
 
-				if ( $this->options->get( 'EnableUserEmailBlacklist' ) ) {
+				if ( $this->options->get( 'EnableUserEmailMuteList' ) ) {
 					$defaultPreferences['email-blacklist'] = [
 						'type' => 'usersmultiselect',
 						'label-message' => 'email-mutelist-label',
@@ -854,7 +854,7 @@ class DefaultPreferencesFactory implements PreferencesFactory {
 			$defaultPreferences['skin-responsive'] = [
 				'type' => 'check',
 				'label-message' => 'prefs-skin-responsive',
-				'section' => 'rendering/skin',
+				'section' => 'rendering/skin/skin-prefs',
 				'help-message' => 'prefs-help-skin-responsive',
 			];
 		}
@@ -1025,23 +1025,6 @@ class DefaultPreferencesFactory implements PreferencesFactory {
 				'section' => 'rendering/advancedrendering',
 			];
 		}
-
-		$stubThresholdValues = [ 50, 100, 500, 1000, 2000, 5000, 10000 ];
-		$stubThresholdOptions = [ $l10n->msg( 'stub-threshold-disabled' )->text() => 0 ];
-		foreach ( $stubThresholdValues as $value ) {
-			$stubThresholdOptions[$l10n->msg( 'size-bytes', $value )->text()] = $value;
-		}
-
-		$defaultPreferences['stubthreshold'] = [
-			'type' => 'select',
-			'section' => 'rendering/advancedrendering',
-			'options' => $stubThresholdOptions,
-			// This is not a raw HTML message; label-raw is needed for the manual <a></a>
-			'label-raw' => $l10n->msg( 'stub-threshold' )->rawParams(
-				'<a class="stub">' .
-				$l10n->msg( 'stub-threshold-sample-link' )->parse() .
-				'</a>' )->parse(),
-		];
 
 		$defaultPreferences['showhiddencats'] = [
 			'type' => 'toggle',
@@ -1443,7 +1426,7 @@ class DefaultPreferencesFactory implements PreferencesFactory {
 
 		// Only show skins that aren't disabled
 		$validSkinNames = $this->skinFactory->getAllowedSkins();
-		$allInstalledSkins = $this->skinFactory->getSkinNames();
+		$allInstalledSkins = $this->skinFactory->getInstalledSkins();
 
 		// Display the installed skin the user has specifically requested via useskin=….
 		$useSkin = $context->getRequest()->getRawVal( 'useskin' );

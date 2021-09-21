@@ -408,6 +408,7 @@ class ImagePage extends Article {
 									&& max( $size[0], $size[1] ) <= $wgSVGMaxSize )
 							)
 							&& $size[0] != $width && $size[1] != $height
+							&& $size[0] != $maxWidth && $size[1] != $maxHeight
 						) {
 							$sizeLink = $this->makeSizeLink( $params, $size[0], $size[1] );
 							if ( $sizeLink ) {
@@ -1028,34 +1029,6 @@ EOT
 			$out->addHTML( "<li>{$link} {$fromSrc}</li>\n" );
 		}
 		$out->addHTML( "</ul></div>\n" );
-	}
-
-	/**
-	 * Delete the file, or an earlier version of it
-	 * @deprecated since 1.37 Use DeleteAction instead.
-	 */
-	public function delete() {
-		wfDeprecated( __METHOD__, '1.37' );
-		$file = $this->getFile();
-		if ( !$file->exists() || !$file->isLocal() || $file->getRedirected() ) {
-			// Standard article deletion
-			parent::delete();
-			return;
-		}
-		'@phan-var LocalFile $file';
-
-		$context = $this->getContext();
-		$services = MediaWikiServices::getInstance();
-		$deleter = new FileDeleteForm(
-			$file,
-			$context,
-			$services->getReadOnlyMode(),
-			$services->getRepoGroup(),
-			$services->getWatchlistManager(),
-			$this->linkRenderer,
-			$services->getUserOptionsLookup()
-		);
-		$deleter->execute();
 	}
 
 	/**

@@ -3,37 +3,36 @@
 namespace MediaWiki\Page;
 
 use BadMethodCallException;
+use BagOStuff;
 use CommentStore;
 use Content;
 use DeferrableUpdate;
 use DeferredUpdates;
 use DeletePageJob;
 use Exception;
-use InvalidArgumentException;
 use JobQueueGroup;
 use LinksDeletionUpdate;
 use LinksUpdate;
 use LogicException;
 use ManualLogEntry;
+use MediaWiki\Cache\BacklinkCacheFactory;
 use MediaWiki\Config\ServiceOptions;
+use MediaWiki\HookContainer\HookContainer;
 use MediaWiki\HookContainer\HookRunner;
 use MediaWiki\Logger\LoggerFactory;
-use MediaWiki\MediaWikiServices;
 use MediaWiki\Permissions\Authority;
 use MediaWiki\Permissions\PermissionStatus;
 use MediaWiki\Revision\RevisionRecord;
 use MediaWiki\Revision\RevisionStore;
 use MediaWiki\Revision\SlotRecord;
-use MediaWiki\User\UserIdentity;
+use MediaWiki\User\UserFactory;
 use Message;
-use ObjectCache;
+use RawMessage;
 use ResourceLoaderWikiModule;
 use SearchUpdate;
 use SiteStatsUpdate;
 use Status;
 use StatusValue;
-use WebRequest;
-use WikiMap;
 use Wikimedia\IPUtils;
 use Wikimedia\Rdbms\ILoadBalancer;
 use Wikimedia\Rdbms\LBFactory;
@@ -42,9 +41,11 @@ use WikiPage;
 /**
  * @since 1.37
  * @package MediaWiki\Page
- * @unstable
  */
 class DeletePage {
+	/**
+	 * @internal For use by PageCommandFactory
+	 */
 	public const CONSTRUCTOR_OPTIONS = [
 		'DeleteRevisionsBatchSize',
 		'ActorTableSchemaMigrationStage',
@@ -65,15 +66,22 @@ class DeletePage {
 	private $commentStore;
 	/** @var ServiceOptions */
 	private $options;
+	/** @var BagOStuff */
+	private $recentDeletesCache;
+	/** @var string */
+	private $localWikiID;
 	/** @var string */
 	private $webRequestID;
+	/** @var UserFactory */
+	private $userFactory;
+
+	/** @var bool */
+	private $isDeletePageUnitTest = false;
 
 	/** @var WikiPage */
 	private $page;
-	/** @var UserIdentity */
-	private $deleter;
 	/** @var Authority */
-	private $deleterAuthority;
+	private $deleter;
 
 	/** @var bool */
 	private $suppress = false;
@@ -86,29 +94,60 @@ class DeletePage {
 
 	/** @var string|array */
 	private $legacyHookErrors = '';
+	/** @var bool */
+	private $mergeLegacyHookErrors = true;
+
+	/** @var BacklinkCacheFactory */
+	private $backlinkCacheFactory;
 
 	/**
-	 * @param PageIdentity $page
-	 * @param UserIdentity $deleter
-	 * @todo Should use ProperPageIdentity eventually, once WikiPage will extend that
+	 * @param HookContainer $hookContainer
+	 * @param RevisionStore $revisionStore
+	 * @param LBFactory $lbFactory
+	 * @param JobQueueGroup $jobQueueGroup
+	 * @param CommentStore $commentStore
+	 * @param ServiceOptions $serviceOptions
+	 * @param BagOStuff $recentDeletesCache
+	 * @param string $localWikiID
+	 * @param string $webRequestID
+	 * @param WikiPageFactory $wikiPageFactory
+	 * @param UserFactory $userFactory
+	 * @param ProperPageIdentity $page
+	 * @param Authority $deleter
+	 * @param BacklinkCacheFactory $backlinkCacheFactory
 	 */
-	public function __construct( PageIdentity $page, UserIdentity $deleter ) {
-		if ( !$page->canExist() ) {
-			throw new BadMethodCallException( __METHOD__ . ' requires a proper page identity.' );
-		}
-		$services = MediaWikiServices::getInstance();
-		$this->hookRunner = new HookRunner( $services->getHookContainer() );
-		$this->revisionStore = $services->getRevisionStore();
-		$this->lbFactory = $services->getDBLoadBalancerFactory();
+	public function __construct(
+		HookContainer $hookContainer,
+		RevisionStore $revisionStore,
+		LBFactory $lbFactory,
+		JobQueueGroup $jobQueueGroup,
+		CommentStore $commentStore,
+		ServiceOptions $serviceOptions,
+		BagOStuff $recentDeletesCache,
+		string $localWikiID,
+		string $webRequestID,
+		WikiPageFactory $wikiPageFactory,
+		UserFactory $userFactory,
+		ProperPageIdentity $page,
+		Authority $deleter,
+		BacklinkCacheFactory $backlinkCacheFactory
+	) {
+		$this->hookRunner = new HookRunner( $hookContainer );
+		$this->revisionStore = $revisionStore;
+		$this->lbFactory = $lbFactory;
 		$this->loadBalancer = $this->lbFactory->getMainLB();
-		$this->jobQueueGroup = $services->getJobQueueGroup();
-		$this->commentStore = $services->getCommentStore();
-		$this->options = new ServiceOptions( self::CONSTRUCTOR_OPTIONS, $services->getMainConfig() );
-		$this->webRequestID = WebRequest::getRequestId();
+		$this->jobQueueGroup = $jobQueueGroup;
+		$this->commentStore = $commentStore;
+		$serviceOptions->assertRequiredOptions( self::CONSTRUCTOR_OPTIONS );
+		$this->options = $serviceOptions;
+		$this->recentDeletesCache = $recentDeletesCache;
+		$this->localWikiID = $localWikiID;
+		$this->webRequestID = $webRequestID;
+		$this->userFactory = $userFactory;
 
-		$this->page = $services->getWikiPageFactory()->newFromTitle( $page );
+		$this->page = $wikiPageFactory->newFromTitle( $page );
 		$this->deleter = $deleter;
-		$this->deleterAuthority = $services->getUserFactory()->newFromUserIdentity( $deleter );
+		$this->backlinkCacheFactory = $backlinkCacheFactory;
 	}
 
 	/**
@@ -117,6 +156,15 @@ class DeletePage {
 	 */
 	public function getLegacyHookErrors() {
 		return $this->legacyHookErrors;
+	}
+
+	/**
+	 * @internal BC method for use by WikiPage::doDeleteArticleReal only.
+	 * @return self
+	 */
+	public function keepLegacyHookErrorsSeparate(): self {
+		$this->mergeLegacyHookErrors = false;
+		return $this;
 	}
 
 	/**
@@ -165,6 +213,18 @@ class DeletePage {
 	}
 
 	/**
+	 * @internal FIXME: Hack used when running the DeletePage unit test to disable some legacy code.
+	 * @codeCoverageIgnore
+	 * @param bool $test
+	 */
+	public function setIsDeletePageUnitTest( bool $test ): void {
+		if ( !defined( 'MW_PHPUNIT_TEST' ) ) {
+			throw new BadMethodCallException( __METHOD__ . ' can only be used in tests!' );
+		}
+		$this->isDeletePageUnitTest = $test;
+	}
+
+	/**
 	 * Same as deleteUnsafe, but checks permissions.
 	 *
 	 * @param string $reason
@@ -184,9 +244,9 @@ class DeletePage {
 	 */
 	private function authorizeDeletion(): PermissionStatus {
 		$status = PermissionStatus::newEmpty();
-		$this->deleterAuthority->authorizeWrite( 'delete', $this->page, $status );
+		$this->deleter->authorizeWrite( 'delete', $this->page, $status );
 		if (
-			!$this->deleterAuthority->authorizeWrite( 'bigdelete', $this->page ) &&
+			!$this->deleter->authorizeWrite( 'bigdelete', $this->page ) &&
 			$this->isBigDeletion()
 		) {
 			$status->fatal( 'delete-toobig', Message::numParam( $this->options->get( 'DeleteRevisionsLimit' ) ) );
@@ -194,6 +254,9 @@ class DeletePage {
 		return $status;
 	}
 
+	/**
+	 * @return bool
+	 */
 	private function isBigDeletion(): bool {
 		$revLimit = $this->options->get( 'DeleteRevisionsLimit' );
 		if ( !$revLimit ) {
@@ -244,13 +307,18 @@ class DeletePage {
 	public function deleteUnsafe( string $reason ): Status {
 		$status = Status::newGood();
 
-		$legacyDeleter = MediaWikiServices::getInstance()
-			->getUserFactory()
-			->newFromUserIdentity( $this->deleter );
-		// TODO: Deprecate and replace hook (remove &$error, improve typehints)
+		$legacyDeleter = $this->userFactory->newFromAuthority( $this->deleter );
 		if ( !$this->hookRunner->onArticleDelete(
 			$this->page, $legacyDeleter, $reason, $this->legacyHookErrors, $status, $this->suppress )
 		) {
+			if ( $this->mergeLegacyHookErrors ) {
+				if ( is_string( $this->legacyHookErrors ) ) {
+					$this->legacyHookErrors = [ $this->legacyHookErrors ];
+				}
+				foreach ( $this->legacyHookErrors as $legacyError ) {
+					$status->fatal( new RawMessage( $legacyError ) );
+				}
+			}
 			if ( $status->isOK() ) {
 				// Hook aborted but didn't set a fatal status
 				$status->fatal( 'delete-hook-aborted' );
@@ -258,11 +326,19 @@ class DeletePage {
 			return $status;
 		}
 
+		// Use a new Status in case a hook handler put something here without aborting.
+		$status = Status::newGood();
+		$hookRes = $this->hookRunner->onPageDelete( $this->page, $this->deleter, $reason, $status, $this->suppress );
+		if ( !$hookRes && !$status->isGood() ) {
+			// Note: as per the PageDeleteHook documentation, `return false` is ignored if $status is good.
+			return $status;
+		}
+
 		return $this->deleteInternal( $reason );
 	}
 
 	/**
-	 * @private Public for BC only
+	 * @internal The only external caller allowed is DeletePageJob.
 	 * Back-end article deletion
 	 *
 	 * Only invokes batching via the job queue if necessary per DeleteRevisionsBatchSize.
@@ -340,7 +416,6 @@ class DeletePage {
 			$dbw->startAtomic( __METHOD__ );
 		}
 
-		// If done archiving, also delete the article.
 		if ( !$done ) {
 			$dbw->endAtomic( __METHOD__ );
 
@@ -351,7 +426,7 @@ class DeletePage {
 				'requestId' => $webRequestId ?? $this->webRequestID,
 				'reason' => $reason,
 				'suppress' => $this->suppress,
-				'userId' => $this->deleter->getId(),
+				'userId' => $this->deleter->getUser()->getId(),
 				'tags' => json_encode( $this->tags ),
 				'logsubtype' => $this->logSubtype,
 			];
@@ -359,40 +434,44 @@ class DeletePage {
 			$job = new DeletePageJob( $jobParams );
 			$this->jobQueueGroup->push( $job );
 			$status->value = false;
-		} else {
-			// Get archivedRevisionCount by db query, because there's no better alternative.
-			// Jobs cannot pass a count of archived revisions to the next job, because additional
-			// deletion operations can be started while the first is running.  Jobs from each
-			// gracefully interleave, but would not know about each other's count.  Deduplication
-			// in the job queue to avoid simultaneous deletion operations would add overhead.
-			// Number of archived revisions cannot be known beforehand, because edits can be made
-			// while deletion operations are being processed, changing the number of archivals.
-			$archivedRevisionCount = $dbw->selectRowCount(
-				'archive',
-				'*',
-				[
-					'ar_namespace' => $title->getNamespace(),
-					'ar_title' => $title->getDBkey(),
-					'ar_page_id' => $id
-				], __METHOD__
-			);
+			return $status;
+		}
 
-			// Clone the title and wikiPage, so we have the information we need when
-			// we log and run the ArticleDeleteComplete hook.
-			$logTitle = clone $title;
-			$wikiPageBeforeDelete = clone $this->page;
+		// Get archivedRevisionCount by db query, because there's no better alternative.
+		// Jobs cannot pass a count of archived revisions to the next job, because additional
+		// deletion operations can be started while the first is running.  Jobs from each
+		// gracefully interleave, but would not know about each other's count.  Deduplication
+		// in the job queue to avoid simultaneous deletion operations would add overhead.
+		// Number of archived revisions cannot be known beforehand, because edits can be made
+		// while deletion operations are being processed, changing the number of archivals.
+		$archivedRevisionCount = $dbw->selectRowCount(
+			'archive',
+			'*',
+			[
+				'ar_namespace' => $title->getNamespace(),
+				'ar_title' => $title->getDBkey(),
+				'ar_page_id' => $id
+			], __METHOD__
+		);
 
-			// Now that it's safely backed up, delete it
-			$dbw->delete( 'page', [ 'page_id' => $id ], __METHOD__ );
+		// Clone the title and wikiPage, so we have the information we need when
+		// we log and run the ArticleDeleteComplete hook.
+		$logTitle = clone $title;
+		$wikiPageBeforeDelete = clone $this->page;
 
-			// Log the deletion, if the page was suppressed, put it in the suppression log instead
-			$logtype = $this->suppress ? 'suppress' : 'delete';
+		// Now that it's safely backed up, delete it
+		$dbw->delete( 'page', [ 'page_id' => $id ], __METHOD__ );
 
-			$logEntry = new ManualLogEntry( $logtype, $this->logSubtype );
-			$logEntry->setPerformer( $this->deleter );
-			$logEntry->setTarget( $logTitle );
-			$logEntry->setComment( $reason );
-			$logEntry->addTags( $this->tags );
+		// Log the deletion, if the page was suppressed, put it in the suppression log instead
+		$logtype = $this->suppress ? 'suppress' : 'delete';
+
+		$logEntry = new ManualLogEntry( $logtype, $this->logSubtype );
+		$logEntry->setPerformer( $this->deleter->getUser() );
+		$logEntry->setTarget( $logTitle );
+		$logEntry->setComment( $reason );
+		$logEntry->addTags( $this->tags );
+		if ( !$this->isDeletePageUnitTest ) {
+			// TODO: Remove conditional once ManualLogEntry is servicified (T253717)
 			$logid = $logEntry->insert();
 
 			$dbw->onTransactionPreCommitOrIdle(
@@ -402,31 +481,38 @@ class DeletePage {
 				},
 				__METHOD__
 			);
-
-			$dbw->endAtomic( __METHOD__ );
-
-			$this->doDeleteUpdates( $id, $revisionRecord );
-
-			$legacyDeleter = MediaWikiServices::getInstance()
-				->getUserFactory()
-				->newFromUserIdentity( $this->deleter );
-			// TODO Replace hook (replace typehints)
-			$this->hookRunner->onArticleDeleteComplete(
-				$wikiPageBeforeDelete,
-				$legacyDeleter,
-				$reason,
-				$id,
-				$content,
-				$logEntry,
-				$archivedRevisionCount
-			);
-			$status->value = $logid;
-
-			// Show log excerpt on 404 pages rather than just a link
-			$dbCache = ObjectCache::getInstance( 'db-replicated' );
-			$key = $dbCache->makeKey( 'page-recent-delete', md5( $logTitle->getPrefixedText() ) );
-			$dbCache->set( $key, 1, $dbCache::TTL_DAY );
+		} else {
+			$logid = 42;
 		}
+
+		$dbw->endAtomic( __METHOD__ );
+
+		$this->doDeleteUpdates( $revisionRecord );
+
+		$legacyDeleter = $this->userFactory->newFromAuthority( $this->deleter );
+		$this->hookRunner->onArticleDeleteComplete(
+			$wikiPageBeforeDelete,
+			$legacyDeleter,
+			$reason,
+			$id,
+			$content,
+			$logEntry,
+			$archivedRevisionCount
+		);
+		$this->hookRunner->onPageDeleteComplete(
+			$wikiPageBeforeDelete,
+			$this->deleter,
+			$reason,
+			$id,
+			$revisionRecord,
+			$logEntry,
+			$archivedRevisionCount
+		);
+		$status->value = $logid;
+
+		// Show log excerpt on 404 pages rather than just a link
+		$key = $this->recentDeletesCache->makeKey( 'page-recent-delete', md5( $logTitle->getPrefixedText() ) );
+		$this->recentDeletesCache->set( $key, 1, BagOStuff::TTL_DAY );
 
 		return $status;
 	}
@@ -550,16 +636,11 @@ class DeletePage {
 	 * @private Public for BC only
 	 * Do some database updates after deletion
 	 *
-	 * @param int $id The page_id value of the page being deleted
 	 * @param RevisionRecord $revRecord The current page revision at the time of
 	 *   deletion, used when determining the required updates. This may be needed because
 	 *   $this->page->getRevisionRecord() may already return null when the page proper was deleted.
 	 */
-	public function doDeleteUpdates( int $id, RevisionRecord $revRecord ): void {
-		if ( $id !== $this->page->getId() ) {
-			throw new InvalidArgumentException( 'Mismatching page ID' );
-		}
-
+	public function doDeleteUpdates( RevisionRecord $revRecord ): void {
 		try {
 			$countable = $this->page->isCountable();
 		} catch ( Exception $ex ) {
@@ -569,40 +650,59 @@ class DeletePage {
 		}
 
 		// Update site status
-		DeferredUpdates::addUpdate( SiteStatsUpdate::factory(
-			[ 'edits' => 1, 'articles' => -$countable, 'pages' => -1 ]
-		) );
+		if ( !$this->isDeletePageUnitTest ) {
+			// TODO Remove conditional once DeferredUpdates is servicified (T265749)
+			DeferredUpdates::addUpdate( SiteStatsUpdate::factory(
+				[ 'edits' => 1, 'articles' => -$countable, 'pages' => -1 ]
+			) );
 
-		// Delete pagelinks, update secondary indexes, etc
-		$updates = $this->getDeletionUpdates( $revRecord );
-		foreach ( $updates as $update ) {
-			DeferredUpdates::addUpdate( $update );
+			// Delete pagelinks, update secondary indexes, etc
+			$updates = $this->getDeletionUpdates( $revRecord );
+			foreach ( $updates as $update ) {
+				DeferredUpdates::addUpdate( $update );
+			}
 		}
 
 		// Reparse any pages transcluding this page
 		LinksUpdate::queueRecursiveJobsForTable(
-			$this->page->getTitle(), 'templatelinks', 'delete-page', $this->deleter->getName() );
+			$this->page->getTitle(),
+			'templatelinks',
+			'delete-page',
+			$this->deleter->getUser()->getName(),
+			$this->backlinkCacheFactory->getBacklinkCache( $this->page->getTitle() )
+		);
 		// Reparse any pages including this image
 		if ( $this->page->getTitle()->getNamespace() === NS_FILE ) {
 			LinksUpdate::queueRecursiveJobsForTable(
-				$this->page->getTitle(), 'imagelinks', 'delete-page', $this->deleter->getName() );
+				$this->page->getTitle(),
+				'imagelinks',
+				'delete-page',
+				$this->deleter->getUser()->getName(),
+				$this->backlinkCacheFactory->getBacklinkCache( $this->page->getTitle() )
+			);
 		}
 
-		// Clear caches
-		WikiPage::onArticleDelete( $this->page->getTitle() );
+		if ( !$this->isDeletePageUnitTest ) {
+			// TODO Remove conditional once WikiPage::onArticleDelete is moved to a proper service
+			// Clear caches
+			WikiPage::onArticleDelete( $this->page->getTitle() );
+		}
 
 		ResourceLoaderWikiModule::invalidateModuleCache(
 			$this->page->getTitle(),
 			$revRecord,
 			null,
-			WikiMap::getCurrentWikiDbDomain()->getId()
+			$this->localWikiID
 		);
 
 		// Reset the page object and the Title object
 		$this->page->loadFromRow( false, WikiPage::READ_LATEST );
 
-		// Search engine
-		DeferredUpdates::addUpdate( new SearchUpdate( $id, $this->page->getTitle() ) );
+		if ( !$this->isDeletePageUnitTest ) {
+			// TODO Remove conditional once DeferredUpdates is servicified (T265749)
+			// Search engine
+			DeferredUpdates::addUpdate( new SearchUpdate( $this->page->getId(), $this->page->getTitle() ) );
+		}
 	}
 
 	/**

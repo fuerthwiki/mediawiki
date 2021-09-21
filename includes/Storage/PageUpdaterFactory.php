@@ -42,7 +42,6 @@ use ParserCache;
 use Psr\Log\LoggerInterface;
 use TitleFormatter;
 use WANObjectCache;
-use Wikimedia\Assert\Assert;
 use Wikimedia\Rdbms\ILBFactory;
 use WikiPage;
 
@@ -63,7 +62,6 @@ class PageUpdaterFactory {
 		'ArticleCountMethod',
 		'RCWatchCategoryMembership',
 		'PageCreationLog',
-		'AjaxEditStash',
 		'UseAutomaticEditSummaries',
 		'ManualRevertSearchRadius',
 		'UseRCPatrol',
@@ -258,11 +256,6 @@ class PageUpdaterFactory {
 		UserIdentity $user,
 		DerivedPageDataUpdater $derivedPageDataUpdater
 	): PageUpdater {
-		Assert::precondition(
-			$page->canExist(),
-			'The WikiPage instance does not represent a proper page!'
-		);
-
 		$pageUpdater = new PageUpdater(
 			$user,
 			$page, // NOTE: eventually, PageUpdater should not know about WikiPage
@@ -283,7 +276,6 @@ class PageUpdaterFactory {
 		);
 
 		$pageUpdater->setUsePageCreationLog( $this->options->get( 'PageCreationLog' ) );
-		$pageUpdater->setAjaxEditStash( $this->options->get( 'AjaxEditStash' ) );
 		$pageUpdater->setUseAutomaticEditSummaries(
 			$this->options->get( 'UseAutomaticEditSummaries' )
 		);

@@ -38,12 +38,14 @@ use MediaWiki\Block\BlockUserFactory;
 use MediaWiki\Block\BlockUtils;
 use MediaWiki\Block\DatabaseBlockStore;
 use MediaWiki\Block\UnblockUserFactory;
+use MediaWiki\Cache\BacklinkCacheFactory;
 use MediaWiki\Cache\LinkBatchFactory;
 use MediaWiki\Collation\CollationFactory;
 use MediaWiki\Config\ConfigRepository;
 use MediaWiki\Content\IContentHandlerFactory;
 use MediaWiki\Content\Transform\ContentTransformer;
 use MediaWiki\EditPage\SpamChecker;
+use MediaWiki\Export\WikiExporterFactory;
 use MediaWiki\FileBackend\FSFile\TempFSFileFactory;
 use MediaWiki\FileBackend\LockManager\LockManagerGroupFactory;
 use MediaWiki\HookContainer\HookContainer;
@@ -60,6 +62,7 @@ use MediaWiki\Linker\LinkRenderer;
 use MediaWiki\Linker\LinkRendererFactory;
 use MediaWiki\Mail\IEmailer;
 use MediaWiki\Page\ContentModelChangeFactory;
+use MediaWiki\Page\DeletePageFactory;
 use MediaWiki\Page\MergeHistoryFactory;
 use MediaWiki\Page\MovePageFactory;
 use MediaWiki\Page\PageStore;
@@ -68,6 +71,8 @@ use MediaWiki\Page\ParserOutputAccess;
 use MediaWiki\Page\RollbackPageFactory;
 use MediaWiki\Page\WikiPageFactory;
 use MediaWiki\Parser\ParserCacheFactory;
+use MediaWiki\Permissions\GrantsInfo;
+use MediaWiki\Permissions\GrantsLocalization;
 use MediaWiki\Permissions\GroupPermissionsLookup;
 use MediaWiki\Permissions\PermissionManager;
 use MediaWiki\Permissions\RestrictionStore;
@@ -607,6 +612,14 @@ class MediaWikiServices extends ServiceContainer {
 	}
 
 	/**
+	 * @since 1.37
+	 * @return BacklinkCacheFactory
+	 */
+	public function getBacklinkCacheFactory(): BacklinkCacheFactory {
+		return $this->getService( 'BacklinkCacheFactory' );
+	}
+
+	/**
 	 * @since 1.34
 	 * @return BadFileLookup
 	 */
@@ -872,6 +885,14 @@ class MediaWikiServices extends ServiceContainer {
 	}
 
 	/**
+	 * @since 1.37
+	 * @return DeletePageFactory
+	 */
+	public function getDeletePageFactory(): DeletePageFactory {
+		return $this->getService( 'DeletePageFactory' );
+	}
+
+	/**
 	 * @since 1.35
 	 * @return IEmailer
 	 */
@@ -925,6 +946,22 @@ class MediaWikiServices extends ServiceContainer {
 	 */
 	public function getGlobalIdGenerator(): GlobalIdGenerator {
 		return $this->getService( 'GlobalIdGenerator' );
+	}
+
+	/**
+	 * @since 1.38
+	 * @return GrantsInfo
+	 */
+	public function getGrantsInfo(): GrantsInfo {
+		return $this->getService( 'GrantsInfo' );
+	}
+
+	/**
+	 * @since 1.38
+	 * @return GrantsLocalization
+	 */
+	public function getGrantsLocalization(): GrantsLocalization {
+		return $this->getService( 'GrantsLocalization' );
 	}
 
 	/**
@@ -1726,6 +1763,14 @@ class MediaWikiServices extends ServiceContainer {
 	 */
 	public function getWatchlistManager(): WatchlistManager {
 		return $this->getService( 'WatchlistManager' );
+	}
+
+	/**
+	 * @since 1.38
+	 * @return WikiExporterFactory
+	 */
+	public function getWikiExporterFactory(): WikiExporterFactory {
+		return $this->getService( 'WikiExporterFactory' );
 	}
 
 	/**

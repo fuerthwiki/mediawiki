@@ -22,6 +22,7 @@ class WikiPageDbTest extends MediaWikiLangTestCase {
 	use DummyServicesTrait;
 	use MockAuthorityTrait;
 
+	/** @var WikiPage[] */
 	private $pagesToDelete;
 
 	protected function setUp(): void {
@@ -62,8 +63,6 @@ class WikiPageDbTest extends MediaWikiLangTestCase {
 	protected function tearDown(): void {
 		$user = $this->getTestSysop()->getUser();
 		foreach ( $this->pagesToDelete as $p ) {
-			/** @var WikiPage $p */
-
 			try {
 				if ( $p->canExist() && $p->exists() ) {
 					$p->doDeleteArticleReal( "testing done.", $user );
@@ -146,18 +145,8 @@ class WikiPageDbTest extends MediaWikiLangTestCase {
 	 */
 	public function testConstructionWithPageThatCannotExist( $ns, $text ) {
 		$title = Title::makeTitle( $ns, $text );
-
-		// NOTE: once WikiPage becomes a ProperPageIdentity, the constructor should throw!
-		$this->filterDeprecated( '/WikiPage constructed on a Title that cannot exist as a page/' );
-		$this->filterDeprecated( '/Accessing WikiPage that cannot exist as a page/' );
-		$page = new WikiPage( $title );
-
-		$this->assertFalse( $page->canExist() );
-		$this->assertFalse( $page->exists() );
-		$this->assertNull( $page->getRevisionRecord() );
-
-		$this->expectException( RuntimeException::class );
-		$page->getId();
+		$this->expectException( InvalidArgumentException::class );
+		new WikiPage( $title );
 	}
 
 	/**
@@ -277,7 +266,14 @@ class WikiPageDbTest extends MediaWikiLangTestCase {
 	public function testDoEditContent() {
 		$this->hideDeprecated( 'WikiPage::doEditContent' );
 
+		// We set $wgUser to a User we create to avoid dealing with StubGlobalUser
+		// deprecation, etc. The entire method is deprecated anyway.
+		$user = $this->getTestSysop()->getUser();
+
+		// phpcs:ignore MediaWiki.Usage.DeprecatedGlobalVariables.Deprecated$wgUser
 		global $wgUser;
+		$originalUser = $wgUser;
+		$wgUser = $user;
 
 		// NOTE: Test that Editing also works with a fragment title!
 		$page = $this->newPage( __METHOD__ . '#Fragment' );
@@ -343,8 +339,11 @@ class WikiPageDbTest extends MediaWikiLangTestCase {
 		$this->assertStringContainsString( '[[gubergren]]', $newText, 'New text must replace old text.' );
 		$this->assertStringNotContainsString( '[[Lorem ipsum]]', $newText, 'New text must replace old text.' );
 		$this->assertStringNotContainsString( '~~~~', $newText, 'PST must substitute signature.' );
-		$this->assertStringContainsString( $wgUser->getName(), $newText,
+		$this->assertStringContainsString( $user->getName(), $newText,
 			'Must fall back to $wgUser when no user has been specified.' );
+
+		// Reset so that other tests would still fail if interacting with $wgUser
+		$wgUser = $originalUser;
 	}
 
 	/**
@@ -561,9 +560,10 @@ class WikiPageDbTest extends MediaWikiLangTestCase {
 			CONTENT_MODEL_WIKITEXT
 		);
 		$id = $page->getId();
-		$user = $this->getTestSysop()->getUserIdentity();
+		$user = $this->getTestSysop()->getUser();
 
-		$page->doDeleteArticleReal( "testing deletion", $user );
+		$reason = "testing deletion";
+		$status = $page->doDeleteArticleReal( $reason, $user );
 
 		$this->assertFalse(
 			$page->getTitle()->getArticleID() > 0,
@@ -595,29 +595,8 @@ class WikiPageDbTest extends MediaWikiLangTestCase {
 		$res->free();
 
 		$this->assertSame( 0, $n, 'pagelinks should contain no more links from the page' );
-	}
 
-	/**
-	 * @covers WikiPage::doDeleteArticleReal
-	 */
-	public function testDoDeleteArticleReal_user0() {
-		$page = $this->createPage(
-			__METHOD__,
-			"[[original text]] foo",
-			CONTENT_MODEL_WIKITEXT
-		);
-
-		$deleter = $this->getTestSysop()->getUser();
-
-		$errorStack = '';
-		$status = $page->doDeleteArticleReal(
-			/* reason */ "testing user 0 deletion",
-			/* deleter */ $deleter,
-			/* suppress */ false,
-			/* unused 1 */ null,
-			/* errorStack */ $errorStack,
-			/* unused 2 */ null
-		);
+		// Test deletion logging
 		$logId = $status->getValue();
 		$commentQuery = MediaWikiServices::getInstance()->getCommentStore()->getJoin( 'log_comment' );
 		$this->assertSelect(
@@ -634,52 +613,7 @@ class WikiPageDbTest extends MediaWikiLangTestCase {
 			[ [
 				'delete',
 				'delete',
-				'testing user 0 deletion',
-				(string)$deleter->getActorId(),
-				(string)$page->getTitle()->getNamespace(),
-				$page->getTitle()->getDBkey(),
-			] ],
-			[],
-			$commentQuery['joins']
-		);
-	}
-
-	/**
-	 * @covers WikiPage::doDeleteArticleReal
-	 */
-	public function testDoDeleteArticleReal_userSysop() {
-		$page = $this->createPage(
-			__METHOD__,
-			"[[original text]] foo",
-			CONTENT_MODEL_WIKITEXT
-		);
-
-		$user = $this->getTestSysop()->getUser();
-		$errorStack = '';
-		$status = $page->doDeleteArticleReal(
-			/* reason */ "testing sysop deletion",
-			$user,
-			/* suppress */ false,
-			/* unused 1 */ null,
-			/* errorStack */ $errorStack
-		);
-		$logId = $status->getValue();
-		$commentQuery = MediaWikiServices::getInstance()->getCommentStore()->getJoin( 'log_comment' );
-		$this->assertSelect(
-			[ 'logging' ] + $commentQuery['tables'], /* table */
-			[
-				'log_type',
-				'log_action',
-				'log_comment' => $commentQuery['fields']['log_comment_text'],
-				'log_actor',
-				'log_namespace',
-				'log_title',
-			],
-			[ 'log_id' => $logId ],
-			[ [
-				'delete',
-				'delete',
-				'testing sysop deletion',
+				$reason,
 				(string)$user->getActorId(),
 				(string)$page->getTitle()->getNamespace(),
 				$page->getTitle()->getDBkey(),
@@ -700,17 +634,15 @@ class WikiPageDbTest extends MediaWikiLangTestCase {
 			"[[original text]] foo",
 			CONTENT_MODEL_WIKITEXT
 		);
-		$id = $page->getId();
 
 		$user = $this->getTestSysop()->getUser();
-		$errorStack = '';
 		$status = $page->doDeleteArticleReal(
 			/* reason */ "testing deletion",
 			$user,
-			/* suppress */ true,
-			/* unused 1 */ null,
-			/* errorStack */ $errorStack
+			/* suppress */ true
 		);
+
+		// Test suppression logging
 		$logId = $status->getValue();
 		$commentQuery = MediaWikiServices::getInstance()->getCommentStore()->getJoin( 'log_comment' );
 		$this->assertSelect(
@@ -736,19 +668,31 @@ class WikiPageDbTest extends MediaWikiLangTestCase {
 			$commentQuery['joins']
 		);
 
+		$archive = new PageArchive( $page->getTitle(), MediaWikiServices::getInstance()->getMainConfig() );
+		$archivedRevs = $archive->listRevisions();
+		if ( !$archivedRevs || $archivedRevs->numRows() !== 1 ) {
+			$this->fail( 'Unexpected number of archived revisions' );
+		}
+		$archivedRev = MediaWikiServices::getInstance()->getRevisionStore()
+			->newRevisionFromArchiveRow( $archivedRevs->current() );
+
 		$this->assertNull(
-			$page->getContent( RevisionRecord::FOR_PUBLIC ),
-			"WikiPage::getContent should return null after the page was suppressed for general users"
+			$archivedRev->getContent( SlotRecord::MAIN, RevisionRecord::FOR_PUBLIC ),
+			"Archived content should be null after the page was suppressed for general users"
 		);
 
 		$this->assertNull(
-			$page->getContent( RevisionRecord::FOR_THIS_USER, $this->getTestUser()->getUser() ),
-			"WikiPage::getContent should return null after the page was suppressed for individual users"
+			$archivedRev->getContent(
+				SlotRecord::MAIN,
+				RevisionRecord::FOR_THIS_USER,
+				$this->getTestUser()->getUser()
+			),
+			"Archived content should be null after the page was suppressed for individual users"
 		);
 
 		$this->assertNull(
-			$page->getContent( RevisionRecord::FOR_THIS_USER, $user ),
-			"WikiPage::getContent should return null after the page was suppressed even for a sysop"
+			$archivedRev->getContent( SlotRecord::MAIN, RevisionRecord::FOR_THIS_USER, $user ),
+			"Archived content should be null after the page was suppressed even for a sysop"
 		);
 	}
 
@@ -756,6 +700,7 @@ class WikiPageDbTest extends MediaWikiLangTestCase {
 	 * @covers WikiPage::doDeleteUpdates
 	 */
 	public function testDoDeleteUpdates() {
+		$this->hideDeprecated( 'WikiPage::doDeleteUpdates' );
 		$user = $this->getTestUser()->getUserIdentity();
 		$page = $this->createPage(
 			__METHOD__,
@@ -845,6 +790,7 @@ class WikiPageDbTest extends MediaWikiLangTestCase {
 	}
 
 	public function testGetDeletionUpdates() {
+		$this->hideDeprecated( 'WikiPage::getDeletionUpdates' );
 		$m1 = $this->defineMockContentModelForUpdateTesting( 'M1' );
 
 		$mainContent1 = $this->createMockContent( $m1, 'main 1' );
@@ -1350,8 +1296,6 @@ more stuff
 
 		$this->assertEquals( $expectedHistory, $hasHistory,
 			"expected \$hasHistory to be " . var_export( $expectedHistory, true ) );
-
-		$page->doDeleteArticleReal( "done", $this->getTestSysop()->getUser() );
 	}
 
 	public function providePreSaveTransform() {
@@ -1602,6 +1546,7 @@ more stuff
 			'page_touched' => '20120101020202',
 			'page_links_updated' => '20140101020202',
 			'page_lang' => 'it',
+			'page_content_model' => CONTENT_MODEL_WIKITEXT,
 		];
 		foreach ( $overrides as $key => $value ) {
 			$row[$key] = $value;

@@ -108,14 +108,23 @@ class ResourceLoaderSkinModuleTest extends ResourceLoaderTestCase {
 			[
 				[
 					'Logos' => [
-						'wordmark' => '/logo-wordmark.png',
+						'wordmark' => [
+							'src' => '/logo-wordmark.png',
+							'width' => 100,
+							'height' => 15,
+						],
 						'1x' => '/logo.png',
 						'svg' => '/logo.svg',
 						'2x' => 'logo-2x.png'
 					],
 				],
 				[
-					'wordmark' => '/logo-wordmark.png',
+					'wordmark' => [
+						'src' => '/logo-wordmark.png',
+						'width' => 100,
+						'height' => 15,
+						'style' => 'width: 6.25em; height: 0.9375em;',
+					],
 					'1x' => '/logo.png',
 					'svg' => '/logo.svg',
 					'2x' => 'logo-2x.png',
@@ -156,11 +165,11 @@ class ResourceLoaderSkinModuleTest extends ResourceLoaderTestCase {
 .mw-wiki-logo { background-image: url(/logo.png); }
 CSS
 					],
-					'(-webkit-min-device-pixel-ratio: 1.5), (min--moz-device-pixel-ratio: 1.5), (min-resolution: 1.5dppx), (min-resolution: 144dpi)' => [ <<<CSS
+					'(-webkit-min-device-pixel-ratio: 1.5), (min-resolution: 1.5dppx), (min-resolution: 144dpi)' => [ <<<CSS
 .mw-wiki-logo { background-image: url(/logo@1.5x.png);background-size: 135px auto; }
 CSS
 					],
-					'(-webkit-min-device-pixel-ratio: 2), (min--moz-device-pixel-ratio: 2), (min-resolution: 2dppx), (min-resolution: 192dpi)' => [ <<<CSS
+					'(-webkit-min-device-pixel-ratio: 2), (min-resolution: 2dppx), (min-resolution: 192dpi)' => [ <<<CSS
 .mw-wiki-logo { background-image: url(/logo@2x.png);background-size: 135px auto; }
 CSS
 					],
@@ -268,7 +277,11 @@ CSS
 					'ResourceBasePath' => '/w',
 					'Logos' => [
 						'1x' => '/img/default.png',
-						'wordmark' => '/img/wordmark.png',
+						'wordmark' => [
+							'src' => '/img/wordmark.png',
+							'width' => 120,
+							'height' => 20,
+						],
 					],
 				],
 				'expected' => '/img/default.png',

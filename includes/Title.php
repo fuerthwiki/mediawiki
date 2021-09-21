@@ -807,6 +807,7 @@ class Title implements LinkTarget, PageIdentity, IDBAccessObject {
 				$r0 = $d0;
 			}
 			// Do the output
+			// @phan-suppress-next-line PhanPluginRedundantAssignmentInLoop Confusing, $r1 is set later
 			if ( $x0 !== '' && $x1 === '-' && $x2 !== '' ) {
 				// Range
 				if ( $ord2 > $ord0 ) {
@@ -1769,10 +1770,12 @@ class Title implements LinkTarget, PageIdentity, IDBAccessObject {
 
 	/**
 	 * Get the default namespace index, for when there is no namespace
+	 * @deprecated since 1.37, no callers, should be removed.
 	 *
 	 * @return int Default namespace index
 	 */
 	public function getDefaultNamespace() {
+		wfDeprecated( __METHOD__, '1.37' );
 		return $this->mDefaultNamespace;
 	}
 
@@ -2579,11 +2582,11 @@ class Title implements LinkTarget, PageIdentity, IDBAccessObject {
 	 *        that the restrictions have come from and the actual restrictions
 	 *        themselves.
 	 * @return array Two elements: First is an array of Title objects of the
-	 *        pages from which cascading restrictions have come, false for
-	 *        none, or true if such restrictions exist but $getPages was not
-	 *        set. Second is an array like that returned by
-	 *        Title::getAllRestrictions(), or an empty array if $getPages is
-	 *        false.
+	 *        pages from which cascading restrictions have come if $getPages
+	 *        is true, or a bool indicating whetehr any cascading protection
+	 *        applies if $getPages was set to false.
+	 *        Second is an array like that returned by Title::getAllRestrictions(),
+	 *        or an empty array if $getPages is false.
 	 */
 	public function getCascadeProtectionSources( $getPages = true ) {
 		$restrictionStore = MediaWikiServices::getInstance()->getRestrictionStore();
@@ -2593,9 +2596,6 @@ class Title implements LinkTarget, PageIdentity, IDBAccessObject {
 
 		$ret = $restrictionStore->getCascadeProtectionSources( $this );
 		$ret[0] = array_map( 'Title::castFromPageIdentity', $ret[0] );
-		if ( !$ret[0] ) {
-			$ret[0] = false;
-		}
 		return $ret;
 	}
 
@@ -2776,11 +2776,8 @@ class Title implements LinkTarget, PageIdentity, IDBAccessObject {
 		# around uninitialized in every Title object; therefore we only add it
 		# if needed and don't declare it statically.
 		if ( $this->mHasSubpages === null ) {
-			$this->mHasSubpages = false;
 			$subpages = $this->getSubpages( 1 );
-			if ( $subpages instanceof TitleArray ) {
-				$this->mHasSubpages = (bool)$subpages->current();
-			}
+			$this->mHasSubpages = $subpages instanceof TitleArray && $subpages->count();
 		}
 
 		return $this->mHasSubpages;
@@ -2894,7 +2891,7 @@ class Title implements LinkTarget, PageIdentity, IDBAccessObject {
 	 * @return int The ID
 	 */
 	public function getArticleID( $flags = 0 ) {
-		if ( $this->mNamespace < 0 ) {
+		if ( !$this->canExist() ) {
 			$this->mArticleID = 0;
 
 			return $this->mArticleID;
@@ -2902,10 +2899,8 @@ class Title implements LinkTarget, PageIdentity, IDBAccessObject {
 
 		if ( $flags & self::GAID_FOR_UPDATE ) {
 			$linkCache = MediaWikiServices::getInstance()->getLinkCache();
-			$oldUpdate = $linkCache->forUpdate( true );
 			$linkCache->clearLink( $this );
-			$this->mArticleID = $linkCache->addLinkObj( $this );
-			$linkCache->forUpdate( $oldUpdate );
+			$this->mArticleID = $linkCache->addLinkObj( $this, self::READ_LATEST );
 		} elseif ( DBAccessObjectUtils::hasFlags( $flags, self::READ_LATEST ) ) {
 			// If mArticleID is >0, pageCond() will use it, making it impossible
 			// for the call below to return a different result, e.g. after a
@@ -3138,7 +3133,7 @@ class Title implements LinkTarget, PageIdentity, IDBAccessObject {
 
 		$res = $db->select(
 			[ 'page', $table ],
-			self::getSelectFields(),
+			LinkCache::getSelectFields(),
 			[
 				"{$prefix}_from=page_id",
 				"{$prefix}_namespace" => $this->mNamespace,
@@ -3431,6 +3426,7 @@ class Title implements LinkTarget, PageIdentity, IDBAccessObject {
 
 	/**
 	 * Check whether the number of revisions of this page surpasses $wgDeleteRevisionsLimit
+	 * @deprecated since 1.37 External callers shouldn't need to know about this.
 	 *
 	 * @return bool
 	 */
@@ -3913,12 +3909,16 @@ class Title implements LinkTarget, PageIdentity, IDBAccessObject {
 	}
 
 	/**
-	 * Get a backlink cache object
+	 * Get a backlink cache object.
+	 *
+	 * @deprecated since 1.37, use BacklinkCacheFactory::getBacklinkCache()
 	 *
 	 * @return BacklinkCache
 	 */
 	public function getBacklinkCache(): BacklinkCache {
-		return BacklinkCache::get( $this );
+		wfDeprecated( __METHOD__, '1.37' );
+		return MediaWikiServices::getInstance()->getBacklinkCacheFactory()
+			->getBacklinkCache( $this );
 	}
 
 	/**

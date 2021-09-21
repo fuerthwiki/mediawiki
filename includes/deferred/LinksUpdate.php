@@ -25,6 +25,7 @@ use MediaWiki\Logger\LoggerFactory;
 use MediaWiki\MediaWikiServices;
 use MediaWiki\Page\PageIdentity;
 use MediaWiki\Revision\RevisionRecord;
+use MediaWiki\User\UserIdentity;
 use Wikimedia\Rdbms\IDatabase;
 use Wikimedia\ScopedCallback;
 
@@ -114,7 +115,7 @@ class LinksUpdate extends DataUpdate {
 	private $propertyDeletions = null;
 
 	/**
-	 * @var User|null
+	 * @var UserIdentity|null
 	 */
 	private $user;
 
@@ -353,23 +354,28 @@ class LinksUpdate extends DataUpdate {
 	 * using the job queue.
 	 */
 	protected function queueRecursiveJobs() {
+		$backlinkCache = MediaWikiServices::getInstance()->getBacklinkCacheFactory()
+			->getBacklinkCache( $this->mTitle );
 		$action = $this->getCauseAction();
 		$agent = $this->getCauseAgent();
 
-		self::queueRecursiveJobsForTable( $this->mTitle, 'templatelinks', $action, $agent );
+		self::queueRecursiveJobsForTable(
+			$this->mTitle, 'templatelinks', $action, $agent, $backlinkCache
+		);
 		if ( $this->mTitle->getNamespace() === NS_FILE ) {
 			// Process imagelinks in case the title is or was a redirect
-			self::queueRecursiveJobsForTable( $this->mTitle, 'imagelinks', $action, $agent );
+			self::queueRecursiveJobsForTable(
+				$this->mTitle, 'imagelinks', $action, $agent, $backlinkCache
+			);
 		}
 
-		$bc = $this->mTitle->getBacklinkCache();
 		// Get jobs for cascade-protected backlinks for a high priority queue.
 		// If meta-templates change to using a new template, the new template
 		// should be implicitly protected as soon as possible, if applicable.
 		// These jobs duplicate a subset of the above ones, but can run sooner.
 		// Which ever runs first generally no-ops the other one.
 		$jobs = [];
-		foreach ( $bc->getCascadeProtectedLinks() as $title ) {
+		foreach ( $backlinkCache->getCascadeProtectedLinks() as $title ) {
 			$jobs[] = RefreshLinksJob::newPrioritized(
 				$title,
 				[
@@ -388,12 +394,18 @@ class LinksUpdate extends DataUpdate {
 	 * @param string $table Table to use (e.g. 'templatelinks')
 	 * @param string $action Triggering action
 	 * @param string $userName Triggering user name
+	 * @param BacklinkCache|null $backlinkCache Backlink cache
 	 */
 	public static function queueRecursiveJobsForTable(
-		PageIdentity $page, $table, $action = 'unknown', $userName = 'unknown'
+		PageIdentity $page, $table, $action = 'unknown', $userName = 'unknown', ?BacklinkCache $backlinkCache = null
 	) {
 		$title = Title::castFromPageIdentity( $page );
-		if ( $title->getBacklinkCache()->hasLinks( $table ) ) {
+		if ( !$backlinkCache ) {
+			wfDeprecatedMsg( __METHOD__ . " needs a BacklinkCache object, null passed", '1.37' );
+			$backlinkCache = MediaWikiServices::getInstance()->getBacklinkCacheFactory()
+				->getBacklinkCache( $title );
+		}
+		if ( $backlinkCache->hasLinks( $table ) ) {
 			$job = new RefreshLinksJob(
 				$title,
 				[
@@ -1082,20 +1094,22 @@ class LinksUpdate extends DataUpdate {
 	}
 
 	/**
-	 * Set the User who triggered this LinksUpdate
+	 * Set the user who triggered this LinksUpdate
 	 *
 	 * @since 1.27
-	 * @param User $user
+	 * @param UserIdentity $user
 	 */
-	public function setTriggeringUser( User $user ) {
+	public function setTriggeringUser( UserIdentity $user ) {
 		$this->user = $user;
 	}
 
 	/**
+	 * Get the user who triggered this LinksUpdate
+	 *
 	 * @since 1.27
-	 * @return null|User
+	 * @return UserIdentity|null
 	 */
-	public function getTriggeringUser() {
+	public function getTriggeringUser(): ?UserIdentity {
 		return $this->user;
 	}
 

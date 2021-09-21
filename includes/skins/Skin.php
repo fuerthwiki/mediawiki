@@ -90,14 +90,14 @@ abstract class Skin extends ContextSource {
 	/**
 	 * Fetch the set of available skins.
 	 *
-	 * @deprecated since 1.36. Use SkinFactory::getSkinNames() instead.
+	 * @deprecated since 1.36. Use SkinFactory::getInstalledSkins() instead.
 	 * @return array Associative array of strings
 	 */
 	public static function getSkinNames() {
 		wfDeprecated( __METHOD__, '1.36' );
 
 		$skinFactory = MediaWikiServices::getInstance()->getSkinFactory();
-		return $skinFactory->getSkinNames();
+		return $skinFactory->getInstalledSkins();
 	}
 
 	/**
@@ -129,7 +129,7 @@ abstract class Skin extends ContextSource {
 		global $wgDefaultSkin, $wgFallbackSkin;
 
 		$skinFactory = MediaWikiServices::getInstance()->getSkinFactory();
-		$skinNames = $skinFactory->getSkinNames();
+		$skinNames = $skinFactory->getInstalledSkins();
 
 		// Make keys lowercase for case-insensitive matching.
 		$skinNames = array_change_key_case( $skinNames, CASE_LOWER );
@@ -935,55 +935,22 @@ abstract class Skin extends ContextSource {
 	}
 
 	/**
+	 * @deprecated 1.37
 	 * @return null|string
 	 */
 	protected function getCopyrightIcon() {
-		$out = '';
-		$config = $this->getConfig();
-
-		$footerIcons = $config->get( 'FooterIcons' );
-		if (
-			isset( $footerIcons['copyright']['copyright'] ) &&
-			$footerIcons['copyright']['copyright']
-		) {
-			$out = $footerIcons['copyright']['copyright'];
-		} elseif ( $config->get( 'RightsIcon' ) ) {
-			$icon = htmlspecialchars( $config->get( 'RightsIcon' ) );
-			$url = $config->get( 'RightsUrl' );
-
-			if ( $url ) {
-				$out .= '<a href="' . htmlspecialchars( $url ) . '">';
-			}
-
-			$text = htmlspecialchars( $config->get( 'RightsText' ) );
-			$out .= "<img src=\"$icon\" alt=\"$text\" width=\"88\" height=\"31\" />";
-
-			if ( $url ) {
-				$out .= '</a>';
-			}
-		}
-
-		return $out;
+		wfDeprecated( __METHOD__, '1.37' );
+		return BaseTemplate::getCopyrightIconHTML( $this->getConfig(), $this );
 	}
 
 	/**
 	 * Gets the powered by MediaWiki icon.
+	 * @deprecated 1.37
 	 * @return string
 	 */
 	protected function getPoweredBy() {
-		$resourceBasePath = $this->getConfig()->get( 'ResourceBasePath' );
-		$url1 = htmlspecialchars(
-			"$resourceBasePath/resources/assets/poweredby_mediawiki_88x31.png"
-		);
-		$url1_5 = htmlspecialchars(
-			"$resourceBasePath/resources/assets/poweredby_mediawiki_132x47.png"
-		);
-		$url2 = htmlspecialchars(
-			"$resourceBasePath/resources/assets/poweredby_mediawiki_176x62.png"
-		);
-		$text = '<a href="https://www.mediawiki.org/"><img src="' . $url1
-			. '" srcset="' . $url1_5 . ' 1.5x, ' . $url2 . ' 2x" '
-			. 'height="31" width="88" alt="Powered by MediaWiki" loading="lazy" /></a>';
+		wfDeprecated( __METHOD__, '1.37' );
+		$text = BaseTemplate::getPoweredByHTML( $this->getConfig() );
 		$this->getHookRunner()->onSkinGetPoweredBy( $text, $this );
 		return $text;
 	}
@@ -2489,12 +2456,12 @@ abstract class Skin extends ContextSource {
 	}
 
 	/**
-	 * @since 1.35
+	 * @since 1.38
 	 * @param array $attrs (optional) will be passed to tooltipAndAccesskeyAttribs
 	 *  and decorate the resulting input
-	 * @return string of HTML input
+	 * @return array attributes of HTML input
 	 */
-	final public function makeSearchInput( $attrs = [] ) {
+	protected function getSearchInputAttributes( $attrs = [] ) {
 		$autoCapHint = $this->getConfig()->get( 'CapitalLinks' );
 		$realAttrs = [
 			'type' => 'search',
@@ -2505,8 +2472,17 @@ abstract class Skin extends ContextSource {
 			'autocapitalize' => $autoCapHint ? 'sentences' : 'none',
 		];
 
-		$realAttrs = array_merge( $realAttrs, Linker::tooltipAndAccesskeyAttribs( 'search' ), $attrs );
-		return Html::element( 'input', $realAttrs );
+		return array_merge( $realAttrs, Linker::tooltipAndAccesskeyAttribs( 'search' ), $attrs );
+	}
+
+	/**
+	 * @since 1.35
+	 * @param array $attrs (optional) will be passed to tooltipAndAccesskeyAttribs
+	 *  and decorate the resulting input
+	 * @return string of HTML input
+	 */
+	final public function makeSearchInput( $attrs = [] ) {
+		return Html::element( 'input', $this->getSearchInputAttributes( $attrs ) );
 	}
 
 	/**

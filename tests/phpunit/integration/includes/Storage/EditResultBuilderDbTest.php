@@ -4,9 +4,7 @@ namespace MediaWiki\Tests\Storage;
 
 use ChangeTags;
 use CommentStoreComment;
-use IDatabase;
 use MediaWiki\Config\ServiceOptions;
-use MediaWiki\MediaWikiServices;
 use MediaWiki\Revision\MutableRevisionRecord;
 use MediaWiki\Revision\RevisionRecord;
 use MediaWiki\Revision\RevisionStore;
@@ -15,6 +13,7 @@ use MediaWiki\Storage\EditResult;
 use MediaWiki\Storage\EditResultBuilder;
 use MediaWikiIntegrationTestCase;
 use MockTitleTrait;
+use Wikimedia\Rdbms\IDatabase;
 use WikiPage;
 use WikitextContent;
 
@@ -54,7 +53,7 @@ class EditResultBuilderDbTest extends MediaWikiIntegrationTestCase {
 	protected function setUp(): void {
 		parent::setUp();
 
-		$services = MediaWikiServices::getInstance();
+		$services = $this->getServiceContainer();
 		$this->revisionStore = $services->getRevisionStore();
 		$this->dbw = $services->getDBLoadBalancer()->getConnection( DB_PRIMARY );
 
@@ -310,7 +309,7 @@ class EditResultBuilderDbTest extends MediaWikiIntegrationTestCase {
 		$erb->setRevisionRecord( $newRevision );
 		// emulate WikiPage's behaviour for null edits
 		if ( $newRevision->getSha1() === $parentRevision->getSha1() ) {
-			$erb->setOriginalRevisionId( $parentRevision->getId() );
+			$erb->setOriginalRevision( $parentRevision );
 		}
 
 		$er = $erb->buildEditResult();
@@ -337,14 +336,13 @@ class EditResultBuilderDbTest extends MediaWikiIntegrationTestCase {
 	 * @return EditResultBuilder
 	 */
 	private function getEditResultBuilder( int $manualRevertSearchRadius = 15 ) {
-		$services = MediaWikiServices::getInstance();
 		$options = new ServiceOptions(
 			EditResultBuilder::CONSTRUCTOR_OPTIONS,
 			[ 'ManualRevertSearchRadius' => $manualRevertSearchRadius ]
 		);
 
 		return new EditResultBuilder(
-			$services->getRevisionStore(),
+			$this->getServiceContainer()->getRevisionStore(),
 			ChangeTags::listSoftwareDefinedTags(),
 			$options
 		);

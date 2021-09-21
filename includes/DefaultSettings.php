@@ -50,6 +50,8 @@ if ( !defined( 'MEDIAWIKI' ) ) {
 
 /** @endcond */
 
+/** @phan-file-suppress PhanPluginRedundantAssignmentInGlobalScope */
+
 /**
  * $wgConf hold the site configuration.
  * Not used for much in a default install.
@@ -1106,8 +1108,10 @@ $wgFileExtensions = [ 'png', 'gif', 'jpg', 'jpeg', 'webp' ];
  * Files with these extensions will never be allowed as uploads.
  * An array of file extensions to prevent being uploaded. You should
  * append to this array if you want to prevent additional file extensions.
+ *
+ * @since 1.37; previously $wgFileBlacklist
  */
-$wgFileBlacklist = [
+$wgProhibitedFileExtensions = [
 	# HTML may contain cookie-stealing JavaScript and web bugs
 	'html', 'htm', 'js', 'jsb', 'mhtml', 'mht', 'xhtml', 'xht',
 	# PHP scripts may execute arbitrary code on the server
@@ -1121,10 +1125,14 @@ $wgFileBlacklist = [
 /**
  * Files with these MIME types will never be allowed as uploads
  * if $wgVerifyMimeType is enabled.
+ *
+ * @since 1.37; previously $wgMimeTypeBlacklist
  */
-$wgMimeTypeBlacklist = [
+$wgMimeTypeExclusions = [
 	# HTML may contain cookie-stealing JavaScript and web bugs
-	'text/html', 'text/javascript', 'text/x-javascript', 'application/x-shellscript',
+	'text/html',
+	# Similarly with JavaScript itself
+	'application/javascript', 'text/javascript', 'text/x-javascript', 'application/x-shellscript',
 	# PHP scripts may execute arbitrary code on the server
 	'application/x-php', 'text/x-php',
 	# Other types that may be interpreted by some servers
@@ -1790,22 +1798,6 @@ $wgDjvuRenderer = null;
 $wgDjvuTxt = null;
 
 /**
- * Path of the djvutoxml executable
- * This works like djvudump except much, much slower as of version 3.5.
- *
- * For now we recommend you use djvudump instead. The djvuxml output is
- * probably more stable, so we'll switch back to it as soon as they fix
- * the efficiency problem.
- * https://sourceforge.net/tracker/index.php?func=detail&aid=1704049&group_id=32953&atid=406583
- *
- * @par Example:
- * @code
- * $wgDjvuToXML = 'djvutoxml';
- * @endcode
- */
-$wgDjvuToXML = null;
-
-/**
  * Shell command for the DJVU post processor
  * Default: pnmtojpeg, since ddjvu generates ppm output
  * Set this to false to output the ppm file directly.
@@ -1873,11 +1865,11 @@ $wgEnableUserEmail = true;
 $wgEnableSpecialMute = false;
 
 /**
- * Set to true to enable user-to-user e-mail blacklist.
+ * Set to true to enable user-to-user e-mail mutelist.
  *
- * @since 1.30
+ * @since 1.37; previously $wgEnableUserEmailBlacklist
  */
-$wgEnableUserEmailBlacklist = false;
+$wgEnableUserEmailMuteList = false;
 
 /**
  * If true put the sending user's email in a Reply-To header
@@ -3881,7 +3873,7 @@ $wgDisableOutputCompression = false;
  *
  * @since 1.30
  */
-$wgFragmentMode = [ 'legacy', 'html5' ];
+$wgFragmentMode = [ 'html5', 'legacy' ];
 
 /**
  * Which ID escaping mode should be used for external interwiki links? See documentation
@@ -4710,12 +4702,12 @@ $wgNamespacesWithSubpages = [
 $wgContentNamespaces = [ NS_MAIN ];
 
 /**
- * Optional array of namespaces which should be blacklisted from Special:ShortPages
- * Only pages inside $wgContentNamespaces but not $wgShortPagesNamespaceBlacklist will
+ * Optional array of namespaces which should be excluded from Special:ShortPages.
+ * Only pages inside $wgContentNamespaces but not $wgShortPagesNamespaceExclusions will
  * be shown on that page.
- * @since 1.30
+ * @since 1.37; previously $wgShortPagesNamespaceBlacklist
  */
-$wgShortPagesNamespaceBlacklist = [];
+$wgShortPagesNamespaceExclusions = [];
 
 /**
  * Array of namespaces, in addition to the talk namespaces, where signatures
@@ -5254,7 +5246,6 @@ $wgCentralIdLookupProvider = 'local';
  *		as part of the login workflow, regardless if it is correct.
  *	- MaximalPasswordLength - maximum length password a user is allowed
  *		to attempt. Prevents DoS attacks with pbkdf2.
- *	- PasswordCannotMatchUsername - Password cannot match the username.
  *	- PasswordCannotBeSubstringInUsername - Password cannot be a substring
  *		(contained within) the username.
  *	- PasswordCannotMatchDefaults - Username/password combination cannot
@@ -5294,7 +5285,6 @@ $wgPasswordPolicy = [
 		],
 		'default' => [
 			'MinimalPasswordLength' => [ 'value' => 1, 'suggestChangeOnLogin' => true ],
-			'PasswordCannotMatchUsername' => [ 'value' => true, 'suggestChangeOnLogin' => true ],
 			'PasswordCannotBeSubstringInUsername' => [
 				'value' => true,
 				'suggestChangeOnLogin' => true
@@ -5307,7 +5297,6 @@ $wgPasswordPolicy = [
 	'checks' => [
 		'MinimalPasswordLength' => 'PasswordPolicyChecks::checkMinimalPasswordLength',
 		'MinimumPasswordLengthToLogin' => 'PasswordPolicyChecks::checkMinimumPasswordLengthToLogin',
-		'PasswordCannotMatchUsername' => 'PasswordPolicyChecks::checkPasswordCannotMatchUsername',
 		'PasswordCannotBeSubstringInUsername' =>
 			'PasswordPolicyChecks::checkPasswordCannotBeSubstringInUsername',
 		'PasswordCannotMatchDefaults' => 'PasswordPolicyChecks::checkPasswordCannotMatchDefaults',
@@ -5715,7 +5704,6 @@ $wgDefaultUserOptions = [
 	'shownumberswatching' => 1,
 	'showrollbackconfirmation' => 0,
 	'skin' => false,
-	'stubthreshold' => 0,
 	'thumbsize' => 5,
 	'underline' => 2,
 	'uselivepreview' => 0,
@@ -7465,7 +7453,7 @@ $wgDeprecationReleaseLimit = false;
 /**
  * Profiler configuration.
  *
- * To use a profiler, set $wgProfiler in LocalSetings.php.
+ * To use a profiler, set $wgProfiler in LocalSettings.php.
  *
  * Options:
  *
@@ -9426,14 +9414,6 @@ $wgAjaxUploadDestCheck = true;
  * Enable previewing licences via AJAX.
  */
 $wgAjaxLicensePreview = true;
-
-/**
- * Have clients send edits to be prepared when filling in edit summaries.
- * This gives the server a head start on the expensive parsing operation.
- *
- * @deprecated Since 1.36; disabling this feature will be removed in the next release.
- */
-$wgAjaxEditStash = true;
 
 /**
  * Settings for incoming cross-site AJAX requests:

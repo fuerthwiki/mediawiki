@@ -165,7 +165,7 @@ class LocalFile extends File {
 	/** @var bool Whether the row was scheduled to upgrade on load */
 	private $upgrading;
 
-	/** @var bool True if the image row is locked */
+	/** @var int If >= 1 the image row is locked */
 	private $locked;
 
 	/** @var bool True if the image row is locked with a lock initiated transaction */
@@ -2175,11 +2175,13 @@ class LocalFile extends File {
 					$hcu->purgeUrls( $this->getUrl(), $hcu::PURGE_INTENT_TXROUND_REFLECTED );
 				} else {
 					# Update backlink pages pointing to this title if created
+					$blcFactory = MediaWikiServices::getInstance()->getBacklinkCacheFactory();
 					LinksUpdate::queueRecursiveJobsForTable(
 						$this->getTitle(),
 						'imagelinks',
 						'upload-image',
-						$performer->getUser()->getName()
+						$performer->getUser()->getName(),
+						$blcFactory->getBacklinkCache( $this->getTitle() )
 					);
 				}
 

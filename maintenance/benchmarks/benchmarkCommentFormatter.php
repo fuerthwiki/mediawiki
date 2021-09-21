@@ -20,7 +20,6 @@ class BenchmarkCommentFormatter extends Benchmarker {
 		$result = json_decode( $json, true );
 		if ( !isset( $result['query']['recentchanges'] ) ) {
 			$this->fatalError( "Invalid JSON data" );
-			throw new \Exception( 'Invalid JSON data' ); // for phan
 		}
 		$entries = $result['query']['recentchanges'];
 		$inputs = [];

@@ -204,6 +204,9 @@ class ResourceLoaderStartUpModule extends ResourceLoaderModule {
 			}
 
 			try {
+				// The version should be formatted by ResourceLoader::makeHash and be of
+				// length ResourceLoader::HASH_LENGTH (or empty string).
+				// The getVersionHash method is final and is covered by tests, as is makeHash().
 				$versionHash = $module->getVersionHash( $context );
 			} catch ( Exception $e ) {
 				// Don't fail the request (T152266)
@@ -217,20 +220,6 @@ class ResourceLoaderStartUpModule extends ResourceLoaderModule {
 				);
 				$versionHash = '';
 				$states[$name] = 'error';
-			}
-
-			if ( $versionHash !== '' && strlen( $versionHash ) !== ResourceLoader::HASH_LENGTH ) {
-				$e = new RuntimeException( "Badly formatted module version hash" );
-				$resourceLoader->outputErrorAndLog( $e,
-						"Module '{module}' produced an invalid version hash: '{version}'.",
-					[
-						'module' => $name,
-						'version' => $versionHash,
-					]
-				);
-				// Module implementation either broken or deviated from ResourceLoader::makeHash
-				// Asserted by tests/phpunit/structure/ResourcesTest.
-				$versionHash = ResourceLoader::makeHash( $versionHash );
 			}
 
 			$skipFunction = $module->getSkipFunction();
@@ -372,8 +361,8 @@ class ResourceLoaderStartUpModule extends ResourceLoaderModule {
 			'$VARS.maxQueryLength' => $context->encodeJson( $this->getMaxQueryLength() ),
 			// The client-side module cache can be disabled by site configuration.
 			// It is also always disabled in debug mode.
-			'$VARS.storeEnabled' => $context->encodeJson(
-				$conf->get( 'ResourceLoaderStorageEnabled' ) && !$context->getDebug()
+			'$VARS.storeDisabled' => $context->encodeJson(
+				!$conf->get( 'ResourceLoaderStorageEnabled' ) || $context->getDebug()
 			),
 			'$VARS.storeKey' => $context->encodeJson( $this->getStoreKey() ),
 			'$VARS.storeVary' => $context->encodeJson( $this->getStoreVary( $context ) ),

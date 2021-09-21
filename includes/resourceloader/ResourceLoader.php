@@ -882,6 +882,7 @@ class ResourceLoader implements LoggerAwareInterface {
 		}
 
 		$this->errors = [];
+		// @phan-suppress-next-line SecurityCheck-XSS
 		echo $response;
 	}
 
@@ -1181,6 +1182,7 @@ MESSAGE;
 							$implementKey,
 							$scripts,
 							$content['styles'] ?? [],
+							// @phan-suppress-next-line SecurityCheck-XSS
 							isset( $content['messagesBlob'] ) ? new XmlJsCode( $content['messagesBlob'] ) : [],
 							$content['templates'] ?? []
 						);
@@ -1293,8 +1295,10 @@ MESSAGE;
 			if ( $scripts->value === '' ) {
 				$scripts = null;
 			} elseif ( $context->getDebug() ) {
+				// @phan-suppress-next-line SecurityCheck-XSS
 				$scripts = new XmlJsCode( "function ( $, jQuery, require, module ) {\n{$scripts->value}\n}" );
 			} else {
+				// @phan-suppress-next-line SecurityCheck-XSS
 				$scripts = new XmlJsCode(
 					'function($,jQuery,require,module){' . self::ensureNewline( $scripts->value ) . '}'
 				);
@@ -1873,6 +1877,34 @@ MESSAGE;
 		$parser->SetOption( 'relativeUrls', false );
 
 		return $parser;
+	}
+
+	/**
+	 * Resolve a possibly relative URL against a base URL.
+	 *
+	 * The base URL must have a server and should have a protocol.
+	 * A protocol-relative base expands to HTTPS.
+	 *
+	 * This is a standalone version of MediaWiki's wfExpandUrl (T32956).
+	 *
+	 * @internal For use by core ResourceLoader classes only
+	 * @param string $base
+	 * @param string $url
+	 * @return string URL
+	 */
+	public function expandUrl( string $base, string $url ): string {
+		// Net_URL2::resolve() doesn't allow protocol-relative URLs, but we do.
+		$isProtoRelative = strpos( $base, '//' ) === 0;
+		if ( $isProtoRelative ) {
+			$base = "https:$base";
+		}
+		// Net_URL2::resolve() takes care of throwing if $base doesn't have a server.
+		$baseUrl = new Net_URL2( $base );
+		$ret = $baseUrl->resolve( $url );
+		if ( $isProtoRelative ) {
+			$ret->setScheme( false );
+		}
+		return $ret->getURL();
 	}
 
 	/**

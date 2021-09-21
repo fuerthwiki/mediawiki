@@ -574,6 +574,7 @@ return [
 	'vue' => [
 		'packageFiles' => [
 			'resources/src/vue/index.js',
+			'resources/src/vue/errorLogger.js',
 			'resources/src/vue/i18n.js',
 			[
 				'name' => 'resources/lib/vue/vue.js',
@@ -769,6 +770,7 @@ return [
 	],
 	'mediawiki.feedlink' => [
 		'styles' => 'resources/src/mediawiki.feedlink/feedlink.css',
+		'targets' => [ 'desktop', 'mobile' ],
 	],
 	'mediawiki.filewarning' => [
 		'scripts' => 'resources/src/mediawiki.filewarning/filewarning.js',
@@ -1371,11 +1373,6 @@ return [
 			'mediawiki.jqueryMsg',
 			'mediawiki.confirmCloseWindow',
 			'user.options',
-		],
-		'messages' => [
-			'editwarning-warning',
-			// editwarning-warning uses {{int:prefs-editing}}
-			'prefs-editing'
 		],
 	],
 	'mediawiki.action.view.filepage' => [
@@ -2177,9 +2174,6 @@ return [
 		'messages' => [
 			'prefs-tabs-navigation-hint',
 			'prefs-signature-highlight-error',
-			'prefswarning-warning',
-			'saveprefs',
-			'savedprefs',
 		],
 		'dependencies' => [
 			'mediawiki.language',
@@ -2269,9 +2263,6 @@ return [
 			'size-megabytes',
 			'size-gigabytes',
 			'largefileserver',
-			'editwarning-warning',
-			// editwarning-warning uses {{int:prefs-editing}}
-			'prefs-editing',
 		],
 		'dependencies' => [
 			'mediawiki.special',

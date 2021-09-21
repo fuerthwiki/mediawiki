@@ -1832,7 +1832,7 @@ abstract class Database implements IDatabase, IMaintainableDatabase, LoggerAware
 	/**
 	 * @inheritDoc
 	 */
-	public function newSelectQueryBuilder() {
+	public function newSelectQueryBuilder(): SelectQueryBuilder {
 		return new SelectQueryBuilder( $this );
 	}
 
@@ -4098,7 +4098,7 @@ abstract class Database implements IDatabase, IMaintainableDatabase, LoggerAware
 	}
 
 	public function getMasterPos() {
-		// wfDeprecated( __METHOD__, '1.37' );
+		wfDeprecated( __METHOD__, '1.37' );
 		return $this->getPrimaryPos();
 	}
 
@@ -6034,6 +6034,7 @@ abstract class Database implements IDatabase, IMaintainableDatabase, LoggerAware
 	 * Called by serialize. Throw an exception when DB connection is serialized.
 	 * This causes problems on some database engines because the connection is
 	 * not restored on unserialize.
+	 * @return never
 	 */
 	public function __sleep() {
 		throw new RuntimeException( 'Database serialization may cause problems, since ' .

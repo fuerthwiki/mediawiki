@@ -35,6 +35,7 @@ class DeprecatedHooks {
 	 */
 	private $deprecatedHooks = [
 		'AddNewAccount' => [ 'deprecatedVersion' => '1.27', 'silent' => true ],
+		'ArticleUndeleteLogEntry' => [ 'deprecatedVersion' => '1.37' ],
 		'BaseTemplateAfterPortlet' => [ 'deprecatedVersion' => '1.35' ],
 		'BeforeParserFetchTemplateAndtitle' => [ 'deprecatedVersion' => '1.36' ],
 		'BeforeParserrenderImageGallery' => [ 'deprecatedVersion' => '1.35' ],
@@ -51,6 +52,7 @@ class DeprecatedHooks {
 		'ProtectionForm::buildForm' => [ 'deprecatedVersion' => '1.36', 'silent' => true ],
 		'ResourceLoaderTestModules' => [ 'deprecatedVersion' => '1.33' ],
 		'RollbackComplete' => [ 'deprecatedVersion' => '1.36', 'silent' => true ],
+		'SkinGetPoweredBy' => [ 'deprecatedVersion' => '1.37' ],
 		'SpecialMuteSubmit' => [ 'deprecatedVersion' => '1.35', 'silent' => true ],
 		'UserLoadFromDatabase' => [ 'deprecatedVersion' => '1.37' ],
 		'UserLoadOptions' => [ 'deprecatedVersion' => '1.37' ],
@@ -59,6 +61,8 @@ class DeprecatedHooks {
 		'UserSetCookies' => [ 'deprecatedVersion' => '1.27' ],
 		'WikiPageDeletionUpdates' => [ 'deprecatedVersion' => '1.32', 'silent' => true ],
 		'userCan' => [ 'deprecatedVersion' => '1.37' ],
+		'ArticleDelete' => [ 'deprecatedVersion' => '1.37', 'silent' => true ],
+		'ArticleDeleteComplete' => [ 'deprecatedVersion' => '1.37', 'silent' => true ],
 	];
 
 	/**

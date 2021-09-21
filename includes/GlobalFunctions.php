@@ -1094,6 +1094,8 @@ function wfIncrStats( $key, $count = 1 ) {
 /**
  * Check whether the wiki is in read-only mode.
  *
+ * @deprecated since 1.38, use ReadOnlyMode::isReadOnly() instead
+ *
  * @return bool
  */
 function wfReadOnly() {
@@ -1106,6 +1108,8 @@ function wfReadOnly() {
  *
  * This checks wfConfiguredReadOnlyReason() and the main load balancer
  * for replica DB lag. This may result in DB connection being made.
+ *
+ * @deprecated since 1.38, use ReadOnlyMode::getReason() instead
  *
  * @return string|bool String when in read-only mode; false otherwise
  */
@@ -1651,33 +1655,6 @@ function wfResetOutputBuffers( $resetGzipEncoding = true ) {
 function wfClearOutputBuffers() {
 	wfDeprecated( __FUNCTION__, '1.36' );
 	wfResetOutputBuffers( false );
-}
-
-/**
- * Checks if a given MIME type matches any of the keys in the given
- * array. Basic wildcards are accepted in the array keys.
- *
- * Returns the matching MIME type (or wildcard) if a match, otherwise
- * NULL if no match.
- *
- * @param string $type
- * @param array $avail
- * @return string
- * @internal
- */
-function mimeTypeMatch( $type, $avail ) {
-	if ( array_key_exists( $type, $avail ) ) {
-		return $type;
-	} else {
-		$mainType = explode( '/', $type )[0];
-		if ( array_key_exists( "$mainType/*", $avail ) ) {
-			return "$mainType/*";
-		} elseif ( array_key_exists( '*/*', $avail ) ) {
-			return '*/*';
-		} else {
-			return null;
-		}
-	}
 }
 
 /**
@@ -2248,9 +2225,11 @@ function wfGetDB( $db, $groups = [], $wiki = false ) {
 function wfGetLB( $wiki = false ) {
 	wfDeprecated( __FUNCTION__, '1.27' );
 	if ( $wiki === false ) {
+		// @phan-suppress-next-line PhanTypeMismatchReturnSuperType
 		return MediaWikiServices::getInstance()->getDBLoadBalancer();
 	} else {
 		$factory = MediaWikiServices::getInstance()->getDBLoadBalancerFactory();
+		// @phan-suppress-next-line PhanTypeMismatchReturnSuperType
 		return $factory->getMainLB( $wiki );
 	}
 }

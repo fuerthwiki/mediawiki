@@ -786,7 +786,6 @@ class ApiParse extends ApiBase {
 		}
 		if ( $section === null ) {
 			$this->dieWithError( [ 'apierror-sectionsnotsupported-what', $what ], 'nosuchsection' );
-			$section = false;
 		}
 
 		return $section;
@@ -1050,7 +1049,9 @@ class ApiParse extends ApiBase {
 			'sectionpreview' => false,
 			'disabletoc' => false,
 			'useskin' => [
-				ApiBase::PARAM_TYPE => array_keys( $this->skinFactory->getAllowedSkins() ),
+				// T237856; We use all installed skins here to allow hidden (but usable) skins
+				// to continue working correctly with some features such as Live Preview
+				ApiBase::PARAM_TYPE => array_keys( $this->skinFactory->getInstalledSkins() ),
 			],
 			'contentformat' => [
 				ApiBase::PARAM_TYPE => $this->contentHandlerFactory->getAllContentFormats(),
