@@ -193,6 +193,9 @@ $smwgNamespacesWithSemanticLinks[250] = true; # Seite
 
 $wgDefaultUserOptions['thumbsize'] = 2; //180px
 
+# Map provider for semantic result formats by Red Rooster
+$srfgMapProvider='OpenStreetMap.HOT';
+
 ## Enables Signiture-Button also for Articles (#37)
 ## see https://www.mediawiki.org/wiki/Manual:$wgExtraSignatureNamespaces
 $wgExtraSignatureNamespaces = array( NS_MAIN, NS_HELP, NS_PROJECT );
