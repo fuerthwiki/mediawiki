@@ -115,7 +115,6 @@ class HookRunner implements
 	\MediaWiki\Hook\BeforeParserFetchTemplateAndtitleHook,
 	\MediaWiki\Hook\BeforeParserFetchTemplateRevisionRecordHook,
 	\MediaWiki\Hook\BeforeParserrenderImageGalleryHook,
-	\MediaWiki\Hook\BeforeResetNotificationTimestampHook,
 	\MediaWiki\Hook\BeforeWelcomeCreationHook,
 	\MediaWiki\Hook\BitmapHandlerCheckImageAreaHook,
 	\MediaWiki\Hook\BitmapHandlerTransformHook,
@@ -436,7 +435,6 @@ class HookRunner implements
 	\MediaWiki\Page\Hook\ArticleRevisionViewCustomHook,
 	\MediaWiki\Page\Hook\ArticleShowPatrolFooterHook,
 	\MediaWiki\Page\Hook\ArticleUndeleteHook,
-	\MediaWiki\Page\Hook\ArticleUndeleteLogEntryHook,
 	\MediaWiki\Page\Hook\ArticleViewFooterHook,
 	\MediaWiki\Page\Hook\ArticleViewHeaderHook,
 	\MediaWiki\Page\Hook\ArticleViewRedirectHook,
@@ -456,6 +454,7 @@ class HookRunner implements
 	\MediaWiki\Page\Hook\PageDeleteCompleteHook,
 	\MediaWiki\Page\Hook\PageDeleteHook,
 	\MediaWiki\Page\Hook\PageDeletionDataUpdatesHook,
+	\MediaWiki\Page\Hook\PageUndeleteHook,
 	\MediaWiki\Page\Hook\PageViewUpdatesHook,
 	\MediaWiki\Page\Hook\RevisionFromEditCompleteHook,
 	\MediaWiki\Page\Hook\RevisionUndeletedHook,
@@ -826,13 +825,6 @@ class HookRunner implements
 		);
 	}
 
-	public function onArticleUndeleteLogEntry( $pageArchive, &$logEntry, $user ) {
-		return $this->container->run(
-			'ArticleUndeleteLogEntry',
-			[ $pageArchive, &$logEntry, $user ]
-		);
-	}
-
 	public function onArticleUpdateBeforeRedirect( $article, &$sectionanchor,
 		&$extraq
 	) {
@@ -986,15 +978,6 @@ class HookRunner implements
 		return $this->container->run(
 			'BeforeParserrenderImageGallery',
 			[ $parser, $ig ]
-		);
-	}
-
-	public function onBeforeResetNotificationTimestamp( &$userObj, &$titleObj,
-		$force, &$oldid
-	) {
-		return $this->container->run(
-			'BeforeResetNotificationTimestamp',
-			[ &$userObj, &$titleObj, $force, &$oldid ]
 		);
 	}
 
@@ -2746,6 +2729,21 @@ class HookRunner implements
 		return $this->container->run(
 			'PageDeletionDataUpdates',
 			[ $title, $revision, &$updates ]
+		);
+	}
+
+	public function onPageUndelete(
+		ProperPageIdentity $page,
+		Authority $performer,
+		string $reason,
+		bool $unsuppress,
+		array $timestamps,
+		array $fileVersions,
+		StatusValue $status
+	) {
+		return $this->container->run(
+			'PageUndelete',
+			[ $page, $performer, $reason, $unsuppress, $timestamps, $fileVersions, $status ]
 		);
 	}
 

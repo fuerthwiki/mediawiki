@@ -1972,8 +1972,11 @@ class User implements Authority, UserIdentity, UserEmailContact {
 	/**
 	 * If user is blocked, return the name of the user who placed the block
 	 * @return string Name of blocker
+	 * @deprecated since 1.38
+	 * Hard deprecated since 1.38.
 	 */
 	public function blockedBy() {
+		wfDeprecated( __METHOD__, '1.38' );
 		$this->getBlockedStatus();
 		return $this->mBlockedby;
 	}
@@ -1992,8 +1995,11 @@ class User implements Authority, UserIdentity, UserEmailContact {
 	/**
 	 * If user is blocked, return the ID for the block
 	 * @return int|false
+	 * @deprecated since 1.38
+	 * Hard deprecated since 1.38.
 	 */
 	public function getBlockId() {
+		wfDeprecated( __METHOD__, '1.38' );
 		$this->getBlockedStatus();
 		return ( $this->mBlock ? $this->mBlock->getId() : false );
 	}
@@ -2621,9 +2627,11 @@ class User implements Authority, UserIdentity, UserEmailContact {
 	 *
 	 * @param string $oname The option to set
 	 * @param mixed $val New value to set
-	 * @deprecated since 1.35 Use UserOptionsManager::setOption instead
+	 * @deprecated since 1.35, hard deprecated since 1.38
+	 * Use UserOptionsManager::setOption instead
 	 */
 	public function setOption( $oname, $val ) {
+		wfDeprecated( __METHOD__, '1.35' );
 		MediaWikiServices::getInstance()
 			->getUserOptionsManager()
 			->setOption( $this, $oname, $val );
@@ -2674,7 +2682,9 @@ class User implements Authority, UserIdentity, UserEmailContact {
 		}
 
 		$token = MWCryptRand::generateHex( 40 );
-		$this->setOption( $oname, $token );
+		MediaWikiServices::getInstance()
+			->getUserOptionsManager()
+			->setOption( $this, $oname, $token );
 		return $token;
 	}
 

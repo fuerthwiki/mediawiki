@@ -61,6 +61,9 @@ use MediaWiki\Block\UserBlockCommandFactory;
 use MediaWiki\Cache\BacklinkCacheFactory;
 use MediaWiki\Cache\LinkBatchFactory;
 use MediaWiki\Collation\CollationFactory;
+use MediaWiki\CommentFormatter\CommentFormatter;
+use MediaWiki\CommentFormatter\CommentParserFactory;
+use MediaWiki\CommentFormatter\RowCommentFormatter;
 use MediaWiki\Config\ConfigRepository;
 use MediaWiki\Config\ServiceOptions;
 use MediaWiki\Content\ContentHandlerFactory;
@@ -102,6 +105,7 @@ use MediaWiki\Page\ParserOutputAccess;
 use MediaWiki\Page\RollbackPageFactory;
 use MediaWiki\Page\WikiPageFactory;
 use MediaWiki\Parser\ParserCacheFactory;
+use MediaWiki\Parser\ParserObserver;
 use MediaWiki\Permissions\GrantsInfo;
 use MediaWiki\Permissions\GrantsLocalization;
 use MediaWiki\Permissions\GroupPermissionsLookup;
@@ -337,6 +341,21 @@ return [
 		);
 	},
 
+	'CommentFormatter' => static function ( MediaWikiServices $services ): CommentFormatter {
+		$parserFactory = new CommentParserFactory(
+			$services->getLinkRenderer(),
+			$services->getLinkBatchFactory(),
+			$services->getLinkCache(),
+			$services->getRepoGroup(),
+			RequestContext::getMain()->getLanguage(),
+			$services->getContentLanguage(),
+			$services->getTitleParser(),
+			$services->getNamespaceInfo(),
+			$services->getHookContainer()
+		);
+		return new CommentFormatter( $parserFactory );
+	},
+
 	'CommentStore' => static function ( MediaWikiServices $services ): CommentStore {
 		return new CommentStore(
 			$services->getContentLanguage(),
@@ -403,7 +422,8 @@ return [
 			$services->getHookContainer(),
 			$services->getDBLoadBalancer(),
 			$services->getActorMigration(),
-			$services->getNamespaceInfo()
+			$services->getNamespaceInfo(),
+			$services->getCommentFormatter()
 		);
 	},
 
@@ -1446,6 +1466,24 @@ return [
 		return $services->get( '_PageCommandFactory' );
 	},
 
+	'RowCommentFormatter' => static function ( MediaWikiServices $services ): RowCommentFormatter {
+		$parserFactory = new CommentParserFactory(
+			$services->getLinkRenderer(),
+			$services->getLinkBatchFactory(),
+			$services->getLinkCache(),
+			$services->getRepoGroup(),
+			RequestContext::getMain()->getLanguage(),
+			$services->getContentLanguage(),
+			$services->getTitleParser(),
+			$services->getNamespaceInfo(),
+			$services->getHookContainer()
+		);
+		return new RowCommentFormatter(
+			$parserFactory,
+			$services->getCommentStore()
+		);
+	},
+
 	'SearchEngineConfig' => static function ( MediaWikiServices $services ): SearchEngineConfig {
 		// @todo This should not take a Config object, but it's not so easy to remove because it
 		// exposes it in a getter, which is actually used.
@@ -1795,10 +1833,7 @@ return [
 			$services->getReadOnlyMode(),
 			$services->getNamespaceInfo(),
 			$services->getRevisionLookup(),
-			$services->getHookContainer(),
-			$services->getLinkBatchFactory(),
-			$services->getUserFactory(),
-			$services->getTitleFactory()
+			$services->getLinkBatchFactory()
 		);
 		$store->setStatsdDataFactory( $services->getStatsdDataFactory() );
 
@@ -1940,6 +1975,10 @@ return [
 			WebRequest::getRequestId(),
 			$services->getBacklinkCacheFactory()
 		);
+	},
+
+	'_ParserObserver' => static function ( MediaWikiServices $services ): ParserObserver {
+		return new ParserObserver( LoggerFactory::getInstance( 'DuplicateParse' ) );
 	},
 
 	'_SqlBlobStore' => static function ( MediaWikiServices $services ): SqlBlobStore {

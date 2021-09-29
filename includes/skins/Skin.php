@@ -88,35 +88,6 @@ abstract class Skin extends ContextSource {
 	}
 
 	/**
-	 * Fetch the set of available skins.
-	 *
-	 * @deprecated since 1.36. Use SkinFactory::getInstalledSkins() instead.
-	 * @return array Associative array of strings
-	 */
-	public static function getSkinNames() {
-		wfDeprecated( __METHOD__, '1.36' );
-
-		$skinFactory = MediaWikiServices::getInstance()->getSkinFactory();
-		return $skinFactory->getInstalledSkins();
-	}
-
-	/**
-	 * Fetch the list of user-selectable skins in regards to $wgSkipSkins.
-	 * Useful for Special:Preferences and other places where you
-	 * only want to show skins users _can_ use.
-	 *
-	 * @since 1.23
-	 * @deprecated since 1.36. Use SkinFactory::getAllowedSkins() instead.
-	 * @return string[]
-	 */
-	public static function getAllowedSkins() {
-		wfDeprecated( __METHOD__, '1.36' );
-
-		$skinFactory = MediaWikiServices::getInstance()->getSkinFactory();
-		return $skinFactory->getAllowedSkins();
-	}
-
-	/**
 	 * Normalize a skin preference value to a form that can be loaded.
 	 *
 	 * If a skin can't be found, it will fall back to the configured default ($wgDefaultSkin), or the
@@ -467,24 +438,6 @@ abstract class Skin extends ContextSource {
 	abstract public function outputPage();
 
 	/**
-	 * @deprecated since 1.36. Use ResourceLoader::makeInlineScript() directly.
-	 * @param array $data
-	 * @param string|null $nonce OutputPage->getCSP()->getNonce()
-	 * @return string|WrappedString HTML
-	 */
-	public static function makeVariablesScript( $data, $nonce = null ) {
-		wfDeprecated( __METHOD__, '1.36' );
-
-		if ( $data ) {
-			return ResourceLoader::makeInlineScript(
-				ResourceLoader::makeConfigSetScript( $data ),
-				$nonce
-			);
-		}
-		return '';
-	}
-
-	/**
 	 * TODO: document
 	 * @param Title $title
 	 * @return string
@@ -531,17 +484,6 @@ abstract class Skin extends ContextSource {
 			'dir' => $lang->getDir(),
 			'class' => 'client-nojs',
 		];
-	}
-
-	/**
-	 * URL to the default square logo (1x key)
-	 *
-	 * @deprecated since 1.36, please use ResourceLoaderSkinModule::getAvailableLogos
-	 * @return string
-	 */
-	protected function getLogo() {
-		wfDeprecated( __METHOD__, '1.36' );
-		return ResourceLoaderSkinModule::getAvailableLogos( $this->getConfig() )[ '1x' ];
 	}
 
 	/**
@@ -814,16 +756,6 @@ abstract class Skin extends ContextSource {
 	}
 
 	/**
-	 * @deprecated since 1.36 use Skin::prepareSubtitle instead
-	 * @param OutputPage|null $out Defaults to $this->getOutput() if left as null (unused)
-	 * @return string
-	 */
-	public function subPageSubtitle( $out ) {
-		wfDeprecated( __METHOD__, '1.36' );
-		return $this->subPageSubtitleInternal();
-	}
-
-	/**
 	 * @return string
 	 */
 	private function subPageSubtitleInternal() {
@@ -877,17 +809,6 @@ abstract class Skin extends ContextSource {
 		}
 
 		return $subpages;
-	}
-
-	/**
-	 * @deprecated since 1.36.
-	 * @return string
-	 */
-	protected function getSearchLink() {
-		wfDeprecated( __METHOD__, '1.36' );
-
-		$searchPage = $this->getSearchPageTitle();
-		return $searchPage->getLocalURL();
 	}
 
 	/**
@@ -1041,24 +962,6 @@ abstract class Skin extends ContextSource {
 	}
 
 	/**
-	 * Gets the link to the wiki's main page.
-	 *
-	 * @deprecated since 1.36
-	 * @return string
-	 */
-	public function mainPageLink() {
-		wfDeprecated( __METHOD__, '1.36' );
-
-		$linkRenderer = MediaWikiServices::getInstance()->getLinkRenderer();
-		$s = $linkRenderer->makeKnownLink(
-			Title::newMainPage(),
-			$this->msg( 'mainpage' )->text()
-		);
-
-		return $s;
-	}
-
-	/**
 	 * Given a pair of message keys for link and text label,
 	 * return an HTML link for use in the footer.
 	 *
@@ -1146,39 +1049,6 @@ abstract class Skin extends ContextSource {
 	}
 
 	/**
-	 * Gets the link to the wiki's privacy policy page.
-	 *
-	 * @deprecated since 1.36, use self::footerLink();
-	 * @return string HTML
-	 */
-	public function privacyLink() {
-		wfDeprecated( __METHOD__, '1.36' );
-		return $this->footerLink( 'privacy', 'privacypage' );
-	}
-
-	/**
-	 * Gets the link to the wiki's about page.
-	 *
-	 * @deprecated since 1.36, use self::footerLink();
-	 * @return string HTML
-	 */
-	public function aboutLink() {
-		wfDeprecated( __METHOD__, '1.36' );
-		return $this->footerLink( 'aboutsite', 'aboutpage' );
-	}
-
-	/**
-	 * Gets the link to the wiki's general disclaimers page.
-	 *
-	 * @deprecated since 1.36, use self::footerLink();
-	 * @return string HTML
-	 */
-	public function disclaimerLink() {
-		wfDeprecated( __METHOD__, '1.36' );
-		return $this->footerLink( 'disclaimers', 'disclaimerpage' );
-	}
-
-	/**
 	 * Return URL options for the 'edit page' link.
 	 * This may include an 'oldid' specifier, if the current page view is such.
 	 *
@@ -1227,6 +1097,8 @@ abstract class Skin extends ContextSource {
 	 * @throws MWException
 	 */
 	public function getSkinStylePath( $name ) {
+		wfDeprecated( __METHOD__, '1.36' );
+
 		if ( $this->stylename === null ) {
 			$class = static::class;
 			throw new MWException( "$class::\$stylename must be set to use getSkinStylePath()" );
@@ -1276,20 +1148,6 @@ abstract class Skin extends ContextSource {
 	 */
 	public static function makeSpecialUrlSubpage( $name, $subpage, $urlaction = '' ) {
 		$title = SpecialPage::getSafeTitleFor( $name, $subpage );
-		return $title->getLocalURL( $urlaction );
-	}
-
-	/**
-	 * @param string $name
-	 * @param string|array $urlaction
-	 * @return string
-	 * @deprecated since 1.36. Use Title methods directly.
-	 */
-	public static function makeUrl( $name, $urlaction = '' ) {
-		wfDeprecated( __METHOD__, '1.36' );
-
-		$title = Title::newFromText( $name );
-		self::checkTitle( $title, $name );
 		return $title->getLocalURL( $urlaction );
 	}
 
@@ -2102,41 +1960,6 @@ abstract class Skin extends ContextSource {
 	}
 
 	/**
-	 * Get the suggested HTML for page status indicators: icons (or short text snippets) usually
-	 * displayed in the top-right corner of the page, outside of the main content.
-	 *
-	 * Your skin may implement this differently, for example by handling some indicator names
-	 * specially with a different UI. However, it is recommended to use a `<div class="mw-indicator"
-	 * id="mw-indicator-<id>" />` as a wrapper element for each indicator, for better compatibility
-	 * with extensions and user scripts.
-	 *
-	 * The raw data is available in `$this->data['indicators']` as an associative array (keys:
-	 * identifiers, values: contents) internally ordered by keys.
-	 *
-	 * @since 1.35
-	 * @deprecated since 1.36.
-	 * @param array $indicators
-	 * @return string HTML
-	 */
-	final public function getIndicatorsHTML( $indicators ) {
-		wfDeprecated( __METHOD__, '1.36' );
-
-		$out = "<div class=\"mw-indicators mw-body-content\">\n";
-		foreach ( $this->getIndicatorsData( $indicators ) as $indicatorData ) {
-			$out .= Html::rawElement(
-				'div',
-				[
-					'id' => $indicatorData['id'],
-					'class' => $indicatorData['class']
-				],
-				$indicatorData['html']
-			) . "\n";
-		}
-		$out .= "</div>\n";
-		return $out;
-	}
-
-	/**
 	 * Return an array of indicator data.
 	 * Can be used by subclasses but should not be extended.
 	 * @param array $indicators return value of OutputPage::getIndicators
@@ -2620,5 +2443,44 @@ abstract class Skin extends ContextSource {
 
 	public function setSearchPageTitle( Title $title ) {
 		$this->searchPageTitle = $title;
+	}
+
+	/**
+	 * Returns skin options
+	 * Recommended to use SkinFactory::getSkinOptions instead
+	 *
+	 * @internal
+	 * @return array Skin options passed into constructor
+	 */
+	public function getOptions(): array {
+		return $this->options;
+	}
+
+	/**
+	 * Returns skin options for portlet links, used by addPortletLink
+	 *
+	 * @internal
+	 * @param ResourceLoaderContext $context
+	 * @return array $linkOptions
+	 *   - 'text-wrapper' key to specify a list of elements to wrap the text of
+	 *   a link in. This should be an array of arrays containing a 'tag' and
+	 *   optionally an 'attributes' key. If you only have one element you don't
+	 *   need to wrap it in another array. eg: To use <a><span>...</span></a>
+	 *   in all links use [ 'text-wrapper' => [ 'tag' => 'span' ] ]
+	 *   for your options. If text-wrapper contains multiple entries they are
+	 *   interpreted as going from the outer wrapper to the inner wrapper.
+	 */
+	public static function getPortletLinkOptions( ResourceLoaderContext $context ): array {
+		$skinName = $context->getSkin();
+		$skinFactory = MediaWikiServices::getInstance()->getSkinFactory();
+		$options = $skinFactory->getSkinOptions( $skinName );
+		$portletLinkOptions = $options['link'] ?? [];
+		// Normalize link options to always have this key
+		$portletLinkOptions += [ 'text-wrapper' => [] ];
+		// Normalize text-wrapper to always be an array of arrays
+		if ( isset( $portletLinkOptions['text-wrapper']['tag'] ) ) {
+			$portletLinkOptions['text-wrapper'] = [ $portletLinkOptions['text-wrapper'] ];
+		}
+		return $portletLinkOptions;
 	}
 }

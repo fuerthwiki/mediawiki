@@ -1403,8 +1403,14 @@ $wgMediaInTargetLanguage = true;
  * built-in image scalers, such as ImageMagick or GD. It is ignored for
  * JPEGs with ImageMagick, and when using the VipsScaler extension.
  *
+ * If set to false, MediaWiki will not check the size of the image before
+ * attempting to scale it. Extensions may still override this setting by
+ * using the BitmapHandlerCheckImageArea hook.
+ *
  * The default is 50 MB if decompressed to RGBA form, which corresponds to
  * 12.5 million pixels or 3500x3500.
+ *
+ * @var string|bool
  */
 $wgMaxImageArea = 1.25e7;
 
@@ -9528,42 +9534,6 @@ $wgShellCgroup = false;
  * Executable path of the PHP cli binary. Should be set up on install.
  */
 $wgPhpCli = '/usr/bin/php';
-
-/**
- * Locale for LC_ALL, to provide a known environment for locale-sensitive operations
- *
- * For Unix-like operating systems, this should be set to C.UTF-8 or an
- * equivalent to provide the most consistent behavior for locale-sensitive
- * C library operations across different-language wikis. If that locale is not
- * available, use another locale that has a UTF-8 character set.
- *
- * This setting mainly affects the behavior of C library functions, including:
- *  - String collation (order when sorting using locale-sensitive comparison)
- *    - For example, whether "Å" and "A" are considered to be the same letter or
- *      different letters and if different whether it comes after "A" or after
- *      "Z", and whether sorting is case sensitive.
- *  - String character set (how characters beyond basic ASCII are represented)
- *    - We need this to be a UTF-8 character set to work around
- *      https://bugs.php.net/bug.php?id=45132
- *  - Language used for low-level error messages.
- *  - Formatting of date/time and numeric values (e.g. '.' versus ',' as the
- *    decimal separator)
- *
- * MediaWiki provides its own methods and classes to perform many
- * locale-sensitive operations, which are designed to be able to vary locale
- * based on wiki language or user preference:
- *  - MediaWiki's Collation class should generally be used instead of the C
- *    library collation functions when locale-sensitive sorting is needed.
- *  - MediaWiki's Message class should be used for localization of messages
- *    displayed to the user.
- *  - MediaWiki's Language class should be used for formatting numeric and
- *    date/time values.
- *
- * @note If multiple wikis are being served from the same process (e.g. the
- *  same fastCGI or Apache server), this setting must be the same on all those
- *  wikis.
- */
-$wgShellLocale = 'C.UTF-8';
 
 /**
  * Method to use to restrict shell commands

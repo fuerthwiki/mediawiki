@@ -11,7 +11,6 @@
 
 	var StringSet,
 		store,
-		loader,
 		hasOwn = Object.hasOwnProperty;
 
 	function defineFallbacks() {
@@ -351,7 +350,7 @@
 	 */
 	function allReady( modules ) {
 		for ( var i = 0; i < modules.length; i++ ) {
-			if ( loader.getState( modules[ i ] ) !== 'ready' ) {
+			if ( mw.loader.getState( modules[ i ] ) !== 'ready' ) {
 				return false;
 			}
 		}
@@ -381,7 +380,7 @@
 	 */
 	function anyFailed( modules ) {
 		for ( var i = 0; i < modules.length; i++ ) {
-			var state = loader.getState( modules[ i ] );
+			var state = mw.loader.getState( modules[ i ] );
 			if ( state === 'error' || state === 'missing' ) {
 				return modules[ i ];
 			}
@@ -697,7 +696,7 @@
 			var fileName = resolveRelativePath( moduleName, basePath );
 			if ( fileName === null ) {
 				// Not a relative path, so it's a module name
-				return loader.require( moduleName );
+				return mw.loader.require( moduleName );
 			}
 
 			if ( hasOwn.call( moduleObj.packageExports, fileName ) ) {
@@ -767,7 +766,7 @@
 		pendingRequests.push( function () {
 			// Keep in sync with execute()/runScript().
 			if ( moduleName !== 'jquery' ) {
-				window.require = loader.require;
+				window.require = mw.loader.require;
 				window.module = registry[ moduleName ].module;
 			}
 			addScript( src, function () {
@@ -884,7 +883,7 @@
 			}
 		} );
 
-		loader.work();
+		mw.loader.work();
 	}
 
 	/**
@@ -894,7 +893,7 @@
 	 * @param {string} module Module name to execute
 	 */
 	function execute( module ) {
-		var key, value, media, i, siteDeps, siteDepErr,
+		var value, i, siteDeps, siteDepErr,
 			cssPending = 0;
 
 		if ( registry[ module ].state !== 'loaded' ) {
@@ -941,7 +940,7 @@
 					} else {
 						// Pass jQuery twice so that the signature of the closure which wraps
 						// the script can bind both '$' and 'jQuery'.
-						script( window.$, window.$, loader.require, registry[ module ].module );
+						script( window.$, window.$, mw.loader.require, registry[ module ].module );
 					}
 					markModuleReady();
 				} else if ( typeof script === 'object' && script !== null ) {
@@ -1018,48 +1017,22 @@
 		};
 
 		// Process styles (see also mw.loader.implement)
-		// * back-compat: { <media>: css }
-		// * back-compat: { <media>: [url, ..] }
 		// * { "css": [css, ..] }
 		// * { "url": { <media>: [url, ..] } }
 		if ( registry[ module ].style ) {
-			for ( key in registry[ module ].style ) {
+			for ( var key in registry[ module ].style ) {
 				value = registry[ module ].style[ key ];
-				media = undefined;
 
-				if ( key !== 'url' && key !== 'css' ) {
-					// Backwards compatibility, key is a media-type
-					if ( typeof value === 'string' ) {
-						// back-compat: { <media>: css }
-						// Ignore 'media' because it isn't supported (nor was it used).
-						// Strings are pre-wrapped in "@media". The media-type was just ""
-						// (because it had to be set to something).
-						// This is one of the reasons why this format is no longer used.
-						addEmbeddedCSS( value, cssHandle() );
-					} else {
-						// back-compat: { <media>: [url, ..] }
-						media = key;
-						key = 'bc-url';
-					}
-				}
-
-				// Array of css strings in key 'css',
-				// or back-compat array of urls from media-type
-				if ( Array.isArray( value ) ) {
+				// Array of CSS strings under key 'css'
+				// { "css": [css, ..] }
+				if ( key === 'css' ) {
 					for ( i = 0; i < value.length; i++ ) {
-						if ( key === 'bc-url' ) {
-							// back-compat: { <media>: [url, ..] }
-							addLink( value[ i ], media, marker );
-						} else if ( key === 'css' ) {
-							// { "css": [css, ..] }
-							addEmbeddedCSS( value[ i ], cssHandle() );
-						}
+						addEmbeddedCSS( value[ i ], cssHandle() );
 					}
-				// Not an array, but a regular object
-				// Array of urls inside media-type key
-				} else if ( typeof value === 'object' ) {
-					// { "url": { <media>: [url, ..] } }
-					for ( media in value ) {
+				// Plain object with array of urls under a media-type key
+				// { "url": { <media>: [url, ..] } }
+				} else if ( key === 'url' ) {
+					for ( var media in value ) {
 						var urls = value[ media ];
 						for ( i = 0; i < urls.length; i++ ) {
 							addLink( urls[ i ], media, marker );
@@ -1256,7 +1229,7 @@
 							modules[ i ].length + 3; // '%7C'.length == 3
 
 					// If the url would become too long, create a new one, but don't create empty requests
-					if ( currReqModules.length && l + bytesAdded > loader.maxQueryLength ) {
+					if ( currReqModules.length && l + bytesAdded > mw.loader.maxQueryLength ) {
 						// Dispatch what we've got...
 						doRequest();
 						// .. and start again.
@@ -1372,9 +1345,7 @@
 
 	/* Public Members */
 
-	// We use a local variable `loader` so that its easier to access, but also need to set
-	// this as mw.loader so its exported - combine the two
-	mw.loader = loader = {
+	mw.loader = {
 		/**
 		 * The module registry is exposed as an aid for debugging and inspecting page
 		 * state; it is not a public interface for modifying the registry.
@@ -1426,7 +1397,7 @@
 				var module = queue[ q ];
 				// Only consider modules which are the initial 'registered' state,
 				// and ignore duplicates
-				if ( loader.getState( module ) === 'registered' &&
+				if ( mw.loader.getState( module ) === 'registered' &&
 					!batch.has( module )
 				) {
 					// Progress the state machine
@@ -1576,11 +1547,6 @@
 		 *     { "css": [css, ..] }
 		 *     { "url": { <media>: [url, ..] } }
 		 *
-		 * And for backwards compatibility (needs to be supported forever due to caching):
-		 *
-		 *     { <media>: css }
-		 *     { <media>: [url, ..] }
-		 *
 		 * The reason css strings are not concatenated anymore is T33676. We now check
 		 * whether it's safe to extend the stylesheet.
 		 *
@@ -1594,7 +1560,7 @@
 				version = split.version;
 			// Automatically register module
 			if ( !( name in registry ) ) {
-				loader.register( name );
+				mw.loader.register( name );
 			}
 			// Check for duplicate implementation
 			if ( registry[ name ].script !== undefined ) {
@@ -1671,7 +1637,7 @@
 		state: function ( states ) {
 			for ( var module in states ) {
 				if ( !( module in registry ) ) {
-					loader.register( module );
+					mw.loader.register( module );
 				}
 				setAndPropagate( module, states[ module ] );
 			}
@@ -1686,15 +1652,6 @@
 		 */
 		getState: function ( module ) {
 			return module in registry ? registry[ module ].state : null;
-		},
-
-		/**
-		 * Get the names of all registered modules.
-		 *
-		 * @return {Array}
-		 */
-		getModuleNames: function () {
-			return Object.keys( registry );
 		},
 
 		/**
@@ -1714,7 +1671,7 @@
 		 */
 		require: function ( moduleName ) {
 			// Only ready modules can be required
-			if ( loader.getState( moduleName ) !== 'ready' ) {
+			if ( mw.loader.getState( moduleName ) !== 'ready' ) {
 				// Module may've forgotten to declare a dependency
 				throw new Error( 'Module "' + moduleName + '" is not loaded' );
 			}
@@ -1774,7 +1731,7 @@
 
 	// We use a local variable `store` so that its easier to access, but also need to set
 	// this in mw.loader so its exported - combine the two
-	loader.store = store = {
+	mw.loader.store = store = {
 		// Whether the store is in use on this page.
 		enabled: null,
 

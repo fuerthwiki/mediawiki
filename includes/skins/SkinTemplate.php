@@ -285,6 +285,12 @@ class SkinTemplate extends Skin {
 			// Data objects
 			'data-search-box' => $this->buildSearchProps(),
 			'data-logos' => $this->getLogoData(),
+
+			// Boolean values
+			'is-anon' => $this->getUser()->isAnon(),
+			'is-article' => $this->getOutput()->isArticle(),
+			'is-mainpage' => $this->getTitle()->isMainPage(),
+			'is-specialpage' => $this->getTitle()->isSpecialPage(),
 		] + $this->getPortletsTemplateData() + $this->getFooterTemplateData();
 	}
 
@@ -463,10 +469,12 @@ class SkinTemplate extends Skin {
 
 	/**
 	 * Get the HTML for the p-personal list
-	 * @deprecated since 1.35, use SkinTemplate::makePersonalToolsList()
+	 * @deprecated since 1.35, hard deprecated since 1.38
+	 * Use SkinTemplate::makePersonalToolsList() instead
 	 * @return string
 	 */
 	public function getPersonalToolsList() {
+		wfDeprecated( __METHOD__, '1.35' );
 		return $this->makePersonalToolsList();
 	}
 

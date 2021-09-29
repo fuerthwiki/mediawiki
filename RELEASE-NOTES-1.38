@@ -11,7 +11,7 @@ for use in production.
 Don't forget to always back up your database before upgrading!
 
 See the file UPGRADE for more detailed per-version upgrade instructions from the
-oldest supported upgrading version, MediaWiki 1.27.
+oldest supported upgrading version, MediaWiki 1.29.
 
 Some specific notes for MediaWiki 1.38 upgrades are below:
 * …
@@ -22,20 +22,33 @@ For notes on 1.36.x and older releases, see HISTORY.
 * …
 
 ==== New configuration ====
-* $wgBrowserFormatDetection - This setting allows the enabling or disabling
-of automatic detection of possible phone numbers in a webpage in Safari on iOS.
+* $wgBrowserFormatDetection – This setting allows overriding browsers' automatic
+  detection and handling of formats. It's initially used to prevent auto-linking
+  of possible telephone numbers in wiki pages' output in Safari on iOS; this can
+  be re-enabled if you wish, or locally extended for other browsers' quirks.
 * …
 
 ==== Changed configuration ====
+* $wgMaxImageArea - This setting may now be set to false to disable size
+  checking before scaling. Extensions can still override its value by
+  using the BitmapHandlerCheckImageArea hook.
 * …
 
 ==== Removed configuration ====
+* $wgShellLocale - This setting has been removed as it was a flawed solution
+  to the problem of locale dependence, MediaWiki will now always set a locale
+  of C.UTF-8 or C and works around the remaining problems of the C locale by
+  not using escapeshellarg. This follows the direction of PHP 8.0, which sets
+  a locale of C by default instead of respecting LC_CTYPE.
 * …
 
 === New user-facing features in 1.38 ===
 * …
 
 === New developer features in 1.38 ===
+* Added a deleteUserEmail maintenance script - This file enables the deletion
+  of a given user's associated email address. It can be helpful for
+  privacy-preserving operations.
 * …
 
 === External library changes in 1.38 ===
@@ -48,9 +61,16 @@ of automatic detection of possible phone numbers in a webpage in Safari on iOS.
 * …
 
 ==== Changed external libraries ====
+* Updated wikimedia/parsoid from v0.14.0-a14 to v0.15.0-a1.
+* Updated wikimedia/purtle from 1.0.7 to 1.0.8
+* Updated wikimedia/shellbox from 2.0.0 to 2.1.0
 * …
 
 ===== Changed development-only external libraries =====
+* Updated doctrine/dbal for PHP < 7.3 from 2.10.4 to 2.13.3.
+* Updated doctrine/dbal for PHP >= 7.3 from 3.0.0 to 3.1.2.
+* Updated composer/spdx-licenses from 1.5.4 to 1.5.5.
+* Updated composer/semver from 3.5.4 to 3.5.5.
 * …
 
 ==== Removed external libraries ====
@@ -66,16 +86,24 @@ of automatic detection of possible phone numbers in a webpage in Safari on iOS.
 * …
 
 === Languages updated in 1.38 ===
-MediaWiki supports over 350 languages. Many localisations are updated regularly.
+MediaWiki supports over 400 languages. Many localisations are updated regularly.
 Below only new and removed languages are listed, as well as changes to languages
 because of Phabricator reports.
 
-* …
+* (T291899) Added language support for Xiang Chinese (hsn).
 
 === Breaking changes in 1.38 ===
+* (T291008) The IP class, deprecated since 1.35 in favor of the IPUtils library,
+  has been removed. The IP related regexes which were also deprecated in favor
+  of the IPUtils library were also removed, IPUtils::RE_* should be used
+  instead.
 * LinkCache::singleton(), deprecated since 1.28, has been removed.
 * RepoGroup::singleton(), ::destroySingletons() and setSingleton(), all
   deprecated since 1.34, have been removed.
+* The following methods from FileDeleteForm were removed:
+  - ::__construct (the class is no longer newable)
+  - ::execute()
+  Use FileDeleteAction instead.
 * MessageCache::singleton(), deprecated since 1.34, has been removed.
 * LockManagerGroup::singleton() and ::destroySingletons(), both deprecated since
   1.34, have been removed.
@@ -83,10 +111,27 @@ because of Phabricator reports.
   1.35, have been removed.
 * TemplateParser used to support disabling the cache with a boolean parameter
   in its constructor. This was deprecated in 1.35 and has now been removed.
+* The ArticleUndeleteLogEntry hook, deprecated in 1.37, was removed.
+* The BeforeResetNotificationTimestamp hook, deprecated in 1.37, was removed.
 * The global function mimeTypeMatch() has been removed without a deprecation
   process.
 * The signature of PageUpdater::markAsRevert method was changed. It has never
   been used outside of MediaWiki core.
+* If you want to use interwiki titles with HTMLTitleTextField, you now need
+  to pass 'interwiki' => true. In 1.37, the default behavior was to let
+  interwiki title through by default, logging a deprecation warning.
+* Several Skin methods, hard deprecated in 1.36, have been removed. These
+  include Skin::privacyLink(), aboutLink(), disclaimerLink(), makeUrl()
+  getIndicatorsHTML(), getLogo(), subPageSubtitle(), getSearchLink(),
+  makeVariablesScript(), getAllowedSkins(), getSkinNames() and
+  mainPageLink(). Use Skin::footerLink for footer links instead of
+  privacyLink, aboutLink and disclaimerLink. For others use
+  Skin::getIndicatorsData, ResourceLoaderSkinModule::getAvailableLogos,
+  Skin::prepareSubtitle,  Skin::getSearchPageTitle,
+  ResourceLoader::makeInlineScript(), SkinFactory::getAllowedSkins
+  or SkinFactory::getInstalledSkins().
+* Parser::getUser and ::mUser, as well as ParserOptions::getUser, deprecated
+  since 1.37, has been removed.
 * …
 
 === Deprecations in 1.38 ===
@@ -94,6 +139,21 @@ because of Phabricator reports.
   GrantsLocalization services.
 * The global functions wfReadOnly() and wfReadOnlyReason() have been
   deprecated in favor of the ReadOnlyMode service.
+* PageProps::getInstance() has been deprecated. Use
+  MediaWikiServices::getPageProps() instead.
+* User::setOption(), deprecated since 1.35, now emits deprecation warnings.
+* Linker::formatComment(), ::formatLinksInComment(), ::commentBlock() and
+  revComment() were soft-deprecated. Use the new CommentFormatter service.
+* Skin::getSkinStylePath has been hard deprecated. Direct string path
+  should be used instead.
+* DatabaseBlock::purgeExpired(), deprecated since 1.36, now emit
+  deprecation warnings.
+* SkinTemplate::getPersonalToolsList(), deprecated since 1.35, now emits
+  deprecation warnings.
+* The following methods from the User class were hard deprecated:
+   - ::blockedBy
+   - ::getBlockId
+
 * …
 
 === Other changes in 1.38 ===

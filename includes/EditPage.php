@@ -2052,7 +2052,7 @@ class EditPage implements IEditObject {
 
 		# Load the page data from the primary DB. If anything changes in the meantime,
 		# we detect it by using page_latest like a token in a 1 try compare-and-swap.
-		$this->page->loadPageData( 'fromdbmaster' );
+		$this->page->loadPageData( WikiPage::READ_LATEST );
 		$new = !$this->page->exists();
 
 		$flags = EDIT_AUTOSUMMARY |
@@ -2078,8 +2078,8 @@ class EditPage implements IEditObject {
 				$result['sectionanchor'] = $anchor;
 			}
 
-			$pageUpdater = $this->page->newPageUpdater( $user );
-			$pageUpdater->setContent( SlotRecord::MAIN, $content );
+			$pageUpdater = $this->page->newPageUpdater( $user )
+				->setContent( SlotRecord::MAIN, $content );
 			$pageUpdater->prepareUpdate( $flags );
 
 			// BEGINNING OF MIGRATION TO EDITCONSTRAINT SYSTEM (see T157658)
@@ -2240,8 +2240,8 @@ class EditPage implements IEditObject {
 				return Status::newGood( self::AS_CONFLICT_DETECTED )->setOK( false );
 			}
 
-			$pageUpdater = $this->page->newPageUpdater( $user );
-			$pageUpdater->setContent( SlotRecord::MAIN, $content );
+			$pageUpdater = $this->page->newPageUpdater( $user )
+				->setContent( SlotRecord::MAIN, $content );
 			$pageUpdater->prepareUpdate( $flags );
 
 			// BEGINNING OF MIGRATION TO EDITCONSTRAINT SYSTEM (see T157658)

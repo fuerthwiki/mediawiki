@@ -144,6 +144,7 @@ class SpecialPageFactory {
 				'DBLoadBalancer',
 				'CommentStore',
 				'UserCache',
+				'RowCommentFormatter',
 			]
 		],
 		'Protectedtitles' => [
@@ -380,6 +381,7 @@ class SpecialPageFactory {
 				'CommentStore',
 				'BlockUtils',
 				'BlockActionInfo',
+				'RowCommentFormatter',
 			],
 		],
 		'AutoblockList' => [
@@ -391,6 +393,7 @@ class SpecialPageFactory {
 				'CommentStore',
 				'BlockUtils',
 				'BlockActionInfo',
+				'RowCommentFormatter',
 			],
 		],
 		'ChangePassword' => [
@@ -418,6 +421,7 @@ class SpecialPageFactory {
 				'CommentStore',
 				'RevisionFactory',
 				'NamespaceInfo',
+				'UserFactory',
 				'UserNameUtils',
 				'UserNamePrefixSearch',
 			]
@@ -444,6 +448,8 @@ class SpecialPageFactory {
 				'UserNameUtils',
 				'UserNamePrefixSearch',
 				'UserOptionsLookup',
+				'CommentFormatter',
+				'UserFactory',
 			]
 		],
 		'Listgrouprights' => [
@@ -477,6 +483,7 @@ class SpecialPageFactory {
 				'UserGroupManagerFactory',
 				'UserNameUtils',
 				'UserNamePrefixSearch',
+				'UserFactory',
 			]
 		],
 		'EditWatchlist' => [
@@ -511,6 +518,7 @@ class SpecialPageFactory {
 				'LinkBatchFactory',
 				'DBLoadBalancer',
 				'ActorNormalization',
+				'UserIdentityLookup',
 			]
 		],
 		'Watchlist' => [
