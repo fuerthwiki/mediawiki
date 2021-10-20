@@ -36,6 +36,7 @@ use MediaWiki\EditPage\SpamChecker;
 use MediaWiki\HookContainer\HookContainer;
 use MediaWiki\Permissions\Authority;
 use MediaWiki\Revision\RevisionStore;
+use MediaWiki\Storage\PageUpdaterFactory;
 use MediaWiki\User\ActorNormalization;
 use MediaWiki\User\UserEditTracker;
 use MediaWiki\User\UserFactory;
@@ -43,6 +44,7 @@ use MediaWiki\User\UserIdentity;
 use MergeHistory;
 use MovePage;
 use NamespaceInfo;
+use Psr\Log\LoggerInterface;
 use ReadOnlyMode;
 use RepoGroup;
 use Title;
@@ -62,7 +64,8 @@ class PageCommandFactory implements
 	DeletePageFactory,
 	MergeHistoryFactory,
 	MovePageFactory,
-	RollbackPageFactory
+	RollbackPageFactory,
+	UndeletePageFactory
 {
 
 	/** @var Config */
@@ -137,6 +140,12 @@ class PageCommandFactory implements
 	/** @var BacklinkCacheFactory */
 	private $backlinkCacheFactory;
 
+	/** @var LoggerInterface */
+	private $undeletePageLogger;
+
+	/** @var PageUpdaterFactory */
+	private $pageUpdaterFactory;
+
 	public function __construct(
 		Config $config,
 		LBFactory $lbFactory,
@@ -161,7 +170,9 @@ class PageCommandFactory implements
 		BagOStuff $dbReplicatedCache,
 		string $localWikiID,
 		string $webRequestID,
-		BacklinkCacheFactory $backlinkCacheFactory
+		BacklinkCacheFactory $backlinkCacheFactory,
+		LoggerInterface $undeletePageLogger,
+		PageUpdaterFactory $pageUpdaterFactory
 	) {
 		$this->config = $config;
 		$this->lbFactory = $lbFactory;
@@ -187,6 +198,8 @@ class PageCommandFactory implements
 		$this->localWikiID = $localWikiID;
 		$this->webRequestID = $webRequestID;
 		$this->backlinkCacheFactory = $backlinkCacheFactory;
+		$this->undeletePageLogger = $undeletePageLogger;
+		$this->pageUpdaterFactory = $pageUpdaterFactory;
 	}
 
 	/**
@@ -282,7 +295,8 @@ class PageCommandFactory implements
 			$this->userFactory,
 			$this->userEditTracker,
 			$this,
-			$this->collationFactory
+			$this->collationFactory,
+			$this->pageUpdaterFactory
 		);
 	}
 
@@ -313,6 +327,26 @@ class PageCommandFactory implements
 			$page,
 			$performer,
 			$byUser
+		);
+	}
+
+	/**
+	 * @inheritDoc
+	 */
+	public function newUndeletePage( ProperPageIdentity $page, Authority $authority ): UndeletePage {
+		return new UndeletePage(
+			$this->hookContainer,
+			$this->jobQueueGroup,
+			$this->lbFactory->getMainLB(),
+			$this->readOnlyMode,
+			$this->repoGroup,
+			$this->undeletePageLogger,
+			$this->revisionStore,
+			$this->userFactory,
+			$this->wikiPageFactory,
+			$page,
+			$authority,
+			$this->pageUpdaterFactory
 		);
 	}
 }

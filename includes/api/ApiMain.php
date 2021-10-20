@@ -112,7 +112,14 @@ class ApiMain extends ApiBase {
 				'PasswordReset',
 			]
 		],
-		'query' => ApiQuery::class,
+		'query' => [
+			'class' => ApiQuery::class,
+			'services' => [
+				'ObjectFactory',
+				'DBLoadBalancer',
+				'WikiExporterFactory',
+			]
+		],
 		'expandtemplates' => [
 			'class' => ApiExpandTemplates::class,
 			'services' => [
@@ -248,6 +255,7 @@ class ApiMain extends ApiBase {
 				'RepoGroup',
 				'WatchlistManager',
 				'UserOptionsLookup',
+				'DeletePageFactory',
 			]
 		],
 		'undelete' => [
@@ -2242,16 +2250,16 @@ class ApiMain extends ApiBase {
 		// TODO inject stuff, see T265644
 		$groupPermissionsLookup = MediaWikiServices::getInstance()->getGroupPermissionsLookup();
 		foreach ( self::RIGHTS_MAP as $right => $rightMsg ) {
-			$help['permissions'] .= Html::element( 'dt', null, $right );
+			$help['permissions'] .= Html::element( 'dt', [], $right );
 
 			$rightMsg = $this->msg( $rightMsg['msg'], $rightMsg['params'] )->parse();
-			$help['permissions'] .= Html::rawElement( 'dd', null, $rightMsg );
+			$help['permissions'] .= Html::rawElement( 'dd', [], $rightMsg );
 
 			$groups = array_map( static function ( $group ) {
 				return $group == '*' ? 'all' : $group;
 			}, $groupPermissionsLookup->getGroupsWithPermission( $right ) );
 
-			$help['permissions'] .= Html::rawElement( 'dd', null,
+			$help['permissions'] .= Html::rawElement( 'dd', [],
 				$this->msg( 'api-help-permissions-granted-to' )
 					->numParams( count( $groups ) )
 					->params( Message::listParam( $groups ) )

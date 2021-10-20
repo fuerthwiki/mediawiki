@@ -79,7 +79,6 @@ class ParserOptions {
 	 */
 	private static $initialCacheVaryingOptionsHash = [
 		'dateformat' => true,
-		'numberheadings' => true,
 		'thumbsize' => true,
 		'printable' => true,
 		'userlang' => true,
@@ -329,23 +328,6 @@ class ParserOptions {
 	}
 
 	/**
-	 * Automatically number headings?
-	 * @return bool
-	 */
-	public function getNumberHeadings() {
-		return $this->getOption( 'numberheadings' );
-	}
-
-	/**
-	 * Automatically number headings?
-	 * @param bool|null $x New value (null is no change)
-	 * @return bool Old value
-	 */
-	public function setNumberHeadings( $x ) {
-		return $this->setOptionLegacy( 'numberheadings', $x );
-	}
-
-	/**
 	 * Allow inclusion of special pages?
 	 * @return bool
 	 */
@@ -360,18 +342,6 @@ class ParserOptions {
 	 */
 	public function setAllowSpecialInclusion( $x ) {
 		return $this->setOptionLegacy( 'allowSpecialInclusion', $x );
-	}
-
-	/**
-	 * Use tidy to cleanup output HTML?
-	 * @param bool|null $x New value (null is no change)
-	 * @return null
-	 * @deprecated since 1.35; tidy is always enabled so this has no effect
-	 */
-	public function setTidy( $x ) {
-		wfDeprecated( __METHOD__, '1.35' );
-		// This has no effect.
-		return null;
 	}
 
 	/**
@@ -1223,7 +1193,6 @@ class ParserOptions {
 			'magicISBNLinks' => $wgEnableMagicLinks['ISBN'],
 			'magicPMIDLinks' => $wgEnableMagicLinks['PMID'],
 			'magicRFCLinks' => $wgEnableMagicLinks['RFC'],
-			'numberheadings' => $userOptionsLookup->getDefaultOption( 'numberheadings' ),
 			'thumbsize' => $userOptionsLookup->getDefaultOption( 'thumbsize' ),
 			'userlang' => $contentLanguage,
 		];
@@ -1261,7 +1230,6 @@ class ParserOptions {
 		$this->mUser = $user;
 		$services = MediaWikiServices::getInstance();
 		$optionsLookup = $services->getUserOptionsLookup();
-		$this->options['numberheadings'] = $optionsLookup->getOption( $user, 'numberheadings' );
 		$this->options['thumbsize'] = $optionsLookup->getOption( $user, 'thumbsize' );
 		$this->options['userlang'] = $lang;
 	}

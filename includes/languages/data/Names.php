@@ -188,6 +188,7 @@ class Names {
 		'gsw' => 'Alemannisch', # Alemannic
 		'gu' => 'ગુજરાતી', # Gujarati
 		'guc' => 'wayuunaiki', # Wayuu
+		'gur' => 'farefare', # Farefare
 		'guw' => 'gungbe', # Gun
 		'gv' => 'Gaelg', # Manx
 		'ha' => 'Hausa', # Hausa
@@ -263,6 +264,7 @@ class Names {
 		'ks-arab' => 'کٲشُر', # Kashmiri (Perso-Arabic script)
 		'ks-deva' => 'कॉशुर', # Kashmiri (Devanagari script)
 		'ksh' => 'Ripoarisch', # Ripuarian
+		'ksw' => 'စှီၤ', # S'gaw Karen
 		'ku' => 'kurdî', # Kurdish (multiple scripts - defaults to Latin)
 		'ku-arab' => 'كوردي (عەرەبی)', # Northern Kurdish (Arabic script) (falls back to ckb)
 		'ku-latn' => 'kurdî (latînî)', # Northern Kurdish (Latin script)

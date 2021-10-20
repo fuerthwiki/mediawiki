@@ -4,7 +4,11 @@ use HtmlFormatter\HtmlFormatter;
 use MediaWiki\Json\JsonUnserializable;
 use MediaWiki\Json\JsonUnserializableTrait;
 use MediaWiki\Json\JsonUnserializer;
+use MediaWiki\Linker\LinkTarget;
 use MediaWiki\Logger\LoggerFactory;
+use MediaWiki\MediaWikiServices;
+use MediaWiki\Page\PageReference;
+use MediaWiki\Parser\ParserOutputFlags;
 use Wikimedia\Reflection\GhostFieldAccessTrait;
 
 /**
@@ -49,145 +53,145 @@ class ParserOutput extends CacheTime {
 	/**
 	 * @var string|null The output text
 	 */
-	public $mText = null;
+	private $mText = null;
 
 	/**
 	 * @var array List of the full text of language links,
 	 *  in the order they appear.
 	 */
-	public $mLanguageLinks;
+	private $mLanguageLinks;
 
 	/**
-	 * @var array Map of category names to sort keys
+	 * @var array<string,string> Map of category names to sort keys
 	 */
-	public $mCategories;
+	private $mCategories;
 
 	/**
 	 * @var array Page status indicators, usually displayed in top-right corner.
 	 */
-	public $mIndicators = [];
+	private $mIndicators = [];
 
 	/**
 	 * @var string Title text of the chosen language variant, as HTML.
 	 */
-	public $mTitleText;
+	private $mTitleText;
 
 	/**
 	 * @var int[][] 2-D map of NS/DBK to ID for the links in the document.
 	 *  ID=zero for broken.
 	 * @phan-var array<int,array<string,int>>
 	 */
-	public $mLinks = [];
+	private $mLinks = [];
 
 	/**
 	 * @var array Keys are DBKs for the links to special pages in the document.
 	 * @since 1.35
 	 */
-	public $mLinksSpecial = [];
+	private $mLinksSpecial = [];
 
 	/**
 	 * @var array 2-D map of NS/DBK to ID for the template references.
 	 *  ID=zero for broken.
 	 */
-	public $mTemplates = [];
+	private $mTemplates = [];
 
 	/**
 	 * @var array 2-D map of NS/DBK to rev ID for the template references.
 	 *  ID=zero for broken.
 	 */
-	public $mTemplateIds = [];
+	private $mTemplateIds = [];
 
 	/**
 	 * @var array DB keys of the images used, in the array key only
 	 */
-	public $mImages = [];
+	private $mImages = [];
 
 	/**
 	 * @var array DB keys of the images used mapped to sha1 and MW timestamp.
 	 */
-	public $mFileSearchOptions = [];
+	private $mFileSearchOptions = [];
 
 	/**
 	 * @var array External link URLs, in the key only.
 	 */
-	public $mExternalLinks = [];
+	private $mExternalLinks = [];
 
 	/**
 	 * @var array 2-D map of prefix/DBK (in keys only)
 	 *  for the inline interwiki links in the document.
 	 */
-	public $mInterwikiLinks = [];
+	private $mInterwikiLinks = [];
 
 	/**
 	 * @var bool Show a new section link?
 	 */
-	public $mNewSection = false;
+	private $mNewSection = false;
 
 	/**
 	 * @var bool Hide the new section link?
 	 */
-	public $mHideNewSection = false;
+	private $mHideNewSection = false;
 
 	/**
 	 * @var bool No gallery on category page? (__NOGALLERY__).
 	 */
-	public $mNoGallery = false;
+	private $mNoGallery = false;
 
 	/**
 	 * @var array Items to put in the <head> section
 	 */
-	public $mHeadItems = [];
+	private $mHeadItems = [];
 
 	/**
 	 * @var array Modules to be loaded by ResourceLoader
 	 */
-	public $mModules = [];
+	private $mModules = [];
 
 	/**
 	 * @var array Modules of which only the CSSS will be loaded by ResourceLoader.
 	 */
-	public $mModuleStyles = [];
+	private $mModuleStyles = [];
 
 	/**
 	 * @var array JavaScript config variable for mw.config combined with this page.
 	 */
-	public $mJsConfigVars = [];
+	private $mJsConfigVars = [];
 
 	/**
 	 * @var array Hook tags as per $wgParserOutputHooks.
 	 */
-	public $mOutputHooks = [];
+	private $mOutputHooks = [];
 
 	/**
 	 * @var array Warning text to be returned to the user.
 	 *  Wikitext formatted, in the key only.
 	 */
-	public $mWarnings = [];
+	private $mWarnings = [];
 
 	/**
 	 * @var array Table of contents
 	 */
-	public $mSections = [];
+	private $mSections = [];
 
 	/**
 	 * @var array Name/value pairs to be cached in the DB.
 	 */
-	public $mProperties = [];
+	private $mProperties = [];
 
 	/**
 	 * @var string HTML of the TOC.
 	 */
-	public $mTOCHTML = '';
+	private $mTOCHTML = '';
 
 	/**
 	 * @var string Timestamp of the revision.
 	 */
-	public $mTimestamp;
+	private $mTimestamp;
 
 	/**
 	 * @var bool Whether OOUI should be enabled.
 	 */
-	public $mEnableOOUI = false;
+	private $mEnableOOUI = false;
 
 	/**
 	 * @var string 'index' or 'noindex'?  Any other value will result in no change.
@@ -593,7 +597,24 @@ class ParserOutput extends CacheTime {
 		return $this->mInterwikiLinks;
 	}
 
+	/**
+	 * Return the names of the categories on this page.
+	 * @return array<string>
+	 * @deprecated since 1.38, use ::getCategoryNames() instead.
+	 */
 	public function getCategoryLinks() {
+		wfDeprecated( __METHOD__, '1.38' );
+		return $this->getCategoryNames();
+	}
+
+	/**
+	 * Return the names of the categories on this page.
+	 * Unlike ::getCategories(), sort keys are *not* included in the
+	 * return value.
+	 * @return array<string> The names of the categories
+	 * @since 1.38
+	 */
+	public function getCategoryNames(): array {
 		return array_keys( $this->mCategories );
 	}
 
@@ -747,7 +768,11 @@ class ParserOutput extends CacheTime {
 		return wfSetVar( $this->mLanguageLinks, $ll );
 	}
 
+	/**
+	 * @deprecated since 1.38, use ::setCategories() instead.
+	 */
 	public function setCategoryLinks( $cl ) {
+		wfDeprecated( __METHOD__, '1.38' );
 		return wfSetVar( $this->mCategories, $cl );
 	}
 
@@ -771,8 +796,22 @@ class ParserOutput extends CacheTime {
 		return wfSetVar( $this->mTimestamp, $timestamp );
 	}
 
-	public function addCategory( $c, $sort ) {
+	/**
+	 * Add a category.
+	 * @param string $c The category name
+	 * @param string $sort The sort key
+	 */
+	public function addCategory( $c, $sort ): void {
 		$this->mCategories[$c] = $sort;
+	}
+
+	/**
+	 * Overwrite the category map.
+	 * @param array<string,string> $c Map of category names to sort keys
+	 * @since 1.38
+	 */
+	public function setCategories( array $c ): void {
+		$this->mCategories = $c;
 	}
 
 	/**
@@ -799,7 +838,25 @@ class ParserOutput extends CacheTime {
 		$this->mLanguageLinks[] = $t;
 	}
 
+	/**
+	 * @deprecated since 1.38; use ::addWarningMsg() instead
+	 */
 	public function addWarning( $s ) {
+		wfDeprecated( __METHOD__, '1.38' );
+		$this->mWarnings[$s] = 1;
+	}
+
+	/**
+	 * Add a warning to the output for this page.
+	 * @param string $msg The localization message key for the warning
+	 * @param mixed ...$args Optional arguments for the message
+	 * @since 1.38
+	 */
+	public function addWarningMsg( string $msg, ...$args ): void {
+		$s = wfMessage( $msg, ...$args )
+		   // some callers set the title here?
+		   ->inContentLanguage() // because this ends up in cache
+		   ->text();
 		$this->mWarnings[$s] = 1;
 	}
 
@@ -811,8 +868,20 @@ class ParserOutput extends CacheTime {
 		$this->mNewSection = (bool)$value;
 	}
 
+	/**
+	 * @param bool $value Hide the new section link?
+	 */
+	public function setHideNewSection( bool $value ): void {
+		$this->mHideNewSection = $value;
+	}
+
+	/**
+	 * @param bool $value Hide the new section link?
+	 * @deprecated since 1.38 use ::setHideNewSection()
+	 */
 	public function hideNewSection( $value ) {
-		$this->mHideNewSection = (bool)$value;
+		wfDeprecated( __METHOD__, '1.38' );
+		$this->setHideNewSection( (bool)$value );
 	}
 
 	public function getHideNewSection() {
@@ -829,6 +898,7 @@ class ParserOutput extends CacheTime {
 	 * @param string $internal The server to check against
 	 * @param string $url The url to check
 	 * @return bool
+	 * @internal
 	 */
 	public static function isLinkInternal( $internal, $url ) {
 		return (bool)preg_match( '/^' .
@@ -861,17 +931,17 @@ class ParserOutput extends CacheTime {
 	/**
 	 * Record a local or interwiki inline link for saving in future link tables.
 	 *
-	 * @param Title $title
+	 * @param LinkTarget $link (used to require Title until 1.38)
 	 * @param int|null $id Optional known page_id so we can skip the lookup
 	 */
-	public function addLink( Title $title, $id = null ) {
-		if ( $title->isExternal() ) {
+	public function addLink( LinkTarget $link, $id = null ) {
+		if ( $link->isExternal() ) {
 			// Don't record interwikis in pagelinks
-			$this->addInterwikiLink( $title );
+			$this->addInterwikiLink( $link );
 			return;
 		}
-		$ns = $title->getNamespace();
-		$dbk = $title->getDBkey();
+		$ns = $link->getNamespace();
+		$dbk = $link->getDBkey();
 		if ( $ns === NS_MEDIA ) {
 			// Normalize this pseudo-alias if it makes it down here...
 			$ns = NS_FILE;
@@ -888,7 +958,8 @@ class ParserOutput extends CacheTime {
 			$this->mLinks[$ns] = [];
 		}
 		if ( $id === null ) {
-			$id = $title->getArticleID();
+			$page = MediaWikiServices::getInstance()->getPageStore()->getPageForLink( $link );
+			$id = $page->getId();
 		}
 		$this->mLinks[$ns][$dbk] = $id;
 	}
@@ -908,13 +979,14 @@ class ParserOutput extends CacheTime {
 
 	/**
 	 * Register a template dependency for this output
-	 * @param Title $title
+	 *
+	 * @param LinkTarget $link (used to require Title until 1.38)
 	 * @param int $page_id
 	 * @param int $rev_id
 	 */
-	public function addTemplate( $title, $page_id, $rev_id ) {
-		$ns = $title->getNamespace();
-		$dbk = $title->getDBkey();
+	public function addTemplate( $link, $page_id, $rev_id ) {
+		$ns = $link->getNamespace();
+		$dbk = $link->getDBkey();
 		if ( !isset( $this->mTemplates[$ns] ) ) {
 			$this->mTemplates[$ns] = [];
 		}
@@ -926,18 +998,20 @@ class ParserOutput extends CacheTime {
 	}
 
 	/**
-	 * @param Title $title Title object, must be an interwiki link
+	 * @param LinkTarget $link LinkTarget object, must be an interwiki link
+	 *       (used to require Title until 1.38).
+	 *
 	 * @throws MWException If given invalid input
 	 */
-	public function addInterwikiLink( $title ) {
-		if ( !$title->isExternal() ) {
+	public function addInterwikiLink( $link ) {
+		if ( !$link->isExternal() ) {
 			throw new MWException( 'Non-interwiki link passed, internal parser error.' );
 		}
-		$prefix = $title->getInterwiki();
+		$prefix = $link->getInterwiki();
 		if ( !isset( $this->mInterwikiLinks[$prefix] ) ) {
 			$this->mInterwikiLinks[$prefix] = [];
 		}
-		$this->mInterwikiLinks[$prefix][$title->getDBkey()] = 1;
+		$this->mInterwikiLinks[$prefix][$link->getDBkey()] = 1;
 	}
 
 	/**
@@ -1009,41 +1083,23 @@ class ParserOutput extends CacheTime {
 	 *
 	 * Any message used with this function should be registered so it will
 	 * show up on Special:TrackingCategories. Core messages should be added
-	 * to SpecialTrackingCategories::$coreTrackingCategories, and extensions
+	 * to TrackingCategories::CORE_TRACKING_CATEGORIES, and extensions
 	 * should add to "TrackingCategories" in their extension.json.
 	 *
 	 * @todo Migrate some code to TrackingCategories
 	 *
 	 * @param string $msg Message key
-	 * @param Title $title title of the page which is being tracked
+	 * @param PageReference $page the page which is being tracked
+	 *        (used to require a Title until 1.38)
 	 * @return bool Whether the addition was successful
 	 * @since 1.25
+	 * @deprecated since 1.38, use Parser::addTrackingCategory or
+	 *   TrackingCategories::addTrackingCategory() instead
 	 */
-	public function addTrackingCategory( $msg, $title ) {
-		if ( $title->isSpecialPage() ) {
-			wfDebug( __METHOD__ . ": Not adding tracking category $msg to special page!" );
-			return false;
-		}
-
-		// Important to parse with correct title (T33469)
-		$cat = wfMessage( $msg )
-			->page( $title )
-			->inContentLanguage()
-			->text();
-
-		# Allow tracking categories to be disabled by setting them to "-"
-		if ( $cat === '-' ) {
-			return false;
-		}
-
-		$containerCategory = Title::makeTitleSafe( NS_CATEGORY, $cat );
-		if ( $containerCategory ) {
-			$this->addCategory( $containerCategory->getDBkey(), $this->getProperty( 'defaultsort' ) ?: '' );
-			return true;
-		} else {
-			wfDebug( __METHOD__ . ": [[MediaWiki:$msg]] is not a valid title!" );
-			return false;
-		}
+	public function addTrackingCategory( $msg, PageReference $page ) {
+		wfDeprecated( __METHOD__, '1.38' );
+		$trackingCategories = MediaWikiServices::getInstance()->getTrackingCategories();
+		return $trackingCategories->addTrackingCategory( $this, $msg, $page );
 	}
 
 	/**
@@ -1059,7 +1115,7 @@ class ParserOutput extends CacheTime {
 	 */
 	public function setDisplayTitle( $text ) {
 		$this->setTitleText( $text );
-		$this->setProperty( 'displaytitle', $text );
+		$this->setPageProperty( 'displaytitle', $text );
 	}
 
 	/**
@@ -1068,7 +1124,7 @@ class ParserOutput extends CacheTime {
 	 * As per the contract of setDisplayTitle(), this is safe HTML,
 	 * ready to be served to the client.
 	 *
-	 * @return string HTML
+	 * @return string|false HTML
 	 */
 	public function getDisplayTitle() {
 		$t = $this->getTitleText();
@@ -1082,29 +1138,74 @@ class ParserOutput extends CacheTime {
 	 * Attach a flag to the output so that it can be checked later to handle special cases
 	 *
 	 * @param string $flag
+	 * @deprecated Use ::setOutputFlag()
 	 */
-	public function setFlag( $flag ) {
+	public function setFlag( $flag ): void {
 		$this->mFlags[$flag] = true;
 	}
 
 	/**
 	 * @param string $flag
 	 * @return bool Whether the given flag was set to signify a special case
+	 * @deprecated Use ::getOutputFlag()
 	 */
-	public function getFlag( $flag ) {
+	public function getFlag( $flag ): bool {
 		return isset( $this->mFlags[$flag] );
 	}
 
 	/**
 	 * @return string[] List of flags signifying special cases
-	 * @since 1.34
+	 * @internal
 	 */
 	public function getAllFlags() {
 		return array_keys( $this->mFlags );
 	}
 
 	/**
-	 * Set a property to be stored in the page_props database table.
+	 * Sets a page property to be stored in the page_props database table.
+	 * @param string $name
+	 * @param int|float|string|bool|null $value
+	 * @deprecated since 1.38, renamed to ::setPageProperty()
+	 */
+	public function setProperty( $name, $value ) {
+		wfDeprecated( __METHOD__, '1.38' );
+		$this->setPageProperty( $name, $value );
+	}
+
+	/**
+	 * @param string $name The property name to look up.
+	 *
+	 * @return mixed|bool The value previously set using setPageProperty(). False if null or no value
+	 * was set for the given property name.
+	 *
+	 * @note You need to use getPageProperties() to check for boolean and null properties.
+	 * @deprecated since 1.38, renamed to ::getPageProperty()
+	 */
+	public function getProperty( $name ) {
+		wfDeprecated( __METHOD__, '1.38' );
+		return $this->getPageProperty( $name );
+	}
+
+	/**
+	 * @param string $name
+	 * @deprecated since 1.38, renamed to ::unsetPageProperty()
+	 */
+	public function unsetProperty( $name ) {
+		wfDeprecated( __METHOD__, '1.38' );
+		$this->unsetPageProperty( $name );
+	}
+
+	/**
+	 * @return array
+	 * @deprecated since 1.38, renamed to ::getPageProperties()
+	 */
+	public function getProperties() {
+		wfDeprecated( __METHOD__, '1.38' );
+		return $this->getPageProperties();
+	}
+
+	/**
+	 * Set a page property to be stored in the page_props database table.
 	 *
 	 * page_props is a key value store indexed by the page ID. This allows
 	 * the parser to set a property on a page which can then be quickly
@@ -1114,14 +1215,14 @@ class ParserOutput extends CacheTime {
 	 * Since 1.23, page_props are also indexed by numeric value, to allow
 	 * for efficient "top k" queries of pages wrt a given property.
 	 *
-	 * setProperty() is thus used to propagate properties from the parsed
+	 * setPageProperty() is thus used to propagate properties from the parsed
 	 * page to request contexts other than a page view of the currently parsed
 	 * article.
 	 *
 	 * Some applications examples:
 	 *
 	 *   * To implement hidden categories, hiding pages from category listings
-	 *     by storing a property.
+	 *     by storing a page property.
 	 *
 	 *   * Overriding the displayed article title (ParserOutput::setDisplayTitle()).
 	 *
@@ -1130,7 +1231,7 @@ class ParserOutput extends CacheTime {
 	 *     Wikimedia Commons.
 	 *     This is not actually implemented, yet but would be pretty cool.
 	 *
-	 * @note Do not use setProperty() to set a property which is only used
+	 * @note Do not use setPageProperty() to set a property which is only used
 	 * in a context where the ParserOutput object itself is already available,
 	 * for example a normal page view. There is no need to save such a property
 	 * in the database since the text is already parsed. You can just hook
@@ -1167,28 +1268,40 @@ class ParserOutput extends CacheTime {
 	 *
 	 * @param string $name
 	 * @param int|float|string|bool|null $value
+	 * @since 1.38
 	 */
-	public function setProperty( $name, $value ) {
+	public function setPageProperty( string $name, $value ): void {
 		$this->mProperties[$name] = $value;
 	}
 
 	/**
-	 * @param string $name The property name to look up.
-	 *
-	 * @return mixed|bool The value previously set using setProperty(). False if null or no value
+	 * Look up a page property.
+	 * @param string $name The page property name to look up.
+	 * @return int|float|string|bool The value previously set using setPageProperty(). False if null or no value
 	 * was set for the given property name.
 	 *
-	 * @note You need to use getProperties() to check for boolean and null properties.
+	 * @note You need to use getPageProperties() to check for boolean and null properties.
+	 * @since 1.38
 	 */
-	public function getProperty( $name ) {
+	public function getPageProperty( string $name ) {
 		return $this->mProperties[$name] ?? false;
 	}
 
-	public function unsetProperty( $name ) {
+	/**
+	 * Remove a page property.
+	 * @param string $name The page property name.
+	 * @since 1.38
+	 */
+	public function unsetPageProperty( string $name ): void {
 		unset( $this->mProperties[$name] );
 	}
 
-	public function getProperties() {
+	/**
+	 * Return all the page properties set on this ParserOutput.
+	 * @return array<string,int|float|string|bool|null>
+	 * @since 1.38
+	 */
+	public function getPageProperties(): array {
 		if ( !isset( $this->mProperties ) ) {
 			$this->mProperties = [];
 		}
@@ -1196,9 +1309,104 @@ class ParserOutput extends CacheTime {
 	}
 
 	/**
+	 * Provides a uniform interface to various boolean flags stored
+	 * in the ParserOutput.  Flags internal to MediaWiki core should
+	 * have names which are constants in ParserOutputFlags.  Extensions
+	 * should use ::setExtensionData() rather than creating new flags
+	 * with ::setOutputFlag() in order to prevent namespace conflicts.
+	 *
+	 * @param string $name A flag name
+	 * @param bool $val
+	 * @since 1.38
+	 */
+	public function setOutputFlag( string $name, bool $val = true ): void {
+		switch ( $name ) {
+		case ParserOutputFlags::NO_GALLERY:
+			$this->setNoGallery( $val );
+			break;
+
+		case ParserOutputFlags::ENABLE_OOUI:
+			$this->setEnableOOUI( $val );
+			break;
+
+		case ParserOutputFlags::NO_INDEX_POLICY:
+		case ParserOutputFlags::INDEX_POLICY:
+			if ( !$val ) {
+				$this->setIndexPolicy( '' );
+			} elseif ( $name === ParserOutputFlags::INDEX_POLICY ) {
+				$this->setIndexPolicy( 'index' );
+			} else {
+				$this->setIndexPolicy( 'noindex' );
+			}
+			break;
+
+		case ParserOutputFlags::NEW_SECTION:
+			$this->setNewSection( $val );
+			break;
+
+		case ParserOutputFlags::HIDE_NEW_SECTION:
+			$this->setHideNewSection( $val );
+			break;
+
+		case ParserOutputFlags::PREVENT_CLICKJACKING:
+			$this->setPreventClickjacking( $val );
+			break;
+
+		default:
+			if ( $val ) {
+				$this->mFlags[$name] = true;
+			} else {
+				unset( $this->mFlags[$name] );
+			}
+			break;
+		}
+	}
+
+	/**
+	 * Provides a uniform interface to various boolean flags stored
+	 * in the ParserOutput.  Flags internal to MediaWiki core should
+	 * have names which are constants in ParserOutputFlags.  Extensions
+	 * should only use ::getOutputFlag() to query flags defined in
+	 * ParserOutputFlags in core; they should use ::getExtensionData()
+	 * to define their own flags.
+	 *
+	 * @param string $name A flag name
+	 * @return bool The flag value
+	 * @since 1.38
+	 */
+	public function getOutputFlag( string $name ): bool {
+		switch ( $name ) {
+		case ParserOutputFlags::NO_GALLERY:
+			return $this->getNoGallery();
+
+		case ParserOutputFlags::ENABLE_OOUI:
+			return $this->getEnableOOUI();
+
+		case ParserOutputFlags::INDEX_POLICY:
+			return $this->getIndexPolicy() === 'index';
+
+		case ParserOutputFlags::NO_INDEX_POLICY:
+			return $this->getIndexPolicy() === 'noindex';
+
+		case ParserOutputFlags::NEW_SECTION:
+			return $this->getNewSection();
+
+		case ParserOutputFlags::HIDE_NEW_SECTION:
+			return $this->getHideNewSection();
+
+		case ParserOutputFlags::PREVENT_CLICKJACKING:
+			return $this->getPreventClickjacking();
+
+		default:
+			return $this->getFlag( $name );
+
+		}
+	}
+
+	/**
 	 * Attaches arbitrary data to this ParserObject. This can be used to store some information in
 	 * the ParserOutput object for later use during page output. The data will be cached along with
-	 * the ParserOutput object, but unlike data set using setProperty(), it is not recorded in the
+	 * the ParserOutput object, but unlike data set using setPageProperty(), it is not recorded in the
 	 * database.
 	 *
 	 * This method is provided to overcome the unsafe practice of attaching extra information to a
@@ -1377,14 +1585,41 @@ class ParserOutput extends CacheTime {
 	}
 
 	/**
+	 * Set the prevent-clickjacking flag
+	 *
+	 * @param bool $flag New flag value
+	 * @since 1.38
+	 */
+	public function setPreventClickjacking( bool $flag ) {
+		$this->mPreventClickjacking = $flag;
+	}
+
+	/**
+	 * Get the prevent-clickjacking flag
+	 *
+	 * @return bool Flag value
+	 * @since 1.38
+	 */
+	public function getPreventClickjacking(): bool {
+		return $this->mPreventClickjacking;
+	}
+
+	/**
 	 * Get or set the prevent-clickjacking flag
 	 *
 	 * @since 1.24
 	 * @param bool|null $flag New flag value, or null to leave it unchanged
 	 * @return bool Old flag value
+	 * @deprecated since 1.38:
+	 *   use ::setPreventClickjacking() or ::getPreventClickjacking()
 	 */
-	public function preventClickjacking( $flag = null ) {
-		return wfSetVar( $this->mPreventClickjacking, $flag );
+	public function preventClickjacking( $flag ) {
+		wfDeprecated( __METHOD__, '1.38' );
+		$old = $this->getPreventClickjacking();
+		if ( $flag !== null ) {
+			$this->setPreventClickjacking( $flag );
+		}
+		return $old;
 	}
 
 	/**
@@ -1546,7 +1781,7 @@ class ParserOutput extends CacheTime {
 		$this->mHideNewSection = $this->mHideNewSection || $source->getHideNewSection();
 		$this->mNoGallery = $this->mNoGallery || $source->getNoGallery();
 		$this->mEnableOOUI = $this->mEnableOOUI || $source->getEnableOOUI();
-		$this->mPreventClickjacking = $this->mPreventClickjacking || $source->preventClickjacking();
+		$this->mPreventClickjacking = $this->mPreventClickjacking || $source->getPreventClickjacking();
 
 		// TODO: we'll have to be smarter about this!
 		$this->mSections = array_merge( $this->mSections, $source->getSections() );
@@ -1600,9 +1835,9 @@ class ParserOutput extends CacheTime {
 			$source->getInterwikiLinks()
 		);
 
-		// TODO: add a $mergeStrategy parameter to setProperty to allow different
+		// TODO: add a $mergeStrategy parameter to setPageProperty to allow different
 		// kinds of properties to be merged in different ways.
-		$this->mProperties = self::mergeMap( $this->mProperties, $source->getProperties() );
+		$this->mProperties = self::mergeMap( $this->mProperties, $source->getPageProperties() );
 
 		// NOTE: include extension data in "tracking meta data" as well as "html meta data"!
 		// TODO: add a $mergeStrategy parameter to setExtensionData to allow different
@@ -1858,6 +2093,33 @@ class ParserOutput extends CacheTime {
 		$priorAccessedOptions = $this->getGhostFieldValue( 'mAccessedOptions' );
 		if ( $priorAccessedOptions ) {
 			$this->mParseUsedOptions = $priorAccessedOptions;
+		}
+	}
+
+	public function __get( $name ) {
+		if ( property_exists( get_called_class(), $name ) ) {
+			// Direct access to a public property, deprecated.
+			wfDeprecatedMsg( "ParserOutput::{$name} public read access deprecated", '1.38' );
+			return $this->$name;
+		} elseif ( property_exists( $this, $name ) ) {
+			// Dynamic property access, deprecated.
+			wfDeprecatedMsg( "ParserOutput::{$name} dynamic property read access deprecated", '1.38' );
+			return $this->$name;
+		} else {
+			trigger_error( "Inaccessible property via __set(): $name" );
+			return null;
+		}
+	}
+
+	public function __set( $name, $value ) {
+		if ( property_exists( get_called_class(), $name ) ) {
+			// Direct access to a public property, deprecated.
+			wfDeprecatedMsg( "ParserOutput::$name public write access deprecated", '1.38' );
+			$this->$name = $value;
+		} else {
+			// Dynamic property access, deprecated.
+			wfDeprecatedMsg( "ParserOutput::$name dynamic property write access deprecated", '1.38' );
+			$this->$name = $value;
 		}
 	}
 }

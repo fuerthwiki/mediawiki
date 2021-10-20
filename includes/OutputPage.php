@@ -254,7 +254,7 @@ class OutputPage extends ContextSource {
 	/**
 	 * @var bool Controls if anti-clickjacking / frame-breaking headers will
 	 * be sent. This should be done for pages where edit actions are possible.
-	 * Setters: $this->preventClickjacking() and $this->allowClickjacking().
+	 * Setter: $this->setPreventClickjacking()
 	 */
 	protected $mPreventClickjacking = true;
 
@@ -1025,7 +1025,7 @@ class OutputPage extends ContextSource {
 	public function getDisplayTitle() {
 		$html = $this->displayTitle;
 		if ( $html === null ) {
-			$html = $this->getTitle()->getPrefixedText();
+			return htmlspecialchars( $this->getTitle()->getPrefixedText(), ENT_NOQUOTES );
 		}
 
 		return Sanitizer::normalizeCharReferences( Sanitizer::removeHTMLtags( $html ) );
@@ -1905,7 +1905,7 @@ class OutputPage extends ContextSource {
 		$this->addModuleStyles( $parserOutput->getModuleStyles() );
 		$this->addJsConfigVars( $parserOutput->getJsConfigVars() );
 		$this->mPreventClickjacking = $this->mPreventClickjacking
-			|| $parserOutput->preventClickjacking();
+			|| $parserOutput->getPreventClickjacking();
 		$scriptSrcs = $parserOutput->getExtraCSPScriptSrcs();
 		foreach ( $scriptSrcs as $src ) {
 			$this->getCSP()->addScriptSrc( $src );
@@ -2351,6 +2351,7 @@ class OutputPage extends ContextSource {
 	 * form on an ordinary view page, then you need to call this function.
 	 *
 	 * @param bool $enable
+	 * @deprecated since 1.38, use ::setPreventClickjacking( true )
 	 */
 	public function preventClickjacking( $enable = true ) {
 		$this->mPreventClickjacking = $enable;
@@ -2360,9 +2361,33 @@ class OutputPage extends ContextSource {
 	 * Turn off frame-breaking. Alias for $this->preventClickjacking(false).
 	 * This can be called from pages which do not contain any CSRF-protected
 	 * HTML form.
+	 *
+	 * @deprecated since 1.38, use ::setPreventClickjacking( false )
 	 */
 	public function allowClickjacking() {
 		$this->mPreventClickjacking = false;
+	}
+
+	/**
+	 * Set the prevent-clickjacking flag.
+	 *
+	 * If true, will cause an X-Frame-Options header appropriate for
+	 * edit pages to be sent. The header value is controlled by
+	 * $wgEditPageFrameOptions.  This is the default for special
+	 * pages. If you display a CSRF-protected form on an ordinary view
+	 * page, then you need to call this function.
+	 *
+	 * Setting this flag to false will turn off frame-breaking.  This
+	 * can be called from pages which do not contain any
+	 * CSRF-protected HTML form.
+	 *
+	 * @param bool $enable If true, will cause an X-Frame-Options header
+	 *  appropriate for edit pages to be sent.
+	 *
+	 * @since 1.38
+	 */
+	public function setPreventClickjacking( bool $enable ) {
+		$this->mPreventClickjacking = $enable;
 	}
 
 	/**
@@ -2966,8 +2991,7 @@ class OutputPage extends ContextSource {
 				null, // version; not relevant
 				ResourceLoader::inDebugMode(),
 				null, // only; not relevant
-				$this->isPrintable(),
-				$this->getRequest()->getBool( 'handheld' )
+				$this->isPrintable()
 			);
 			$this->rlClientContext = new ResourceLoaderContext(
 				$this->getResourceLoader(),
@@ -3045,7 +3069,12 @@ class OutputPage extends ContextSource {
 					if ( $module ) {
 						$group = $module->getGroup();
 						if ( isset( $exemptGroups[$group] ) ) {
-							$exemptStates[$name] = 'ready';
+							// The `noscript` module is excluded from the client
+							// side registry, no need to set its state either.
+							// But we still output it. See T291735
+							if ( $group !== 'noscript' ) {
+								$exemptStates[$name] = 'ready';
+							}
 							if ( !$module->isKnownEmpty( $context ) ) {
 								// E.g. Don't output empty <styles>
 								$exemptGroups[$group][] = $name;
@@ -3116,7 +3145,7 @@ class OutputPage extends ContextSource {
 			$pieces[] = Html::element( 'meta', [ 'charset' => 'UTF-8' ] );
 		}
 
-		$pieces[] = Html::element( 'title', null, $this->getHTMLTitle() );
+		$pieces[] = Html::element( 'title', [], $this->getHTMLTitle() );
 		$pieces[] = $this->getRlClient()->getHeadHtml( $htmlAttribs['class'] ?? null );
 		$pieces[] = $this->buildExemptModules();
 		$pieces = array_merge( $pieces, array_values( $this->getHeadLinksArray() ) );
@@ -3566,20 +3595,13 @@ class OutputPage extends ContextSource {
 			$tags[] = Html::element( 'link', $tag );
 		}
 
-		# Universal edit button
 		if ( $config->get( 'UniversalEditButton' ) && $this->isArticleRelated() ) {
 			if ( $this->getAuthority()->probablyCan( 'edit', $this->getTitle() ) ) {
-				// Original UniversalEditButton
 				$msg = $this->msg( 'edit' )->text();
+				// Use mime type per https://phabricator.wikimedia.org/T21165#6946526
 				$tags['universal-edit-button'] = Html::element( 'link', [
 					'rel' => 'alternate',
 					'type' => 'application/x-wiki',
-					'title' => $msg,
-					'href' => $this->getTitle()->getEditURL(),
-				] );
-				// Alternate edit link
-				$tags['alternative-edit'] = Html::element( 'link', [
-					'rel' => 'edit',
 					'title' => $msg,
 					'href' => $this->getTitle()->getEditURL(),
 				] );
@@ -4031,42 +4053,34 @@ class OutputPage extends ContextSource {
 	 * Transform "media" attribute based on request parameters
 	 *
 	 * @param string $media Current value of the "media" attribute
-	 * @return string|null Modified value of the "media" attribute, or null to skip
+	 * @return string|null Modified value of the "media" attribute, or null to disable
 	 * this stylesheet
 	 */
 	public static function transformCssMedia( $media ) {
 		global $wgRequest;
 
-		// https://www.w3.org/TR/css3-mediaqueries/#syntax
-		$screenMediaQueryRegex = '/^(?:only\s+)?screen\b/i';
+		if ( $wgRequest->getBool( 'printable' ) ) {
+			// When browsing with printable=yes, apply "print" media styles
+			// as if they are screen styles (no media, media="").
+			if ( $media === 'print' ) {
+				return '';
+			}
 
-		// Switch in on-screen display for media testing
-		$switches = [
-			'printable' => 'print',
-			'handheld' => 'handheld',
-		];
-		foreach ( $switches as $switch => $targetMedia ) {
-			if ( $wgRequest->getBool( $switch ) ) {
-				if ( $media == $targetMedia ) {
-					$media = '';
-				} elseif ( preg_match( $screenMediaQueryRegex, $media ) === 1 ) {
-					/* This regex will not attempt to understand a comma-separated media_query_list
-					 *
-					 * Example supported values for $media:
-					 * 'screen', 'only screen', 'screen and (min-width: 982px)' ),
-					 * Example NOT supported value for $media:
-					 * '3d-glasses, screen, print and resolution > 90dpi'
-					 *
-					 * If it's a print request, we never want any kind of screen stylesheets
-					 * If it's a handheld request (currently the only other choice with a switch),
-					 * we don't want simple 'screen' but we might want screen queries that
-					 * have a max-width or something, so we'll pass all others on and let the
-					 * client do the query.
-					 */
-					if ( $targetMedia == 'print' || $media == 'screen' ) {
-						return null;
-					}
-				}
+			// https://www.w3.org/TR/css3-mediaqueries/#syntax
+			//
+			// This regex will not attempt to understand a comma-separated media_query_list
+			// Example supported values for $media:
+			//
+			//     'screen', 'only screen', 'screen and (min-width: 982px)' ),
+			//
+			// Example NOT supported value for $media:
+			//
+			//     '3d-glasses, screen, print and resolution > 90dpi'
+			//
+			// If it's a "printable" request, we disable all screen stylesheets.
+			$screenMediaQueryRegex = '/^(?:only\s+)?screen\b/i';
+			if ( preg_match( $screenMediaQueryRegex, $media ) === 1 ) {
+				return null;
 			}
 		}
 

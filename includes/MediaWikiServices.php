@@ -45,6 +45,7 @@ use MediaWiki\CommentFormatter\CommentFormatter;
 use MediaWiki\CommentFormatter\RowCommentFormatter;
 use MediaWiki\Config\ConfigRepository;
 use MediaWiki\Content\IContentHandlerFactory;
+use MediaWiki\Content\Renderer\ContentRenderer;
 use MediaWiki\Content\Transform\ContentTransformer;
 use MediaWiki\EditPage\SpamChecker;
 use MediaWiki\Export\WikiExporterFactory;
@@ -71,6 +72,7 @@ use MediaWiki\Page\PageStore;
 use MediaWiki\Page\PageStoreFactory;
 use MediaWiki\Page\ParserOutputAccess;
 use MediaWiki\Page\RollbackPageFactory;
+use MediaWiki\Page\UndeletePageFactory;
 use MediaWiki\Page\WikiPageFactory;
 use MediaWiki\Parser\ParserCacheFactory;
 use MediaWiki\Permissions\GrantsInfo;
@@ -138,6 +140,7 @@ use SkinFactory;
 use TitleFactory;
 use TitleFormatter;
 use TitleParser;
+use TrackingCategories;
 use UploadRevisionImporter;
 use UserCache;
 use VirtualRESTServiceClient;
@@ -146,6 +149,7 @@ use WatchedItemQueryService;
 use WatchedItemStoreInterface;
 use WikiImporterFactory;
 use Wikimedia\Message\IMessageFormatterFactory;
+use Wikimedia\Metrics\MetricsFactory;
 use Wikimedia\NonSerializable\NonSerializableTrait;
 use Wikimedia\ObjectFactory;
 use Wikimedia\Rdbms\ILoadBalancer;
@@ -831,6 +835,14 @@ class MediaWikiServices extends ServiceContainer {
 	}
 
 	/**
+	 * @since 1.38
+	 * @return ContentRenderer
+	 */
+	public function getContentRenderer(): ContentRenderer {
+		return $this->getService( 'ContentRenderer' );
+	}
+
+	/**
 	 * @since 1.37
 	 * @return ContentTransformer
 	 */
@@ -1215,6 +1227,14 @@ class MediaWikiServices extends ServiceContainer {
 	 */
 	public function getMessageFormatterFactory(): IMessageFormatterFactory {
 		return $this->getService( 'MessageFormatterFactory' );
+	}
+
+	/**
+	 * @since 1.38
+	 * @return MetricsFactory
+	 */
+	public function getMetricsFactory(): MetricsFactory {
+		return $this->getService( 'MetricsFactory' );
 	}
 
 	/**
@@ -1646,11 +1666,27 @@ class MediaWikiServices extends ServiceContainer {
 	}
 
 	/**
+	 * @since 1.38
+	 * @return TrackingCategories
+	 */
+	public function getTrackingCategories(): TrackingCategories {
+		return $this->getService( 'TrackingCategories' );
+	}
+
+	/**
 	 * @since 1.36
 	 * @return UnblockUserFactory
 	 */
 	public function getUnblockUserFactory(): UnblockUserFactory {
 		return $this->getService( 'UnblockUserFactory' );
+	}
+
+	/**
+	 * @since 1.38
+	 * @return UndeletePageFactory
+	 */
+	public function getUndeletePageFactory(): UndeletePageFactory {
+		return $this->getService( 'UndeletePageFactory' );
 	}
 
 	/**

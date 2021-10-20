@@ -68,6 +68,7 @@ use MediaWiki\Config\ConfigRepository;
 use MediaWiki\Config\ServiceOptions;
 use MediaWiki\Content\ContentHandlerFactory;
 use MediaWiki\Content\IContentHandlerFactory;
+use MediaWiki\Content\Renderer\ContentRenderer;
 use MediaWiki\Content\Transform\ContentTransformer;
 use MediaWiki\EditPage\Constraint\EditConstraintFactory;
 use MediaWiki\EditPage\SpamChecker;
@@ -103,6 +104,7 @@ use MediaWiki\Page\PageStore;
 use MediaWiki\Page\PageStoreFactory;
 use MediaWiki\Page\ParserOutputAccess;
 use MediaWiki\Page\RollbackPageFactory;
+use MediaWiki\Page\UndeletePageFactory;
 use MediaWiki\Page\WikiPageFactory;
 use MediaWiki\Parser\ParserCacheFactory;
 use MediaWiki\Parser\ParserObserver;
@@ -156,6 +158,7 @@ use MediaWiki\Watchlist\WatchlistManager;
 use Wikimedia\DependencyStore\KeyValueDependencyStore;
 use Wikimedia\DependencyStore\SqlModuleDependencyStore;
 use Wikimedia\Message\IMessageFormatterFactory;
+use Wikimedia\Metrics\MetricsFactory;
 use Wikimedia\ObjectFactory;
 use Wikimedia\RequestTimeout\CriticalSectionProvider;
 use Wikimedia\RequestTimeout\RequestTimeout;
@@ -408,6 +411,10 @@ return [
 
 	'ContentModelStore' => static function ( MediaWikiServices $services ): NameTableStore {
 		return $services->getNameTableStoreFactory()->getContentModels();
+	},
+
+	'ContentRenderer' => static function ( MediaWikiServices $services ): ContentRenderer {
+		return new ContentRenderer( $services->getContentHandlerFactory() );
 	},
 
 	'ContentTransformer' => static function ( MediaWikiServices $services ): ContentTransformer {
@@ -976,6 +983,18 @@ return [
 		return new MessageFormatterFactory();
 	},
 
+	'MetricsFactory' => static function ( MediaWikiServices $services ): MetricsFactory {
+		$config = $services->getMainConfig();
+		return new MetricsFactory(
+			[
+				'prefix' => $config->get( 'MetricsPrefix' ),
+				'target' => $config->get( 'MetricsTarget' ),
+				'format' => $config->get( 'MetricsFormat' )
+			],
+			LoggerFactory::getInstance( 'Metrics' )
+		);
+	},
+
 	'MimeAnalyzer' => static function ( MediaWikiServices $services ): MimeAnalyzer {
 		$logger = LoggerFactory::getInstance( 'Mime' );
 		$mainConfig = $services->getMainConfig();
@@ -1064,7 +1083,8 @@ return [
 			$services->getDBLoadBalancer(),
 			$services->getRevisionStore(),
 			$services->getSlotRoleRegistry(),
-			$services->getWikiPageFactory()
+			$services->getWikiPageFactory(),
+			$services->getPageUpdaterFactory()
 		);
 	},
 
@@ -1205,7 +1225,8 @@ return [
 			$services->getUserOptionsLookup(),
 			$services->getUserFactory(),
 			$services->getTitleFormatter(),
-			$services->getHttpRequestFactory()
+			$services->getHttpRequestFactory(),
+			$services->getTrackingCategories()
 		);
 	},
 
@@ -1421,7 +1442,8 @@ return [
 	'RevisionRenderer' => static function ( MediaWikiServices $services ): RevisionRenderer {
 		$renderer = new RevisionRenderer(
 			$services->getDBLoadBalancer(),
-			$services->getSlotRoleRegistry()
+			$services->getSlotRoleRegistry(),
+			$services->getContentRenderer()
 		);
 
 		$renderer->setLogger( LoggerFactory::getInstance( 'SaveParse' ) );
@@ -1568,14 +1590,16 @@ return [
 			if ( is_array( $skin ) ) {
 				$spec = $skin;
 				$displayName = $skin['displayname'] ?? $name;
+				$skippable = $skin['skippable'] ?? false;
 			} else {
 				$displayName = $skin;
+				$skippable = false;
 				$spec = [
 					'name' => $name,
 					'class' => "Skin$skin"
 				];
 			}
-			$factory->register( $name, $displayName, $spec );
+			$factory->register( $name, $displayName, $spec, $skippable );
 		}
 
 		// Register a hidden "fallback" skin
@@ -1588,7 +1612,7 @@ return [
 					'templateDirectory' => __DIR__ . '/skins/templates/fallback',
 				]
 			]
-		] );
+		], true );
 		// Register a hidden skin for api output
 		$factory->register( 'apioutput', 'ApiOutput', [
 			'class' => SkinApi::class,
@@ -1599,7 +1623,7 @@ return [
 					'templateDirectory' => __DIR__ . '/skins/templates/apioutput',
 				]
 			]
-		] );
+		], true );
 
 		return $factory;
 	},
@@ -1693,8 +1717,24 @@ return [
 		return $services->getService( '_MediaWikiTitleCodec' );
 	},
 
+	'TrackingCategories' => static function ( MediaWikiServices $services ): TrackingCategories {
+		return new TrackingCategories(
+			new ServiceOptions(
+				TrackingCategories::CONSTRUCTOR_OPTIONS,
+				$services->getMainConfig()
+			),
+			$services->getNamespaceInfo(),
+			$services->getTitleParser(),
+			LoggerFactory::getInstance( 'TrackingCategories' )
+		);
+	},
+
 	'UnblockUserFactory' => static function ( MediaWikiServices $services ): UnblockUserFactory {
 		return $services->getService( '_UserBlockCommandFactory' );
+	},
+
+	'UndeletePageFactory' => static function ( MediaWikiServices $services ): UndeletePageFactory {
+		return $services->getService( '_PageCommandFactory' );
 	},
 
 	'UploadRevisionImporter' => static function ( MediaWikiServices $services ): UploadRevisionImporter {
@@ -1900,7 +1940,8 @@ return [
 			$services->getDBLoadBalancer(),
 			$services->getRevisionStore(),
 			$services->getSlotRoleRegistry(),
-			$services->getWikiPageFactory()
+			$services->getWikiPageFactory(),
+			$services->getPageUpdaterFactory()
 		);
 	},
 
@@ -1973,7 +2014,9 @@ return [
 			ObjectCache::getInstance( 'db-replicated' ),
 			WikiMap::getCurrentWikiDbDomain()->getId(),
 			WebRequest::getRequestId(),
-			$services->getBacklinkCacheFactory()
+			$services->getBacklinkCacheFactory(),
+			LoggerFactory::getInstance( 'UndeletePage' ),
+			$services->getPageUpdaterFactory()
 		);
 	},
 

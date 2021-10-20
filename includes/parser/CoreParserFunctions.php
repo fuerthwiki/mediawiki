@@ -22,6 +22,7 @@
  */
 
 use MediaWiki\MediaWikiServices;
+use MediaWiki\Parser\ParserOutputFlags;
 use MediaWiki\Revision\RevisionAccessException;
 use MediaWiki\Revision\RevisionRecord;
 
@@ -482,7 +483,7 @@ class CoreParserFunctions {
 			&& !$title->hasFragment()
 			&& $title->equals( $parser->getTitle() ) )
 		) {
-			$old = $parser->getOutput()->getProperty( 'displaytitle' );
+			$old = $parser->getOutput()->getPageProperty( 'displaytitle' );
 			if ( $old === false || $arg !== 'displaytitle_noreplace' ) {
 				$parser->getOutput()->setDisplayTitle( $text );
 			}
@@ -500,11 +501,10 @@ class CoreParserFunctions {
 				return '';
 			}
 		} else {
-			$parser->getOutput()->addWarning(
-				wfMessage( 'restricted-displaytitle',
-					// Message should be parsed, but this param should only be escaped.
-					wfEscapeWikiText( $text )
-				)->text()
+			$parser->getOutput()->addWarningMsg(
+				'restricted-displaytitle',
+				// Message should be parsed, but this param should only be escaped.
+				Message::plaintextParam( $text )
 			);
 			$parser->addTrackingCategory( 'restricted-displaytitle-ignored' );
 		}
@@ -873,7 +873,7 @@ class CoreParserFunctions {
 		}
 
 		// fetch revision from cache/database and return the value
-		$rev = self::getCachedRevisionObject( $parser, $title, 'vary-revision-sha1' );
+		$rev = self::getCachedRevisionObject( $parser, $title, ParserOutputFlags::VARY_REVISION_SHA1 );
 		$length = $rev ? $rev->getSize() : 0;
 		if ( $length === null ) {
 			// We've had bugs where rev_len was not being recorded for empty pages, see T135414
@@ -1053,7 +1053,7 @@ class CoreParserFunctions {
 		if ( $old === false || $old == $text || $arg ) {
 			return '';
 		} else {
-			$converter = $parser->getTargetLanguage()->getConverter();
+			$converter = $parser->getTargetLanguageConverter();
 			return '<span class="error">' .
 				wfMessage( 'duplicate-defaultsort',
 					// Message should be parsed, but these params should only be escaped.
@@ -1219,8 +1219,8 @@ class CoreParserFunctions {
 		if ( $isSelfReferential ) {
 			wfDebug( __METHOD__ . ": used current revision, setting $vary" );
 			// Upon page save, the result of the parser function using this might change
-			$parserOutput->setFlag( $vary );
-			if ( $vary === 'vary-revision-sha1' && $revisionRecord ) {
+			$parserOutput->setOutputFlag( $vary );
+			if ( $vary === ParserOutputFlags::VARY_REVISION_SHA1 && $revisionRecord ) {
 				try {
 					$sha1 = $revisionRecord->getSha1();
 				} catch ( RevisionAccessException $e ) {
@@ -1253,7 +1253,7 @@ class CoreParserFunctions {
 		if ( $t->equals( $parser->getTitle() ) ) {
 			// Revision is for the same title that is currently being parsed.
 			// Use the title from Parser in case a new page ID was injected into it.
-			$parserOutput->setFlag( 'vary-page-id' );
+			$parserOutput->setOutputFlag( ParserOutputFlags::VARY_PAGE_ID );
 			$id = $parser->getTitle()->getArticleID();
 			if ( $id ) {
 				$parserOutput->setSpeculativePageIdUsed( $id );
@@ -1309,12 +1309,12 @@ class CoreParserFunctions {
 			if ( $parser->getRevisionId() || $parser->getOptions()->getSpeculativeRevId() ) {
 				return '-';
 			} else {
-				$parser->getOutput()->setFlag( 'vary-revision-exists' );
+				$parser->getOutput()->setOutputFlag( ParserOutputFlags::VARY_REVISION_EXISTS );
 				return '';
 			}
 		}
 		// fetch revision from cache/database and return the value
-		$rev = self::getCachedRevisionObject( $parser, $t, 'vary-revision-id' );
+		$rev = self::getCachedRevisionObject( $parser, $t, ParserOutputFlags::VARY_REVISION_ID );
 		return $rev ? $rev->getId() : '';
 	}
 
@@ -1331,7 +1331,7 @@ class CoreParserFunctions {
 			return '';
 		}
 		// fetch revision from cache/database and return the value
-		$rev = self::getCachedRevisionObject( $parser, $t, 'vary-revision-timestamp' );
+		$rev = self::getCachedRevisionObject( $parser, $t, ParserOutputFlags::VARY_REVISION_TIMESTAMP );
 		return $rev ? MWTimestamp::getLocalInstance( $rev->getTimestamp() )->format( 'j' ) : '';
 	}
 
@@ -1348,7 +1348,7 @@ class CoreParserFunctions {
 			return '';
 		}
 		// fetch revision from cache/database and return the value
-		$rev = self::getCachedRevisionObject( $parser, $t, 'vary-revision-timestamp' );
+		$rev = self::getCachedRevisionObject( $parser, $t, ParserOutputFlags::VARY_REVISION_TIMESTAMP );
 		return $rev ? MWTimestamp::getLocalInstance( $rev->getTimestamp() )->format( 'd' ) : '';
 	}
 
@@ -1365,7 +1365,7 @@ class CoreParserFunctions {
 			return '';
 		}
 		// fetch revision from cache/database and return the value
-		$rev = self::getCachedRevisionObject( $parser, $t, 'vary-revision-timestamp' );
+		$rev = self::getCachedRevisionObject( $parser, $t, ParserOutputFlags::VARY_REVISION_TIMESTAMP );
 		return $rev ? MWTimestamp::getLocalInstance( $rev->getTimestamp() )->format( 'm' ) : '';
 	}
 
@@ -1382,7 +1382,7 @@ class CoreParserFunctions {
 			return '';
 		}
 		// fetch revision from cache/database and return the value
-		$rev = self::getCachedRevisionObject( $parser, $t, 'vary-revision-timestamp' );
+		$rev = self::getCachedRevisionObject( $parser, $t, ParserOutputFlags::VARY_REVISION_TIMESTAMP );
 		return $rev ? MWTimestamp::getLocalInstance( $rev->getTimestamp() )->format( 'n' ) : '';
 	}
 
@@ -1399,7 +1399,7 @@ class CoreParserFunctions {
 			return '';
 		}
 		// fetch revision from cache/database and return the value
-		$rev = self::getCachedRevisionObject( $parser, $t, 'vary-revision-timestamp' );
+		$rev = self::getCachedRevisionObject( $parser, $t, ParserOutputFlags::VARY_REVISION_TIMESTAMP );
 		return $rev ? MWTimestamp::getLocalInstance( $rev->getTimestamp() )->format( 'Y' ) : '';
 	}
 
@@ -1416,7 +1416,7 @@ class CoreParserFunctions {
 			return '';
 		}
 		// fetch revision from cache/database and return the value
-		$rev = self::getCachedRevisionObject( $parser, $t, 'vary-revision-timestamp' );
+		$rev = self::getCachedRevisionObject( $parser, $t, ParserOutputFlags::VARY_REVISION_TIMESTAMP );
 		return $rev ? MWTimestamp::getLocalInstance( $rev->getTimestamp() )->format( 'YmdHis' ) : '';
 	}
 
@@ -1433,7 +1433,7 @@ class CoreParserFunctions {
 			return '';
 		}
 		// fetch revision from cache/database and return the value
-		$rev = self::getCachedRevisionObject( $parser, $t, 'vary-user' );
+		$rev = self::getCachedRevisionObject( $parser, $t, ParserOutputFlags::VARY_USER );
 		if ( $rev === null ) {
 			return '';
 		}

@@ -1169,7 +1169,7 @@ MESSAGE;
 						if ( is_string( $scripts ) ) {
 							if ( $name === 'site' || $name === 'user' ) {
 								// Legacy scripts that run in the global scope without a closure.
-								// mw.loader.implement will use globalEval if scripts is a string.
+								// mw.loader.implement will use eval if scripts is a string.
 								// Minify manually here, because general response minification is
 								// not effective due it being a string literal, not a function.
 								if ( !$debug ) {
@@ -1279,7 +1279,7 @@ MESSAGE;
 	 * @param ResourceLoaderContext $context
 	 * @param string $name Module name or implement key (format "`[name]@[version]`")
 	 * @param XmlJsCode|array|string $scripts Code as XmlJsCode (to be wrapped in a closure),
-	 *  list of URLs to JavaScript files, string of JavaScript for `$.globalEval`, or array with
+	 *  list of URLs to JavaScript files, string of JavaScript for eval, or array with
 	 *  'files' and 'main' properties (see ResourceLoaderModule::getScript())
 	 * @param mixed $styles Array of CSS strings keyed by media type, or an array of lists of URLs
 	 *   to CSS files keyed by media type
@@ -1774,7 +1774,7 @@ MESSAGE;
 			$context->getDebug(),
 			$context->getOnly(),
 			$context->getRequest()->getBool( 'printable' ),
-			$context->getRequest()->getBool( 'handheld' ),
+			null,
 			$extraQuery
 		);
 	}
@@ -1791,13 +1791,13 @@ MESSAGE;
 	 * @param int $debug
 	 * @param string|null $only
 	 * @param bool $printable
-	 * @param bool $handheld
+	 * @param bool|null $handheld Unused as of MW 1.38
 	 * @param array $extraQuery
 	 * @return array
 	 */
 	public static function makeLoaderQuery( array $modules, $lang, $skin, $user = null,
 		$version = null, $debug = ResourceLoaderContext::DEBUG_OFF, $only = null,
-		$printable = false, $handheld = false, array $extraQuery = []
+		$printable = false, $handheld = null, array $extraQuery = []
 	) {
 		$query = [
 			'modules' => self::makePackedModulesString( $modules ),
@@ -1826,9 +1826,6 @@ MESSAGE;
 		}
 		if ( $printable ) {
 			$query['printable'] = 1;
-		}
-		if ( $handheld ) {
-			$query['handheld'] = 1;
 		}
 		$query += $extraQuery;
 
@@ -1979,17 +1976,8 @@ MESSAGE;
 			'wgTranslateNumerals' => $conf->get( 'TranslateNumerals' ),
 			// @internal For mediawiki.Title
 			'wgExtraSignatureNamespaces' => $conf->get( 'ExtraSignatureNamespaces' ),
-			// @internal For mediawiki.cookie
-			'wgCookiePrefix' => $conf->get( 'CookiePrefix' ),
-			'wgCookieDomain' => $conf->get( 'CookieDomain' ),
-			'wgCookiePath' => $conf->get( 'CookiePath' ),
-			'wgCookieExpiration' => $conf->get( 'CookieExpiration' ),
-			// @internal For mediawiki.Title
 			'wgLegalTitleChars' => Title::convertByteClassToUnicodeClass( Title::legalChars() ),
 			'wgIllegalFileChars' => Title::convertByteClassToUnicodeClass( $illegalFileChars ),
-			// @internal For mediawiki.ForeignUpload
-			'wgForeignUploadTargets' => $conf->get( 'ForeignUploadTargets' ),
-			'wgEnableUploads' => $conf->get( 'EnableUploads' ),
 		];
 
 		Hooks::runner()->onResourceLoaderGetConfigVars( $vars, $skin, $conf );

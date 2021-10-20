@@ -31,9 +31,7 @@ use MediaWiki\Block\Restriction\PageRestriction;
 use MediaWiki\Block\Restriction\Restriction;
 use MediaWiki\Logger\LoggerFactory;
 use MediaWiki\MediaWikiServices;
-use MediaWiki\User\UserFactory;
 use MediaWiki\User\UserIdentity;
-use MediaWiki\User\UserIdentityValue;
 use MWException;
 use stdClass;
 use Title;
@@ -92,10 +90,7 @@ class DatabaseBlock extends AbstractBlock {
 	 *  - allowUsertalk: (bool) Allow the target to edit its own talk page
 	 *  - sitewide: (bool) Disallow editing all pages and all contribution actions,
 	 *    except those specifically allowed by other block flags
-	 *  - by: (int|UserIdentity) UserIdentity object or an ID of the blocker.
-	 *      Calling with ID is deprecated since 1.36, hard deprecated since 1.37.
-	 *  - byText: (string) Username of the blocker (for foreign users)
-	 *      Deprecated since 1.36, hard deprecated since 1.37. Use 'by' parameter instead.
+	 *  - by: (UserIdentity) UserIdentity object of the blocker.
 	 *
 	 * @since 1.26 $options array
 	 */
@@ -112,37 +107,12 @@ class DatabaseBlock extends AbstractBlock {
 			'allowUsertalk'   => false,
 			'sitewide'        => true,
 			'by'              => null,
-			'byText'          => '',
 		];
 
 		$options += $defaults;
 
-		if ( $options['by'] ) {
-			if ( $options['by'] instanceof UserIdentity ) {
-				$this->setBlocker( $options['by'] );
-			} else {
-				// Local user, passed by ID. Deprecated case,
-				// callers should provide UserIdentity in the 'by'
-				// option.
-				wfDeprecatedMsg( __METHOD__ . ': $options[\'by\'] calling with ID is deprecated', '1.36' );
-				$localBlocker = MediaWikiServices::getInstance()
-					->getUserFactory()
-					->newFromId( $options['by'] );
-				$this->setBlocker( $localBlocker );
-			}
-		} elseif ( $options['byText'] ) {
-			// Foreign user. Deprecated case, callers should
-			// provide UserIdentity in the 'by' option.
-			wfDeprecatedMsg( __METHOD__ . ': $options[\'byText\'] is deprecated', '1.36' );
-			$foreignBlocker = MediaWikiServices::getInstance()
-				->getActorStore()
-				->getUserIdentityByName( $options['byText'] );
-			if ( !$foreignBlocker ) {
-				// An actor for an interwiki user might not exist on this wiki,
-				// so it's ok to create one. Interwiki actors are still local actors.
-				$foreignBlocker = new UserIdentityValue( 0, $options['byText'], UserIdentity::LOCAL );
-			}
-			$this->setBlocker( $foreignBlocker );
+		if ( $options['by'] && $options['by'] instanceof UserIdentity ) {
+			$this->setBlocker( $options['by'] );
 		}
 
 		$this->setExpiry( wfGetDB( DB_REPLICA )->decodeExpiry( $options['expiry'] ) );
@@ -1201,17 +1171,9 @@ class DatabaseBlock extends AbstractBlock {
 	/**
 	 * Set the user who implemented (or will implement) this block
 	 *
-	 * @param UserIdentity|string $user Local user object or username string.
-	 *   Calling with string is deprecated since 1.36
+	 * @param UserIdentity $user
 	 */
 	public function setBlocker( $user ) {
-		if ( is_string( $user ) ) {
-			wfDeprecatedMsg( 'Calling ' . __METHOD__ . ' with string as $user', '1.36' );
-			$user = MediaWikiServices::getInstance()
-				->getUserFactory()
-				->newFromName( $user, UserFactory::RIGOR_NONE );
-		}
-
 		if ( !$user->isRegistered() &&
 			MediaWikiServices::getInstance()->getUserNameUtils()->isUsable( $user->getName() )
 		) {

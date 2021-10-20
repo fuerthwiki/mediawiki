@@ -29,6 +29,13 @@ For notes on 1.36.x and older releases, see HISTORY.
 ==== New configuration ====
 * $wgBrowserFormatDetection - This setting allows the enabling or disabling
   of automatic detection of possible phone numbers in a webpage in iOS Safari.
+* $wgParserEnableLegacyMediaDOM - This setting defaults to true, and enables
+  the legacy media HTML structure in the output from the Parser.  The
+  alternative modern HTML structure for media is described at
+  https://www.mediawiki.org/wiki/Parsing/Media_structure
+  In a future release of MediaWiki this option will default to false,
+  so it's a good idea to test this setting on your wiki early and report
+  any issues.
 
 ==== Changed configuration ====
 * $wgContentHandlerTextFallback - This migration setting, which defines how to
@@ -114,6 +121,7 @@ For notes on 1.36.x and older releases, see HISTORY.
 * Updated wikimedia/remex-html from v2.3.1 to v2.3.2.
 * Updated wikimedia/shellbox from v1.0.4 to v2.0.0.
 * Updated wikimedia/wait-condition-loop from v2.0.1 to v2.0.2.
+* Updated zordius/lightncandy from v1.2.5 to v1.2.6.
 
 ===== Changed development-only external libraries =====
 * Updated qunit from 2.10.0 to 2.16.0.
@@ -280,6 +288,8 @@ because of Phabricator reports.
   the "es6-polyfills" module directly intead.
 * The deprecated "mediawiki.legacy.protect" ResourceLoader module, deprecated
   since 1.36, has been removed. Use "mediawiki.action.protect" instead.
+* The JavaScript alias $j for references to jQuery, deprecated since 1.23, has
+  been removed. Use $ instead.
 * The AuthenticationProvider interface and the SessionProvider class no longer
   extend the PSR LoggerAwareInterface concept, so they can't be typehinted as
   LoggerAwareInterface.
@@ -473,6 +483,9 @@ because of Phabricator reports.
 * The LESS mixin `.flex()` now no longer tries to support the 2009 version of
   the Flexbox specification; support for the 2012 and modern standard versions
   remains unchanged.
+* The StorageAwareness::ATTR_SYNCWRITES, StorageAwareness::QOS_SYNCWRITES_*,
+  StorageAwareness::ATTR_LOCALITY, and StorageAwareness::QOS_LOCALITY_*
+  constants were removed.
 
 === Deprecations in 1.37 ===
 * JobQueue::getWiki(), deprecated in 1.33, now emits deprecation warnings.

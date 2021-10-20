@@ -141,7 +141,7 @@ class LinksUpdate extends DataUpdate {
 		$this->mTemplates = $parserOutput->getTemplates();
 		$this->mExternals = $parserOutput->getExternalLinks();
 		$this->mCategories = $parserOutput->getCategories();
-		$this->mProperties = $parserOutput->getProperties();
+		$this->mProperties = $parserOutput->getPageProperties();
 		$this->mInterwikis = $parserOutput->getInterwikiLinks();
 
 		# Convert the format of the interlanguage links
@@ -375,9 +375,9 @@ class LinksUpdate extends DataUpdate {
 		// These jobs duplicate a subset of the above ones, but can run sooner.
 		// Which ever runs first generally no-ops the other one.
 		$jobs = [];
-		foreach ( $backlinkCache->getCascadeProtectedLinks() as $title ) {
+		foreach ( $backlinkCache->getCascadeProtectedLinkPages() as $page ) {
 			$jobs[] = RefreshLinksJob::newPrioritized(
-				$title,
+				$page,
 				[
 					'causeAction' => $action,
 					'causeAgent' => $agent

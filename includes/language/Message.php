@@ -630,6 +630,26 @@ class Message implements MessageSpecifier, Serializable {
 	}
 
 	/**
+	 * Add parameters that represent user groups
+	 *
+	 * @since 1.38
+	 *
+	 * @param string|string[] ...$params User Group parameters, or a single argument that is
+	 * an array of user group parameters.
+	 *
+	 * @return Message $this
+	 */
+	public function userGroupParams( ...$params ) {
+		if ( isset( $params[0] ) && is_array( $params[0] ) ) {
+			$params = $params[0];
+		}
+		foreach ( $params as $param ) {
+			$this->parameters[] = self::userGroupParam( $param );
+		}
+		return $this;
+	}
+
+	/**
 	 * Add parameters that are times and will be passed through
 	 * Language::time before substitution
 	 *
@@ -870,10 +890,11 @@ class Message implements MessageSpecifier, Serializable {
 
 	/**
 	 * Returns the message as a Content object.
-	 *
+	 * @deprecated since 1.38, MessageContent class is hard-deprecated.
 	 * @return Content
 	 */
 	public function content() {
+		wfDeprecated( __METHOD__, '1.38' );
 		if ( !$this->content ) {
 			$this->content = new MessageContent( $this );
 		}
@@ -1142,6 +1163,17 @@ class Message implements MessageSpecifier, Serializable {
 	}
 
 	/**
+	 * @since 1.38
+	 *
+	 * @param string $userGroup
+	 *
+	 * @return string[] Array with a single "group" key.
+	 */
+	public static function userGroupParam( string $userGroup ) {
+		return [ 'group' => $userGroup ];
+	}
+
+	/**
 	 * @since 1.22
 	 *
 	 * @param int $period
@@ -1267,6 +1299,8 @@ class Message implements MessageSpecifier, Serializable {
 				return [ 'before', $this->getLanguage()->date( $param['date'] ) ];
 			} elseif ( isset( $param['time'] ) ) {
 				return [ 'before', $this->getLanguage()->time( $param['time'] ) ];
+			} elseif ( isset( $param['group'] ) ) {
+				return [ 'before', $this->getLanguage()->getGroupName( $param['group'] ) ];
 			} elseif ( isset( $param['period'] ) ) {
 				return [ 'before', $this->getLanguage()->formatTimePeriod( $param['period'] ) ];
 			} elseif ( isset( $param['size'] ) ) {

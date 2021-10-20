@@ -28,6 +28,7 @@ use Liuggio\StatsdClient\Factory\StatsdDataFactoryInterface;
 use MediaWiki\HookContainer\HookContainer;
 use MediaWiki\HookContainer\HookRunner;
 use MediaWiki\Page\PageIdentity;
+use MediaWiki\Parser\ParserOutputFlags;
 use MediaWiki\Storage\Hook\ParserOutputStashForEditHook;
 use MediaWiki\User\UserEditTracker;
 use MediaWiki\User\UserFactory;
@@ -35,7 +36,6 @@ use MediaWiki\User\UserIdentity;
 use ParserOutput;
 use Psr\Log\LoggerInterface;
 use stdClass;
-use User;
 use Wikimedia\Rdbms\ILoadBalancer;
 use Wikimedia\ScopedCallback;
 use WikiPage;
@@ -213,17 +213,18 @@ class PageEditStash {
 	 *
 	 * @param PageIdentity $page
 	 * @param Content $content
-	 * @param User $user to get parser options from
-	 * @return stdClass|bool Returns edit stash object or false on cache miss
+	 * @param UserIdentity $user to get parser options from
+	 * @return stdClass|false Returns edit stash object or false on cache miss
 	 */
-	public function checkCache( PageIdentity $page, Content $content, User $user ) {
+	public function checkCache( PageIdentity $page, Content $content, UserIdentity $user ) {
+		$legacyUser = $this->userFactory->newFromUserIdentity( $user );
 		if (
 			// The context is not an HTTP POST request
-			!$user->getRequest()->wasPosted() ||
+			!$legacyUser->getRequest()->wasPosted() ||
 			// The context is a CLI script or a job runner HTTP POST request
 			$this->initiator !== self::INITIATOR_USER ||
 			// The editor account is a known bot
-			$user->isBot()
+			$legacyUser->isBot()
 		) {
 			// Avoid wasted queries and statsd pollution
 			return false;
@@ -258,7 +259,7 @@ class PageEditStash {
 			// Assume nothing changed in this time
 			$this->incrStatsByContent( 'cache_hits.presumed_fresh', $content );
 			$logger->debug( "Timestamp-based cache hit for key '{key}'.", $logContext );
-		} elseif ( $user->isAnon() ) {
+		} elseif ( !$user->isRegistered() ) {
 			$lastEdit = $this->lastEditTime( $user );
 			$cacheTime = $editInfo->output->getCacheTime();
 			if ( $lastEdit < $cacheTime ) {
@@ -286,7 +287,7 @@ class PageEditStash {
 			return false;
 		}
 
-		if ( $editInfo->output->getFlag( 'vary-revision' ) ) {
+		if ( $editInfo->output->getOutputFlag( ParserOutputFlags::VARY_REVISION ) ) {
 			// This can be used for the initial parse, e.g. for filters or doUserEditContent(),
 			// but a second parse will be triggered in doEditUpdates() no matter what
 			$logger->info(
@@ -296,16 +297,16 @@ class PageEditStash {
 		} else {
 			static $flagsMaybeReparse = [
 				// Similar to the above if we didn't guess the ID correctly
-				'vary-revision-id',
+				ParserOutputFlags::VARY_REVISION_ID,
 				// Similar to the above if we didn't guess the timestamp correctly
-				'vary-revision-timestamp',
+				ParserOutputFlags::VARY_REVISION_TIMESTAMP,
 				// Similar to the above if we didn't guess the content correctly
-				'vary-revision-sha1',
+				ParserOutputFlags::VARY_REVISION_SHA1,
 				// Similar to the above if we didn't guess page ID correctly
-				'vary-page-id'
+				ParserOutputFlags::VARY_PAGE_ID,
 			];
 			foreach ( $flagsMaybeReparse as $flag ) {
-				if ( $editInfo->output->getFlag( $flag ) ) {
+				if ( $editInfo->output->getOutputFlag( $flag ) ) {
 					$logger->debug(
 						"Cache for key '{key}' has $flag; post-insertion parse possible.",
 						$logContext
@@ -470,7 +471,7 @@ class PageEditStash {
 		$age = time() - (int)wfTimestamp( TS_UNIX, $parserOutput->getCacheTime() );
 		$ttl = min( $parserOutput->getCacheExpiry() - $age, self::MAX_CACHE_TTL );
 		// Avoid extremely stale user signature timestamps (T84843)
-		if ( $parserOutput->getFlag( 'user-signature' ) ) {
+		if ( $parserOutput->getOutputFlag( ParserOutputFlags::USER_SIGNATURE ) ) {
 			$ttl = min( $ttl, self::MAX_SIGNATURE_TTL );
 		}
 

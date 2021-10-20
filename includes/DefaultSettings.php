@@ -4460,17 +4460,6 @@ $wgResourceLoaderDebug = false;
 $wgIncludeLegacyJavaScript = false;
 
 /**
- * Whether to load the jquery.migrate library.
- *
- * This provides jQuery 1.12 features that were removed in jQuery 3.0.
- * See also <https://jquery.com/upgrade-guide/3.0/> and
- * <https://phabricator.wikimedia.org/T280944>.
- *
- * @deprecated since 1.36
- */
-$wgIncludejQueryMigrate = false;
-
-/**
  * ResourceLoader will not generate URLs whose query string is more than
  * this many characters long, and will instead use multiple requests with
  * shorter query strings. Using multiple requests may degrade performance,
@@ -4974,12 +4963,21 @@ $wgAllowImageTag = false;
 $wgTidyConfig = [];
 
 /**
- * Enable legacy media HTML structure in the output from the Parser.  The one
- * that replaces it is described at,
+ * Enable legacy media HTML structure in the output from the Parser.  The
+ * alternative modern HTML structure that replaces it is described at
  * https://www.mediawiki.org/wiki/Parsing/Media_structure
  * @since 1.36
  */
 $wgParserEnableLegacyMediaDOM = true;
+
+/**
+ * Temporary flag to ship the styles for the media HTML structure that replaces
+ * legacy, when $wgParserEnableLegacyMediaDOM is `false`.  This is configured
+ * separately so that it can continue to be served after the latter is disabled
+ * but still in the cache.
+ * @internal
+ */
+$wgUseContentMediaStyles = false;
 
 /**
  * Allow raw, unchecked HTML in "<html>...</html>" sections.
@@ -5699,7 +5697,6 @@ $wgDefaultUserOptions = [
 	'nickname' => '',
 	'pst-cssjs' => 1,
 	'norollbackdiff' => 0,
-	'numberheadings' => 0,
 	'previewonfirst' => 0,
 	'previewontop' => 1,
 	'rcdays' => 7,
@@ -5865,7 +5862,7 @@ $wgBlockDisablesLogin = false;
 /**
  * Flag to enable partial blocks against performing certain actions.
  *
- * @unstable Temporary feature flag, to be removed before the release of 1.37: T280532
+ * @unstable Temporary feature flag, to be removed before the release of 1.38: T280532
  * @var bool
  */
 $wgEnablePartialActionBlocks = false;
@@ -6680,6 +6677,7 @@ $wgGrantPermissions['basic']['patrolmarks'] = true;
 $wgGrantPermissions['basic']['purge'] = true;
 $wgGrantPermissions['basic']['read'] = true;
 $wgGrantPermissions['basic']['writeapi'] = true;
+$wgGrantPermissions['basic']['unwatchedpages'] = true;
 
 $wgGrantPermissions['highvolume']['bot'] = true;
 $wgGrantPermissions['highvolume']['apihighlimits'] = true;
@@ -7552,6 +7550,41 @@ $wgStatsdMetricPrefix = 'MediaWiki';
  * @since 1.28
  */
 $wgStatsdSamplingRates = [];
+
+/**
+ * Metrics output format
+ *
+ * If null, metrics will not be rendered nor sent.
+ * Note: this only affects metrics instantiated by the MetricsFactory service
+ *
+ * @see Wikimedia\Metrics\MetricsFactory::SUPPORTED_OUTPUT_FORMATS
+ * @var string $wgMetricsFormat
+ * @since 1.38
+ */
+$wgMetricsFormat = null;
+
+/**
+ * Metrics output target URI e.g. udp://127.0.0.1:8125
+ *
+ * If null, metrics will not be sent.
+ * Note: this only affects metrics instantiated by the MetricsFactory service
+ *
+ * @var string $wgMetricsTarget
+ * @since 1.38
+ */
+$wgMetricsTarget = null;
+
+/**
+ * Metrics service name prefix
+ *
+ * Required.  Must not be zero-length.
+ * Defaults to: 'mediawiki'
+ * Note: this only affects metrics instantiated by the MetricsFactory service
+ *
+ * @var string $wgMetricsPrefix
+ * @since 1.38
+ */
+$wgMetricsPrefix = 'mediawiki';
 
 /**
  * InfoAction retrieves a list of transclusion links (both to and from).
@@ -9642,6 +9675,8 @@ $wgHTTPProxy = '';
  * Local virtual hosts.
  *
  * This lists domains that are configured as virtual hosts on the same machine.
+ * It is expected that each domain can be identified by its hostname alone,
+ * without any ports.
  *
  * This affects the following:
  * - MWHttpRequest: If a request is to be made to a domain listed here, or any
@@ -9654,12 +9689,16 @@ $wgHTTPProxy = '';
 $wgLocalVirtualHosts = [];
 
 /**
- * Proxy to use to requests to domains in $wgLocalVirtualHosts
+ * Reverse proxy to use for requests to domains in $wgLocalVirtualHosts
  *
- * If set to false, no proxy will be used for local requests
+ * When used, any port in the request URL will be dropped. The behavior of
+ * redirects and cookies is dependent upon the reverse proxy actually in use,
+ * as MediaWiki doesn't implement any special handling for them.
+ *
+ * If set to false, no reverse proxy will be used for local requests.
  *
  * @var string|bool
- * @since 1.37
+ * @since 1.38
  */
 $wgLocalHTTPProxy = false;
 

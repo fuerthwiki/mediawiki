@@ -12,7 +12,7 @@
 	 * @param {Object} response Response data
 	 */
 	function parsePreviewRequest( response ) {
-		var newList, $displaytitle, $content, $parent, $list, arrow, $previewHeader, $wikiPreview, $editform;
+		var indicators, newList, $displaytitle, $content, $parent, $list, arrow, $previewHeader, $wikiPreview, $editform;
 
 		$editform = $( '#editform' );
 		$wikiPreview = $( '#wikiPreview' );
@@ -26,23 +26,25 @@
 			) );
 		}
 
-		newList = [];
-		// eslint-disable-next-line no-jquery/no-each-util
-		$.each( response.parse.indicators, function ( name, indicator ) {
-			newList.push(
-				$( '<div>' )
-					.addClass( 'mw-indicator' )
-					.attr( 'id', mw.util.escapeIdForAttribute( 'mw-indicator-' + name ) )
-					.html( indicator )
-					.get( 0 ),
-				// Add a whitespace between the <div>s because
-				// they get displayed with display: inline-block
-				document.createTextNode( '\n' )
-			);
+		// eslint-disable-next-line no-jquery/no-map-util
+		indicators = $.map( response.parse.indicators, function ( indicator, name ) {
+			return $( '<div>' )
+				.addClass( 'mw-indicator' )
+				.attr( 'id', mw.util.escapeIdForAttribute( 'mw-indicator-' + name ) )
+				.html( indicator )
+				.get( 0 );
 		} );
-		if ( newList.length ) {
-			mw.hook( 'wikipage.indicators' ).fire( $( newList ) );
+		if ( indicators.length ) {
+			mw.hook( 'wikipage.indicators' ).fire( $( indicators ) );
 		}
+
+		// Add whitespace between the <div>s because
+		// they get displayed with display: inline-block
+		newList = [];
+		indicators.forEach( function ( indicator ) {
+			newList.push( indicator, document.createTextNode( '\n' ) );
+		} );
+
 		$( '.mw-indicators' ).empty().append( newList );
 
 		if ( response.parse.displaytitle ) {
@@ -138,7 +140,7 @@
 			.addClass( 'previewnote' )
 			.append( $( '<h2>' )
 				.attr( 'id', 'mw-previewheader' )
-				.text( mw.message( 'preview' ).escaped() )
+				.text( mw.msg( 'preview' ) )
 			)
 			.append( $( '<div>' )
 				.addClass( 'warningbox' )
@@ -260,32 +262,30 @@
 
 			var diffPar = {
 				action: 'compare',
+				fromtitle: mw.config.get( 'wgPageName' ),
+				totitle: mw.config.get( 'wgPageName' ),
 				toslots: 'main',
 				// Remove trailing whitespace for consistency with EditPage diffs.
 				// TODO trimEnd() when we can use that.
 				'totext-main': $textbox.textSelection( 'getContents' ).replace( /\s\s*$/, '' ),
-				'tocontentmodel-main': 'wikitext',
-				'fromcontentmodel-main': 'wikitext',
+				'tocontentmodel-main': mw.config.get( 'wgPageContentModel' ),
+				topst: true,
+				slots: 'main',
 				uselang: mw.config.get( 'wgUserLanguage' )
 			};
 			if ( section ) {
-				diffPar.totitle = mw.config.get( 'wgPageName' );
 				diffPar[ 'tosection-main' ] = section;
 			}
 			if ( mw.config.get( 'wgArticleId' ) === 0 ) {
 				diffPar.fromslots = 'main';
+				diffPar[ 'fromcontentmodel-main' ] = mw.config.get( 'wgPageContentModel' );
 				diffPar[ 'fromtext-main' ] = '';
-			} else {
-				diffPar.fromtitle = mw.config.get( 'wgPageName' );
-				if ( section ) {
-					diffPar[ 'fromsection-main' ] = section;
-				}
 			}
 			diffRequest = api.post( diffPar );
 
 			// Wait for the summary before showing the diff so the page doesn't jump twice
 			$.when( diffRequest, parseRequest ).done( function ( response ) {
-				var diffHtml = response[ 0 ].compare[ '*' ];
+				var diffHtml = response[ 0 ].compare.bodies.main;
 				$wikiDiff.find( 'table.diff tbody' ).html( diffHtml );
 				mw.hook( 'wikipage.diff' ).fire( $wikiDiff.find( 'table.diff' ) );
 				$wikiDiff.show();
@@ -341,7 +341,7 @@
 			var $errorMsg = api.getErrorMessage( result );
 			$errorBox = $( '<div>' )
 				.addClass( 'errorbox' )
-				.append( $( '<strong>' ).text( mw.message( 'previewerrortext' ).text() ) )
+				.append( $( '<strong>' ).text( mw.msg( 'previewerrortext' ) ) )
 				.append( $errorMsg );
 			$wikiDiff.hide();
 			$wikiPreview.hide().before( $errorBox );
@@ -387,6 +387,9 @@
 		}
 
 		if ( !document.getElementById( 'wikiDiff' ) && document.getElementById( 'wikiPreview' ) ) {
+			var alignStart, rtlDir;
+			rtlDir = $( '#wpTextbox1' ).attr( 'dir' ) === 'rtl';
+			alignStart = rtlDir ? 'right' : 'left';
 			$( '#wikiPreview' ).after(
 				$( '<div>' )
 					.hide()
@@ -396,7 +399,10 @@
 					// * diff-editfont-sans-serif
 					// * diff-editfont-serif
 					.addClass( 'diff-editfont-' + mw.user.options.get( 'editfont' ) )
-					// TODO: Set diff-contentalign-* classes
+					// The following classes are used here:
+					// * diff-contentalign-left
+					// * diff-contentalign-right
+					.addClass( 'diff-contentalign-' + alignStart )
 					.append(
 						$( '<table>' ).addClass( 'diff' ).append(
 							$( '<col>' ).addClass( 'diff-marker' ),

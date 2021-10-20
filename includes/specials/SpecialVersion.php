@@ -85,7 +85,7 @@ class SpecialVersion extends SpecialPage {
 		$this->setHeaders();
 		$this->outputHeader();
 		$out = $this->getOutput();
-		$out->allowClickjacking();
+		$out->setPreventClickjacking( false );
 
 		// Explode the sub page information into useful bits
 		$parts = explode( '/', (string)$par );
@@ -276,7 +276,7 @@ class SpecialVersion extends SpecialPage {
 		];
 
 		if ( defined( 'INTL_ICU_VERSION' ) ) {
-			$software['[http://site.icu-project.org/ ICU]'] = INTL_ICU_VERSION;
+			$software['[https://icu.unicode.org/ ICU]'] = INTL_ICU_VERSION;
 		}
 
 		// Allow a hook to add/remove items.

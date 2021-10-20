@@ -23,6 +23,7 @@ namespace MediaWiki\Preferences;
 use Html;
 use MediaWiki\Config\ServiceOptions;
 use MediaWiki\MediaWikiServices;
+use MediaWiki\Parser\ParserOutputFlags;
 use MediaWiki\SpecialPage\SpecialPageFactory;
 use MediaWiki\User\UserIdentity;
 use MessageLocalizer;
@@ -133,23 +134,23 @@ class SignatureValidator {
 				$details = $this->getLintErrorDetails( $error );
 				$location = $this->getLintErrorLocation( $error );
 				// Messages used here:
-				// * linter-pager-bogus-image-options-details
-				// * linter-pager-deletable-table-tag-details
-				// * linter-pager-html5-misnesting-details
-				// * linter-pager-misc-tidy-replacement-issues-details
-				// * linter-pager-misnested-tag-details
-				// * linter-pager-missing-end-tag-details
-				// * linter-pager-multi-colon-escape-details
-				// * linter-pager-multiline-html-table-in-list-details
-				// * linter-pager-multiple-unclosed-formatting-tags-details
-				// * linter-pager-obsolete-tag-details
-				// * linter-pager-pwrap-bug-workaround-details
-				// * linter-pager-self-closed-tag-details
-				// * linter-pager-stripped-tag-details
-				// * linter-pager-tidy-font-bug-details
-				// * linter-pager-tidy-whitespace-bug-details
-				// * linter-pager-unclosed-quotes-in-heading-details
-				$label = $this->localizer->msg( "linter-pager-{$error['type']}-details" )->parse();
+				// * linterror-bogus-image-options
+				// * linterror-deletable-table-tag
+				// * linterror-html5-misnesting
+				// * linterror-misc-tidy-replacement-issues
+				// * linterror-misnested-tag
+				// * linterror-missing-end-tag
+				// * linterror-multi-colon-escape
+				// * linterror-multiline-html-table-in-list
+				// * linterror-multiple-unclosed-formatting-tags
+				// * linterror-obsolete-tag
+				// * linterror-pwrap-bug-workaround
+				// * linterror-self-closed-tag
+				// * linterror-stripped-tag
+				// * linterror-tidy-font-bug
+				// * linterror-tidy-whitespace-bug
+				// * linterror-unclosed-quotes-in-heading
+				$label = $this->localizer->msg( "linterror-{$error['type']}" )->parse();
 				$docsLink = new \OOUI\ButtonWidget( [
 					'href' =>
 						"https://www.mediawiki.org/wiki/Special:MyLanguage/Help:Lint_errors/{$error['type']}",
@@ -214,7 +215,7 @@ class SignatureValidator {
 		);
 
 		// The signature wikitext contains another '~~~~' or similar (T230652)
-		if ( $parser->getOutput()->getFlag( 'user-signature' ) ) {
+		if ( $parser->getOutput()->getOutputFlag( ParserOutputFlags::USER_SIGNATURE ) ) {
 			return false;
 		}
 

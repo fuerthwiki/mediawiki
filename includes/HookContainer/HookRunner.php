@@ -332,6 +332,7 @@ class HookRunner implements
 	\MediaWiki\Hook\SpecialBlockModifyFormFieldsHook,
 	\MediaWiki\Hook\SpecialContributionsBeforeMainOutputHook,
 	\MediaWiki\Hook\SpecialContributions__formatRow__flagsHook,
+	\MediaWiki\Hook\SpecialExportGetExtraPagesHook,
 	\MediaWiki\Hook\SpecialContributions__getForm__filtersHook,
 	\MediaWiki\Hook\SpecialListusersDefaultQueryHook,
 	\MediaWiki\Hook\SpecialListusersFormatRowHook,
@@ -374,7 +375,6 @@ class HookRunner implements
 	\MediaWiki\Hook\UnblockUserHook,
 	\MediaWiki\Hook\UndeleteForm__showHistoryHook,
 	\MediaWiki\Hook\UndeleteForm__showRevisionHook,
-	\MediaWiki\Hook\UndeleteForm__undeleteHook,
 	\MediaWiki\Hook\UndeletePageToolLinksHook,
 	\MediaWiki\Hook\UnitTestsAfterDatabaseSetupHook,
 	\MediaWiki\Hook\UnitTestsBeforeDatabaseTeardownHook,
@@ -3528,6 +3528,13 @@ class HookRunner implements
 		);
 	}
 
+	public function onSpecialExportGetExtraPages( $inputPages, &$extraPages ) {
+		return $this->container->run(
+			'SpecialExportGetExtraPages',
+			[ $inputPages, &$extraPages ]
+		);
+	}
+
 	public function onSpecialListusersDefaultQuery( $pager, &$query ) {
 		return $this->container->run(
 			'SpecialListusersDefaultQuery',
@@ -3895,13 +3902,6 @@ class HookRunner implements
 	public function onUndeleteForm__showRevision( &$archive, $title ) {
 		return $this->container->run(
 			'UndeleteForm::showRevision',
-			[ &$archive, $title ]
-		);
-	}
-
-	public function onUndeleteForm__undelete( &$archive, $title ) {
-		return $this->container->run(
-			'UndeleteForm::undelete',
 			[ &$archive, $title ]
 		);
 	}

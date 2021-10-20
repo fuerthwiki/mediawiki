@@ -297,6 +297,7 @@ class SpecialPageFactory {
 			'class' => \SpecialTrackingCategories::class,
 			'services' => [
 				'LinkBatchFactory',
+				'TrackingCategories',
 			]
 		],
 
@@ -765,6 +766,7 @@ class SpecialPageFactory {
 			'services' => [
 				'DBLoadBalancer',
 				'WikiExporterFactory',
+				'TitleFormatter',
 			]
 		],
 		'Import' => [

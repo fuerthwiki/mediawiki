@@ -35,6 +35,7 @@ use MediaWiki\Linker\LinkTarget;
 use MediaWiki\MediaWikiServices;
 use MediaWiki\Page\PageIdentity;
 use MediaWiki\Page\PageReference;
+use MediaWiki\Parser\ParserOutputFlags;
 use MediaWiki\Preferences\SignatureValidator;
 use MediaWiki\Revision\RevisionAccessException;
 use MediaWiki\Revision\RevisionRecord;
@@ -198,9 +199,8 @@ class Parser {
 
 	/**
 	 * @var StripState
-	 * @deprecated since 1.35, use Parser::getStripState()
 	 */
-	public $mStripState;
+	private $mStripState;
 
 	/**
 	 * @var LinkHolderArray
@@ -364,6 +364,9 @@ class Parser {
 	/** @var HttpRequestFactory */
 	private $httpRequestFactory;
 
+	/** @var TrackingCategories */
+	private $trackingCategories;
+
 	/**
 	 * @internal For use by ServiceWiring
 	 */
@@ -411,6 +414,7 @@ class Parser {
 	 * @param UserFactory $userFactory
 	 * @param TitleFormatter $titleFormatter
 	 * @param HttpRequestFactory $httpRequestFactory
+	 * @param TrackingCategories $trackingCategories
 	 */
 	public function __construct(
 		ServiceOptions $svcOptions,
@@ -430,7 +434,8 @@ class Parser {
 		UserOptionsLookup $userOptionsLookup,
 		UserFactory $userFactory,
 		TitleFormatter $titleFormatter,
-		HttpRequestFactory $httpRequestFactory
+		HttpRequestFactory $httpRequestFactory,
+		TrackingCategories $trackingCategories
 	) {
 		if ( ParserFactory::$inParserFactory === 0 ) {
 			// Direct construction of Parser was deprecated in 1.34 and
@@ -476,6 +481,7 @@ class Parser {
 		$this->userFactory = $userFactory;
 		$this->titleFormatter = $titleFormatter;
 		$this->httpRequestFactory = $httpRequestFactory;
+		$this->trackingCategories = $trackingCategories;
 
 		// These steps used to be done in "::firstCallInit()"
 		// (if you're chasing a reference from some old code)
@@ -662,18 +668,18 @@ class Parser {
 		 * {{DISPLAYTITLE:...}} is present. DISPLAYTITLE takes precedence over
 		 * automatic link conversion.
 		 */
-		if ( !( $options->getDisableTitleConversion()
-			|| isset( $this->mDoubleUnderscores['nocontentconvert'] )
-			|| isset( $this->mDoubleUnderscores['notitleconvert'] )
-			|| $this->mOutput->getDisplayTitle() !== false )
+		if ( !$options->getDisableTitleConversion()
+			&& !isset( $this->mDoubleUnderscores['nocontentconvert'] )
+			&& !isset( $this->mDoubleUnderscores['notitleconvert'] )
+			&& $this->mOutput->getDisplayTitle() === false
 		) {
-			$convruletitle = $this->getTargetLanguageConverter()->getConvRuleTitle();
-			if ( $convruletitle ) {
-				$this->mOutput->setTitleText( $convruletitle );
-			} else {
+			$titleText = $this->getTargetLanguageConverter()->getConvRuleTitle();
+			if ( $titleText === false ) {
 				$titleText = $this->getTargetLanguageConverter()->convertTitle( $page );
-				$this->mOutput->setTitleText( $titleText );
 			}
+			$this->mOutput->setTitleText(
+				htmlspecialchars( $titleText, ENT_NOQUOTES )
+			);
 		}
 
 		# Compute runtime adaptive expiry if set
@@ -1166,6 +1172,7 @@ class Parser {
 	 * Get a user either from the user set on Parser if it's set,
 	 * or from the ParserOptions object otherwise.
 	 *
+	 * @since 1.36
 	 * @return UserIdentity
 	 */
 	public function getUserIdentity(): UserIdentity {
@@ -1620,9 +1627,10 @@ class Parser {
 	/**
 	 * Shorthand for getting a Language Converter for Target language
 	 *
+	 * @since public since 1.38
 	 * @return ILanguageConverter
 	 */
-	private function getTargetLanguageConverter(): ILanguageConverter {
+	public function getTargetLanguageConverter(): ILanguageConverter {
 		return $this->languageConverterFactory->getLanguageConverter(
 			$this->getTargetLanguage()
 		);
@@ -2942,9 +2950,11 @@ class Parser {
 		# does no harm if $current and $max are present but are unnecessary for the message
 		# Not doing ->inLanguage( $this->mOptions->getUserLangObj() ), since this is shown
 		# only during preview, and that would split the parser cache unnecessarily.
-		$warning = wfMessage( "$limitationType-warning" )->numParams( $current, $max )
-			->text();
-		$this->mOutput->addWarning( $warning );
+		$this->mOutput->addWarningMsg(
+			"$limitationType-warning",
+			Message::numParam( $current ),
+			Message::numParam( $max )
+		);
 		$this->addTrackingCategory( "$limitationType-category" );
 	}
 
@@ -3229,8 +3239,10 @@ class Parser {
 					. wfMessage( 'parser-template-loop-warning', $titleText )->inContentLanguage()->text()
 					. '</span>';
 				$this->addTrackingCategory( 'template-loop-category' );
-				$this->mOutput->addWarning( wfMessage( 'template-loop-warning',
-					wfEscapeWikiText( $titleText ) )->text() );
+				$this->mOutput->addWarningMsg(
+					'template-loop-warning',
+					Message::plaintextParam( $titleText )
+				);
 				$this->logger->debug( __METHOD__ . ": template loop broken at '$titleText'" );
 			}
 		}
@@ -3275,7 +3287,7 @@ class Parser {
 			// T91154: {{=}} is deprecated when it doesn't expand to `=`;
 			// use {{Template:=}} if you must.
 			$this->addTrackingCategory( 'template-equals-category' );
-			$this->mOutput->addWarning( wfMessage( 'template-equals-warning' )->text() );
+			$this->mOutput->addWarningMsg( 'template-equals-warning' );
 		}
 
 		# Replace raw HTML by a placeholder
@@ -3571,7 +3583,7 @@ class Parser {
 				} catch ( RevisionAccessException $e ) {
 					$sha1 = null;
 				}
-				$this->setOutputFlag( 'vary-revision-sha1', 'Self transclusion' );
+				$this->setOutputFlag( ParserOutputFlags::VARY_REVISION_SHA1, 'Self transclusion' );
 				$this->getOutput()->setRevisionUsedSha1Base36( $sha1 );
 			}
 		}
@@ -3701,8 +3713,8 @@ class Parser {
 					$text = false;
 					break;
 				}
-				$content = $message->content();
 				$text = $message->plain();
+				break;
 			} else {
 				break;
 			}
@@ -4071,7 +4083,7 @@ class Parser {
 
 		# Cache all double underscores in the database
 		foreach ( $this->mDoubleUnderscores as $key => $val ) {
-			$this->mOutput->setProperty( $key, '' );
+			$this->mOutput->setPageProperty( $key, '' );
 		}
 
 		return $text;
@@ -4084,7 +4096,9 @@ class Parser {
 	 * @since 1.19 method is public
 	 */
 	public function addTrackingCategory( $msg ) {
-		return $this->mOutput->addTrackingCategory( $msg, $this->getTitle() );
+		return $this->trackingCategories->addTrackingCategory(
+			$this->mOutput, $msg, $this->getPage()
+		);
 	}
 
 	/**
@@ -4135,7 +4149,7 @@ class Parser {
 		# Allow user to remove the "new section"
 		# link via __NONEWSECTIONLINK__
 		if ( isset( $this->mDoubleUnderscores['nonewsectionlink'] ) ) {
-			$this->mOutput->hideNewSection( true );
+			$this->mOutput->setHideNewSection( true );
 		}
 
 		# if the string __FORCETOC__ (not case-sensitive) occurs in the HTML,
@@ -4341,16 +4355,6 @@ class Parser {
 				$refers["${fallbackArrayKey}_$i"] = true;
 			} else {
 				$refers[$fallbackArrayKey] = true;
-			}
-
-			# Don't number the heading if it is the only one (looks silly)
-			if ( count( $matches[3] ) > 1 && $this->mOptions->getNumberHeadings() ) {
-				# the two are different if the line contains a link
-				$headline = Html::element(
-					'span',
-					[ 'class' => 'mw-headline-number' ],
-					$numbering
-				) . ' ' . $headline;
 			}
 
 			if ( $enoughToc && ( !isset( $maxTocLevel ) || $toclevel < $maxTocLevel ) ) {
@@ -4587,7 +4591,7 @@ class Parser {
 				'~~~' => $sigText
 			] );
 			# The main two signature forms used above are time-sensitive
-			$this->setOutputFlag( 'user-signature', 'User signature detected' );
+			$this->setOutputFlag( ParserOutputFlags::USER_SIGNATURE, 'User signature detected' );
 		}
 
 		# Context links ("pipe tricks"): [[|name]] and [[name (context)|]]
@@ -5134,7 +5138,7 @@ class Parser {
 							break;
 						case 'gallery-internal-link':
 							$linkValue = $this->stripAltText( $match, false );
-							if ( preg_match( '/^-{R|(.*)}-$/', $linkValue ) ) {
+							if ( preg_match( '/^-{R\|(.*)}-$/', $linkValue ) ) {
 								// Result of LanguageConverter::markNoConversion
 								// invoked on an external link.
 								$linkValue = substr( $linkValue, 4, -2 );
@@ -5987,7 +5991,7 @@ class Parser {
 	 */
 	public function setDefaultSort( $sort ) {
 		$this->mDefaultSort = $sort;
-		$this->mOutput->setProperty( 'defaultsort', $sort );
+		$this->mOutput->setPageProperty( 'defaultsort', $sort );
 	}
 
 	/**
@@ -6363,7 +6367,7 @@ class Parser {
 	 * @param string $reason
 	 */
 	private function setOutputFlag( string $flag, string $reason ): void {
-		$this->mOutput->setFlag( $flag );
+		$this->mOutput->setOutputFlag( $flag );
 		$name = $this->getTitle()->getPrefixedText();
 		$this->logger->debug( __METHOD__ . ": set $flag flag on '$name'; $reason" );
 	}

@@ -37,6 +37,7 @@ class HistoryPager extends ReverseChronologicalPager {
 	 * @var bool|stdClass
 	 */
 	public $lastRow = false;
+	public $lastResultOffset = false;
 
 	public $counter, $historyPage, $buttons, $conds;
 
@@ -165,7 +166,7 @@ class HistoryPager extends ReverseChronologicalPager {
 	 */
 	public function formatRow( $row ) {
 		if ( $this->lastRow ) {
-			$resultOffset = $this->counter - 1;
+			$firstInList = $this->counter == 1;
 			$this->counter++;
 
 			$notifTimestamp = $this->getConfig()->get( 'ShowUpdatedMarker' )
@@ -173,11 +174,13 @@ class HistoryPager extends ReverseChronologicalPager {
 					->getTitleNotificationTimestamp( $this->getUser(), $this->getTitle() )
 				: false;
 
-			$s = $this->historyLine( $this->lastRow, $row, $notifTimestamp, $resultOffset );
+			$s = $this->historyLine( $this->lastRow, $row, $notifTimestamp,
+				$firstInList, $this->lastResultOffset );
 		} else {
 			$s = '';
 		}
 		$this->lastRow = $row;
+		$this->lastResultOffset = $this->getResultOffset();
 
 		return $s;
 	}
@@ -193,7 +196,7 @@ class HistoryPager extends ReverseChronologicalPager {
 		$title = $this->getTitle();
 		foreach ( $this->mResult as $row ) {
 			if ( $row->rev_parent_id ) {
-				$revIds[] = $row->rev_parent_id;
+				$revIds[] = (int)$row->rev_parent_id;
 			}
 			if ( $row->user_name !== null ) {
 				$batch->add( NS_USER, $row->user_name );
@@ -290,7 +293,7 @@ class HistoryPager extends ReverseChronologicalPager {
 	}
 
 	private function getRevisionButton( $name, $msg ) {
-		$this->preventClickjacking();
+		$this->setPreventClickjacking( true );
 		$element = Html::element(
 			'button',
 			[
@@ -310,7 +313,7 @@ class HistoryPager extends ReverseChronologicalPager {
 		}
 
 		if ( $this->lastRow ) {
-			$resultOffset = $this->counter - 1;
+			$firstInList = $this->counter == 1;
 			if ( $this->mIsBackwards ) {
 				# Next row is unknown, but for UI reasons, probably exists if an offset has been specified
 				if ( $this->mOffset == '' ) {
@@ -329,7 +332,8 @@ class HistoryPager extends ReverseChronologicalPager {
 					->getTitleNotificationTimestamp( $this->getUser(), $this->getTitle() )
 				: false;
 
-			$s = $this->historyLine( $this->lastRow, $next, $notifTimestamp, $resultOffset );
+			$s = $this->historyLine( $this->lastRow, $next, $notifTimestamp,
+				$firstInList, $this->lastResultOffset );
 		} else {
 			$s = '';
 		}
@@ -367,11 +371,14 @@ class HistoryPager extends ReverseChronologicalPager {
 	 * @param mixed $next The database row corresponding to the next line
 	 *   (chronologically previous)
 	 * @param bool|string $notificationtimestamp
+	 * @param bool $firstInList Whether this row corresponds to the first
+	 *   displayed on this history page.
 	 * @param int $resultOffset The offset into the current result set
 	 * @return string HTML output for the row
 	 */
-	private function historyLine( $row, $next, $notificationtimestamp, $resultOffset ) {
-		$firstInList = $resultOffset === 0;
+	private function historyLine( $row, $next, $notificationtimestamp,
+		$firstInList, $resultOffset
+	) {
 		$revRecord = $this->revisions[$resultOffset];
 
 		if ( is_object( $next ) ) {
@@ -408,7 +415,7 @@ class HistoryPager extends ReverseChronologicalPager {
 		// change tags
 		$visibility = $revRecord->getVisibility();
 		if ( $canRevDelete || $this->showTagEditUI ) {
-			$this->preventClickjacking();
+			$this->setPreventClickjacking( true );
 			// If revision was hidden from sysops and we don't need the checkbox
 			// for anything else, disable it
 			if ( !$this->showTagEditUI
@@ -487,7 +494,7 @@ class HistoryPager extends ReverseChronologicalPager {
 					[ 'verify', 'noBrackets' ]
 				);
 				if ( $rollbackLink ) {
-					$this->preventClickjacking();
+					$this->setPreventClickjacking( true );
 					$tools[] = $rollbackLink;
 				}
 			}
@@ -723,11 +730,12 @@ class HistoryPager extends ReverseChronologicalPager {
 	}
 
 	/**
-	 * This is called if a write operation is possible from the generated HTML
-	 * @param bool $enable
+	 * Set the "prevent clickjacking" flag; for example if a write operation
+	 * if possible from the generated HTML.
+	 * @param bool $flag
 	 */
-	private function preventClickjacking( $enable = true ) {
-		$this->preventClickjacking = $enable;
+	private function setPreventClickjacking( bool $flag ) {
+		$this->preventClickjacking = $flag;
 	}
 
 	/**

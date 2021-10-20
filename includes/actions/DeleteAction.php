@@ -21,7 +21,10 @@
 use MediaWiki\Cache\BacklinkCacheFactory;
 use MediaWiki\Linker\LinkRenderer;
 use MediaWiki\MediaWikiServices;
+use MediaWiki\Page\PageIdentity;
+use MediaWiki\Page\PageReference;
 use MediaWiki\Permissions\PermissionStatus;
+use MediaWiki\User\UserOptionsLookup;
 use MediaWiki\Watchlist\WatchlistManager;
 
 /**
@@ -30,6 +33,19 @@ use MediaWiki\Watchlist\WatchlistManager;
  * @ingroup Actions
  */
 class DeleteAction extends FormlessAction {
+
+	/**
+	 * Constants used to localize form fields
+	 */
+	protected const MSG_REASON_DROPDOWN = 'reason-dropdown';
+	protected const MSG_REASON_DROPDOWN_SUPPRESS = 'reason-dropdown-suppress';
+	protected const MSG_REASON_DROPDOWN_OTHER = 'reason-dropdown-other';
+	protected const MSG_COMMENT = 'comment';
+	protected const MSG_REASON_OTHER = 'reason-other';
+	protected const MSG_SUBMIT = 'submit';
+	protected const MSG_LEGEND = 'legend';
+	protected const MSG_EDIT_REASONS = 'edit-reasons';
+	protected const MSG_EDIT_REASONS_SUPPRESS = 'edit-reasons-suppress';
 
 	/** @var WatchlistManager */
 	protected $watchlistManager;
@@ -40,6 +56,12 @@ class DeleteAction extends FormlessAction {
 	/** @var BacklinkCacheFactory */
 	private $backlinkCacheFactory;
 
+	/** @var ReadOnlyMode */
+	protected $readOnlyMode;
+
+	/** @var UserOptionsLookup */
+	protected $userOptionsLookup;
+
 	/**
 	 * @inheritDoc
 	 */
@@ -49,6 +71,8 @@ class DeleteAction extends FormlessAction {
 		$this->watchlistManager = $services->getWatchlistManager();
 		$this->linkRenderer = $services->getLinkRenderer();
 		$this->backlinkCacheFactory = $services->getBacklinkCacheFactory();
+		$this->readOnlyMode = $services->getReadOnlyMode();
+		$this->userOptionsLookup = $services->getUserOptionsLookup();
 	}
 
 	public function getName() {
@@ -71,140 +95,122 @@ class DeleteAction extends FormlessAction {
 		$context = $this->getContext();
 		$user = $context->getUser();
 		$request = $context->getRequest();
+		$outputPage = $context->getOutput();
 
-		# Check permissions
-		$permissionStatus = PermissionStatus::newEmpty();
-		if ( !$context->getAuthority()->authorizeWrite( 'delete', $title, $permissionStatus ) ) {
-			throw new PermissionsError( 'delete', $permissionStatus );
-		}
-
-		# Read-only check...
-		if ( wfReadOnly() ) {
-			throw new ReadOnlyError;
-		}
+		$this->runExecuteChecks( $title );
+		$this->prepareOutput( $context->msg( 'delete-confirm', $title->getPrefixedText() ), $title );
 
 		# Better double-check that it hasn't been deleted yet!
 		$article->getPage()->loadPageData(
 			$request->wasPosted() ? WikiPage::READ_LATEST : WikiPage::READ_NORMAL
 		);
 		if ( !$article->getPage()->exists() ) {
-			$deleteLogPage = new LogPage( 'delete' );
-			$outputPage = $context->getOutput();
 			$outputPage->setPageTitle( $context->msg( 'cannotdelete-title', $title->getPrefixedText() ) );
 			$outputPage->wrapWikiMsg( "<div class=\"error mw-error-cannotdelete\">\n$1\n</div>",
 				[ 'cannotdelete', wfEscapeWikiText( $title->getPrefixedText() ) ]
 			);
-			$outputPage->addHTML(
-				Xml::element( 'h2', null, $deleteLogPage->getName()->text() )
-			);
-			LogEventsList::showLogExtract(
-				$outputPage,
-				'delete',
-				$title
-			);
+			$this->showLogEntries( $title );
 
 			return;
 		}
 
-		$deleteReasonList = $request->getText( 'wpDeleteReasonList', 'other' );
-		$deleteReason = $request->getText( 'wpReason' );
+		$token = $request->getVal( 'wpEditToken' );
+		if ( !$request->wasPosted() || !$user->matchEditToken( $token, [ 'delete', $title->getPrefixedText() ] ) ) {
+			$this->tempConfirmDelete();
+			return;
+		}
 
-		if ( $deleteReasonList == 'other' ) {
-			$reason = $deleteReason;
-		} elseif ( $deleteReason != '' ) {
-			// Entry from drop down menu + additional comment
-			$colonseparator = wfMessage( 'colon-separator' )->inContentLanguage()->text();
-			$reason = $deleteReasonList . $colonseparator . $deleteReason;
+		$permissionStatus = PermissionStatus::newEmpty();
+		if ( !$context->getAuthority()->authorizeWrite(
+			'delete', $title, $permissionStatus
+		) ) {
+			throw new PermissionsError( 'delete', $permissionStatus );
+		}
+
+		# Flag to hide all contents of the archived revisions
+		$suppress = $request->getCheck( 'wpSuppress' ) &&
+			$context->getAuthority()->isAllowed( 'suppressrevision' );
+
+		$error = '';
+		$context = $this->getContext();
+		$user = $context->getUser();
+		$status = $this->getWikiPage()->doDeleteArticleReal( $this->getDeleteReason(), $user, $suppress, null, $error );
+
+		if ( $status->isOK() ) {
+			$deleted = $this->getTitle()->getPrefixedText();
+
+			$outputPage->setPageTitle( $this->msg( 'actioncomplete' ) );
+			$outputPage->setRobotPolicy( 'noindex,nofollow' );
+
+			if ( $status->isGood() ) {
+				$loglink = '[[Special:Log/delete|' . $this->msg( 'deletionlog' )->text() . ']]';
+				$outputPage->addWikiMsg( 'deletedtext', wfEscapeWikiText( $deleted ), $loglink );
+				$this->getHookRunner()->onArticleDeleteAfterSuccess( $this->getTitle(), $outputPage );
+			} else {
+				$outputPage->addWikiMsg( 'delete-scheduled', wfEscapeWikiText( $deleted ) );
+			}
+
+			$outputPage->returnToMain();
 		} else {
-			$reason = $deleteReasonList;
-		}
+			$outputPage->setPageTitle( $this->msg( 'cannotdelete-title', $this->getTitle()->getPrefixedText() ) );
 
-		if ( $request->wasPosted() && $user->matchEditToken( $request->getVal( 'wpEditToken' ),
-				[ 'delete', $this->getTitle()->getPrefixedText() ] )
-		) {
-			# Flag to hide all contents of the archived revisions
-
-			$suppress = $request->getCheck( 'wpSuppress' ) &&
-				$context->getAuthority()->isAllowed( 'suppressrevision' );
-
-			$article->doDelete( $reason, $suppress );
-
-			$this->watchlistManager->setWatch( $request->getCheck( 'wpWatch' ), $context->getAuthority(), $title );
-
-			return;
-		}
-
-		// Generate deletion reason
-		$hasHistory = false;
-		if ( !$reason ) {
-			try {
-				$reason = $article->getPage()
-					->getAutoDeleteReason( $hasHistory );
-			} catch ( Exception $e ) {
-				# if a page is horribly broken, we still want to be able to
-				# delete it. So be lenient about errors here.
-				wfDebug( "Error while building auto delete summary: $e" );
-				$reason = '';
-			}
-		}
-
-		// If the page has a history, insert a warning
-		if ( $hasHistory ) {
-			$title = $this->getTitle();
-
-			// The following can use the real revision count as this is only being shown for users
-			// that can delete this page.
-			// This, as a side-effect, also makes sure that the following query isn't being run for
-			// pages with a larger history, unless the user has the 'bigdelete' right
-			// (and is about to delete this page).
-			$dbr = wfGetDB( DB_REPLICA );
-			$revisions = $edits = (int)$dbr->selectField(
-				'revision',
-				'COUNT(rev_page)',
-				[ 'rev_page' => $title->getArticleID() ],
-				__METHOD__
-			);
-
-			// @todo i18n issue/patchwork message
-			$context->getOutput()->addHTML(
-				'<strong class="mw-delete-warning-revisions">' .
-				$context->msg( 'historywarning' )->numParams( $revisions )->parse() .
-				$context->msg( 'word-separator' )->escaped() . $this->linkRenderer->makeKnownLink(
-					$title,
-					$context->msg( 'history' )->text(),
-					[],
-					[ 'action' => 'history' ] ) .
-				'</strong>'
-			);
-
-			if ( $title->isBigDeletion() ) {
-				global $wgDeleteRevisionsLimit;
-				$context->getOutput()->wrapWikiMsg( "<div class='error'>\n$1\n</div>\n",
-					[
-						'delete-warning-toobig',
-						$context->getLanguage()->formatNum( $wgDeleteRevisionsLimit )
-					]
+			if ( $error === '' ) {
+				$outputPage->wrapWikiTextAsInterface(
+					'error mw-error-cannotdelete',
+					$status->getWikiText( false, false, $context->getLanguage() )
 				);
+				$this->showLogEntries( $this->getTitle() );
+			} else {
+				$outputPage->addHTML( $error );
 			}
 		}
 
-		$this->tempConfirmDelete( $reason );
+		$this->watchlistManager->setWatch( $request->getCheck( 'wpWatch' ), $context->getAuthority(), $title );
 	}
 
-	/**
-	 * @param string $reason
-	 */
-	private function tempConfirmDelete( string $reason ): void {
-		wfDebug( "Article::confirmDelete" );
-
+	private function showHistoryWarnings(): void {
+		$context = $this->getContext();
 		$title = $this->getTitle();
-		$ctx = $this->getContext();
-		$outputPage = $ctx->getOutput();
-		$outputPage->setPageTitle( wfMessage( 'delete-confirm', $title->getPrefixedText() ) );
-		$outputPage->addBacklinkSubtitle( $title );
-		$outputPage->setRobotPolicy( 'noindex,nofollow' );
-		$outputPage->addModules( 'mediawiki.action.delete' );
-		$outputPage->addModuleStyles( 'mediawiki.action.styles' );
+
+		// The following can use the real revision count as this is only being shown for users
+		// that can delete this page.
+		// This, as a side-effect, also makes sure that the following query isn't being run for
+		// pages with a larger history, unless the user has the 'bigdelete' right
+		// (and is about to delete this page).
+		$dbr = wfGetDB( DB_REPLICA );
+		$revisions = (int)$dbr->selectField(
+			'revision',
+			'COUNT(rev_page)',
+			[ 'rev_page' => $title->getArticleID() ],
+			__METHOD__
+		);
+
+		// @todo i18n issue/patchwork message
+		$context->getOutput()->addHTML(
+			'<strong class="mw-delete-warning-revisions">' .
+			$context->msg( 'historywarning' )->numParams( $revisions )->parse() .
+			$context->msg( 'word-separator' )->escaped() . $this->linkRenderer->makeKnownLink(
+				$title,
+				$context->msg( 'history' )->text(),
+				[],
+				[ 'action' => 'history' ] ) .
+			'</strong>'
+		);
+
+		if ( $title->isBigDeletion() ) {
+			global $wgDeleteRevisionsLimit;
+			$context->getOutput()->wrapWikiMsg( "<div class='error'>\n$1\n</div>\n",
+				[
+					'delete-warning-toobig',
+					$context->getLanguage()->formatNum( $wgDeleteRevisionsLimit )
+				]
+			);
+		}
+	}
+
+	protected function showFormWarnings(): void {
+		$title = $this->getTitle();
+		$outputPage = $this->getOutput();
 
 		$backlinkCache = $this->backlinkCacheFactory->getBacklinkCache( $title );
 		if ( $backlinkCache->hasLinks( 'pagelinks' ) || $backlinkCache->hasLinks( 'templatelinks' ) ) {
@@ -227,30 +233,45 @@ class DeleteAction extends FormlessAction {
 				)
 			);
 		}
-		$outputPage->addWikiMsg( 'confirmdeletetext' );
 
+		$outputPage->addWikiMsg( 'confirmdeletetext' );
+	}
+
+	private function tempConfirmDelete(): void {
+		$this->prepareOutputForForm();
+		$title = $this->getTitle();
+		$ctx = $this->getContext();
+		$outputPage = $ctx->getOutput();
+
+		$hasHistory = false;
+		$reason = $this->getDefaultReason( $hasHistory );
+
+		// If the page has a history, insert a warning
+		if ( $hasHistory ) {
+			$this->showHistoryWarnings();
+		}
+		$this->showFormWarnings();
+
+		// FIXME: Replace (or at least rename) this hook
 		$this->getHookRunner()->onArticleConfirmDelete( $this->getArticle(), $outputPage, $reason );
 
-		$user = $this->getContext()->getUser();
-		$services = MediaWikiServices::getInstance();
-		$checkWatch = $services->getUserOptionsLookup()->getBoolOption( $user, 'watchdeletion' ) ||
+		$user = $ctx->getUser();
+		$checkWatch = $this->userOptionsLookup->getBoolOption( $user, 'watchdeletion' ) ||
 			$this->watchlistManager->isWatched( $user, $title );
-
-		$outputPage->enableOOUI();
 
 		$fields = [];
 
-		$suppressAllowed = $this->getContext()->getAuthority()->isAllowed( 'suppressrevision' );
-		$dropDownReason = $ctx->msg( 'deletereason-dropdown' )->inContentLanguage()->text();
+		$suppressAllowed = $ctx->getAuthority()->isAllowed( 'suppressrevision' );
+		$dropDownReason = $this->getFormMsg( self::MSG_REASON_DROPDOWN )->inContentLanguage()->text();
 		// Add additional specific reasons for suppress
 		if ( $suppressAllowed ) {
-			$dropDownReason .= "\n" . $ctx->msg( 'deletereason-dropdown-suppress' )
+			$dropDownReason .= "\n" . $this->getFormMsg( self::MSG_REASON_DROPDOWN_SUPPRESS )
 					->inContentLanguage()->text();
 		}
 
 		$options = Xml::listDropDownOptions(
 			$dropDownReason,
-			[ 'other' => $ctx->msg( 'deletereasonotherlist' )->inContentLanguage()->text() ]
+			[ 'other' => $this->getFormMsg( self::MSG_REASON_DROPDOWN_OTHER )->inContentLanguage()->text() ]
 		);
 		$options = Xml::listDropDownOptionsOoui( $options );
 
@@ -261,10 +282,10 @@ class DeleteAction extends FormlessAction {
 				'tabIndex' => 1,
 				'infusable' => true,
 				'value' => '',
-				'options' => $options
+				'options' => $options,
 			] ),
 			[
-				'label' => $ctx->msg( 'deletecomment' )->text(),
+				'label' => $this->getFormMsg( self::MSG_COMMENT )->text(),
 				'align' => 'top',
 			]
 		);
@@ -283,7 +304,7 @@ class DeleteAction extends FormlessAction {
 				'autofocus' => true,
 			] ),
 			[
-				'label' => $ctx->msg( 'deleteotherreason' )->text(),
+				'label' => $this->getFormMsg( self::MSG_REASON_OTHER )->text(),
 				'align' => 'top',
 			]
 		);
@@ -309,6 +330,7 @@ class DeleteAction extends FormlessAction {
 					'name' => 'wpSuppress',
 					'inputId' => 'wpSuppress',
 					'tabIndex' => 4,
+					'selected' => false,
 				] ),
 				[
 					'label' => $ctx->msg( 'revdelete-suppress' )->text(),
@@ -323,8 +345,8 @@ class DeleteAction extends FormlessAction {
 				'name' => 'wpConfirmB',
 				'inputId' => 'wpConfirmB',
 				'tabIndex' => 5,
-				'value' => $ctx->msg( 'deletepage' )->text(),
-				'label' => $ctx->msg( 'deletepage' )->text(),
+				'value' => $this->getFormMsg( self::MSG_SUBMIT )->text(),
+				'label' => $this->getFormMsg( self::MSG_SUBMIT )->text(),
 				'flags' => [ 'primary', 'destructive' ],
 				'type' => 'submit',
 			] ),
@@ -334,14 +356,14 @@ class DeleteAction extends FormlessAction {
 		);
 
 		$fieldset = new OOUI\FieldsetLayout( [
-			'label' => $ctx->msg( 'delete-legend' )->text(),
+			'label' => $this->getFormMsg( self::MSG_LEGEND )->text(),
 			'id' => 'mw-delete-table',
 			'items' => $fields,
 		] );
 
 		$form = new OOUI\FormLayout( [
 			'method' => 'post',
-			'action' => $title->getLocalURL( 'action=delete' ),
+			'action' => $this->getFormAction(),
 			'id' => 'deleteconfirm',
 		] );
 		$form->appendContent(
@@ -361,29 +383,149 @@ class DeleteAction extends FormlessAction {
 			] )
 		);
 
-		if ( $this->getContext()->getAuthority()->isAllowed( 'editinterface' ) ) {
+		if ( $ctx->getAuthority()->isAllowed( 'editinterface' ) ) {
 			$link = '';
 			if ( $suppressAllowed ) {
 				$link .= $this->linkRenderer->makeKnownLink(
-					$ctx->msg( 'deletereason-dropdown-suppress' )->inContentLanguage()->getTitle(),
-					$ctx->msg( 'delete-edit-reasonlist-suppress' )->text(),
+					$this->getFormMsg( self::MSG_REASON_DROPDOWN_SUPPRESS )->inContentLanguage()->getTitle(),
+					$this->getFormMsg( self::MSG_EDIT_REASONS_SUPPRESS )->text(),
 					[],
 					[ 'action' => 'edit' ]
 				);
 				$link .= $ctx->msg( 'pipe-separator' )->escaped();
 			}
 			$link .= $this->linkRenderer->makeKnownLink(
-				$ctx->msg( 'deletereason-dropdown' )->inContentLanguage()->getTitle(),
-				$ctx->msg( 'delete-edit-reasonlist' )->text(),
+				$this->getFormMsg( self::MSG_REASON_DROPDOWN )->inContentLanguage()->getTitle(),
+				$this->getFormMsg( self::MSG_EDIT_REASONS )->text(),
 				[],
 				[ 'action' => 'edit' ]
 			);
 			$outputPage->addHTML( '<p class="mw-delete-editreasons">' . $link . '</p>' );
 		}
 
+		$this->showLogEntries( $title );
+	}
+
+	/**
+	 * @param PageIdentity $title
+	 */
+	protected function runExecuteChecks( PageIdentity $title ): void {
+		$permissionStatus = PermissionStatus::newEmpty();
+		if ( !$this->getContext()->getAuthority()->definitelyCan( 'delete', $title, $permissionStatus ) ) {
+			throw new PermissionsError( 'delete', $permissionStatus );
+		}
+
+		if ( $this->readOnlyMode->isReadOnly() ) {
+			throw new ReadOnlyError;
+		}
+	}
+
+	/**
+	 * @return string
+	 */
+	protected function getDeleteReason(): string {
+		$deleteReasonList = $this->getRequest()->getText( 'wpDeleteReasonList', 'other' );
+		$deleteReason = $this->getRequest()->getText( 'wpReason' );
+
+		if ( $deleteReasonList === 'other' ) {
+			return $deleteReason;
+		} elseif ( $deleteReason !== '' ) {
+			// Entry from drop down menu + additional comment
+			$colonseparator = $this->msg( 'colon-separator' )->inContentLanguage()->text();
+			return $deleteReasonList . $colonseparator . $deleteReason;
+		} else {
+			return $deleteReasonList;
+		}
+	}
+
+	/**
+	 * Show deletion log fragments pertaining to the current page
+	 * @param PageReference $title
+	 */
+	protected function showLogEntries( PageReference $title ): void {
 		$deleteLogPage = new LogPage( 'delete' );
+		$outputPage = $this->getContext()->getOutput();
 		$outputPage->addHTML( Xml::element( 'h2', null, $deleteLogPage->getName()->text() ) );
 		LogEventsList::showLogExtract( $outputPage, 'delete', $title );
+	}
+
+	/**
+	 * @param Message $pageTitle
+	 * @param PageReference $backlinkTitle
+	 */
+	protected function prepareOutput( Message $pageTitle, PageReference $backlinkTitle ): void {
+		$outputPage = $this->getOutput();
+		$outputPage->setPageTitle( $pageTitle );
+		$outputPage->addBacklinkSubtitle( $backlinkTitle );
+		$outputPage->setRobotPolicy( 'noindex,nofollow' );
+	}
+
+	protected function prepareOutputForForm(): void {
+		$outputPage = $this->getOutput();
+		$outputPage->addModules( 'mediawiki.action.delete' );
+		$outputPage->addModuleStyles( 'mediawiki.action.styles' );
+		$outputPage->enableOOUI();
+	}
+
+	/**
+	 * @return string[]
+	 */
+	protected function getFormMessages(): array {
+		return [
+			self::MSG_REASON_DROPDOWN => 'deletereason-dropdown',
+			self::MSG_REASON_DROPDOWN_SUPPRESS => 'deletereason-dropdown-suppress',
+			self::MSG_REASON_DROPDOWN_OTHER => 'deletereasonotherlist',
+			self::MSG_COMMENT => 'deletecomment',
+			self::MSG_REASON_OTHER => 'deleteotherreason',
+			self::MSG_SUBMIT => 'deletepage',
+			self::MSG_LEGEND => 'delete-legend',
+			self::MSG_EDIT_REASONS => 'delete-edit-reasonlist',
+			self::MSG_EDIT_REASONS_SUPPRESS => 'delete-edit-reasonlist-suppress',
+		];
+	}
+
+	/**
+	 * @param string $field One of the self::MSG_* constants
+	 * @return Message
+	 */
+	protected function getFormMsg( string $field ): Message {
+		$messages = $this->getFormMessages();
+		if ( !isset( $messages[$field] ) ) {
+			throw new InvalidArgumentException( "Invalid field $field" );
+		}
+		return $this->msg( $messages[$field] );
+	}
+
+	/**
+	 * @return string
+	 */
+	protected function getFormAction(): string {
+		return $this->getTitle()->getLocalURL( 'action=delete' );
+	}
+
+	/**
+	 * Default reason to be used for the deletion form
+	 *
+	 * @param bool &$hasHistory
+	 * @return string
+	 *
+	 * @todo $hasHistory is an awful hack
+	 */
+	protected function getDefaultReason( bool &$hasHistory = false ): string {
+		$requestReason = $this->getRequest()->getText( 'wpReason' );
+		if ( $requestReason ) {
+			return $requestReason;
+		}
+
+		try {
+			return $this->getArticle()->getPage()->getAutoDeleteReason( $hasHistory );
+		} catch ( Exception $e ) {
+			# if a page is horribly broken, we still want to be able to
+			# delete it. So be lenient about errors here.
+			// FIXME What is this for exactly?
+			wfDebug( "Error while building auto delete summary: $e" );
+			return '';
+		}
 	}
 
 	public function doesWrites() {

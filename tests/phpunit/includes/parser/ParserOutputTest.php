@@ -1,5 +1,6 @@
 <?php
 
+use MediaWiki\Page\PageReferenceValue;
 use MediaWiki\Tests\Parser\ParserCacheSerializationTestCases;
 use Wikimedia\TestingAccessWrapper;
 use Wikimedia\Tests\SerializationTestTrait;
@@ -111,30 +112,30 @@ class ParserOutputTest extends MediaWikiLangTestCase {
 	}
 
 	/**
-	 * @covers ParserOutput::setProperty
-	 * @covers ParserOutput::getProperty
-	 * @covers ParserOutput::unsetProperty
-	 * @covers ParserOutput::getProperties
+	 * @covers ParserOutput::setPageProperty
+	 * @covers ParserOutput::getPageProperty
+	 * @covers ParserOutput::unsetPageProperty
+	 * @covers ParserOutput::getPageProperties
 	 */
 	public function testProperties() {
 		$po = new ParserOutput();
 
-		$po->setProperty( 'foo', 'val' );
+		$po->setPageProperty( 'foo', 'val' );
 
-		$properties = $po->getProperties();
-		$this->assertSame( 'val', $po->getProperty( 'foo' ) );
+		$properties = $po->getPageProperties();
+		$this->assertSame( 'val', $po->getPageProperty( 'foo' ) );
 		$this->assertSame( 'val', $properties['foo'] );
 
-		$po->setProperty( 'foo', 'second val' );
+		$po->setPageProperty( 'foo', 'second val' );
 
-		$properties = $po->getProperties();
-		$this->assertSame( 'second val', $po->getProperty( 'foo' ) );
+		$properties = $po->getPageProperties();
+		$this->assertSame( 'second val', $po->getPageProperty( 'foo' ) );
 		$this->assertSame( 'second val', $properties['foo'] );
 
-		$po->unsetProperty( 'foo' );
+		$po->unsetPageProperty( 'foo' );
 
-		$properties = $po->getProperties();
-		$this->assertSame( false, $po->getProperty( 'foo' ) );
+		$properties = $po->getPageProperties();
+		$this->assertSame( false, $po->getPageProperty( 'foo' ) );
 		$this->assertArrayNotHasKey( 'foo', $properties );
 	}
 
@@ -553,7 +554,7 @@ EOF
 		// Skin Control  ------------
 		$a = new ParserOutput();
 		$a->setNewSection( true );
-		$a->hideNewSection( true );
+		$a->setHideNewSection( true );
 		$a->setNoGallery( true );
 		$a->addWrapperDivClass( 'foo' );
 
@@ -566,7 +567,7 @@ EOF
 		$b = new ParserOutput();
 		$b->setNoGallery( true );
 		$b->setEnableOOUI( true );
-		$b->preventClickjacking( true );
+		$b->setPreventClickjacking( true );
 		$a->addWrapperDivClass( 'bar' );
 
 		$b->setIndicator( 'zoo', 'Zoo!' );
@@ -580,7 +581,7 @@ EOF
 			'getHideNewSection' => true,
 			'getNoGallery' => true,
 			'getEnableOOUI' => true,
-			'preventClickjacking' => true,
+			'getPreventClickjacking' => true,
 			'getIndicators' => [
 				'foo' => 'Foo!',
 				'bar' => 'Barrr!',
@@ -633,19 +634,36 @@ EOF
 		}
 	}
 
+	/**
+	 * @covers ParserOutput::addLink
+	 * @covers ParserOutput::getLinks
+	 */
+	public function testAddLink() {
+		$a = new ParserOutput();
+		$a->addLink( Title::makeTitle( NS_MAIN, 'Kittens' ), 6 );
+		$a->addLink( new TitleValue( NS_TALK, 'Kittens' ), 16 );
+		$a->addLink( new TitleValue( NS_MAIN, 'Goats_786827346' ) );
+
+		$expected = [
+			NS_MAIN => [ 'Kittens' => 6, 'Goats_786827346' => 0 ],
+			NS_TALK => [ 'Kittens' => 16 ]
+		];
+		$this->assertSame( $expected, $a->getLinks() );
+	}
+
 	public function provideMergeTrackingMetaDataFrom() {
 		// links ------------
 		$a = new ParserOutput();
 		$a->addLink( Title::makeTitle( NS_MAIN, 'Kittens' ), 6 );
-		$a->addLink( Title::makeTitle( NS_TALK, 'Kittens' ), 16 );
-		$a->addLink( Title::makeTitle( NS_MAIN, 'Goats' ), 7 );
+		$a->addLink( new TitleValue( NS_TALK, 'Kittens' ), 16 );
+		$a->addLink( new TitleValue( NS_MAIN, 'Goats' ), 7 );
 
 		$a->addTemplate( Title::makeTitle( NS_TEMPLATE, 'Goats' ), 107, 1107 );
 
 		$a->addLanguageLink( 'de' );
 		$a->addLanguageLink( 'ru' );
 		$a->addInterwikiLink( Title::makeTitle( NS_MAIN, 'Kittens DE', '', 'de' ) );
-		$a->addInterwikiLink( Title::makeTitle( NS_MAIN, 'Kittens RU', '', 'ru' ) );
+		$a->addInterwikiLink( new TitleValue( NS_MAIN, 'Kittens RU', '', 'ru' ) );
 		$a->addExternalLink( 'https://kittens.wikimedia.test' );
 		$a->addExternalLink( 'https://goats.wikimedia.test' );
 
@@ -655,16 +673,16 @@ EOF
 		$b = new ParserOutput();
 		$b->addLink( Title::makeTitle( NS_MAIN, 'Goats' ), 7 );
 		$b->addLink( Title::makeTitle( NS_TALK, 'Goats' ), 17 );
-		$b->addLink( Title::makeTitle( NS_MAIN, 'Dragons' ), 8 );
-		$b->addLink( Title::makeTitle( NS_FILE, 'Dragons.jpg' ), 28 );
+		$b->addLink( new TitleValue( NS_MAIN, 'Dragons' ), 8 );
+		$b->addLink( new TitleValue( NS_FILE, 'Dragons.jpg' ), 28 );
 
 		$b->addTemplate( Title::makeTitle( NS_TEMPLATE, 'Dragons' ), 108, 1108 );
-		$a->addTemplate( Title::makeTitle( NS_MAIN, 'Dragons' ), 118, 1118 );
+		$a->addTemplate( new TitleValue( NS_MAIN, 'Dragons' ), 118, 1118 );
 
 		$b->addLanguageLink( 'fr' );
 		$b->addLanguageLink( 'ru' );
 		$b->addInterwikiLink( Title::makeTitle( NS_MAIN, 'Kittens FR', '', 'fr' ) );
-		$b->addInterwikiLink( Title::makeTitle( NS_MAIN, 'Dragons RU', '', 'ru' ) );
+		$b->addInterwikiLink( new TitleValue( NS_MAIN, 'Dragons RU', '', 'ru' ) );
 		$b->addExternalLink( 'https://dragons.wikimedia.test' );
 		$b->addExternalLink( 'https://goats.wikimedia.test' );
 
@@ -726,22 +744,22 @@ EOF
 		// properties ------------
 		$a = new ParserOutput();
 
-		$a->setProperty( 'foo', 'Foo!' );
-		$a->setProperty( 'bar', 'Bar!' );
+		$a->setPageProperty( 'foo', 'Foo!' );
+		$a->setPageProperty( 'bar', 'Bar!' );
 
 		$a->setExtensionData( 'foo', 'Foo!' );
 		$a->setExtensionData( 'bar', 'Bar!' );
 
 		$b = new ParserOutput();
 
-		$b->setProperty( 'zoo', 'Zoo!' );
-		$b->setProperty( 'bar', 'Barrr!' );
+		$b->setPageProperty( 'zoo', 'Zoo!' );
+		$b->setPageProperty( 'bar', 'Barrr!' );
 
 		$b->setExtensionData( 'zoo', 'Zoo!' );
 		$b->setExtensionData( 'bar', 'Barrr!' );
 
 		yield 'properties' => [ $a, $b, [
-			'getProperties' => [
+			'getPageProperties' => [
 				'foo' => 'Foo!',
 				'bar' => 'Barrr!',
 				'zoo' => 'Zoo!',
@@ -798,8 +816,8 @@ EOF
 		// flags & co
 		$a = new ParserOutput();
 
-		$a->addWarning( 'Oops' );
-		$a->addWarning( 'Whoops' );
+		$a->addWarningMsg( 'duplicate-args-warning', 'A', 'B', 'C' );
+		$a->addWarningMsg( 'template-loop-warning', 'D' );
 
 		$a->setFlag( 'foo' );
 		$a->setFlag( 'bar' );
@@ -809,8 +827,9 @@ EOF
 
 		$b = new ParserOutput();
 
-		$b->addWarning( 'Yikes' );
-		$b->addWarning( 'Whoops' );
+		$b->addWarningMsg( 'template-equals-warning' );
+		$b->addWarningMsg( 'template-loop-warning', 'D' );
+		$b->addWarning( 'Old School' ); // test the deprecated ::addWarning()
 
 		$b->setFlag( 'zoo' );
 		$b->setFlag( 'bar' );
@@ -819,7 +838,12 @@ EOF
 		$b->recordOption( 'Bar' );
 
 		yield 'flags' => [ $a, $b, [
-			'getWarnings' => [ 'Oops', 'Whoops', 'Yikes' ],
+			'getWarnings' => [
+				wfMessage( 'duplicate-args-warning', 'A', 'B', 'C' )->text(),
+				wfMessage( 'template-loop-warning', 'D' )->text(),
+				wfMessage( 'template-equals-warning' )->text(),
+				'Old School',
+			],
 			'$mFlags' => [ 'foo' => true, 'bar' => true, 'zoo' => true ],
 			'getUsedOptions' => [ 'Foo', 'Bar', 'Zoo' ],
 		] ];
@@ -1059,5 +1083,30 @@ EOF
 		$this->assertEquals( $po->getExtraCSPScriptSrcs(), [ 'foo.com', 'bar.com' ], 'Script' );
 		$this->assertEquals( $po->getExtraCSPDefaultSrcs(),  [ 'baz.com' ], 'Default' );
 		$this->assertEquals( $po->getExtraCSPStyleSrcs(), [ 'fred.com', 'xyzzy.com' ], 'Style' );
+	}
+
+	/**
+	 * @covers ParserOutput::addTrackingCategory
+	 */
+	public function testAddTrackingCategory() {
+		$this->hideDeprecated( 'ParserOutput::addTrackingCategory' );
+
+		$po = new ParserOutput;
+		$po->setPageProperty( 'defaultsort', 'foobar' );
+
+		$page = PageReferenceValue::localReference( NS_USER, 'Testing' );
+
+		$po->addTrackingCategory( 'index-category', $page ); // from CORE_TRACKING_CATEGORIES
+		$po->addTrackingCategory( 'sitenotice', $page ); // should be "-", which is ignored
+		$po->addTrackingCategory( 'brackets-start', $page ); // invalid text
+		// TODO: assert proper handling of non-existing messages
+
+		$expected = wfMessage( 'index-category' )
+			->page( $page )
+			->inContentLanguage()
+			->text();
+
+		$expected = strtr( $expected, ' ', '_' );
+		$this->assertSame( [ $expected => 'foobar' ], $po->getCategories() );
 	}
 }

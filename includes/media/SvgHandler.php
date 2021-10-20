@@ -305,7 +305,7 @@ class SvgHandler extends ImageHandler {
 	 * @param string $dstPath
 	 * @param string $width
 	 * @param string $height
-	 * @param bool|string $lang Language code of the language to render the SVG in
+	 * @param string|false $lang Language code of the language to render the SVG in
 	 * @throws MWException
 	 * @return bool|MediaTransformError
 	 */
@@ -386,14 +386,10 @@ class SvgHandler extends ImageHandler {
 	 * @return string
 	 */
 	public function getLongDesc( $file ) {
-		global $wgLang;
-
 		$metadata = $this->validateMetadata( $file->getMetadataArray() );
 		if ( isset( $metadata['error'] ) ) {
 			return wfMessage( 'svg-long-error', $metadata['error']['message'] )->text();
 		}
-
-		$size = $wgLang->formatSize( $file->getSize() );
 
 		if ( $this->isAnimatedImage( $file ) ) {
 			$msg = wfMessage( 'svg-long-desc-animated' );
@@ -401,9 +397,7 @@ class SvgHandler extends ImageHandler {
 			$msg = wfMessage( 'svg-long-desc' );
 		}
 
-		$msg->numParams( $file->getWidth(), $file->getHeight() )->params( $size );
-
-		return $msg->parse();
+		return $msg->numParams( $file->getWidth(), $file->getHeight() )->sizeParams( $file->getSize() )->parse();
 	}
 
 	/**
@@ -535,7 +529,7 @@ class SvgHandler extends ImageHandler {
 
 	/**
 	 * @param array $params Name=>value pairs of parameters
-	 * @return string Filename to use
+	 * @return string|false Filename to use
 	 */
 	public function makeParamString( $params ) {
 		$lang = '';

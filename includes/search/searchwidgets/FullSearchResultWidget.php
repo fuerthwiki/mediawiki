@@ -61,9 +61,11 @@ class FullSearchResultWidget implements SearchResultWidget {
 		$redirect = $this->generateRedirectHtml( $result );
 		$section = $this->generateSectionHtml( $result );
 		$category = $this->generateCategoryHtml( $result );
-		$date = $this->specialPage->getLanguage()->userTimeAndDate(
-			$result->getTimestamp(),
-			$this->specialPage->getUser()
+		$date = htmlspecialchars(
+			$this->specialPage->getLanguage()->userTimeAndDate(
+				$result->getTimestamp(),
+				$this->specialPage->getUser()
+			)
 		);
 		list( $file, $desc, $thumb ) = $this->generateFileHtml( $result );
 		$snippet = $result->getTextSnippet();
@@ -232,12 +234,9 @@ class FullSearchResultWidget implements SearchResultWidget {
 				->escaped();
 		// TODO: This is a bit odd...but requires changing the i18n message to fix
 		} elseif ( $result->getByteSize() !== null || $result->getWordCount() > 0 ) {
-			$lang = $this->specialPage->getLanguage();
-			$bytes = $lang->formatSize( $result->getByteSize() );
-			$words = $result->getWordCount();
-
-			return $this->specialPage->msg( 'search-result-size', $bytes )
-				->numParams( $words )
+			return $this->specialPage->msg( 'search-result-size' )
+				->sizeParams( $result->getByteSize() )
+				->numParams( $result->getWordCount() )
 				->escaped();
 		}
 
