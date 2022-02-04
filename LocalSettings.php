@@ -69,11 +69,14 @@ $wgEnotifUserTalk = false; # UPO
 $wgEnotifWatchlist = false; # UPO
 
 ## Database settings
-$wgDBtype           = $SECRET_wgDBtype;
-$wgDBserver         = $SECRET_wgDBserver;
+#$wgDBtype           = $SECRET_wgDBtype;
+#$wgDBserver         = $SECRET_wgDBserver;
 $wgDBname           = $SECRET_wgDBname;
-$wgDBuser           = $SECRET_wgDBuser;
-$wgDBpassword       = $SECRET_wgDBpassword;
+#$wgDBuser           = $SECRET_wgDBuser;
+#$wgDBpassword       = $SECRET_wgDBpassword;
+
+## Database replication settings
+$wgDBservers=$SECRET_wgDBservers;
 
 # MySQL specific settings
 $wgDBprefix = "fw_";
