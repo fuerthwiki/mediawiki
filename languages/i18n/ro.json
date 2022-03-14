@@ -48,7 +48,8 @@
 			"Cezar",
 			"McDutchie",
 			"NGC 54",
-			"Popetedenis"
+			"Popetedenis",
+			"Dan Mihai Pitea"
 		]
 	},
 	"tog-underline": "Sublinierea legăturilor:",
@@ -2026,10 +2027,10 @@
 	"specialpage-empty": "Această pagină este goală.",
 	"lonelypages": "Pagini orfane",
 	"lonelypagestext": "La următoarele pagini nu se leagă nici o altă pagină din {{SITENAME}}.",
-	"uncategorizedpages": "Pagini necategorizate",
-	"uncategorizedcategories": "Categorii necategorizate",
-	"uncategorizedimages": "Fișiere necategorizate",
-	"uncategorizedtemplates": "Formate necategorizate",
+	"uncategorizedpages": "Pagini necategorisite",
+	"uncategorizedcategories": "Categorii necategorisite",
+	"uncategorizedimages": "Fișiere necategorisite",
+	"uncategorizedtemplates": "Formate necategorisite",
 	"uncategorized-categories-exceptionlist": "# Conține o listă de categorii, care nu ar trebui menționate în Special:uncategorizedCategories. Una pe linie, începând cu \"*\". Liniile ce încep cu un alt caracter (inclusiv spațiu) sunt ignorate. Folosiți \"#\" pentru comentarii.",
 	"unusedcategories": "Categorii neutilizate",
 	"unusedimages": "Fișiere neutilizate",
@@ -3759,7 +3760,7 @@
 	"mw-widgets-abandonedit": "Sunteți sigur(ă) că doriți să părăsiți modul editare fără ca mai întâi să salvați?",
 	"mw-widgets-abandonedit-discard": "Renunță la modificări",
 	"mw-widgets-abandonedit-keep": "Continuă editarea",
-	"mw-widgets-abandonedit-title": "Sunteți sigur(ă)?",
+	"mw-widgets-abandonedit-title": "Sunteți {{GENDER:|sigur|sigură}}?",
 	"mw-widgets-copytextlayout-copy": "Copiază",
 	"mw-widgets-copytextlayout-copy-fail": "Nu am putut copia în clipboard.",
 	"mw-widgets-copytextlayout-copy-success": "Copiat în clipboard.",
