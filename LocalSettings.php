@@ -279,6 +279,10 @@ $wgMatomoAnalyticsServerURL = $SECRET_matomoURL;
 $wgMatomoAnalyticsTokenAuth = $SECRET_matomoToken;
 $wgMatomoAnalyticsSiteID    = $SECRET_matomoSiteID;
 
+# Add video- and audio- transcoding 
+wfLoadExtension( 'TimedMediaHandler' );
+$wgFFmpegLocation = '/usr/bin/ffmpeg';
+
 # Enable VisualEditor but don't make it default
 wfLoadExtension( 'VisualEditor' );
 $wgDefaultUserOptions['visualeditor-enable'] = 0;

@@ -224,3 +224,6 @@
 [submodule "extensions/LabeledSectionTransclusion"]
 	path = extensions/LabeledSectionTransclusion
 	url = git@github.com:wikimedia/mediawiki-extensions-LabeledSectionTransclusion.git
+[submodule "extensions/TimedMediaHandler"]
+	path = extensions/TimedMediaHandler
+	url = https://github.com/wikimedia/mediawiki-extensions-TimedMediaHandler.git
