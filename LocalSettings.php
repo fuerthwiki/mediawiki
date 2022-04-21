@@ -263,6 +263,7 @@ wfLoadExtension( 'Widgets' );
 wfLoadExtension( 'Loops' );
 wfLoadExtension( 'Maps' );
 wfLoadExtension( 'TemplateData' );
+wfLoadExtension( 'TemplateStyles' );
 wfLoadExtension( 'SecureLinkFixer' );
 wfLoadExtension( 'TextExtracts' );
 wfLoadExtension( 'SemanticCite' );
