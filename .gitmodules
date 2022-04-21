@@ -227,3 +227,6 @@
 [submodule "extensions/TimedMediaHandler"]
 	path = extensions/TimedMediaHandler
 	url = https://github.com/wikimedia/mediawiki-extensions-TimedMediaHandler.git
+[submodule "extensions/TemplateStyles"]
+	path = extensions/TemplateStyles
+	url = git@github.com:wikimedia/mediawiki-extensions-TemplateStyles.git
