@@ -22,11 +22,15 @@ class RefreshLinksPartitionTest extends MediaWikiIntegrationTestCase {
 	public function testRefreshLinks( $ns, $dbKey, $pages ) {
 		$title = Title::makeTitle( $ns, $dbKey );
 
-		$user = $this->getTestSysop()->getUser();
+		$user = $this->getTestSysop()->getAuthority();
 		foreach ( $pages as [ $bns, $bdbkey ] ) {
-			$bpage = WikiPage::factory( Title::makeTitle( $bns, $bdbkey ) );
-			$content = ContentHandler::makeContent( "[[{$title->getPrefixedText()}]]", $bpage->getTitle() );
-			$bpage->doUserEditContent( $content, $user, "test" );
+			$this->editPage(
+				Title::makeTitle( $bns, $bdbkey ),
+				"[[{$title->getPrefixedText()}]]",
+				'test',
+				NS_MAIN,
+				$user
+			);
 		}
 
 		$backlinkCache = $this->getServiceContainer()->getBacklinkCacheFactory()
@@ -39,7 +43,7 @@ class RefreshLinksPartitionTest extends MediaWikiIntegrationTestCase {
 		);
 
 		$job = new RefreshLinksJob( $title, [ 'recursive' => true, 'table' => 'pagelinks' ]
-			+ Job::newRootJobParams( "refreshlinks:pagelinks:{$title->getPrefixedText()}" ) );
+			+ Job::newRootJobParams( 'refreshlinks:pagelinks:' . $title->getPrefixedText() ) );
 		$extraParams = $job->getRootJobParams();
 		$jobs = BacklinkJobUtils::partitionBacklinkJob( $job, 9, 1, [ 'params' => $extraParams ] );
 

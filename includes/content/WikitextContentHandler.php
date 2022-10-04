@@ -121,6 +121,11 @@ class WikitextContentHandler extends TextContentHandler {
 		return true;
 	}
 
+	/** @inheritDoc */
+	public function supportsPreloadContent(): bool {
+		return true;
+	}
+
 	/**
 	 * @return FileContentHandler
 	 */
@@ -212,7 +217,7 @@ class WikitextContentHandler extends TextContentHandler {
 
 		$text = $content->getText();
 
-		$parser = MediaWikiServices::getInstance()->getParser();
+		$parser = MediaWikiServices::getInstance()->getParserFactory()->getInstance();
 		$pst = $parser->preSaveTransform(
 			$text,
 			$pstParams->getPage(),
@@ -258,12 +263,13 @@ class WikitextContentHandler extends TextContentHandler {
 		'@phan-var WikitextContent $content';
 
 		$text = $content->getText();
-		$plt = MediaWikiServices::getInstance()->getParser()->getPreloadText(
-			$text,
-			$pltParams->getPage(),
-			$pltParams->getParserOptions(),
-			$pltParams->getParams()
-		);
+		$plt = MediaWikiServices::getInstance()->getParserFactory()->getInstance()
+			->getPreloadText(
+				$text,
+				$pltParams->getPage(),
+				$pltParams->getParserOptions(),
+				$pltParams->getParams()
+			);
 
 		$contentClass = $this->getContentClass();
 		return new $contentClass( $plt );
@@ -276,12 +282,12 @@ class WikitextContentHandler extends TextContentHandler {
 	 * @since 1.38
 	 * @param Content $content
 	 * @param ContentParseParams $cpoParams
-	 * @param ParserOutput &$output The output object to fill (reference).
+	 * @param ParserOutput &$parserOutput The output object to fill (reference).
 	 */
 	protected function fillParserOutput(
 		Content $content,
 		ContentParseParams $cpoParams,
-		ParserOutput &$output
+		ParserOutput &$parserOutput
 	) {
 		'@phan-var WikitextContent $content';
 		$services = MediaWikiServices::getInstance();
@@ -290,26 +296,29 @@ class WikitextContentHandler extends TextContentHandler {
 		$revId = $cpoParams->getRevId();
 
 		list( $redir, $text ) = $content->getRedirectTargetAndText();
-		$output = $services->getParser()
+		$parserOutput = $services->getParserFactory()->getInstance()
+			// @phan-suppress-next-line PhanTypeMismatchArgumentNullable castFrom does not return null here
 			->parse( $text, $title, $parserOptions, true, true, $revId );
 
 		// Add redirect indicator at the top
 		if ( $redir ) {
 			// Make sure to include the redirect link in pagelinks
-			$output->addLink( $redir );
+			$parserOutput->addLink( $redir );
 			if ( $cpoParams->getGenerateHtml() ) {
-				$chain = $content->getRedirectChain();
-				$output->setText(
-					Article::getRedirectHeaderHtml( $title->getPageLanguage(), $chain, false ) .
-					$output->getRawText()
+				$redirTarget = $content->getRedirectTarget();
+				$parserOutput->setText(
+					Article::getRedirectHeaderHtml( $title->getPageLanguage(), $redirTarget, false ) .
+					$parserOutput->getRawText()
 				);
-				$output->addModuleStyles( 'mediawiki.action.view.redirectPage' );
+				$parserOutput->addModuleStyles( [ 'mediawiki.action.view.redirectPage' ] );
+			} else {
+				$parserOutput->setText( null );
 			}
 		}
 
 		// Pass along user-signature flag
 		if ( in_array( 'user-signature', $content->getPreSaveTransformFlags() ) ) {
-			$output->setOutputFlag( ParserOutputFlags::USER_SIGNATURE );
+			$parserOutput->setOutputFlag( ParserOutputFlags::USER_SIGNATURE );
 		}
 	}
 }

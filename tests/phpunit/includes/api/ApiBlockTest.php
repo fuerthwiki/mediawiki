@@ -4,7 +4,7 @@ use MediaWiki\Block\DatabaseBlock;
 use MediaWiki\Block\Restriction\ActionRestriction;
 use MediaWiki\Block\Restriction\NamespaceRestriction;
 use MediaWiki\Block\Restriction\PageRestriction;
-use MediaWiki\MediaWikiServices;
+use MediaWiki\MainConfigNames;
 use MediaWiki\Tests\Unit\Permissions\MockAuthorityTrait;
 
 /**
@@ -27,10 +27,13 @@ class ApiBlockTest extends ApiTestCase {
 		);
 
 		$this->mUser = $this->getMutableTestUser()->getUser();
-		$this->setMwGlobals( 'wgBlockCIDRLimit', [
-			'IPv4' => 16,
-			'IPv6' => 19,
-		] );
+		$this->overrideConfigValue(
+			MainConfigNames::BlockCIDRLimit,
+			[
+				'IPv4' => 16,
+				'IPv6' => 19,
+			]
+		);
 	}
 
 	/**
@@ -39,7 +42,7 @@ class ApiBlockTest extends ApiTestCase {
 	 * @return array result of doApiRequest
 	 */
 	private function doBlock( array $extraParams = [], User $blocker = null ) {
-		$this->assertNotNull( $this->mUser, 'Sanity check' );
+		$this->assertNotNull( $this->mUser );
 
 		$params = [
 			'action' => 'block',
@@ -93,7 +96,7 @@ class ApiBlockTest extends ApiTestCase {
 			'timestamp' => '19370101000000',
 			'expiry' => 'infinity',
 		] );
-		MediaWikiServices::getInstance()->getDatabaseBlockStore()->insertBlock( $block );
+		$this->getServiceContainer()->getDatabaseBlockStore()->insertBlock( $block );
 
 		$this->doBlock( [], $blocked );
 	}
@@ -112,7 +115,7 @@ class ApiBlockTest extends ApiTestCase {
 		$this->expectException( ApiUsageException::class );
 		$this->expectExceptionMessage( "There is no user with ID $id." );
 
-		$this->assertFalse( User::whoIs( $id ), 'Sanity check' );
+		$this->assertFalse( User::whoIs( $id ) );
 
 		$this->doBlock( [ 'userid' => $id ] );
 	}
@@ -144,8 +147,10 @@ class ApiBlockTest extends ApiTestCase {
 
 		ChangeTags::defineTag( 'custom tag' );
 
-		$this->setMwGlobals( 'wgRevokePermissions',
-			[ 'user' => [ 'applychangetags' => true ] ] );
+		$this->overrideConfigValue(
+			MainConfigNames::RevokePermissions,
+			[ 'user' => [ 'applychangetags' => true ] ]
+		);
 
 		$this->doBlock( [ 'tags' => 'custom tag' ] );
 	}
@@ -180,9 +185,9 @@ class ApiBlockTest extends ApiTestCase {
 	}
 
 	public function testBlockWithEmailBlock() {
-		$this->setMwGlobals( [
-			'wgEnableEmail' => true,
-			'wgEnableUserEmail' => true,
+		$this->overrideConfigValues( [
+			MainConfigNames::EnableEmail => true,
+			MainConfigNames::EnableUserEmail => true,
 		] );
 
 		$res = $this->doBlock( [ 'noemail' => '' ] );
@@ -197,9 +202,9 @@ class ApiBlockTest extends ApiTestCase {
 	}
 
 	public function testBlockWithProhibitedEmailBlock() {
-		$this->setMwGlobals( [
-			'wgEnableEmail' => true,
-			'wgEnableUserEmail' => true,
+		$this->overrideConfigValues( [
+			MainConfigNames::EnableEmail => true,
+			MainConfigNames::EnableUserEmail => true,
 		] );
 
 		$this->expectException( ApiUsageException::class );
@@ -207,8 +212,10 @@ class ApiBlockTest extends ApiTestCase {
 			"You don't have permission to block users from sending email through the wiki."
 		);
 
-		$this->setMwGlobals( 'wgRevokePermissions',
-			[ 'sysop' => [ 'blockemail' => true ] ] );
+		$this->overrideConfigValue(
+			MainConfigNames::RevokePermissions,
+			[ 'sysop' => [ 'blockemail' => true ] ]
+		);
 
 		$this->doBlock( [ 'noemail' => '' ] );
 	}
@@ -278,11 +285,12 @@ class ApiBlockTest extends ApiTestCase {
 	}
 
 	public function testBlockWithRestrictionsAction() {
-		$this->setMwGlobals( [
-			'wgEnablePartialActionBlocks' => true,
-		] );
+		$this->overrideConfigValue(
+			MainConfigNames::EnablePartialActionBlocks,
+			true
+		);
 
-		$blockActionInfo = MediaWikiServices::getInstance()->getBlockActionInfo();
+		$blockActionInfo = $this->getServiceContainer()->getBlockActionInfo();
 		$action = 'upload';
 
 		$this->doBlock( [

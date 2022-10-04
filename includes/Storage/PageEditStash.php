@@ -1,7 +1,5 @@
 <?php
 /**
- * Predictive edit preparation system for MediaWiki page.
- *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
@@ -28,7 +26,9 @@ use Liuggio\StatsdClient\Factory\StatsdDataFactoryInterface;
 use MediaWiki\HookContainer\HookContainer;
 use MediaWiki\HookContainer\HookRunner;
 use MediaWiki\Page\PageIdentity;
+use MediaWiki\Page\WikiPageFactory;
 use MediaWiki\Parser\ParserOutputFlags;
+use MediaWiki\Revision\SlotRecord;
 use MediaWiki\Storage\Hook\ParserOutputStashForEditHook;
 use MediaWiki\User\UserEditTracker;
 use MediaWiki\User\UserFactory;
@@ -41,7 +41,12 @@ use Wikimedia\ScopedCallback;
 use WikiPage;
 
 /**
- * Class for managing stashed edits used by the page updater classes
+ * Manage the pre-emptive page parsing for edits to wiki pages.
+ *
+ * This is written to by ApiStashEdit, and consumed by ApiEditPage
+ * and EditPage (via PageUpdaterFactory and DerivedPageDataUpdater).
+ *
+ * See also mediawiki.action.edit/stash.js.
  *
  * @since 1.34
  */
@@ -60,6 +65,8 @@ class PageEditStash {
 	private $userEditTracker;
 	/** @var UserFactory */
 	private $userFactory;
+	/** @var WikiPageFactory */
+	private $wikiPageFactory;
 	/** @var int */
 	private $initiator;
 
@@ -85,6 +92,7 @@ class PageEditStash {
 	 * @param StatsdDataFactoryInterface $stats
 	 * @param UserEditTracker $userEditTracker
 	 * @param UserFactory $userFactory
+	 * @param WikiPageFactory $wikiPageFactory
 	 * @param HookContainer $hookContainer
 	 * @param int $initiator Class INITIATOR__* constant
 	 */
@@ -95,6 +103,7 @@ class PageEditStash {
 		StatsdDataFactoryInterface $stats,
 		UserEditTracker $userEditTracker,
 		UserFactory $userFactory,
+		WikiPageFactory $wikiPageFactory,
 		HookContainer $hookContainer,
 		$initiator
 	) {
@@ -104,20 +113,28 @@ class PageEditStash {
 		$this->stats = $stats;
 		$this->userEditTracker = $userEditTracker;
 		$this->userFactory = $userFactory;
+		$this->wikiPageFactory = $wikiPageFactory;
 		$this->hookRunner = new HookRunner( $hookContainer );
 		$this->initiator = $initiator;
 	}
 
 	/**
-	 * @param WikiPage $page
+	 * @param PageUpdater $pageUpdater (a WikiPage instance is also supported but deprecated)
 	 * @param Content $content Edit content
 	 * @param UserIdentity $user
 	 * @param string $summary Edit summary
 	 * @return string Class ERROR_* constant
 	 */
-	public function parseAndCache( WikiPage $page, Content $content, UserIdentity $user, string $summary ) {
+	public function parseAndCache( $pageUpdater, Content $content, UserIdentity $user, string $summary ) {
 		$logger = $this->logger;
 
+		if ( $pageUpdater instanceof WikiPage ) {
+			// TODO: Trigger deprecation warning once extensions have been fixed.
+			//       Or better, create PageUpdater::prepareAndStash and deprecate this method.
+			$pageUpdater = $pageUpdater->newPageUpdater( $user );
+		}
+
+		$page = $pageUpdater->getPage();
 		$key = $this->getStashKey( $page, $this->getContentHash( $content ), $user );
 		$fname = __METHOD__;
 
@@ -141,22 +158,33 @@ class PageEditStash {
 
 		// Reuse any freshly build matching edit stash cache
 		$editInfo = $this->getStashValue( $key );
-		if ( $editInfo && wfTimestamp( TS_UNIX, $editInfo->timestamp ) >= $cutoffTime ) {
+		if ( $editInfo && (int)wfTimestamp( TS_UNIX, $editInfo->timestamp ) >= $cutoffTime ) {
 			$alreadyCached = true;
 		} else {
-			$format = $content->getDefaultFormat();
-			$editInfo = $page->prepareContentForEdit( $content, null, $user, $format, false );
-			$editInfo->output->setCacheTime( $editInfo->timestamp );
+			$pageUpdater->setContent( SlotRecord::MAIN, $content );
+
+			$update = $pageUpdater->prepareUpdate( EDIT_INTERNAL ); // applies pre-safe transform
+			$output = $update->getCanonicalParserOutput(); // causes content to be parsed
+			$output->setCacheTime( $update->getRevision()->getTimestamp() );
+
+			// emulate a cache value that kind of looks like a PreparedEdit, for use below
+			$editInfo = (object)[
+				'pstContent' => $update->getRawContent( SlotRecord::MAIN ),
+				'output'     => $output,
+				'timestamp'  => $output->getCacheTime()
+			];
+
 			$alreadyCached = false;
 		}
 
 		$logContext = [ 'cachekey' => $key, 'title' => (string)$page ];
 
-		if ( $editInfo && $editInfo->output ) {
+		if ( $editInfo->output ) {
 			// Let extensions add ParserOutput metadata or warm other caches
 			$legacyUser = $this->userFactory->newFromUserIdentity( $user );
+			$legacyPage = $this->wikiPageFactory->newFromTitle( $page );
 			$this->hookRunner->onParserOutputStashForEdit(
-				$page, $content, $editInfo->output, $summary, $legacyUser );
+				$legacyPage, $content, $editInfo->output, $summary, $legacyUser );
 
 			if ( $alreadyCached ) {
 				$logger->debug( "Parser output for key '{cachekey}' already cached.", $logContext );
@@ -467,7 +495,7 @@ class PageEditStash {
 		UserIdentity $user
 	) {
 		// If an item is renewed, mind the cache TTL determined by config and parser functions.
-		// Put an upper limit on the TTL for sanity to avoid extreme template/file staleness.
+		// Put an upper limit on the TTL to avoid extreme template/file staleness.
 		$age = time() - (int)wfTimestamp( TS_UNIX, $parserOutput->getCacheTime() );
 		$ttl = min( $parserOutput->getCacheExpiry() - $age, self::MAX_CACHE_TTL );
 		// Avoid extremely stale user signature timestamps (T84843)

@@ -68,7 +68,7 @@ class PageHistoryCountHandler extends SimpleHandler {
 	/** @var RevisionRecord|false|null */
 	private $revision = false;
 
-	/** @var array */
+	/** @var array|null */
 	private $lastModifiedTimes;
 
 	/** @var ExistingPageRecord|false|null */
@@ -263,7 +263,6 @@ class PageHistoryCountHandler extends SimpleHandler {
 					}
 				);
 
-			// Sanity check
 			default:
 				throw new LocalizedHttpException(
 					new MessageValue( 'rest-pagehistorycount-type-unrecognized',
@@ -319,7 +318,7 @@ class PageHistoryCountHandler extends SimpleHandler {
 	 * Returns array with 2 timestamps:
 	 * 1. Current revision
 	 * 2. OR entry from the DB logging table for the given page
-	 * @return array
+	 * @return array|null
 	 */
 	protected function getLastModifiedTimes() {
 		$currentRev = $this->getCurrentRevision();
@@ -357,7 +356,7 @@ class PageHistoryCountHandler extends SimpleHandler {
 	 * Generating an etag when getting revision counts must account for things like visibility settings
 	 * (e.g. rev_deleted bit) which requires hitting the database anyway. The response for these
 	 * requests are so small that we wouldn't be gaining much efficiency.
-	 * Etags are strong validators and if provided would take precendence over
+	 * Etags are strong validators and if provided would take precedence over
 	 * last modified time, a weak validator. We want to ensure only last modified time is used
 	 * since it is more efficient than using etags for this particular case.
 	 * @return null
@@ -383,6 +382,7 @@ class PageHistoryCountHandler extends SimpleHandler {
 				if ( $oldValue ) {
 					// Last modified timestamp was NOT a dependency change (e.g. revdel)
 					$doIncrementalUpdate = (
+						// @phan-suppress-next-line PhanTypeArraySuspiciousNullable
 						$this->getLastModified() != $this->getLastModifiedTimes()['dependencyModTS']
 					);
 					if ( $doIncrementalUpdate ) {
@@ -392,6 +392,7 @@ class PageHistoryCountHandler extends SimpleHandler {
 							return [
 								'revision' => $currentRev->getId(),
 								'count' => $oldValue['count'] + $additionalCount,
+								// @phan-suppress-next-line PhanTypeArraySuspiciousNullable
 								'dependencyModTS' => $this->getLastModifiedTimes()['dependencyModTS']
 							];
 						}
@@ -402,6 +403,7 @@ class PageHistoryCountHandler extends SimpleHandler {
 				return [
 					'revision' => $currentRev->getId(),
 					'count' => $fetchCount(),
+					// @phan-suppress-next-line PhanTypeArraySuspiciousNullable
 					'dependencyModTS' => $this->getLastModifiedTimes()['dependencyModTS']
 				];
 			},
@@ -438,13 +440,6 @@ class PageHistoryCountHandler extends SimpleHandler {
 				"OR rev_timestamp > {$oldTs}";
 		}
 
-		// This redundant join condition tells MySQL that rev_page and revactor_page are the
-		// same, so it can propagate the condition
-		if ( isset( $revQuery['tables']['temp_rev_user'] ) /* SCHEMA_COMPAT_READ_TEMP */ ) {
-			$revQuery['joins']['temp_rev_user'][1] =
-				"temp_rev_user.revactor_rev = rev_id AND revactor_page = rev_page";
-		}
-
 		$edits = $dbr->selectRowCount(
 			[
 				'revision',
@@ -467,13 +462,6 @@ class PageHistoryCountHandler extends SimpleHandler {
 		$dbr = $this->loadBalancer->getConnectionRef( DB_REPLICA );
 
 		$revQuery = $this->actorMigration->getJoin( 'rev_user' );
-
-		// This redundant join condition tells MySQL that rev_page and revactor_page are the
-		// same, so it can propagate the condition
-		if ( isset( $revQuery['tables']['temp_rev_user'] ) /* SCHEMA_COMPAT_READ_TEMP */ ) {
-			$revQuery['joins']['temp_rev_user'][1] =
-				"temp_rev_user.revactor_rev = rev_id AND revactor_page = rev_page";
-		}
 
 		$cond = [
 			'rev_page=' . intval( $pageId ),

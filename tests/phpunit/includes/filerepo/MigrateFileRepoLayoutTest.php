@@ -1,5 +1,7 @@
 <?php
 
+use Wikimedia\Rdbms\FakeResultWrapper;
+
 /**
  * @covers MigrateFileRepoLayout
  */
@@ -18,7 +20,7 @@ class MigrateFileRepoLayoutTest extends MediaWikiIntegrationTestCase {
 
 		$backend = new FSFileBackend( [
 			'name' => 'local-migratefilerepolayouttest',
-			'wikiId' => wfWikiID(),
+			'wikiId' => WikiMap::getCurrentWikiId(),
 			'containerPaths' => [
 				'migratefilerepolayouttest-original' => "{$this->tmpPrefix}-original",
 				'migratefilerepolayouttest-public' => "{$this->tmpPrefix}-public",
@@ -28,9 +30,7 @@ class MigrateFileRepoLayoutTest extends MediaWikiIntegrationTestCase {
 			]
 		] );
 
-		$dbMock = $this->getMockBuilder( Wikimedia\Rdbms\IDatabase::class )
-			->disableOriginalConstructor()
-			->getMock();
+		$dbMock = $this->createMock( Wikimedia\Rdbms\IDatabase::class );
 
 		$imageRow = (object)[
 			'img_name' => $filename,

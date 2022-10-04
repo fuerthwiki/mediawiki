@@ -2,10 +2,10 @@
 
 namespace MediaWiki\Auth;
 
-use MediaWiki\MediaWikiServices;
 use MediaWiki\Tests\Unit\Auth\AuthenticationProviderTestTrait;
 use MediaWiki\User\UserNameUtils;
 use Psr\Container\ContainerInterface;
+use Wikimedia\ObjectFactory\ObjectFactory;
 use Wikimedia\TestingAccessWrapper;
 
 /**
@@ -71,15 +71,15 @@ class ResetPasswordSecondaryAuthenticationProviderTest extends \MediaWikiIntegra
 			] )
 			->getMock();
 		$provider->method( 'providerAllowsAuthenticationDataChange' )
-			->will( $this->returnCallback( function ( $req ) {
+			->willReturnCallback( function ( $req ) {
 				$this->assertSame( 'UTSysop', $req->username );
 				return $req->allow;
-			} ) );
+			} );
 		$provider->method( 'providerChangeAuthenticationData' )
-			->will( $this->returnCallback( function ( $req ) {
+			->willReturnCallback( function ( $req ) {
 				$this->assertSame( 'UTSysop', $req->username );
 				$req->done = true;
-			} ) );
+			} );
 		$config = new \HashConfig( [
 			'AuthManagerConfig' => [
 				'preauth' => [],
@@ -91,18 +91,14 @@ class ResetPasswordSecondaryAuthenticationProviderTest extends \MediaWikiIntegra
 				],
 			],
 		] );
-		$mwServices = MediaWikiServices::getInstance();
-		$services = $this->createNoOpAbstractMock( ContainerInterface::class );
-		$objectFactory = new \Wikimedia\ObjectFactory( $services );
-		$hookContainer = $this->createHookContainer();
-		$userNameUtils = $this->createNoOpMock( UserNameUtils::class );
+		$mwServices = $this->getServiceContainer();
 		$manager = new AuthManager(
 			new \FauxRequest,
 			$config,
-			$objectFactory,
-			$hookContainer,
+			new ObjectFactory( $this->createNoOpAbstractMock( ContainerInterface::class ) ),
+			$this->createHookContainer(),
 			$mwServices->getReadOnlyMode(),
-			$userNameUtils,
+			$this->createNoOpMock( UserNameUtils::class ),
 			$mwServices->getBlockManager(),
 			$mwServices->getWatchlistManager(),
 			$mwServices->getDBLoadBalancer(),

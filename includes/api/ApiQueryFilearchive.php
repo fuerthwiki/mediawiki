@@ -27,6 +27,8 @@
 use MediaWiki\CommentFormatter\CommentFormatter;
 use MediaWiki\CommentFormatter\CommentItem;
 use MediaWiki\Revision\RevisionRecord;
+use Wikimedia\ParamValidator\ParamValidator;
+use Wikimedia\ParamValidator\TypeDef\IntegerDef;
 
 /**
  * Query module to enumerate all deleted files.
@@ -91,19 +93,13 @@ class ApiQueryFilearchive extends ApiQueryBase {
 		$this->addJoinConds( $fileQuery['joins'] );
 
 		if ( $params['continue'] !== null ) {
-			$cont = explode( '|', $params['continue'] );
-			$this->dieContinueUsageIf( count( $cont ) != 3 );
-			$op = $params['dir'] == 'descending' ? '<' : '>';
-			$cont_from = $db->addQuotes( $cont[0] );
-			$cont_timestamp = $db->addQuotes( $db->timestamp( $cont[1] ) );
-			$cont_id = (int)$cont[2];
-			$this->dieContinueUsageIf( $cont[2] !== (string)$cont_id );
-			$this->addWhere( "fa_name $op $cont_from OR " .
-				"(fa_name = $cont_from AND " .
-				"(fa_timestamp $op $cont_timestamp OR " .
-				"(fa_timestamp = $cont_timestamp AND " .
-				"fa_id $op= $cont_id )))"
-			);
+			$cont = $this->parseContinueParamOrDie( $params['continue'], [ 'string', 'string', 'int' ] );
+			$op = $params['dir'] == 'descending' ? '<=' : '>=';
+			$this->addWhere( $db->buildComparison( $op, [
+				'fa_name' => $cont[0],
+				'fa_timestamp' => $db->timestamp( $cont[1] ),
+				'fa_id' => $cont[2],
+			] ) );
 		}
 
 		// Image filters
@@ -233,8 +229,9 @@ class ApiQueryFilearchive extends ApiQueryBase {
 				$file['mediatype'] = $row->fa_media_type;
 			}
 			if ( $fld_metadata && $canViewFile ) {
+				$metadataArray = ArchivedFile::newFromRow( $row )->getMetadataArray();
 				$file['metadata'] = $row->fa_metadata
-					? ApiQueryImageInfo::processMetaData( unserialize( $row->fa_metadata ), $result )
+					? ApiQueryImageInfo::processMetaData( $metadataArray, $result )
 					: null;
 			}
 			if ( $fld_bitdepth && $canViewFile ) {
@@ -279,8 +276,8 @@ class ApiQueryFilearchive extends ApiQueryBase {
 			'to' => null,
 			'prefix' => null,
 			'dir' => [
-				ApiBase::PARAM_DFLT => 'ascending',
-				ApiBase::PARAM_TYPE => [
+				ParamValidator::PARAM_DEFAULT => 'ascending',
+				ParamValidator::PARAM_TYPE => [
 					'ascending',
 					'descending'
 				]
@@ -288,9 +285,9 @@ class ApiQueryFilearchive extends ApiQueryBase {
 			'sha1' => null,
 			'sha1base36' => null,
 			'prop' => [
-				ApiBase::PARAM_DFLT => 'timestamp',
-				ApiBase::PARAM_ISMULTI => true,
-				ApiBase::PARAM_TYPE => [
+				ParamValidator::PARAM_DEFAULT => 'timestamp',
+				ParamValidator::PARAM_ISMULTI => true,
+				ParamValidator::PARAM_TYPE => [
 					'sha1',
 					'timestamp',
 					'user',
@@ -307,11 +304,11 @@ class ApiQueryFilearchive extends ApiQueryBase {
 				ApiBase::PARAM_HELP_MSG_PER_VALUE => [],
 			],
 			'limit' => [
-				ApiBase::PARAM_DFLT => 10,
-				ApiBase::PARAM_TYPE => 'limit',
-				ApiBase::PARAM_MIN => 1,
-				ApiBase::PARAM_MAX => ApiBase::LIMIT_BIG1,
-				ApiBase::PARAM_MAX2 => ApiBase::LIMIT_BIG2
+				ParamValidator::PARAM_DEFAULT => 10,
+				ParamValidator::PARAM_TYPE => 'limit',
+				IntegerDef::PARAM_MIN => 1,
+				IntegerDef::PARAM_MAX => ApiBase::LIMIT_BIG1,
+				IntegerDef::PARAM_MAX2 => ApiBase::LIMIT_BIG2
 			],
 			'continue' => [
 				ApiBase::PARAM_HELP_MSG => 'api-help-param-continue',

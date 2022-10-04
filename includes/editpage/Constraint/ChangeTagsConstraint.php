@@ -39,7 +39,7 @@ class ChangeTagsConstraint implements IEditConstraint {
 	/** @var array */
 	private $tags;
 
-	/** @var StatusValue|string|null */
+	/** @var StatusValue|string */
 	private $result;
 
 	/**
@@ -64,7 +64,8 @@ class ChangeTagsConstraint implements IEditConstraint {
 		// service as part of T245964
 		$changeTagStatus = ChangeTags::canAddTagsAccompanyingChange(
 			$this->tags,
-			$this->performer
+			$this->performer,
+			false
 		);
 
 		if ( $changeTagStatus->isOK() ) {

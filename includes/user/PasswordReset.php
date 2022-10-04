@@ -25,6 +25,7 @@ use MediaWiki\Auth\TemporaryPasswordAuthenticationRequest;
 use MediaWiki\Config\ServiceOptions;
 use MediaWiki\HookContainer\HookContainer;
 use MediaWiki\HookContainer\HookRunner;
+use MediaWiki\MainConfigNames;
 use MediaWiki\User\UserFactory;
 use MediaWiki\User\UserNameUtils;
 use MediaWiki\User\UserOptionsLookup;
@@ -75,9 +76,9 @@ class PasswordReset implements LoggerAwareInterface {
 	 * @internal For use by ServiceWiring
 	 */
 	public const CONSTRUCTOR_OPTIONS = [
-		'AllowRequiringEmailForResets',
-		'EnableEmail',
-		'PasswordResetRoutes',
+		MainConfigNames::AllowRequiringEmailForResets,
+		MainConfigNames::EnableEmail,
+		MainConfigNames::PasswordResetRoutes,
 	];
 
 	/**
@@ -124,38 +125,45 @@ class PasswordReset implements LoggerAwareInterface {
 	 * @return StatusValue
 	 */
 	public function isAllowed( User $user ) {
-		$status = $this->permissionCache->get( $user->getName() );
-		if ( !$status ) {
-			$resetRoutes = $this->config->get( 'PasswordResetRoutes' );
-			$status = StatusValue::newGood();
-
-			if ( !is_array( $resetRoutes ) || !in_array( true, $resetRoutes, true ) ) {
-				// Maybe password resets are disabled, or there are no allowable routes
-				$status = StatusValue::newFatal( 'passwordreset-disabled' );
-			} elseif (
-				( $providerStatus = $this->authManager->allowsAuthenticationDataChange(
-					new TemporaryPasswordAuthenticationRequest(), false ) )
-				&& !$providerStatus->isGood()
-			) {
-				// Maybe the external auth plugin won't allow local password changes
-				$status = StatusValue::newFatal( 'resetpass_forbidden-reason',
-					$providerStatus->getMessage() );
-			} elseif ( !$this->config->get( 'EnableEmail' ) ) {
-				// Maybe email features have been disabled
-				$status = StatusValue::newFatal( 'passwordreset-emaildisabled' );
-			} elseif ( !$user->isAllowed( 'editmyprivateinfo' ) ) {
-				// Maybe not all users have permission to change private data
-				$status = StatusValue::newFatal( 'badaccess' );
-			} elseif ( $this->isBlocked( $user ) ) {
-				// Maybe the user is blocked (check this here rather than relying on the parent
-				// method as we have a more specific error message to use here and we want to
-				// ignore some types of blocks)
-				$status = StatusValue::newFatal( 'blocked-mailpassword' );
+		return $this->permissionCache->getWithSetCallback(
+			$user->getName(),
+			function () use ( $user ) {
+				return $this->computeIsAllowed( $user );
 			}
+		);
+	}
 
-			$this->permissionCache->set( $user->getName(), $status );
+	/**
+	 * @param User $user
+	 * @return StatusValue
+	 */
+	private function computeIsAllowed( User $user ): StatusValue {
+		$resetRoutes = $this->config->get( MainConfigNames::PasswordResetRoutes );
+		$status = StatusValue::newGood();
+
+		if ( !is_array( $resetRoutes ) || !in_array( true, $resetRoutes, true ) ) {
+			// Maybe password resets are disabled, or there are no allowable routes
+			$status = StatusValue::newFatal( 'passwordreset-disabled' );
+		} elseif (
+			( $providerStatus = $this->authManager->allowsAuthenticationDataChange(
+				new TemporaryPasswordAuthenticationRequest(), false ) )
+			&& !$providerStatus->isGood()
+		) {
+			// Maybe the external auth plugin won't allow local password changes
+			$status = StatusValue::newFatal( 'resetpass_forbidden-reason',
+				$providerStatus->getMessage() );
+		} elseif ( !$this->config->get( MainConfigNames::EnableEmail ) ) {
+			// Maybe email features have been disabled
+			$status = StatusValue::newFatal( 'passwordreset-emaildisabled' );
+		} elseif ( !$user->isAllowed( 'editmyprivateinfo' ) ) {
+			// Maybe not all users have permission to change private data
+			$status = StatusValue::newFatal( 'badaccess' );
+		} elseif ( $this->isBlocked( $user ) ) {
+			// Maybe the user is blocked (check this here rather than relying on the parent
+			// method as we have a more specific error message to use here and we want to
+			// ignore some types of blocks)
+			$status = StatusValue::newFatal( 'blocked-mailpassword' );
 		}
-
 		return $status;
 	}
 
@@ -201,7 +209,7 @@ class PasswordReset implements LoggerAwareInterface {
 		$username = $username ?? '';
 		$email = $email ?? '';
 
-		$resetRoutes = $this->config->get( 'PasswordResetRoutes' )
+		$resetRoutes = $this->config->get( MainConfigNames::PasswordResetRoutes )
 			+ [ 'username' => false, 'email' => false ];
 		if ( $resetRoutes['username'] && $username ) {
 			$method = 'username';
@@ -216,7 +224,7 @@ class PasswordReset implements LoggerAwareInterface {
 			$users = $this->getUsersByEmail( $email );
 			$username = null;
 			// Remove users whose preference 'requireemail' is on since username was not submitted
-			if ( $this->config->get( 'AllowRequiringEmailForResets' ) ) {
+			if ( $this->config->get( MainConfigNames::AllowRequiringEmailForResets ) ) {
 				$optionsLookup = $this->userOptionsLookup;
 				foreach ( $users as $index => $user ) {
 					if ( $optionsLookup->getBoolOption( $user, 'requireemail' ) ) {
@@ -255,7 +263,7 @@ class PasswordReset implements LoggerAwareInterface {
 		// in 'SpecialPasswordResetOnSubmit' hook.
 		$firstUser = reset( $users );
 
-		$requireEmail = $this->config->get( 'AllowRequiringEmailForResets' )
+		$requireEmail = $this->config->get( MainConfigNames::AllowRequiringEmailForResets )
 			&& $method === 'username'
 			&& $firstUser
 			&& $this->userOptionsLookup->getBoolOption( $firstUser, 'requireemail' );

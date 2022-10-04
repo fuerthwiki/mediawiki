@@ -1,5 +1,7 @@
 <?php
 
+use MediaWiki\MainConfigNames;
+
 /**
  * @coversNothing Just a sample
  */
@@ -14,11 +16,11 @@ class SampleTest extends MediaWikiLangTestCase {
 		// happen as they should (including the restoration for setMwGlobals).
 		parent::setUp();
 
-		// This sets the globals and will restore them automatically
+		// This sets the config settings, and will restore them automatically
 		// after each test.
-		$this->setContentLang( 'en' );
-		$this->setMwGlobals( [
-			'wgCapitalLinks' => true,
+		$this->overrideConfigValues( [
+			MainConfigNames::LanguageCode => 'en',
+			MainConfigNames::CapitalLinks => true,
 		] );
 	}
 
@@ -35,11 +37,11 @@ class SampleTest extends MediaWikiLangTestCase {
 	 * https://phpunit.de/manual/6.5/en/other-uses-for-tests.html
 	 */
 	public function testTitleObjectStringConversion() {
-		$title = Title::newFromText( "text" );
+		$title = Title::makeTitle( NS_MAIN, "Text" );
 		$this->assertInstanceOf( Title::class, $title, "Title creation" );
 		$this->assertEquals( "Text", $title, "Automatic string conversion" );
 
-		$title = Title::newFromText( "text", NS_MEDIA );
+		$title = Title::makeTitle( NS_MEDIA, "Text" );
 		$this->assertEquals( "Media:Text", $title, "Title creation with namespace" );
 	}
 
@@ -58,10 +60,8 @@ class SampleTest extends MediaWikiLangTestCase {
 	}
 
 	/**
-	 * phpcs:disable Generic.Files.LineLength
 	 * @dataProvider provideTitles
 	 * See https://phpunit.de/manual/6.5/en/appendixes.annotations.html#appendixes.annotations.dataProvider
-	 * phpcs:enable
 	 */
 	public function testCreateBasicListOfTitles( $titleName, $ns, $text ) {
 		$title = Title::newFromText( $titleName, $ns );

@@ -1,5 +1,6 @@
 <?php
 
+use Wikimedia\LightweightObjectStore\StorageAwareness;
 use Wikimedia\ScopedCallback;
 use Wikimedia\TestingAccessWrapper;
 
@@ -10,25 +11,43 @@ use Wikimedia\TestingAccessWrapper;
  */
 abstract class BagOStuffTestBase extends MediaWikiIntegrationTestCase {
 	/** @var BagOStuff */
-	private $cache;
+	protected $cache;
 
-	private const TEST_KEY = 'test';
-	private const TEST_TIME = 1563892142;
+	protected const TEST_TIME = 1563892142;
 
 	protected function setUp(): void {
 		parent::setUp();
 
-		$this->cache = $this->newCacheInstance();
+		try {
+			$this->cache = $this->newCacheInstance();
+		} catch ( InvalidArgumentException $e ) {
+			$this->markTestSkipped( "Cannot create cache instance for " . static::class .
+				': the configuration is presumably missing from $wgObjectCaches' );
+		}
 		$this->cache->deleteMulti( [
-			$this->cache->makeKey( self::TEST_KEY ),
-			$this->cache->makeKey( self::TEST_KEY ) . ':lock'
+			$this->cache->makeKey( $this->testKey() ),
+			$this->cache->makeKey( $this->testKey() ) . ':lock'
 		] );
+	}
+
+	private function testKey() {
+		return 'test-' . static::class;
 	}
 
 	/**
 	 * @return BagOStuff
 	 */
 	abstract protected function newCacheInstance();
+
+	protected function getCacheByClass( $className ) {
+		$caches = $this->getConfVar( 'ObjectCaches' );
+		foreach ( $caches as $id => $cache ) {
+			if ( ( $cache['class'] ?? '' ) === $className ) {
+				return ObjectCache::getInstance( $id );
+			}
+		}
+		$this->markTestSkipped( "No $className is configured" );
+	}
 
 	/**
 	 * @covers MediumSpecificBagOStuff::makeGlobalKey
@@ -89,7 +108,7 @@ abstract class BagOStuffTestBase extends MediaWikiIntegrationTestCase {
 	 * @covers MediumSpecificBagOStuff::mergeViaCas
 	 */
 	public function testMerge() {
-		$key = $this->cache->makeKey( self::TEST_KEY );
+		$key = $this->cache->makeKey( $this->testKey() );
 
 		$calls = 0;
 		$casRace = false; // emulate a race
@@ -132,7 +151,7 @@ abstract class BagOStuffTestBase extends MediaWikiIntegrationTestCase {
 	 * @covers MediumSpecificBagOStuff::changeTTL
 	 */
 	public function testChangeTTLRenew() {
-		$key = $this->cache->makeKey( self::TEST_KEY );
+		$key = $this->cache->makeKey( $this->testKey() );
 		$value = 'meow';
 
 		$this->cache->add( $key, $value, 60 );
@@ -150,7 +169,7 @@ abstract class BagOStuffTestBase extends MediaWikiIntegrationTestCase {
 	 * @covers MediumSpecificBagOStuff::changeTTL
 	 */
 	public function testChangeTTLExpireRel() {
-		$key = $this->cache->makeKey( self::TEST_KEY );
+		$key = $this->cache->makeKey( $this->testKey() );
 		$value = 'meow';
 
 		$this->cache->add( $key, $value, 5 );
@@ -164,7 +183,7 @@ abstract class BagOStuffTestBase extends MediaWikiIntegrationTestCase {
 	 * @covers MediumSpecificBagOStuff::changeTTL
 	 */
 	public function testChangeTTLExpireAbs() {
-		$key = $this->cache->makeKey( self::TEST_KEY );
+		$key = $this->cache->makeKey( $this->testKey() );
 		$value = 'meow';
 
 		$this->cache->add( $key, $value, 5 );
@@ -229,10 +248,22 @@ abstract class BagOStuffTestBase extends MediaWikiIntegrationTestCase {
 	 * @covers MediumSpecificBagOStuff::add
 	 */
 	public function testAdd() {
-		$key = $this->cache->makeKey( self::TEST_KEY );
+		$key = $this->cache->makeKey( $this->testKey() );
 		$this->assertFalse( $this->cache->get( $key ) );
 		$this->assertTrue( $this->cache->add( $key, 'test', 5 ) );
 		$this->assertFalse( $this->cache->add( $key, 'test', 5 ) );
+	}
+
+	public function testAddBackground() {
+		$key = $this->cache->makeKey( $this->testKey() );
+		$this->assertFalse( $this->cache->get( $key ) );
+		$this->assertTrue(
+			$this->cache->add( $key, 'test', 5, BagOStuff::WRITE_BACKGROUND )
+		);
+		for ( $i = 0; $i < 100 && $this->cache->get( $key ) !== 'test'; $i++ ) {
+			usleep( 1000 );
+		}
+		$this->assertSame( 'test', $this->cache->get( $key ) );
 	}
 
 	/**
@@ -241,7 +272,7 @@ abstract class BagOStuffTestBase extends MediaWikiIntegrationTestCase {
 	public function testGet() {
 		$value = [ 'this' => 'is', 'a' => 'test' ];
 
-		$key = $this->cache->makeKey( self::TEST_KEY );
+		$key = $this->cache->makeKey( $this->testKey() );
 		$this->cache->add( $key, $value, 5 );
 		$this->assertSame( $this->cache->get( $key ), $value );
 	}
@@ -255,7 +286,7 @@ abstract class BagOStuffTestBase extends MediaWikiIntegrationTestCase {
 		$now = self::TEST_TIME;
 		$cache = new HashBagOStuff( [] );
 		$cache->setMockTime( $now );
-		$key = $cache->makeKey( self::TEST_KEY );
+		$key = $cache->makeKey( $this->testKey() );
 
 		$this->assertFalse( $cache->get( $key ), "No value" );
 
@@ -281,7 +312,7 @@ abstract class BagOStuffTestBase extends MediaWikiIntegrationTestCase {
 	 * @covers MediumSpecificBagOStuff::incr
 	 */
 	public function testIncr() {
-		$key = $this->cache->makeKey( self::TEST_KEY );
+		$key = $this->cache->makeKey( $this->testKey() );
 		$this->cache->add( $key, 0, 5 );
 		$this->cache->incr( $key );
 		$expectedValue = 1;
@@ -293,20 +324,46 @@ abstract class BagOStuffTestBase extends MediaWikiIntegrationTestCase {
 	 * @covers MediumSpecificBagOStuff::incrWithInit
 	 */
 	public function testIncrWithInit() {
-		$key = $this->cache->makeKey( self::TEST_KEY );
+		$key = $this->cache->makeKey( $this->testKey() );
 
 		$val = $this->cache->get( $key );
 		$this->assertFalse( $val, "No value yet" );
 
 		$val = $this->cache->incrWithInit( $key, 0, 1, 3 );
-		$this->assertEquals( 3, $val, "Correct init value" );
+		$this->assertSame( 3, $val, "Correct init value" );
 
 		$val = $this->cache->incrWithInit( $key, 0, 1, 3 );
-		$this->assertEquals( 4, $val, "Correct init value" );
+		$this->assertSame( 4, $val, "Correct incremented value" );
 		$this->cache->delete( $key );
 
 		$val = $this->cache->incrWithInit( $key, 0, 5 );
-		$this->assertEquals( 5, $val, "Correct init value" );
+		$this->assertSame( 5, $val, "Correct incremented value" );
+	}
+
+	public function testIncrWithInitAsync() {
+		$key = $this->cache->makeKey( $this->testKey() );
+		$val = $this->cache->get( $key );
+		$this->assertFalse( $val, "No value yet" );
+
+		$val = $this->cache->incrWithInit( $key, 0, 1, 3, BagOStuff::WRITE_BACKGROUND );
+		if ( $val === true ) {
+			$val = $this->cache->get( $key );
+			for ( $i = 0; $i < 1000 && $val !== 3; $i++ ) {
+				usleep( 1000 );
+				$val = $this->cache->get( $key );
+			}
+		}
+		$this->assertSame( 3, $val );
+
+		$val = $this->cache->incrWithInit( $key, 0, 1, 3, BagOStuff::WRITE_BACKGROUND );
+		if ( $val === true ) {
+			$val = $this->cache->get( $key );
+			for ( $i = 0; $i < 1000 && $val !== 4; $i++ ) {
+				usleep( 1000 );
+				$val = $this->cache->get( $key );
+			}
+		}
+		$this->assertSame( 4, $val );
 	}
 
 	/**
@@ -381,6 +438,13 @@ abstract class BagOStuffTestBase extends MediaWikiIntegrationTestCase {
 		);
 	}
 
+	public function testDelete() {
+		// Delete of non-existent key should return true
+		$key = $this->cache->makeKey( 'nonexistent' );
+		$this->assertTrue( $this->cache->delete( $key ) );
+		$this->assertTrue( $this->cache->delete( $key, BagOStuff::WRITE_BACKGROUND ) );
+	}
+
 	/**
 	 * @covers MediumSpecificBagOStuff::get
 	 * @covers MediumSpecificBagOStuff::getMulti
@@ -388,7 +452,7 @@ abstract class BagOStuffTestBase extends MediaWikiIntegrationTestCase {
 	 * @covers MediumSpecificBagOStuff::delete
 	 */
 	public function testSetSegmentable() {
-		$key = $this->cache->makeKey( self::TEST_KEY );
+		$key = $this->cache->makeKey( $this->testKey() );
 		$tiny = 418;
 		$small = wfRandomString( 32 );
 		// 64 * 8 * 32768 = 16777216 bytes
@@ -402,7 +466,7 @@ abstract class BagOStuffTestBase extends MediaWikiIntegrationTestCase {
 		foreach ( $cases as $case => $value ) {
 			$this->cache->set( $key, $value, 10, BagOStuff::WRITE_ALLOW_SEGMENTS );
 			$this->assertEquals( $value, $this->cache->get( $key ), "get $case" );
-			$this->assertEquals( $value, $this->cache->getMulti( [ $key ] )[$key], "get $case" );
+			$this->assertEquals( [ $key => $value ], $this->cache->getMulti( [ $key ] ), "get $case" );
 
 			$this->assertTrue(
 				$this->cache->merge( $key, $callback, 5, 1, BagOStuff::WRITE_ALLOW_SEGMENTS ),
@@ -446,11 +510,17 @@ abstract class BagOStuffTestBase extends MediaWikiIntegrationTestCase {
 		$this->assertFalse( $this->cache->get( $key ) );
 	}
 
+	public function testSetBackground() {
+		$key = $this->cache->makeKey( $this->testKey() );
+		$this->assertTrue(
+			$this->cache->set( $key, 'background', BagOStuff::WRITE_BACKGROUND ) );
+	}
+
 	/**
 	 * @covers MediumSpecificBagOStuff::getScopedLock
 	 */
 	public function testGetScopedLock() {
-		$key = $this->cache->makeKey( self::TEST_KEY );
+		$key = $this->cache->makeKey( $this->testKey() );
 		$value1 = $this->cache->getScopedLock( $key, 0 );
 		$value2 = $this->cache->getScopedLock( $key, 0 );
 
@@ -500,15 +570,46 @@ abstract class BagOStuffTestBase extends MediaWikiIntegrationTestCase {
 	 * @covers MediumSpecificBagOStuff::unlock()
 	 */
 	public function testLocking() {
-		$key = 'test';
+		$key = $this->cache->makeKey( $this->testKey() );
 		$this->assertTrue( $this->cache->lock( $key ) );
 		$this->assertFalse( $this->cache->lock( $key ) );
 		$this->assertTrue( $this->cache->unlock( $key ) );
+		$this->assertFalse( $this->cache->unlock( $key ) );
 
-		$key2 = 'test2';
-		$this->assertTrue( $this->cache->lock( $key2, 5, 5, 'rclass' ) );
-		$this->assertTrue( $this->cache->lock( $key2, 5, 5, 'rclass' ) );
-		$this->assertTrue( $this->cache->unlock( $key2 ) );
-		$this->assertTrue( $this->cache->unlock( $key2 ) );
+		$this->assertTrue( $this->cache->lock( $key, 5, 5, 'rclass' ) );
+		$this->assertTrue( $this->cache->lock( $key, 5, 5, 'rclass' ) );
+		$this->assertTrue( $this->cache->unlock( $key ) );
+		$this->assertTrue( $this->cache->unlock( $key ) );
+	}
+
+	/**
+	 * @covers MediumSpecificBagOStuff::watchErrors()
+	 * @covers MediumSpecificBagOStuff::getLastError()
+	 * @covers MediumSpecificBagOStuff::setLastError()
+	 */
+	public function testErrorHandling() {
+		$key = $this->cache->makeKey( $this->testKey() );
+		$wrapper = TestingAccessWrapper::newFromObject( $this->cache );
+
+		$wp = $this->cache->watchErrors();
+		$this->cache->get( $key );
+		$this->assertSame( StorageAwareness::ERR_NONE, $this->cache->getLastError() );
+		$this->assertSame( StorageAwareness::ERR_NONE, $this->cache->getLastError( $wp ) );
+
+		$wrapper->setLastError( StorageAwareness::ERR_UNREACHABLE );
+		$this->assertSame( StorageAwareness::ERR_UNREACHABLE, $this->cache->getLastError() );
+		$this->assertSame( StorageAwareness::ERR_UNREACHABLE, $this->cache->getLastError( $wp ) );
+
+		$wp = $this->cache->watchErrors();
+		$wrapper->setLastError( StorageAwareness::ERR_UNEXPECTED );
+		$wp2 = $this->cache->watchErrors();
+		$this->assertSame( StorageAwareness::ERR_UNEXPECTED, $this->cache->getLastError() );
+		$this->assertSame( StorageAwareness::ERR_UNEXPECTED, $this->cache->getLastError( $wp ) );
+		$this->assertSame( StorageAwareness::ERR_NONE, $this->cache->getLastError( $wp2 ) );
+
+		$this->cache->get( $key );
+		$this->assertSame( StorageAwareness::ERR_UNEXPECTED, $this->cache->getLastError() );
+		$this->assertSame( StorageAwareness::ERR_UNEXPECTED, $this->cache->getLastError( $wp ) );
+		$this->assertSame( StorageAwareness::ERR_NONE, $this->cache->getLastError( $wp2 ) );
 	}
 }

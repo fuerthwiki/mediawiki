@@ -8,7 +8,6 @@ use ApiMessage;
 use ApiTestCase;
 use ApiUsageException;
 use FauxRequest;
-use MediaWiki\MediaWikiServices;
 use Message;
 use Wikimedia\Message\DataMessageValue;
 use Wikimedia\Message\MessageValue;
@@ -18,17 +17,17 @@ use Wikimedia\ParamValidator\TypeDef\IntegerDef;
 use Wikimedia\TestingAccessWrapper;
 
 /**
- * @covers MediaWiki\Api\Validator\ApiParamValidator
+ * @covers \MediaWiki\Api\Validator\ApiParamValidator
  * @group API
  * @group medium
  */
 class ApiParamValidatorTest extends ApiTestCase {
 
 	private function getValidator( FauxRequest $request ): array {
-		$context = $this->apiContext->newTestContext( $request, $this->getTestUser()->getUser() );
+		$context = $this->apiContext->newTestContext( $request, $this->getTestUser()->getAuthority() );
 		$main = new ApiMain( $context );
 		return [
-			new ApiParamValidator( $main, MediaWikiServices::getInstance()->getObjectFactory() ),
+			new ApiParamValidator( $main, $this->getServiceContainer()->getObjectFactory() ),
 			$main
 		];
 	}
@@ -218,7 +217,7 @@ class ApiParamValidatorTest extends ApiTestCase {
 						ParamValidator::PARAM_ISMULTI => true
 					],
 					'test-{x}' => [
-						ApiBase::PARAM_TYPE => [],
+						ParamValidator::PARAM_TYPE => [],
 						ApiBase::PARAM_RANGE_ENFORCE => true,
 						ApiBase::PARAM_HELP_MSG => 'foo',
 						ApiBase::PARAM_HELP_MSG_APPEND => [],

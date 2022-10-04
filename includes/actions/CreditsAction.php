@@ -24,7 +24,9 @@
  */
 
 use MediaWiki\Linker\LinkRenderer;
+use MediaWiki\MainConfigNames;
 use MediaWiki\User\UserFactory;
+use MediaWiki\User\UserRigorOptions;
 
 /**
  * @ingroup Actions
@@ -72,7 +74,7 @@ class CreditsAction extends FormlessAction {
 			'mediawiki.action.styles',
 		] );
 
-		if ( $this->getWikiPage()->getId() == 0 ) {
+		if ( $this->getWikiPage()->getId() === 0 ) {
 			$s = $this->msg( 'nocredits' )->parse();
 		} else {
 			$s = $this->getCredits( -1 );
@@ -91,7 +93,7 @@ class CreditsAction extends FormlessAction {
 	public function getCredits( $cnt, $showIfMax = true ) {
 		$s = '';
 
-		if ( $cnt != 0 ) {
+		if ( $cnt !== 0 ) {
 			$s = $this->getAuthor();
 			if ( $cnt > 1 || $cnt < 0 ) {
 				$s .= ' ' . $this->getContributors( $cnt - 1, $showIfMax );
@@ -108,7 +110,7 @@ class CreditsAction extends FormlessAction {
 	 */
 	private function getAuthor() {
 		$page = $this->getWikiPage();
-		$user = $this->userFactory->newFromName( $page->getUserText(), UserFactory::RIGOR_NONE );
+		$user = $this->userFactory->newFromName( $page->getUserText(), UserRigorOptions::RIGOR_NONE );
 
 		$timestamp = $page->getTimestamp();
 		if ( $timestamp ) {
@@ -121,6 +123,7 @@ class CreditsAction extends FormlessAction {
 		}
 
 		return $this->msg( 'lastmodifiedatby', $d, $t )->rawParams(
+			// @phan-suppress-next-line PhanTypeMismatchArgumentNullable RIGOR_NONE never returns null
 			$this->userLink( $user ) )->params( $user->getName() )->escaped();
 	}
 
@@ -131,7 +134,7 @@ class CreditsAction extends FormlessAction {
 	 * @return bool
 	 */
 	protected function canShowRealUserName() {
-		$hiddenPrefs = $this->context->getConfig()->get( 'HiddenPrefs' );
+		$hiddenPrefs = $this->context->getConfig()->get( MainConfigNames::HiddenPrefs );
 		return !in_array( 'realname', $hiddenPrefs );
 	}
 
@@ -174,7 +177,7 @@ class CreditsAction extends FormlessAction {
 				$anon_ips[] = $this->link( $user );
 			}
 
-			if ( $cnt == 0 ) {
+			if ( $cnt === 0 ) {
 				break;
 			}
 		}
@@ -203,19 +206,19 @@ class CreditsAction extends FormlessAction {
 		}
 
 		# This is the big list, all mooshed together. We sift for blank strings
-		$fulllist = [];
+		$fullList = [];
 		foreach ( [ $real, $user, $anon, $others_link ] as $s ) {
 			if ( $s !== false ) {
-				array_push( $fulllist, $s );
+				$fullList[] = $s;
 			}
 		}
 
-		$count = count( $fulllist );
+		$count = count( $fullList );
 
 		# "Based on work by ..."
 		return $count
 			? $this->msg( 'othercontribs' )->rawParams(
-				$lang->listToText( $fulllist ) )->params( $count )->escaped()
+				$lang->listToText( $fullList ) )->params( $count )->escaped()
 			: '';
 	}
 

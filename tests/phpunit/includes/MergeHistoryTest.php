@@ -1,6 +1,6 @@
 <?php
 
-use MediaWiki\MediaWikiServices;
+use MediaWiki\MainConfigNames;
 use MediaWiki\Tests\Unit\Permissions\MockAuthorityTrait;
 
 /**
@@ -41,7 +41,7 @@ class MergeHistoryTest extends MediaWikiIntegrationTestCase {
 			// still work for the merge.
 			$timestamp = time() + ( 24 * 3600 );
 		}
-		$factory = MediaWikiServices::getInstance()->getMergeHistoryFactory();
+		$factory = $this->getServiceContainer()->getMergeHistoryFactory();
 		$mh = $factory->newMergeHistory(
 			Title::newFromText( $source ),
 			Title::newFromText( $dest ),
@@ -49,9 +49,9 @@ class MergeHistoryTest extends MediaWikiIntegrationTestCase {
 		);
 		$status = $mh->isValidMerge();
 		if ( $error === true ) {
-			$this->assertTrue( $status->isGood() );
+			$this->assertStatusGood( $status );
 		} else {
-			$this->assertTrue( $status->hasMessage( $error ) );
+			$this->assertStatusError( $error, $status );
 		}
 	}
 
@@ -82,8 +82,8 @@ class MergeHistoryTest extends MediaWikiIntegrationTestCase {
 		$mh = $this->getMockBuilder( MergeHistory::class )
 			->onlyMethods( [ 'getRevisionCount' ] )
 			->setConstructorArgs( [
-				Title::newFromText( 'Test' ),
-				Title::newFromText( 'Test2' ),
+				Title::makeTitle( NS_MAIN, 'Test' ),
+				Title::makeTitle( NS_MAIN, 'Test2' ),
 				null,
 				$this->getServiceContainer()->getDBLoadBalancer(),
 				$this->getServiceContainer()->getContentHandlerFactory(),
@@ -101,7 +101,7 @@ class MergeHistoryTest extends MediaWikiIntegrationTestCase {
 			->willReturn( $limit + 1 );
 
 		$status = $mh->isValidMerge();
-		$this->assertTrue( $status->hasMessage( 'mergehistory-fail-toobig' ) );
+		$this->assertStatusError( 'mergehistory-fail-toobig', $status );
 		$errors = $status->getErrorsByType( 'error' );
 		$params = $errors[0]['params'];
 		$this->assertEquals( $params[0], Message::numParam( $limit ) );
@@ -113,10 +113,10 @@ class MergeHistoryTest extends MediaWikiIntegrationTestCase {
 	 * @covers MergeHistory::probablyCanMerge
 	 */
 	public function testCheckPermissions() {
-		$factory = MediaWikiServices::getInstance()->getMergeHistoryFactory();
+		$factory = $this->getServiceContainer()->getMergeHistoryFactory();
 		$mh = $factory->newMergeHistory(
-			Title::newFromText( 'Test' ),
-			Title::newFromText( 'Test2' )
+			Title::makeTitle( NS_MAIN, 'Test' ),
+			Title::makeTitle( NS_MAIN, 'Test2' )
 		);
 
 		foreach ( [ 'authorizeMerge', 'probablyCanMerge' ] as $method ) {
@@ -125,13 +125,13 @@ class MergeHistoryTest extends MediaWikiIntegrationTestCase {
 				$this->mockRegisteredUltimateAuthority(),
 				''
 			);
-			$this->assertTrue( $status->isOK() );
+			$this->assertStatusOK( $status );
 
 			$status = $mh->$method(
 				$this->mockRegisteredAuthorityWithoutPermissions( [ 'mergehistory' ] ),
 				''
 			);
-			$this->assertTrue( $status->hasMessage( 'mergehistory-fail-permission' ) );
+			$this->assertStatusError( 'mergehistory-fail-permission', $status );
 		}
 	}
 
@@ -140,10 +140,10 @@ class MergeHistoryTest extends MediaWikiIntegrationTestCase {
 	 * @covers MergeHistory::getMergedRevisionCount
 	 */
 	public function testGetMergedRevisionCount() {
-		$factory = MediaWikiServices::getInstance()->getMergeHistoryFactory();
+		$factory = $this->getServiceContainer()->getMergeHistoryFactory();
 		$mh = $factory->newMergeHistory(
-			Title::newFromText( 'Merge1' ),
-			Title::newFromText( 'Merge2' )
+			Title::makeTitle( NS_MAIN, 'Merge1' ),
+			Title::makeTitle( NS_MAIN, 'Merge2' )
 		);
 
 		$sysop = static::getTestSysop()->getUser();
@@ -158,10 +158,10 @@ class MergeHistoryTest extends MediaWikiIntegrationTestCase {
 	 * @covers MergeHistory::merge
 	 */
 	public function testSourceUpdateWithRedirectSupport() {
-		$title = Title::newFromText( 'Merge1' );
-		$title2 = Title::newFromText( 'Merge2' );
+		$title = Title::makeTitle( NS_MAIN, 'Merge1' );
+		$title2 = Title::makeTitle( NS_MAIN, 'Merge2' );
 
-		$factory = MediaWikiServices::getInstance()->getMergeHistoryFactory();
+		$factory = $this->getServiceContainer()->getMergeHistoryFactory();
 		$mh = $factory->newMergeHistory( $title, $title2 );
 
 		$this->assertTrue( $title->exists() );
@@ -178,16 +178,16 @@ class MergeHistoryTest extends MediaWikiIntegrationTestCase {
 	 * @covers MergeHistory::merge
 	 */
 	public function testSourceUpdateForNoRedirectSupport() {
-		$this->setMwGlobals( [
-			'wgExtraNamespaces' => [
+		$this->overrideConfigValues( [
+			MainConfigNames::ExtraNamespaces => [
 				2030 => 'NoRedirect',
 				2030 => 'NoRedirect_talk'
 			],
 
-			'wgNamespaceContentModels' => [
+			MainConfigNames::NamespaceContentModels => [
 				2030 => 'testing'
 			],
-			'wgContentHandlers' => [
+			MainConfigNames::ContentHandlers => [
 				// Relies on the DummyContentHandlerForTesting not
 				// supporting redirects by default. If this ever gets
 				// changed this test has to be fixed.
@@ -195,17 +195,18 @@ class MergeHistoryTest extends MediaWikiIntegrationTestCase {
 			]
 		] );
 
-		$title = Title::newFromText( 'Merge3' );
+		$title = Title::makeTitle( NS_MAIN, 'Merge3' );
 		$title->setContentModel( 'testing' );
-		$title2 = Title::newFromText( 'Merge4' );
+		$title2 = Title::makeTitle( NS_MAIN, 'Merge4' );
 		$title2->setContentModel( 'testing' );
 
-		$factory = MediaWikiServices::getInstance()->getMergeHistoryFactory();
+		$factory = $this->getServiceContainer()->getMergeHistoryFactory();
 		$mh = $factory->newMergeHistory( $title, $title2 );
 
 		$this->assertTrue( $title->exists() );
 
 		$status = $mh->merge( static::getTestSysop()->getUser() );
+		$this->assertStatusOK( $status );
 
 		$this->assertFalse( $title->exists() );
 	}

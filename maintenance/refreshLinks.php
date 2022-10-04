@@ -238,7 +238,7 @@ class RefreshLinks extends Maintenance {
 		$rt = null;
 		$content = $page->getContent( RevisionRecord::RAW );
 		if ( $content !== null ) {
-			$rt = $content->getUltimateRedirectTarget();
+			$rt = $content->getRedirectTarget();
 		}
 
 		if ( $rt === null ) {
@@ -405,11 +405,11 @@ class RefreshLinks extends Maintenance {
 		if ( $start === null && $end === null ) {
 			return "$var IS NOT NULL";
 		} elseif ( $end === null ) {
-			return "$var >= {$db->addQuotes( $start )}";
+			return "$var >= " . $db->addQuotes( $start );
 		} elseif ( $start === null ) {
-			return "$var <= {$db->addQuotes( $end )}";
+			return "$var <= " . $db->addQuotes( $end );
 		} else {
-			return "$var BETWEEN {$db->addQuotes( $start )} AND {$db->addQuotes( $end )}";
+			return "$var BETWEEN " . $db->addQuotes( $start ) . ' AND ' . $db->addQuotes( $end );
 		}
 	}
 

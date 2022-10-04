@@ -62,10 +62,10 @@ use Wikimedia\Timestamp\ConvertibleTimestamp;
  * @since 1.19
  */
 class FSFileBackend extends FileBackendStore {
-	/** @var MapCacheLRU Cache for known prepared/usable directorries */
+	/** @var MapCacheLRU Cache for known prepared/usable directories */
 	protected $usableDirCache;
 
-	/** @var string Directory holding the container directories */
+	/** @var string|null Directory holding the container directories */
 	protected $basePath;
 
 	/** @var array Map of container names to root paths for custom container paths */
@@ -78,7 +78,7 @@ class FSFileBackend extends FileBackendStore {
 	/** @var string Required OS username to own files */
 	protected $fileOwner;
 
-	/** @var bool Simpler version of PHP_OS_FAMILY */
+	/** @var string Simpler version of PHP_OS_FAMILY */
 	protected $os;
 	/** @var string OS username running this script */
 	protected $currentUser;
@@ -136,7 +136,7 @@ class FSFileBackend extends FileBackendStore {
 	protected function resolveContainerPath( $container, $relStoragePath ) {
 		// Check that container has a root directory
 		if ( isset( $this->containerPaths[$container] ) || isset( $this->basePath ) ) {
-			// Check for sane relative paths (assume the base paths are OK)
+			// Check for sensible relative paths (assume the base paths are OK)
 			if ( $this->isLegalRelPath( $relStoragePath ) ) {
 				return $relStoragePath;
 			}
@@ -146,7 +146,7 @@ class FSFileBackend extends FileBackendStore {
 	}
 
 	/**
-	 * Sanity check a relative file system path for validity
+	 * Check a relative file system path for validity
 	 *
 	 * @param string $fsPath Normalized relative path
 	 * @return bool
@@ -184,7 +184,7 @@ class FSFileBackend extends FileBackendStore {
 	/**
 	 * Get the absolute file system path for a storage path
 	 *
-	 * @param string $storagePath Storage path
+	 * @param string $storagePath
 	 * @return string|null
 	 */
 	protected function resolveToFSPath( $storagePath ) {
@@ -290,7 +290,7 @@ class FSFileBackend extends FileBackendStore {
 		if ( $fsSrcPath === $fsDstPath ) {
 			$status->fatal( 'backend-fail-internal', $this->name );
 
-			return $status; // sanity
+			return $status;
 		}
 
 		if ( !empty( $params['async'] ) ) { // deferred
@@ -481,10 +481,7 @@ class FSFileBackend extends FileBackendStore {
 	}
 
 	/**
-	 * @param string $fullCont
-	 * @param string $dirRel
-	 * @param array $params
-	 * @return StatusValue
+	 * @inheritDoc
 	 */
 	protected function doPrepareInternal( $fullCont, $dirRel, array $params ) {
 		$status = $this->newStatus();
@@ -515,7 +512,7 @@ class FSFileBackend extends FileBackendStore {
 			$status->merge( $this->doSecureInternal( $fullCont, $dirRel, $params ) );
 		}
 
-		if ( $status->isOK() ) {
+		if ( $status->isGood() ) {
 			$this->usableDirCache->set( $fsDirectory, 1 );
 		}
 
@@ -815,7 +812,7 @@ class FSFileBackend extends FileBackendStore {
 	/**
 	 * @param string $fsSrcPath Absolute file system path
 	 * @param string $fsDstPath Absolute file system path
-	 * @param bool $ignoreMissing Whether to no-op if the source file is non-existant
+	 * @param bool $ignoreMissing Whether to no-op if the source file is non-existent
 	 * @return string Command
 	 */
 	private function makeCopyCommand( $fsSrcPath, $fsDstPath, $ignoreMissing ) {
@@ -849,7 +846,7 @@ class FSFileBackend extends FileBackendStore {
 	/**
 	 * @param string $fsSrcPath Absolute file system path
 	 * @param string $fsDstPath Absolute file system path
-	 * @param bool $ignoreMissing Whether to no-op if the source file is non-existant
+	 * @param bool $ignoreMissing Whether to no-op if the source file is non-existent
 	 * @return string Command
 	 */
 	private function makeMoveCommand( $fsSrcPath, $fsDstPath, $ignoreMissing = false ) {
@@ -870,7 +867,7 @@ class FSFileBackend extends FileBackendStore {
 
 	/**
 	 * @param string $fsPath Absolute file system path
-	 * @param bool $ignoreMissing Whether to no-op if the file is non-existant
+	 * @param bool $ignoreMissing Whether to no-op if the file is non-existent
 	 * @return string Command
 	 */
 	private function makeUnlinkCommand( $fsPath, $ignoreMissing = false ) {
@@ -975,7 +972,7 @@ class FSFileBackend extends FileBackendStore {
 	/**
 	 * Clean up directory separators for the given OS
 	 *
-	 * @param string $fsPath FS path
+	 * @param string $fsPath
 	 * @return string
 	 */
 	protected function cleanPathSlashes( $fsPath ) {

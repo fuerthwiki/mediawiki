@@ -24,11 +24,12 @@ use MediaWiki\CommentFormatter\CommentFormatter;
 use MediaWiki\HookContainer\HookContainer;
 use MediaWiki\HookContainer\HookRunner;
 use MediaWiki\Linker\LinkRenderer;
+use MediaWiki\MainConfigNames;
 use MediaWiki\MediaWikiServices;
 use MediaWiki\Revision\RevisionRecord;
 use MediaWiki\Revision\RevisionStore;
-use MediaWiki\User\UserFactory;
 use MediaWiki\User\UserIdentity;
+use MediaWiki\User\UserRigorOptions;
 use Wikimedia\IPUtils;
 use Wikimedia\Rdbms\FakeResultWrapper;
 use Wikimedia\Rdbms\IDatabase;
@@ -40,6 +41,8 @@ use Wikimedia\Rdbms\IResultWrapper;
  * @ingroup Pager
  */
 class ContribsPager extends RangeChronologicalPager {
+
+	public $mGroupByDate = true;
 
 	/**
 	 * @var string[] Local cache for escaped messages
@@ -57,7 +60,7 @@ class ContribsPager extends RangeChronologicalPager {
 	private $namespace;
 
 	/**
-	 * @var string|false Name of tag to filter, or false to ignore tags
+	 * @var string[]|false Name of tag to filter, or false to ignore tags
 	 */
 	private $tagFilter;
 
@@ -113,23 +116,23 @@ class ContribsPager extends RangeChronologicalPager {
 	 */
 	private $templateParser;
 
-	/** @var LinkBatchFactory */
-	private $linkBatchFactory;
+	/** @var ActorMigration */
+	private $actorMigration;
+
+	/** @var CommentFormatter */
+	private $commentFormatter;
 
 	/** @var HookRunner */
 	private $hookRunner;
 
-	/** @var ActorMigration */
-	private $actorMigration;
-
-	/** @var RevisionStore */
-	private $revisionStore;
+	/** @var LinkBatchFactory */
+	private $linkBatchFactory;
 
 	/** @var NamespaceInfo */
 	private $namespaceInfo;
 
-	/** @var CommentFormatter */
-	private $commentFormatter;
+	/** @var RevisionStore */
+	private $revisionStore;
 
 	/** @var string[] */
 	private $formattedComments = [];
@@ -138,6 +141,7 @@ class ContribsPager extends RangeChronologicalPager {
 	private $revisions = [];
 
 	/**
+	 * FIXME List services first T266484 / T290405
 	 * @param IContextSource $context
 	 * @param array $options
 	 * @param LinkRenderer|null $linkRenderer
@@ -179,8 +183,9 @@ class ContribsPager extends RangeChronologicalPager {
 			// ContribsPagerTest and does not cause newFromName() to return
 			// false. It's probably not used by any production code.
 			$this->target = $options['target'] ?? '';
+			// @phan-suppress-next-line PhanPossiblyNullTypeMismatchProperty RIGOR_NONE never returns null
 			$this->targetUser = $services->getUserFactory()->newFromName(
-				$this->target, UserFactory::RIGOR_NONE
+				$this->target, UserRigorOptions::RIGOR_NONE
 			);
 			if ( !$this->targetUser ) {
 				// This can happen if the target contained "#". Callers
@@ -203,7 +208,7 @@ class ContribsPager extends RangeChronologicalPager {
 		$this->revisionsOnly = !empty( $options['revisionsOnly'] );
 
 		// Most of this code will use the 'contributions' group DB, which can map to replica DBs
-		// with extra user based indexes or partioning by user.
+		// with extra user based indexes or partitioning by user.
 		// Set database before parent constructor to avoid setting it there with wfGetDB
 		$this->mDb = $loadBalancer->getConnectionRef( ILoadBalancer::DB_REPLICA, 'contributions' );
 		// Needed by call to getIndexField -> getTargetTable from parent constructor
@@ -248,19 +253,6 @@ class ContribsPager extends RangeChronologicalPager {
 	}
 
 	/**
-	 * Wrap the navigation bar in a p element with identifying class.
-	 * In future we may want to change the `p` tag to a `div` and upstream
-	 * this to the parent class.
-	 *
-	 * @return string HTML
-	 */
-	public function getNavigationBar() {
-		return Html::rawElement( 'p', [ 'class' => 'mw-pager-navigation-bar' ],
-			parent::getNavigationBar()
-		);
-	}
-
-	/**
 	 * This method basically executes the exact same code as the parent class, though with
 	 * a hook added, to allow extensions to add additional queries.
 	 *
@@ -276,6 +268,8 @@ class ContribsPager extends RangeChronologicalPager {
 			$order
 		);
 
+		$options['MAX_EXECUTION_TIME'] =
+			$this->getConfig()->get( MainConfigNames::MaxExecutionTimeForExpensiveQueries );
 		/*
 		 * This hook will allow extensions to add in additional queries, so they can get their data
 		 * in My Contributions as well. Extensions should append their results to the $data array.
@@ -311,7 +305,7 @@ class ContribsPager extends RangeChronologicalPager {
 				// If the query results are in descending order, the indexes must also be in descending order
 				$index = $order === self::QUERY_ASCENDING ? $i : $limit - 1 - $i;
 				// Left-pad with zeroes, because these values will be sorted as strings
-				$index = str_pad( $index, strlen( $limit ), '0', STR_PAD_LEFT );
+				$index = str_pad( (string)$index, strlen( (string)$limit ), '0', STR_PAD_LEFT );
 				// use index column as key, allowing us to easily sort in PHP
 				$result[$row->{$this->getIndexField()} . "-$index"] = $row;
 			}
@@ -348,11 +342,6 @@ class ContribsPager extends RangeChronologicalPager {
 			? null : $this->getIpRangeConds( $dbr, $this->target );
 		if ( $ipRangeConds ) {
 			return 'ip_changes';
-		} else {
-			$conds = $this->actorMigration->getWhere( $dbr, 'rev_user', $this->targetUser );
-			if ( isset( $conds['orconds']['actor'] ) ) {
-				return 'revision_actor_temp';
-			}
 		}
 
 		return 'revision';
@@ -382,9 +371,9 @@ class ContribsPager extends RangeChronologicalPager {
 			// tables and joins are already handled by RevisionStore::getQueryInfo()
 			$conds = $this->actorMigration->getWhere( $dbr, 'rev_user', $this->targetUser );
 			$queryInfo['conds'][] = $conds['conds'];
-			// Force the appropriate index to avoid bad query plans (T189026)
-			if ( isset( $conds['orconds']['actor'] ) ) {
-				$queryInfo['options']['USE INDEX']['temp_rev_user'] = 'actor_timestamp';
+			// Force the appropriate index to avoid bad query plans (T307295)
+			if ( isset( $conds['orconds']['newactor'] ) ) {
+				$queryInfo['options']['USE INDEX']['revision'] = 'rev_actor_timestamp';
 			}
 		}
 
@@ -485,7 +474,7 @@ class ContribsPager extends RangeChronologicalPager {
 	 * @since 1.30
 	 */
 	public function isQueryableRange( $ipRange ) {
-		$limits = $this->getConfig()->get( 'RangeContributionsCIDRLimit' );
+		$limits = $this->getConfig()->get( MainConfigNames::RangeContributionsCIDRLimit );
 
 		$bits = IPUtils::parseCIDR( $ipRange )[1];
 		if (
@@ -513,8 +502,6 @@ class ContribsPager extends RangeChronologicalPager {
 				return 'rev_timestamp';
 			case 'ip_changes':
 				return 'ipc_rev_timestamp';
-			case 'revision_actor_temp':
-				return 'revactor_timestamp';
 			default:
 				wfWarn(
 					__METHOD__ . ": Unknown value '$target' from " . static::class . '::getTargetTable()', 0
@@ -524,7 +511,7 @@ class ContribsPager extends RangeChronologicalPager {
 	}
 
 	/**
-	 * @return false|string
+	 * @return false|string[]
 	 */
 	public function getTagFilter() {
 		return $this->tagFilter;
@@ -565,8 +552,6 @@ class ContribsPager extends RangeChronologicalPager {
 				return [ 'rev_id' ];
 			case 'ip_changes':
 				return [ 'ipc_rev_id' ];
-			case 'revision_actor_temp':
-				return [ 'revactor_rev' ];
 			default:
 				wfWarn(
 					__METHOD__ . ": Unknown value '$target' from " . static::class . '::getTargetTable()', 0
@@ -618,17 +603,17 @@ class ContribsPager extends RangeChronologicalPager {
 	}
 
 	/**
-	 * @return string
+	 * @inheritDoc
 	 */
 	protected function getStartBody() {
-		return "<ul class=\"mw-contributions-list\">\n";
+		return "<section class='mw-pager-body'>\n";
 	}
 
 	/**
-	 * @return string
+	 * @inheritDoc
 	 */
 	protected function getEndBody() {
-		return "</ul>\n";
+		return "</section>\n";
 	}
 
 	/**
@@ -689,6 +674,7 @@ class ContribsPager extends RangeChronologicalPager {
 			$attribs['data-mw-revid'] = $revRecord->getId();
 
 			$link = $linkRenderer->makeLink(
+				// @phan-suppress-next-line PhanTypeMismatchArgumentNullable castFrom does not return null here
 				$page,
 				$page->getPrefixedText(),
 				[ 'class' => 'mw-contributions-title' ],
@@ -696,14 +682,15 @@ class ContribsPager extends RangeChronologicalPager {
 			);
 			# Mark current revisions
 			$topmarktext = '';
-			$user = $this->getUser();
 
 			if ( $row->rev_id === $row->page_latest ) {
 				$topmarktext .= '<span class="mw-uctop">' . $this->messages['uctop'] . '</span>';
 				$classes[] = 'mw-contributions-current';
 				# Add rollback link
 				if ( !$row->page_is_new &&
+					// @phan-suppress-next-line PhanTypeMismatchArgumentNullable castFrom does not return null here
 					$this->getAuthority()->probablyCan( 'rollback', $page ) &&
+					// @phan-suppress-next-line PhanTypeMismatchArgumentNullable castFrom does not return null here
 					$this->getAuthority()->probablyCan( 'edit', $page )
 				) {
 					$this->setPreventClickjacking( true );
@@ -719,6 +706,7 @@ class ContribsPager extends RangeChronologicalPager {
 				$revRecord->userCan( RevisionRecord::DELETED_TEXT, $this->getAuthority() )
 			) {
 				$difftext = $linkRenderer->makeKnownLink(
+					// @phan-suppress-next-line PhanTypeMismatchArgumentNullable castFrom does not return null here
 					$page,
 					new HtmlArmor( $this->messages['diff'] ),
 					[ 'class' => 'mw-changeslist-diff' ],
@@ -731,6 +719,7 @@ class ContribsPager extends RangeChronologicalPager {
 				$difftext = $this->messages['diff'];
 			}
 			$histlink = $linkRenderer->makeKnownLink(
+				// @phan-suppress-next-line PhanTypeMismatchArgumentNullable castFrom does not return null here
 				$page,
 				new HtmlArmor( $this->messages['hist'] ),
 				[ 'class' => 'mw-changeslist-history' ],
@@ -761,12 +750,17 @@ class ContribsPager extends RangeChronologicalPager {
 
 			$lang = $this->getLanguage();
 
-			$comment = $lang->getDirMark() . (
-				$this->formattedComments[$row->rev_id] ??
-				$this->commentFormatter->formatRevision(
-					$revRecord, $user, false, true, false
-				) );
-			$d = ChangesList::revDateLink( $revRecord, $user, $lang, $page );
+			$comment = $this->formattedComments[$row->rev_id];
+
+			if ( $comment === '' ) {
+				$defaultComment = $this->msg( 'changeslist-nocomment' )->escaped();
+				$comment = "<span class=\"comment mw-comment-none\">$defaultComment</span>";
+			}
+
+			$comment = $lang->getDirMark() . $comment;
+
+			$authority = $this->getAuthority();
+			$d = ChangesList::revDateLink( $revRecord, $authority, $lang, $page );
 
 			# When querying for an IP range, we want to always show user and user talk links.
 			$userlink = '';
@@ -790,7 +784,8 @@ class ContribsPager extends RangeChronologicalPager {
 				$flags[] = ChangesList::flag( 'minor' );
 			}
 
-			$del = Linker::getRevDeleteLink( $user, $revRecord, $page );
+			// @phan-suppress-next-line PhanTypeMismatchArgumentNullable castFrom does not return null here
+			$del = Linker::getRevDeleteLink( $authority, $revRecord, $page );
 			if ( $del !== '' ) {
 				$del .= ' ';
 			}

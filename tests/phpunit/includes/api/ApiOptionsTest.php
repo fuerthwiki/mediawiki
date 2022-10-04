@@ -30,9 +30,7 @@ class ApiOptionsTest extends MediaWikiLangTestCase {
 	protected function setUp(): void {
 		parent::setUp();
 
-		$this->mUserMock = $this->getMockBuilder( User::class )
-			->disableOriginalConstructor()
-			->getMock();
+		$this->mUserMock = $this->createMock( User::class );
 
 		// No actual DB data
 		$this->mUserMock->method( 'getInstanceForUpdate' )->willReturn( $this->mUserMock );
@@ -41,7 +39,7 @@ class ApiOptionsTest extends MediaWikiLangTestCase {
 
 		// Create a new context
 		$this->mContext = new DerivativeContext( new RequestContext() );
-		$this->mContext->getContext()->setTitle( Title::newFromText( 'Test' ) );
+		$this->mContext->getContext()->setTitle( Title::makeTitle( NS_MAIN, 'Test' ) );
 		$this->mContext->setAuthority(
 			$this->mockUserAuthorityWithPermissions( $this->mUserMock, [ 'editmyoptions' ] )
 		);

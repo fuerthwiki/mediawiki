@@ -8,7 +8,7 @@ use Wikimedia\TestingAccessWrapper;
 class MWHttpRequestTest extends PHPUnit\Framework\TestCase {
 
 	public function testFactory() {
-		$this->assertInstanceOf( 'MWHttpRequest', MWHttpRequest::factory( 'http://example.test' ) );
+		$this->assertInstanceOf( MWHttpRequest::class, MWHttpRequest::factory( 'http://example.test' ) );
 	}
 
 	/**
@@ -92,9 +92,8 @@ class MWHttpRequestTest extends PHPUnit\Framework\TestCase {
 			MWHttpRequest::factory( 'https://example.org/path?query=string' )
 		);
 		$req->setReverseProxy( 'http://localhost:1234' );
-		$this->assertSame( $req->url, 'http://localhost:1234/path?query=string' );
-		$this->assertSame( $req->reqHeaders['Host'], 'example.org' );
-		$this->assertSame( $req->reqHeaders['X-Forwarded-Proto'], 'https' );
+		$this->assertSame( 'http://localhost:1234/path?query=string', $req->url );
+		$this->assertSame( 'example.org', $req->reqHeaders['Host'] );
 	}
 
 }

@@ -16,6 +16,7 @@
  * http://www.gnu.org/copyleft/gpl.html
  *
  */
+use MediaWiki\MainConfigNames;
 use Wikimedia\Purtle\RdfWriter;
 use Wikimedia\Purtle\TurtleRdfWriter;
 use Wikimedia\Rdbms\IDatabase;
@@ -70,7 +71,7 @@ SPARQLD;
 	/**
 	 * List of processed page IDs,
 	 * so we don't try to process same thing twice
-	 * @var int[]
+	 * @var true[]
 	 */
 	protected $processed = [];
 
@@ -103,12 +104,12 @@ SPARQLD;
 
 		$endTS = new MWTimestamp( $this->getOption( "end" ) );
 		$now = new MWTimestamp();
-		$rcMaxAge = $this->getConfig()->get( 'RCMaxAge' );
+		$rcMaxAge = $this->getConfig()->get( MainConfigNames::RCMaxAge );
 
-		if ( $now->getTimestamp() - $startTS->getTimestamp() > $rcMaxAge ) {
+		if ( (int)$now->getTimestamp( TS_UNIX ) - (int)$startTS->getTimestamp( TS_UNIX ) > $rcMaxAge ) {
 			$this->error( "Start timestamp too old, maximum RC age is $rcMaxAge!" );
 		}
-		if ( $now->getTimestamp() - $endTS->getTimestamp() > $rcMaxAge ) {
+		if ( (int)$now->getTimestamp( TS_UNIX ) - (int)$endTS->getTimestamp( TS_UNIX ) > $rcMaxAge ) {
 			$this->error( "End timestamp too old, maximum RC age is $rcMaxAge!" );
 		}
 

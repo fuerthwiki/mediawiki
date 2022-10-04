@@ -5,6 +5,8 @@
  * @ingroup Actions
  */
 
+use MediaWiki\MainConfigNames;
+use MediaWiki\Permissions\PermissionStatus;
 use MediaWiki\Revision\MutableRevisionRecord;
 use MediaWiki\Revision\RevisionLookup;
 use MediaWiki\Revision\RevisionRecord;
@@ -26,7 +28,6 @@ use MediaWiki\Storage\EditResult;
  *
  * @ingroup Actions
  * @since 1.32
- * @deprecated since 1.32
  */
 class McrUndoAction extends FormAction {
 
@@ -44,24 +45,30 @@ class McrUndoAction extends FormAction {
 	/** @var RevisionRenderer */
 	private $revisionRenderer;
 
+	/** @var bool */
+	private $useRCPatrol;
+
 	/**
 	 * @param Page $page
 	 * @param IContextSource $context
 	 * @param ReadOnlyMode $readOnlyMode
 	 * @param RevisionLookup $revisionLookup
 	 * @param RevisionRenderer $revisionRenderer
+	 * @param Config $config
 	 */
 	public function __construct(
 		Page $page,
 		IContextSource $context,
 		ReadOnlyMode $readOnlyMode,
 		RevisionLookup $revisionLookup,
-		RevisionRenderer $revisionRenderer
+		RevisionRenderer $revisionRenderer,
+		Config $config
 	) {
 		parent::__construct( $page, $context );
 		$this->readOnlyMode = $readOnlyMode;
 		$this->revisionLookup = $revisionLookup;
 		$this->revisionRenderer = $revisionRenderer;
+		$this->useRCPatrol = $config->get( MainConfigNames::UseRCPatrol );
 	}
 
 	public function getName() {
@@ -70,6 +77,11 @@ class McrUndoAction extends FormAction {
 
 	public function getDescription() {
 		return '';
+	}
+
+	public function getRestriction() {
+		// Require 'edit' permission to even see this action (T297322)
+		return 'edit';
 	}
 
 	public function show() {
@@ -82,7 +94,7 @@ class McrUndoAction extends FormAction {
 
 		$out = $this->getOutput();
 		$out->setRobotPolicy( 'noindex,nofollow' );
-		if ( $this->getContext()->getConfig()->get( 'UseMediaWikiUIEverywhere' ) ) {
+		if ( $this->getContext()->getConfig()->get( MainConfigNames::UseMediaWikiUIEverywhere ) ) {
 			$out->addModuleStyles( [
 				'mediawiki.ui.input',
 				'mediawiki.ui.checkbox',
@@ -97,23 +109,31 @@ class McrUndoAction extends FormAction {
 				[ 'readonlywarning', $this->readOnlyMode->getReason() ]
 			);
 		} elseif ( $this->context->getUser()->isAnon() ) {
+			// Note: EditPage has a special message for temp user creation intent here.
+			// But McrUndoAction doesn't support user creation.
 			if ( !$this->getRequest()->getCheck( 'wpPreview' ) ) {
-				$out->wrapWikiMsg(
-					"<div id='mw-anon-edit-warning' class='warningbox'>\n$1\n</div>",
-					[ 'anoneditwarning',
-						// Log-in link
-						SpecialPage::getTitleFor( 'Userlogin' )->getFullURL( [
-							'returnto' => $this->getTitle()->getPrefixedDBkey()
-						] ),
-						// Sign-up link
-						SpecialPage::getTitleFor( 'CreateAccount' )->getFullURL( [
-							'returnto' => $this->getTitle()->getPrefixedDBkey()
-						] )
-					]
+				$out->addHTML(
+					Html::warningBox(
+						$out->msg(
+							'anoneditwarning',
+							// Log-in link
+							SpecialPage::getTitleFor( 'Userlogin' )->getFullURL( [
+								'returnto' => $this->getTitle()->getPrefixedDBkey()
+							] ),
+							// Sign-up link
+							SpecialPage::getTitleFor( 'CreateAccount' )->getFullURL( [
+								'returnto' => $this->getTitle()->getPrefixedDBkey()
+							] )
+						)->parse(),
+						'mw-anon-edit-warning'
+					)
 				);
 			} else {
-				$out->wrapWikiMsg( "<div id=\"mw-anon-preview-warning\" class=\"warningbox\">\n$1</div>",
-					'anonpreviewwarning'
+				$out->addHTML(
+					Html::warningBox(
+						$out->msg( 'anonpreviewwarning' )->parse(),
+						'mw-anon-preview-warning'
+					)
 				);
 			}
 		}
@@ -142,8 +162,10 @@ class McrUndoAction extends FormAction {
 
 		$this->initFromParameters();
 
-		$undoRev = $this->revisionLookup->getRevisionById( $this->undo );
-		$oldRev = $this->revisionLookup->getRevisionById( $this->undoafter );
+		// We use getRevisionByTitle to verify the revisions belong to this page (T297322)
+		$title = $this->getTitle();
+		$undoRev = $this->revisionLookup->getRevisionByTitle( $title, $this->undo );
+		$oldRev = $this->revisionLookup->getRevisionByTitle( $title, $this->undoafter );
 
 		if ( $undoRev === null || $oldRev === null ||
 			$undoRev->isDeleted( RevisionRecord::DELETED_TEXT ) ||
@@ -277,8 +299,6 @@ class McrUndoAction extends FormAction {
 		$out = $this->getOutput();
 
 		try {
-			$previewHTML = '';
-
 			# provide a anchor link to the form
 			$continueEditing = '<span class="mw-continue-editing">' .
 				'[[#mw-mcrundo-form|' .
@@ -290,12 +310,14 @@ class McrUndoAction extends FormAction {
 			$parserOptions = $this->getWikiPage()->makeParserOptions( $this->context );
 			$parserOptions->setIsPreview( true );
 			$parserOptions->setIsSectionPreview( false );
-			$parserOptions->enableLimitReport();
 
 			$parserOutput = $this->revisionRenderer
-				->getRenderedRevision( $rev, $parserOptions, $this->context->getUser() )
+				->getRenderedRevision( $rev, $parserOptions, $this->getAuthority() )
 				->getRevisionParserOutput();
-			$previewHTML = $parserOutput->getText( [ 'enableSectionEditLinks' => false ] );
+			$previewHTML = $parserOutput->getText( [
+				'enableSectionEditLinks' => false,
+				'includeDebugInfo' => true,
+			] );
 
 			$out->addParserOutputMetadata( $parserOutput );
 			if ( count( $parserOutput->getWarnings() ) ) {
@@ -316,7 +338,7 @@ class McrUndoAction extends FormAction {
 				'h2', [ 'id' => 'mw-previewheader' ],
 				$this->context->msg( 'preview' )->text()
 			) .
-			Html::rawElement( 'div', [ 'class' => 'warningbox' ],
+			Html::warningBox(
 				$out->parseAsInterface( $note )
 			)
 		);
@@ -330,8 +352,6 @@ class McrUndoAction extends FormAction {
 	}
 
 	public function onSubmit( $data ) {
-		global $wgUseRCPatrol;
-
 		if ( !$this->getRequest()->getCheck( 'wpSave' ) ) {
 			// Diff or preview
 			return false;
@@ -347,8 +367,41 @@ class McrUndoAction extends FormAction {
 			return Status::newFatal( 'mcrundo-changed' );
 		}
 
+		$status = new PermissionStatus();
+		$this->getAuthority()->authorizeWrite( 'edit', $this->getTitle(), $status );
+		if ( !$status->isOK() ) {
+			throw new PermissionsError( 'edit', $status );
+		}
+
 		$newRev = $this->getNewRevision();
 		if ( !$newRev->hasSameContent( $curRev ) ) {
+			$hookRunner = Hooks::runner();
+			foreach ( $newRev->getSlotRoles() as $slotRole ) {
+				$slot = $newRev->getSlot( $slotRole, RevisionRecord::RAW );
+
+				$status = new Status();
+				$hookResult = $hookRunner->onEditFilterMergedContent(
+					$this->getContext(),
+					$slot->getContent(),
+					$status,
+					trim( $this->getRequest()->getVal( 'wpSummary' ) ?? '' ),
+					$this->getUser(),
+					false
+				);
+
+				if ( !$hookResult ) {
+					if ( $status->isGood() ) {
+						$status->error( 'hookaborted' );
+					}
+
+					return $status;
+				} elseif ( !$status->isOK() ) {
+					if ( !$status->getErrors() ) {
+						$status->error( 'hookaborted' );
+					}
+					return $status;
+				}
+			}
 
 			// Copy new slots into the PageUpdater, and remove any removed slots.
 			// TODO: This interface is awful, there should be a way to just pass $newRev.
@@ -364,14 +417,15 @@ class McrUndoAction extends FormAction {
 
 			$updater->markAsRevert( EditResult::REVERT_UNDO, $this->undo, $this->undoafter );
 
-			if ( $wgUseRCPatrol && $this->getContext()->getAuthority()
+			if ( $this->useRCPatrol && $this->getAuthority()
 					->authorizeWrite( 'autopatrol', $this->getTitle() )
 			) {
 				$updater->setRcPatrolStatus( RecentChange::PRC_AUTOPATROLLED );
 			}
 
 			$updater->saveRevision(
-				CommentStoreComment::newUnsavedComment( trim( $this->getRequest()->getVal( 'wpSummary' ) ) ),
+				CommentStoreComment::newUnsavedComment(
+					trim( $this->getRequest()->getVal( 'wpSummary' ) ?? '' ) ),
 				EDIT_AUTOSUMMARY | EDIT_UPDATE
 			);
 
@@ -427,7 +481,7 @@ class McrUndoAction extends FormAction {
 	protected function alterForm( HTMLForm $form ) {
 		$form->setWrapperLegendMsg( 'confirm-mcrundo-title' );
 
-		$labelAsPublish = $this->context->getConfig()->get( 'EditSubmitButtonLabelPublish' );
+		$labelAsPublish = $this->context->getConfig()->get( MainConfigNames::EditSubmitButtonLabelPublish );
 
 		$form->setId( 'mw-mcrundo-form' );
 		$form->setSubmitName( 'wpSave' );

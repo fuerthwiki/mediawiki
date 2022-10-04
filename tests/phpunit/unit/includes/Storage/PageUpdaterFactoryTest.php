@@ -3,6 +3,8 @@
 namespace MediaWiki\Tests\Unit\Storage;
 
 use MediaWiki\Config\ServiceOptions;
+use MediaWiki\MainConfigNames;
+use MediaWiki\Page\WikiPageFactory;
 use MediaWiki\Storage\DerivedPageDataUpdater;
 use MediaWiki\Storage\PageUpdater;
 use MediaWiki\Storage\PageUpdaterFactory;
@@ -21,22 +23,29 @@ class PageUpdaterFactoryTest extends MediaWikiUnitTestCase {
 
 	private function getPageUpdaterFactory() {
 		$config = [
-			'ArticleCountMethod' => null,
-			'RCWatchCategoryMembership' => null,
-			'PageCreationLog' => null,
-			'UseAutomaticEditSummaries' => null,
-			'ManualRevertSearchRadius' => null,
-			'UseRCPatrol' => null,
+			MainConfigNames::ArticleCountMethod => null,
+			MainConfigNames::RCWatchCategoryMembership => null,
+			MainConfigNames::PageCreationLog => null,
+			MainConfigNames::UseAutomaticEditSummaries => null,
+			MainConfigNames::ManualRevertSearchRadius => null,
+			MainConfigNames::UseRCPatrol => null,
+			MainConfigNames::ParsoidCacheConfig => [
+				'WarmParsoidParserCache' => false
+			],
 		];
 
 		$lb = $this->createNoOpMock( LoadBalancer::class );
 		$lbFactory = $this->createNoOpMock( LBFactory::class, [ 'getMainLB' ] );
 		$lbFactory->method( 'getMainLB' )->willReturn( $lb );
 
+		$wikiPageFactory = $this->createNoOpMock( WikiPageFactory::class, [ 'newFromTitle' ] );
+		$wikiPageFactory->method( 'newFromTitle' )->willReturnArgument( 0 );
+
 		return $this->newServiceInstance(
 			PageUpdaterFactory::class,
 			[
 				'loadbalancerFactory' => $lbFactory,
+				'wikiPageFactory' => $wikiPageFactory,
 				'options' => new ServiceOptions(
 					PageUpdaterFactory::CONSTRUCTOR_OPTIONS,
 					$config

@@ -67,7 +67,7 @@ class LegacyHandler extends AbstractProcessingHandler {
 	protected $sink;
 
 	/**
-	 * @var string
+	 * @var string|null
 	 */
 	protected $error;
 
@@ -90,7 +90,7 @@ class LegacyHandler extends AbstractProcessingHandler {
 	 * @param string $stream Stream URI
 	 * @param bool $useLegacyFilter Filter log events using legacy rules
 	 * @param int $level Minimum logging level that will trigger handler
-	 * @param bool $bubble Can handled meesages bubble up the handler stack?
+	 * @param bool $bubble Can handled messages bubble up the handler stack?
 	 */
 	public function __construct(
 		$stream,
@@ -142,6 +142,7 @@ class LegacyHandler extends AbstractProcessingHandler {
 				$domain = AF_INET;
 			}
 
+			// @phan-suppress-next-line PhanTypeMismatchProperty False positive caused by PHP 8.0 resource transition
 			$this->sink = socket_create( $domain, SOCK_DGRAM, SOL_UDP );
 
 		} else {
@@ -149,10 +150,11 @@ class LegacyHandler extends AbstractProcessingHandler {
 		}
 		restore_error_handler();
 
-		if ( !is_resource( $this->sink ) ) {
+		if ( !$this->sink ) {
 			$this->sink = null;
 			throw new UnexpectedValueException( sprintf(
 				'The stream or file "%s" could not be opened: %s',
+				// @phan-suppress-next-line PhanTypeMismatchArgumentInternalProbablyReal Set by error handler
 				$this->uri, $this->error
 			) );
 		}
@@ -214,7 +216,13 @@ class LegacyHandler extends AbstractProcessingHandler {
 			}
 
 			socket_sendto(
-				$this->sink, $text, strlen( $text ), 0, $this->host, $this->port
+				// @phan-suppress-next-line PhanTypeMismatchArgumentInternal False positive caused by PHP 8.0 transition
+				$this->sink,
+				$text,
+				strlen( $text ),
+				0,
+				$this->host,
+				$this->port
 			);
 
 		} else {
@@ -223,8 +231,9 @@ class LegacyHandler extends AbstractProcessingHandler {
 	}
 
 	public function close(): void {
-		if ( is_resource( $this->sink ) ) {
+		if ( $this->sink ) {
 			if ( $this->useUdp() ) {
+				// @phan-suppress-next-line PhanTypeMismatchArgumentInternal
 				socket_close( $this->sink );
 
 			} else {

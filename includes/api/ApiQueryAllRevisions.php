@@ -21,11 +21,14 @@
  */
 
 use MediaWiki\Content\IContentHandlerFactory;
+use MediaWiki\Content\Renderer\ContentRenderer;
 use MediaWiki\Content\Transform\ContentTransformer;
+use MediaWiki\MainConfigNames;
 use MediaWiki\ParamValidator\TypeDef\UserDef;
 use MediaWiki\Revision\RevisionRecord;
 use MediaWiki\Revision\RevisionStore;
 use MediaWiki\Revision\SlotRoleRegistry;
+use Wikimedia\ParamValidator\ParamValidator;
 
 /**
  * Query module to enumerate all revisions.
@@ -53,6 +56,7 @@ class ApiQueryAllRevisions extends ApiQueryRevisionsBase {
 	 * @param SlotRoleRegistry $slotRoleRegistry
 	 * @param ActorMigration $actorMigration
 	 * @param NamespaceInfo $namespaceInfo
+	 * @param ContentRenderer $contentRenderer
 	 * @param ContentTransformer $contentTransformer
 	 */
 	public function __construct(
@@ -64,6 +68,7 @@ class ApiQueryAllRevisions extends ApiQueryRevisionsBase {
 		SlotRoleRegistry $slotRoleRegistry,
 		ActorMigration $actorMigration,
 		NamespaceInfo $namespaceInfo,
+		ContentRenderer $contentRenderer,
 		ContentTransformer $contentTransformer
 	) {
 		parent::__construct(
@@ -74,6 +79,7 @@ class ApiQueryAllRevisions extends ApiQueryRevisionsBase {
 			$contentHandlerFactory,
 			$parserFactory,
 			$slotRoleRegistry,
+			$contentRenderer,
 			$contentTransformer
 		);
 		$this->revisionStore = $revisionStore;
@@ -86,8 +92,6 @@ class ApiQueryAllRevisions extends ApiQueryRevisionsBase {
 	 * @return void
 	 */
 	protected function run( ApiPageSet $resultPageSet = null ) {
-		global $wgActorTableSchemaMigrationStage;
-
 		$db = $this->getDB();
 		$params = $this->extractRequestParams( false );
 
@@ -98,15 +102,6 @@ class ApiQueryAllRevisions extends ApiQueryRevisionsBase {
 		$tsField = 'rev_timestamp';
 		$idField = 'rev_id';
 		$pageField = 'rev_page';
-		if ( $params['user'] !== null &&
-			( $wgActorTableSchemaMigrationStage & SCHEMA_COMPAT_READ_TEMP )
-		) {
-			// The query is probably best done using the actor_timestamp index on
-			// revision_actor_temp. Use the denormalized fields from that table.
-			$tsField = 'revactor_timestamp';
-			$idField = 'revactor_rev';
-			$pageField = 'revactor_page';
-		}
 
 		// Namespace check is likely to be desired, but can't be done
 		// efficiently in SQL.
@@ -117,7 +112,7 @@ class ApiQueryAllRevisions extends ApiQueryRevisionsBase {
 			sort( $params['namespace'] );
 			if ( $params['namespace'] != $this->namespaceInfo->getValidNamespaces() ) {
 				$needPageTable = true;
-				if ( $this->getConfig()->get( 'MiserMode' ) ) {
+				if ( $this->getConfig()->get( MainConfigNames::MiserMode ) ) {
 					$miser_ns = $params['namespace'];
 				} else {
 					$this->addWhere( [ 'page_namespace' => $params['namespace'] ] );
@@ -153,23 +148,6 @@ class ApiQueryAllRevisions extends ApiQueryRevisionsBase {
 					$revQuery['fields'][] = 'page_namespace';
 				}
 			}
-		}
-
-		// If we're going to be using actor_timestamp, we need to swap the order of `revision`
-		// and `revision_actor_temp` in the query (for the straight join) and adjust some field aliases.
-		if ( $idField !== 'rev_id' && isset( $revQuery['tables']['temp_rev_user'] ) ) {
-			$aliasFields = [ 'rev_id' => $idField, 'rev_timestamp' => $tsField, 'rev_page' => $pageField ];
-			$revQuery['fields'] = array_merge(
-				$aliasFields,
-				array_diff( $revQuery['fields'], array_keys( $aliasFields ) )
-			);
-			unset( $revQuery['tables']['temp_rev_user'] );
-			$revQuery['tables'] = array_merge(
-				[ 'temp_rev_user' => 'revision_actor_temp' ],
-				$revQuery['tables']
-			);
-			$revQuery['joins']['revision'] = $revQuery['joins']['temp_rev_user'];
-			unset( $revQuery['joins']['temp_rev_user'] );
 		}
 
 		$this->addTables( $revQuery['tables'] );
@@ -210,15 +188,12 @@ class ApiQueryAllRevisions extends ApiQueryRevisionsBase {
 		}
 
 		if ( $params['continue'] !== null ) {
-			$op = ( $dir == 'newer' ? '>' : '<' );
-			$cont = explode( '|', $params['continue'] );
-			$this->dieContinueUsageIf( count( $cont ) != 2 );
-			$ts = $db->addQuotes( $db->timestamp( $cont[0] ) );
-			$rev_id = (int)$cont[1];
-			$this->dieContinueUsageIf( strval( $rev_id ) !== $cont[1] );
-			$this->addWhere( "$tsField $op $ts OR " .
-				"($tsField = $ts AND " .
-				"$idField $op= $rev_id)" );
+			$op = ( $dir == 'newer' ? '>=' : '<=' );
+			$cont = $this->parseContinueParamOrDie( $params['continue'], [ 'string', 'int' ] );
+			$this->addWhere( $db->buildComparison( $op, [
+				$tsField => $db->timestamp( $cont[0] ),
+				$idField => $cont[1],
+			] ) );
 		}
 
 		$this->addOption( 'LIMIT', $this->limit + 1 );
@@ -309,31 +284,31 @@ class ApiQueryAllRevisions extends ApiQueryRevisionsBase {
 	public function getAllowedParams() {
 		$ret = parent::getAllowedParams() + [
 			'user' => [
-				ApiBase::PARAM_TYPE => 'user',
+				ParamValidator::PARAM_TYPE => 'user',
 				UserDef::PARAM_ALLOWED_USER_TYPES => [ 'name', 'ip', 'id', 'interwiki' ],
 				UserDef::PARAM_RETURN_OBJECT => true,
 			],
 			'namespace' => [
-				ApiBase::PARAM_ISMULTI => true,
-				ApiBase::PARAM_TYPE => 'namespace',
-				ApiBase::PARAM_DFLT => null,
+				ParamValidator::PARAM_ISMULTI => true,
+				ParamValidator::PARAM_TYPE => 'namespace',
+				ParamValidator::PARAM_DEFAULT => null,
 			],
 			'start' => [
-				ApiBase::PARAM_TYPE => 'timestamp',
+				ParamValidator::PARAM_TYPE => 'timestamp',
 			],
 			'end' => [
-				ApiBase::PARAM_TYPE => 'timestamp',
+				ParamValidator::PARAM_TYPE => 'timestamp',
 			],
 			'dir' => [
-				ApiBase::PARAM_TYPE => [
+				ParamValidator::PARAM_TYPE => [
 					'newer',
 					'older'
 				],
-				ApiBase::PARAM_DFLT => 'older',
+				ParamValidator::PARAM_DEFAULT => 'older',
 				ApiBase::PARAM_HELP_MSG => 'api-help-param-direction',
 			],
 			'excludeuser' => [
-				ApiBase::PARAM_TYPE => 'user',
+				ParamValidator::PARAM_TYPE => 'user',
 				UserDef::PARAM_ALLOWED_USER_TYPES => [ 'name', 'ip', 'id', 'interwiki' ],
 				UserDef::PARAM_RETURN_OBJECT => true,
 			],
@@ -341,11 +316,11 @@ class ApiQueryAllRevisions extends ApiQueryRevisionsBase {
 				ApiBase::PARAM_HELP_MSG => 'api-help-param-continue',
 			],
 			'generatetitles' => [
-				ApiBase::PARAM_DFLT => false,
+				ParamValidator::PARAM_DEFAULT => false,
 			],
 		];
 
-		if ( $this->getConfig()->get( 'MiserMode' ) ) {
+		if ( $this->getConfig()->get( MainConfigNames::MiserMode ) ) {
 			$ret['namespace'][ApiBase::PARAM_HELP_MSG_APPEND] = [
 				'api-help-param-limited-in-miser-mode',
 			];

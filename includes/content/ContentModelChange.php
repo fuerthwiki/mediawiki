@@ -11,53 +11,42 @@ use MediaWiki\Revision\SlotRecord;
 use MediaWiki\User\UserFactory;
 
 /**
- * Helper class to change the content model of pages
+ * Backend logic for changing the content model of a page.
  *
- * For creating new pages via the action API,
- * use the edit api and specify the desired content model and format.
+ * Note that you can create a new page directly with a desired content
+ * model and format, e.g. via EditPage or externally from ApiEditPage.
  *
  * @since 1.35
  * @author DannyS712
  */
 class ContentModelChange {
-
 	/** @var IContentHandlerFactory */
 	private $contentHandlerFactory;
-
 	/** @var HookRunner */
 	private $hookRunner;
-
 	/** @var RevisionLookup */
 	private $revLookup;
-
 	/** @var UserFactory */
 	private $userFactory;
-
 	/** @var Authority making the change */
 	private $performer;
-
 	/** @var WikiPage */
 	private $page;
-
 	/** @var string */
 	private $newModel;
-
 	/** @var string[] tags to add */
 	private $tags;
-
 	/** @var Content */
 	private $newContent;
-
 	/** @var int|false latest revision id, or false if creating */
 	private $latestRevId;
-
 	/** @var string 'new' or 'change' */
 	private $logAction;
-
 	/** @var string 'apierror-' or empty string, for status messages */
 	private $msgPrefix;
 
 	/**
+	 * @internal Create via the ContentModelChangeFactory service.
 	 * @param IContentHandlerFactory $contentHandlerFactory
 	 * @param HookContainer $hookContainer
 	 * @param RevisionLookup $revLookup
@@ -121,11 +110,11 @@ class ContentModelChange {
 	}
 
 	/**
-	 * Check whether $performer can execute the move.
+	 * Check whether $performer can execute the content model change.
 	 *
 	 * @note this method does not guarantee full permissions check, so it should
-	 * only be used to to decide whether to show a move form. To authorize the move
-	 * action use {@link self::authorizeChange} instead.
+	 * only be used to to decide whether to show a content model change form.
+	 * To authorize the content model change action use {@link self::authorizeChange} instead.
 	 *
 	 * @return PermissionStatus
 	 */
@@ -138,10 +127,10 @@ class ContentModelChange {
 	}
 
 	/**
-	 * Authorize the move by $performer.
+	 * Authorize the content model change by $performer.
 	 *
-	 * @note this method should be used right before the actual move is performed.
-	 * To check whether a current performer has the potential to move the page,
+	 * @note this method should be used right before the actual content model change is performed.
+	 * To check whether a current performer has the potential to change the content model of the page,
 	 * use {@link self::probablyCanChange} instead.
 	 *
 	 * @return PermissionStatus
@@ -261,7 +250,7 @@ class ContentModelChange {
 	 */
 	public function doContentModelChange(
 		IContextSource $context,
-		$comment,
+		string $comment,
 		$bot
 	) {
 		$status = $this->createNewContent();
@@ -310,6 +299,12 @@ class ContentModelChange {
 		) {
 			if ( $status->isGood() ) {
 				// TODO: extensions should really specify an error message
+				$status->fatal( 'hookaborted' );
+			}
+			return $status;
+		}
+		if ( !$status->isOK() ) {
+			if ( !$status->getErrors() ) {
 				$status->fatal( 'hookaborted' );
 			}
 			return $status;

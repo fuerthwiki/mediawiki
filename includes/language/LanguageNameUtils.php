@@ -18,16 +18,14 @@
  * @file
  */
 
-/**
- * @defgroup Language Language
- */
-
 namespace MediaWiki\Languages;
 
+use BagOStuff;
 use HashBagOStuff;
 use MediaWiki\Config\ServiceOptions;
 use MediaWiki\HookContainer\HookContainer;
 use MediaWiki\HookContainer\HookRunner;
+use MediaWiki\MainConfigNames;
 use MediaWikiTitleCodec;
 use MWException;
 
@@ -79,8 +77,8 @@ class LanguageNameUtils {
 	 * @internal For use by ServiceWiring
 	 */
 	public const CONSTRUCTOR_OPTIONS = [
-		'ExtraLanguageNames',
-		'UsePigLatinVariant',
+		MainConfigNames::ExtraLanguageNames,
+		MainConfigNames::UsePigLatinVariant,
 	];
 
 	/** @var HookRunner */
@@ -191,12 +189,13 @@ class LanguageNameUtils {
 			$this->languageNameCache = new HashBagOStuff( [ 'maxKeys' => 20 ] );
 		}
 
-		$ret = $this->languageNameCache->get( $cacheKey );
-		if ( !$ret ) {
-			$ret = $this->getLanguageNamesUncached( $inLanguage, $include );
-			$this->languageNameCache->set( $cacheKey, $ret );
-		}
-		return $ret;
+		return $this->languageNameCache->getWithSetCallback(
+			$cacheKey,
+			BagOStuff::TTL_INDEFINITE,
+			function () use ( $inLanguage, $include ) {
+				return $this->getLanguageNamesUncached( $inLanguage, $include );
+			}
+		);
 	}
 
 	/**
@@ -215,11 +214,12 @@ class LanguageNameUtils {
 
 		if ( $inLanguage !== self::AUTONYMS ) {
 			# TODO: also include for self::AUTONYMS, when this code is more efficient
+			// @phan-suppress-next-line PhanTypeMismatchArgumentNullable False positive
 			$this->hookRunner->onLanguageGetTranslatedLanguageNames( $names, $inLanguage );
 		}
 
-		$mwNames = $this->options->get( 'ExtraLanguageNames' ) + Data\Names::$names;
-		if ( $this->options->get( 'UsePigLatinVariant' ) ) {
+		$mwNames = $this->options->get( MainConfigNames::ExtraLanguageNames ) + Data\Names::$names;
+		if ( $this->options->get( MainConfigNames::UsePigLatinVariant ) ) {
 			// Pig Latin (for variant development)
 			$mwNames['en-x-piglatin'] = 'Igpay Atinlay';
 		}

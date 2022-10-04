@@ -24,6 +24,7 @@
  */
 
 use MediaWiki\HookContainer\HookRunner;
+use MediaWiki\MainConfigNames;
 use MediaWiki\MediaWikiServices;
 use MediaWiki\Revision\RevisionRecord;
 use MediaWiki\Revision\RevisionStore;
@@ -92,13 +93,13 @@ class XmlDumpWriter {
 		$schemaVersion = XML_DUMP_SCHEMA_VERSION_11
 	) {
 		Assert::parameter(
-			in_array( $contentMode, [ self::WRITE_CONTENT, self::WRITE_STUB ] ),
+			in_array( $contentMode, [ self::WRITE_CONTENT, self::WRITE_STUB ], true ),
 			'$contentMode',
 			'must be one of the following constants: WRITE_CONTENT or WRITE_STUB.'
 		);
 
 		Assert::parameter(
-			in_array( $schemaVersion, self::$supportedSchemas ),
+			in_array( $schemaVersion, self::$supportedSchemas, true ),
 			'$schemaVersion',
 			'must be one of the following schema versions: '
 				. implode( ',', self::$supportedSchemas )
@@ -163,16 +164,17 @@ class XmlDumpWriter {
 	 * @return string
 	 */
 	private function sitename() {
-		global $wgSitename;
-		return Xml::element( 'sitename', [], $wgSitename );
+		$sitename = MediaWikiServices::getInstance()->getMainConfig()->get(
+			MainConfigNames::Sitename );
+		return Xml::element( 'sitename', [], $sitename );
 	}
 
 	/**
 	 * @return string
 	 */
 	private function dbname() {
-		global $wgDBname;
-		return Xml::element( 'dbname', [], $wgDBname );
+		$dbname = MediaWikiServices::getInstance()->getMainConfig()->get( MainConfigNames::DBname );
+		return Xml::element( 'dbname', [], $dbname );
 	}
 
 	/**
@@ -193,9 +195,10 @@ class XmlDumpWriter {
 	 * @return string
 	 */
 	private function caseSetting() {
-		global $wgCapitalLinks;
+		$capitalLinks = MediaWikiServices::getInstance()->getMainConfig()->get(
+			MainConfigNames::CapitalLinks );
 		// "case-insensitive" option is reserved for future
-		$sensitivity = $wgCapitalLinks ? 'first-letter' : 'case-sensitive';
+		$sensitivity = $capitalLinks ? 'first-letter' : 'case-sensitive';
 		return Xml::element( 'case', [], $sensitivity );
 	}
 
@@ -246,10 +249,12 @@ class XmlDumpWriter {
 		$out .= '    ' . Xml::element( 'ns', [], strval( $row->page_namespace ) ) . "\n";
 		$out .= '    ' . Xml::element( 'id', [], strval( $row->page_id ) ) . "\n";
 		if ( $row->page_is_redirect ) {
-			$page = MediaWikiServices::getInstance()->getWikiPageFactory()->newFromTitle( $this->currentTitle );
+			$services = MediaWikiServices::getInstance();
+			$page = $services->getWikiPageFactory()->newFromTitle( $this->currentTitle );
+			$redirectStore = $services->getRedirectStore();
 			$redirect = $this->invokeLenient(
-				static function () use ( $page ) {
-					return $page->getRedirectTarget();
+				static function () use ( $page, $redirectStore ) {
+					return $redirectStore->getRedirectTarget( $page );
 				},
 				'Failed to get redirect target of page ' . $page->getId()
 			);
@@ -259,12 +264,6 @@ class XmlDumpWriter {
 				$out .= "\n";
 			}
 		}
-
-		if ( $row->page_restrictions != '' ) {
-			$out .= '    ' . Xml::element( 'restrictions', [],
-				strval( $row->page_restrictions ) ) . "\n";
-		}
-
 		$this->hookRunner->onXmlDumpWriterOpenPage( $this, $out, $row, $this->currentTitle );
 
 		return $out;
@@ -375,7 +374,6 @@ class XmlDumpWriter {
 		} else {
 			if ( $rev->getComment()->text != '' ) {
 				$out .= "      "
-					// @phan-suppress-next-line SecurityCheck-DoubleEscaped getComment is polluted by truncate
 					. Xml::elementClean( 'comment', [], strval( $rev->getComment()->text ) )
 					. "\n";
 			}
@@ -568,7 +566,7 @@ class XmlDumpWriter {
 		}
 
 		$data = $contentHandler->exportTransform( $data, $contentFormat );
-		$textAttributes['bytes'] = $size = strlen( $data ); // make sure to use the actual size
+		$textAttributes['bytes'] = strlen( $data ); // make sure to use the actual size
 		$textAttributes['xml:space'] = 'preserve';
 		$out .= $indent . Xml::elementClean( 'text', $textAttributes, strval( $data ) ) . "\n";
 
@@ -599,7 +597,6 @@ class XmlDumpWriter {
 		} else {
 			$comment = CommentStore::getStore()->getComment( 'log_comment', $row )->text;
 			if ( $comment != '' ) {
-				// @phan-suppress-next-line SecurityCheck-DoubleEscaped CommentStore is polluted by truncate
 				$out .= "    " . Xml::elementClean( 'comment', null, strval( $comment ) ) . "\n";
 			}
 		}
@@ -705,7 +702,7 @@ class XmlDumpWriter {
 			$uploader = Xml::element( 'contributor', [ 'deleted' => 'deleted' ] ) . "\n";
 		}
 		$comment = $file->getDescription( File::FOR_PUBLIC );
-		if ( $comment ) {
+		if ( ( $comment ?? '' ) !== '' ) {
 			$comment = Xml::elementClean( 'comment', null, $comment );
 		} else {
 			$comment = Xml::element( 'comment', [ 'deleted' => 'deleted' ] );
@@ -717,7 +714,7 @@ class XmlDumpWriter {
 			"      " . Xml::element( 'filename', null, $file->getName() ) . "\n" .
 			$archiveName .
 			"      " . Xml::element( 'src', null, $file->getCanonicalUrl() ) . "\n" .
-			"      " . Xml::element( 'size', null, $file->getSize() ) . "\n" .
+			"      " . Xml::element( 'size', null, (string)( $file->getSize() ?: 0 ) ) . "\n" .
 			"      " . Xml::element( 'sha1base36', null, $file->getSha1() ) . "\n" .
 			"      " . Xml::element( 'rel', null, $file->getRel() ) . "\n" .
 			$contents .

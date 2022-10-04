@@ -23,25 +23,6 @@ class ArticleTest extends \MediaWikiIntegrationTestCase {
 
 	/**
 	 * @covers Article::__get
-	 */
-	public function testImplementsGetMagic() {
-		$this->filterDeprecated( '/Accessing Article::\$mLatest/' );
-		$this->assertFalse( $this->article->mLatest, "Article __get magic" );
-	}
-
-	/**
-	 * @depends testImplementsGetMagic
-	 * @covers Article::__set
-	 */
-	public function testImplementsSetMagic() {
-		$this->filterDeprecated( '/Accessing Article::\$mLatest/' );
-		$this->filterDeprecated( '/Setting Article::\$mLatest/' );
-		$this->article->mLatest = 2;
-		$this->assertEquals( 2, $this->article->mLatest, "Article __set magic" );
-	}
-
-	/**
-	 * @covers Article::__get
 	 * @covers Article::__set
 	 */
 	public function testGetOrSetOnNewProperty() {
@@ -104,7 +85,7 @@ class ArticleTest extends \MediaWikiIntegrationTestCase {
 		if ( $editPageText !== null ) {
 			$editedUser = $isEditedBySameUser ? $user1 : $user2;
 			$editIsGood = $this->editPage( $article->getPage(), $editPageText, '', NS_MAIN, $editedUser )->isGood();
-			$this->assertTrue( $editIsGood, 'Sanity: edited a page' );
+			$this->assertTrue( $editIsGood, 'edited a page' );
 		}
 		$this->assertSame( $expectedResult, $article->showPatrolFooter() );
 	}

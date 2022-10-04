@@ -1,14 +1,16 @@
 <?php
 
-use HtmlFormatter\HtmlFormatter;
 use MediaWiki\Json\JsonUnserializable;
 use MediaWiki\Json\JsonUnserializableTrait;
 use MediaWiki\Json\JsonUnserializer;
 use MediaWiki\Linker\LinkTarget;
 use MediaWiki\Logger\LoggerFactory;
+use MediaWiki\MainConfigNames;
 use MediaWiki\MediaWikiServices;
 use MediaWiki\Page\PageReference;
 use MediaWiki\Parser\ParserOutputFlags;
+use Wikimedia\Parsoid\Core\ContentMetadataCollector;
+use Wikimedia\Parsoid\Core\ContentMetadataCollectorCompat;
 use Wikimedia\Reflection\GhostFieldAccessTrait;
 
 /**
@@ -33,9 +35,13 @@ use Wikimedia\Reflection\GhostFieldAccessTrait;
  * @ingroup Parser
  */
 
-class ParserOutput extends CacheTime {
+class ParserOutput extends CacheTime implements ContentMetadataCollector {
 	use GhostFieldAccessTrait;
 	use JsonUnserializableTrait;
+	// This is used to break cyclic dependencies and allow a measure
+	// of compatibility when new methods are added to ContentMetadataCollector
+	// by Parsoid.
+	use ContentMetadataCollectorCompat;
 
 	/**
 	 * Feature flags to indicate to extensions that MediaWiki core supports and
@@ -49,6 +55,24 @@ class ParserOutput extends CacheTime {
 	 * @since 1.31
 	 */
 	public const SUPPORTS_UNWRAP_TRANSFORM = 1;
+
+	/**
+	 * @internal
+	 * @since 1.38
+	 */
+	public const MW_MERGE_STRATEGY_KEY = '_mw-strategy';
+
+	/**
+	 * Merge strategy to use for ParserOutput accumulators: "union"
+	 * means that values are strings, stored as a set, and exposed as
+	 * a PHP associative array mapping from values to `true`.
+	 *
+	 * This constant should be treated as @internal until we expose
+	 * alternative merge strategies for external use.
+	 * @internal
+	 * @since 1.38
+	 */
+	public const MW_MERGE_STRATEGY_UNION = 'union';
 
 	/**
 	 * @var string|null The output text
@@ -169,6 +193,13 @@ class ParserOutput extends CacheTime {
 	private $mWarnings = [];
 
 	/**
+	 * @var array<string,array> *Unformatted* warning messages and
+	 * arguments to be returned to the user.  This is for internal use
+	 * when merging ParserOutputs and are not serialized/deserialized.
+	 */
+	private $mWarningMsgs = [];
+
+	/**
 	 * @var array Table of contents
 	 */
 	private $mSections = [];
@@ -194,9 +225,14 @@ class ParserOutput extends CacheTime {
 	private $mEnableOOUI = false;
 
 	/**
-	 * @var string 'index' or 'noindex'?  Any other value will result in no change.
+	 * @var bool Whether the index policy has been set to 'index'.
 	 */
-	private $mIndexPolicy = '';
+	private $mIndexSet = false;
+
+	/**
+	 * @var bool Whether the index policy has been set to 'noindex'.
+	 */
+	private $mNoIndexSet = false;
 
 	/**
 	 * @var array extra data used by extensions.
@@ -210,6 +246,9 @@ class ParserOutput extends CacheTime {
 
 	/** @var array Parser limit report data for JSON */
 	private $mLimitReportJSData = [];
+
+	/** @var string Debug message added by ParserCache */
+	private $mCacheMessage = '';
 
 	/**
 	 * @var array Timestamps for getTimeSinceStart().
@@ -245,14 +284,14 @@ class ParserOutput extends CacheTime {
 	private const SPECULATIVE_FIELDS = [
 		'speculativePageIdUsed',
 		'mSpeculativeRevId',
-		'revisionTimestampUsed'
+		'revisionTimestampUsed',
 	];
 
 	/** @var int|null Assumed rev ID for {{REVISIONID}} if no revision is set */
 	private $mSpeculativeRevId;
 	/** @var int|null Assumed page ID for {{PAGEID}} if no revision is set */
 	private $speculativePageIdUsed;
-	/** @var int|null Assumed rev timestamp for {{REVISIONTIMESTAMP}} if no revision is set */
+	/** @var string|null Assumed rev timestamp for {{REVISIONTIMESTAMP}} if no revision is set */
 	private $revisionTimestampUsed;
 
 	/** @var string|null SHA-1 base 36 hash of any self-transclusion */
@@ -267,7 +306,7 @@ class ParserOutput extends CacheTime {
 	private $mMaxAdaptiveExpiry = INF;
 
 	private const EDITSECTION_REGEX =
-		'#<(?:mw:)?editsection page="(.*?)" section="(.*?)"(?:/>|>(.*?)(</(?:mw:)?editsection>))#s';
+		'#<(?:mw:)?editsection page="(.*?)" section="(.*?)">(.*?)</(?:mw:)?editsection>#s';
 
 	// finalizeAdaptiveCacheExpiry() uses TTL = MAX( m * PARSE_TIME + b, MIN_AR_TTL)
 	// Current values imply that m=3933.333333 and b=-333.333333
@@ -276,18 +315,19 @@ class ParserOutput extends CacheTime {
 	private const PARSE_SLOW_SEC = 1.0; // perceived "slow" page parse
 	private const FAST_AR_TTL = 60; // adaptive TTL for "fast" pages
 	private const SLOW_AR_TTL = 3600; // adaptive TTL for "slow" pages
-	private const MIN_AR_TTL = 15; // min adaptive TTL (for sanity, pool counter, and edit stashing)
+	private const MIN_AR_TTL = 15; // min adaptive TTL (for pool counter, and edit stashing)
 
 	/**
 	 * @param string|null $text HTML. Use null to indicate that this ParserOutput contains only
 	 *        meta-data, and the HTML output is undetermined, as opposed to empty. Passing null
-	 *        here causes hasText() to return false.
+	 *        here causes hasText() to return false. In 1.39 the default value changed from ''
+	 *        to null.
 	 * @param array $languageLinks
 	 * @param array $categoryLinks
 	 * @param bool $unused
 	 * @param string $titletext
 	 */
-	public function __construct( $text = '', $languageLinks = [], $categoryLinks = [],
+	public function __construct( $text = null, $languageLinks = [], $categoryLinks = [],
 		$unused = false, $titletext = ''
 	) {
 		$this->mText = $text;
@@ -306,7 +346,7 @@ class ParserOutput extends CacheTime {
 	 * @return bool Whether this ParserOutput contains rendered text. If this returns false, the
 	 *         ParserOutput contains meta-data only.
 	 */
-	public function hasText() {
+	public function hasText(): bool {
 		return ( $this->mText !== null );
 	}
 
@@ -333,6 +373,10 @@ class ParserOutput extends CacheTime {
 	 *  - allowTOC: (bool) Show the TOC, assuming there were enough headings
 	 *     to generate one and `__NOTOC__` wasn't used. Default is true,
 	 *     but might be statefully overridden.
+	 *  - injectTOC: (bool) Replace the TOC_PLACEHOLDER with TOC contents;
+	 *     otherwise the marker will be left in the article (and the skin
+	 *     will be responsible for replacing or removing it).  Default is
+	 *     true.
 	 *  - enableSectionEditLinks: (bool) Include section edit links, assuming
 	 *     section edit link tokens are present in the HTML. Default is true,
 	 *     but might be statefully overridden.
@@ -350,19 +394,26 @@ class ParserOutput extends CacheTime {
 	 *    the scheme-specific-part of the href is the (percent-encoded) value
 	 *    of the `data-mw-deduplicate` attribute.
 	 *  - absoluteURLs: (bool) use absolute URLs in all links. Default: false
+	 *  - includeDebugInfo: (bool) render PP limit report in HTML. Default: false
 	 * @return string HTML
 	 * @return-taint escaped
 	 */
 	public function getText( $options = [] ) {
 		$options += [
 			'allowTOC' => true,
+			'injectTOC' => true,
 			'enableSectionEditLinks' => true,
 			'skin' => null,
 			'unwrap' => false,
 			'deduplicateStyles' => true,
 			'wrapperDivClass' => $this->getWrapperDivClass(),
+			'includeDebugInfo' => false,
 		];
 		$text = $this->getRawText();
+
+		if ( $options['includeDebugInfo'] ) {
+			$text .= $this->renderDebugInfo();
+		}
 
 		Hooks::runner()->onParserOutputPostCacheTransform( $this, $text, $options );
 
@@ -371,7 +422,10 @@ class ParserOutput extends CacheTime {
 		}
 
 		if ( $options['enableSectionEditLinks'] ) {
-			// TODO: Passing the skin should be required
+			// TODO: Skin should not be required.
+			// It would be better to define one or more narrow interfaces to use here,
+			// so this code doesn't have to depend on all of Skin.
+			// See OutputPage::addParserOutputText()
 			$skin = $options['skin'] ?: RequestContext::getMain()->getSkin();
 
 			$text = preg_replace_callback(
@@ -379,7 +433,7 @@ class ParserOutput extends CacheTime {
 				function ( $m ) use ( $skin ) {
 					$editsectionPage = Title::newFromText( htmlspecialchars_decode( $m[1] ) );
 					$editsectionSection = htmlspecialchars_decode( $m[2] );
-					$editsectionContent = isset( $m[4] ) ? Sanitizer::decodeCharReferences( $m[3] ) : null;
+					$editsectionContent = Sanitizer::decodeCharReferences( $m[3] );
 
 					if ( !is_object( $editsectionPage ) ) {
 						LoggerFactory::getInstance( 'Parser' )
@@ -389,7 +443,7 @@ class ParserOutput extends CacheTime {
 									'placeholder' => $m[0],
 									'editsectionPage' => $m[1],
 									'titletext' => $this->getTitleText(),
-									'phab' => 'T261347'
+									'phab' => 'T261347',
 								]
 							);
 						return '';
@@ -409,8 +463,56 @@ class ParserOutput extends CacheTime {
 		}
 
 		if ( $options['allowTOC'] ) {
-			$text = str_replace( [ Parser::TOC_START, Parser::TOC_END ], '', $text );
+			if ( $options['injectTOC'] ) {
+				$toc = $this->getTOCHTML();
+				// language conversion needs to be done on the TOC fetched
+				// from parser cache
+				if ( !$this->getOutputFlag( ParserOutputFlags::NO_TOC_CONVERSION ) ) {
+					// XXX Use DI to inject this once ::getText() is moved out
+					// of ParserOutput
+					$services = MediaWikiServices::getInstance();
+					$languageFactory =
+						$services->getLanguageFactory();
+					$languageConverterFactory =
+						$services->getLanguageConverterFactory();
+					// T303329: this should migrate out of extension data
+					$langCode = $this->getExtensionData( 'core:target-lang' )
+						// This is a temporary fallback while the ParserCache fills
+						?? $services->getContentLanguage()->getCode();
+					$langConv = $languageConverterFactory->getLanguageConverter(
+						$languageFactory->getLanguage( $langCode )
+					);
+					$variant = $this->getExtensionData( 'core:target-lang-variant' )
+						// This is a temporary fallback while the ParserCache fills
+						?? $langConv->getPreferredVariant();
+					$toc = $langConv->convertTo( $toc, $variant );
+				}
+
+				// XXX Use DI to inject this once ::getText() is moved out
+				// of ParserOutput.
+				$tidy = MediaWikiServices::getInstance()->getTidy();
+				$toc = $tidy->tidy(
+					$toc,
+					[ Sanitizer::class, 'armorFrenchSpaces' ]
+				);
+				$text = Parser::replaceTableOfContentsMarker( $text, $toc );
+				// The line below can be removed once old content has expired
+				// from the parser cache
+				$text = str_replace( [ Parser::TOC_START, Parser::TOC_END ], '', $text );
+			} else {
+				// The line below can be removed once old content has expired
+				// from the parser cache (and Parser::TOC_PLACEHOLDER should
+				// then be made private)
+				$text = preg_replace(
+					'#' . preg_quote( Parser::TOC_START, '#' ) . '.*?' . preg_quote( Parser::TOC_END, '#' ) . '#s',
+					Parser::TOC_PLACEHOLDER,
+					$text
+				);
+			}
 		} else {
+			$text = Parser::replaceTableOfContentsMarker( $text, '' );
+			// The line below can be removed once old content has expired
+			// from the parser cache
 			$text = preg_replace(
 				'#' . preg_quote( Parser::TOC_START, '#' ) . '.*?' . preg_quote( Parser::TOC_END, '#' ) . '#s',
 				'',
@@ -449,18 +551,7 @@ class ParserOutput extends CacheTime {
 
 		// Expand all relative URLs
 		if ( ( $options['absoluteURLs'] ?? false ) && $text ) {
-			$formatter = new HtmlFormatter( $text );
-			$doc = $formatter->getDoc();
-			$xpath = new DOMXPath( $doc );
-			$nodes = $xpath->query( '//a[@href]' );
-			/** @var DOMElement $node */
-			foreach ( $nodes as $node ) {
-				$node->setAttribute(
-					'href',
-					wfExpandUrl( $node->getAttribute( 'href' ), PROTO_RELATIVE )
-				);
-			}
-			$text = $formatter->getText( 'html' );
+			$text = Linker::expandLocalLinks( $text );
 		}
 
 		// Hydrate slot section header placeholders generated by RevisionRenderer.
@@ -482,8 +573,8 @@ class ParserOutput extends CacheTime {
 	 * @param string $msg
 	 * @internal used by ParserCache
 	 */
-	public function addCacheMessage( string $msg ) {
-		$this->mText .= "\n<!-- $msg\n -->\n";
+	public function addCacheMessage( string $msg ): void {
+		$this->mCacheMessage .= $msg;
 	}
 
 	/**
@@ -491,7 +582,7 @@ class ParserOutput extends CacheTime {
 	 *
 	 * @param string $class
 	 */
-	public function addWrapperDivClass( $class ) {
+	public function addWrapperDivClass( $class ): void {
 		$this->mWrapperDivClasses[$class] = true;
 	}
 
@@ -499,18 +590,18 @@ class ParserOutput extends CacheTime {
 	 * Clears the CSS class to use for the wrapping div, effectively disabling the wrapper div
 	 * until addWrapperDivClass() is called.
 	 */
-	public function clearWrapperDivClass() {
+	public function clearWrapperDivClass(): void {
 		$this->mWrapperDivClasses = [];
 	}
 
 	/**
-	 * Returns the class (or classes) to be used with the wrapper div for this otuput.
+	 * Returns the class (or classes) to be used with the wrapper div for this output.
 	 * If there is no wrapper class given, no wrapper div should be added.
 	 * The wrapper div is added automatically by getText().
 	 *
 	 * @return string
 	 */
-	public function getWrapperDivClass() {
+	public function getWrapperDivClass(): string {
 		return implode( ' ', array_keys( $this->mWrapperDivClasses ) );
 	}
 
@@ -518,7 +609,7 @@ class ParserOutput extends CacheTime {
 	 * @param int $id
 	 * @since 1.28
 	 */
-	public function setSpeculativeRevIdUsed( $id ) {
+	public function setSpeculativeRevIdUsed( $id ): void {
 		$this->mSpeculativeRevId = $id;
 	}
 
@@ -526,7 +617,7 @@ class ParserOutput extends CacheTime {
 	 * @return int|null
 	 * @since 1.28
 	 */
-	public function getSpeculativeRevIdUsed() {
+	public function getSpeculativeRevIdUsed(): ?int {
 		return $this->mSpeculativeRevId;
 	}
 
@@ -534,7 +625,7 @@ class ParserOutput extends CacheTime {
 	 * @param int $id
 	 * @since 1.34
 	 */
-	public function setSpeculativePageIdUsed( $id ) {
+	public function setSpeculativePageIdUsed( $id ): void {
 		$this->speculativePageIdUsed = $id;
 	}
 
@@ -550,7 +641,7 @@ class ParserOutput extends CacheTime {
 	 * @param string $timestamp TS_MW timestamp
 	 * @since 1.34
 	 */
-	public function setRevisionTimestampUsed( $timestamp ) {
+	public function setRevisionTimestampUsed( $timestamp ): void {
 		$this->revisionTimestampUsed = $timestamp;
 	}
 
@@ -566,7 +657,7 @@ class ParserOutput extends CacheTime {
 	 * @param string $hash Lowercase SHA-1 base 36 hash
 	 * @since 1.34
 	 */
-	public function setRevisionUsedSha1Base36( $hash ) {
+	public function setRevisionUsedSha1Base36( $hash ): void {
 		if ( $hash === null ) {
 			return; // e.g. RevisionRecord::getSha1() returned null
 		}
@@ -634,6 +725,9 @@ class ParserOutput extends CacheTime {
 		return $this->mTitleText;
 	}
 
+	/**
+	 * @return array
+	 */
 	public function getSections() {
 		return $this->mSections;
 	}
@@ -670,7 +764,7 @@ class ParserOutput extends CacheTime {
 		return $this->mExternalLinks;
 	}
 
-	public function setNoGallery( $value ) {
+	public function setNoGallery( $value ): void {
 		$this->mNoGallery = (bool)$value;
 	}
 
@@ -691,23 +785,44 @@ class ParserOutput extends CacheTime {
 	}
 
 	/**
+	 * @param bool $showStrategyKeys Defaults to false; if set to true will
+	 *  expose the internal `MW_MERGE_STRATEGY_KEY` in the result.  This
+	 *  should only be used internally to allow safe merge of config vars.
 	 * @return array
 	 * @since 1.23
 	 */
-	public function getJsConfigVars() {
-		return $this->mJsConfigVars;
+	public function getJsConfigVars( bool $showStrategyKeys = false ) {
+		$result = $this->mJsConfigVars;
+		// Don't expose the internal strategy key
+		foreach ( $result as &$value ) {
+			if ( is_array( $value ) && !$showStrategyKeys ) {
+				unset( $value[self::MW_MERGE_STRATEGY_KEY] );
+			}
+		}
+		return $result;
 	}
 
-	public function getOutputHooks() {
+	/**
+	 * @return array
+	 * @deprecated since 1.38; should be done in the OutputPageParserOutput
+	 * hook (T292321).
+	 */
+	public function getOutputHooks(): array {
 		return (array)$this->mOutputHooks;
 	}
 
-	public function getWarnings() {
+	public function getWarnings(): array {
 		return array_keys( $this->mWarnings );
 	}
 
-	public function getIndexPolicy() {
-		return $this->mIndexPolicy;
+	public function getIndexPolicy(): string {
+		// 'noindex' wins if both are set. (T16899)
+		if ( $this->mNoIndexSet ) {
+			return 'noindex';
+		} elseif ( $this->mIndexSet ) {
+			return 'index';
+		}
+		return '';
 	}
 
 	public function getTOCHTML() {
@@ -760,8 +875,17 @@ class ParserOutput extends CacheTime {
 		return $this->mExtraStyleSrcs;
 	}
 
+	/**
+	 * Set the text of the ParserOutput.
+	 *
+	 * If you did not generate html, pass null to mark it as such.
+	 *
+	 * @since 1.39 You can now pass null to this function
+	 * @param string|null $text HTML content of ParserOutput or null if not generated
+	 * @return string|null Previous value of ParserOutput's text
+	 */
 	public function setText( $text ) {
-		return wfSetVar( $this->mText, $text );
+		return wfSetVar( $this->mText, $text, true );
 	}
 
 	public function setLanguageLinks( $ll ) {
@@ -784,8 +908,14 @@ class ParserOutput extends CacheTime {
 		return wfSetVar( $this->mSections, $toc );
 	}
 
-	public function setIndexPolicy( $policy ) {
-		return wfSetVar( $this->mIndexPolicy, $policy );
+	public function setIndexPolicy( $policy ): string {
+		$old = $this->getIndexPolicy();
+		if ( $policy === 'noindex' ) {
+			$this->mNoIndexSet = true;
+		} elseif ( $policy === 'index' ) {
+			$this->mIndexSet = true;
+		}
+		return $old;
 	}
 
 	public function setTOCHTML( $tochtml ) {
@@ -801,7 +931,7 @@ class ParserOutput extends CacheTime {
 	 * @param string $c The category name
 	 * @param string $sort The sort key
 	 */
-	public function addCategory( $c, $sort ): void {
+	public function addCategory( $c, $sort = '' ): void {
 		$this->mCategories[$c] = $sort;
 	}
 
@@ -819,7 +949,7 @@ class ParserOutput extends CacheTime {
 	 * @param string $content
 	 * @since 1.25
 	 */
-	public function setIndicator( $id, $content ) {
+	public function setIndicator( $id, $content ): void {
 		$this->mIndicators[$id] = $content;
 	}
 
@@ -830,18 +960,18 @@ class ParserOutput extends CacheTime {
 	 * @since 1.26
 	 * @param bool $enable If OOUI should be enabled or not
 	 */
-	public function setEnableOOUI( $enable = false ) {
+	public function setEnableOOUI( bool $enable = false ): void {
 		$this->mEnableOOUI = $enable;
 	}
 
-	public function addLanguageLink( $t ) {
+	public function addLanguageLink( $t ): void {
 		$this->mLanguageLinks[] = $t;
 	}
 
 	/**
 	 * @deprecated since 1.38; use ::addWarningMsg() instead
 	 */
-	public function addWarning( $s ) {
+	public function addWarning( $s ): void {
 		wfDeprecated( __METHOD__, '1.38' );
 		$this->mWarnings[$s] = 1;
 	}
@@ -853,18 +983,28 @@ class ParserOutput extends CacheTime {
 	 * @since 1.38
 	 */
 	public function addWarningMsg( string $msg, ...$args ): void {
+		// preserve original arguments in $mWarningMsgs to allow merge
+		// @todo: these aren't serialized/unserialized
+		$this->mWarningMsgs[$msg] = $args;
 		$s = wfMessage( $msg, ...$args )
-		   // some callers set the title here?
-		   ->inContentLanguage() // because this ends up in cache
-		   ->text();
+			// some callers set the title here?
+			->inContentLanguage() // because this ends up in cache
+			->text();
 		$this->mWarnings[$s] = 1;
 	}
 
-	public function addOutputHook( $hook, $data = false ) {
+	/**
+	 * @param callable $hook
+	 * @param mixed $data
+	 * @deprecated since 1.38; should be done in the OutputPageParserOutput
+	 * hook (T292321).
+	 */
+	public function addOutputHook( $hook, $data = false ): void {
+		wfDeprecated( __METHOD__, '1.38' );
 		$this->mOutputHooks[] = [ $hook, $data ];
 	}
 
-	public function setNewSection( $value ) {
+	public function setNewSection( $value ): void {
 		$this->mNewSection = (bool)$value;
 	}
 
@@ -879,16 +1019,16 @@ class ParserOutput extends CacheTime {
 	 * @param bool $value Hide the new section link?
 	 * @deprecated since 1.38 use ::setHideNewSection()
 	 */
-	public function hideNewSection( $value ) {
+	public function hideNewSection( $value ): void {
 		wfDeprecated( __METHOD__, '1.38' );
 		$this->setHideNewSection( (bool)$value );
 	}
 
-	public function getHideNewSection() {
+	public function getHideNewSection(): bool {
 		return (bool)$this->mHideNewSection;
 	}
 
-	public function getNewSection() {
+	public function getNewSection(): bool {
 		return (bool)$this->mNewSection;
 	}
 
@@ -900,7 +1040,7 @@ class ParserOutput extends CacheTime {
 	 * @return bool
 	 * @internal
 	 */
-	public static function isLinkInternal( $internal, $url ) {
+	public static function isLinkInternal( $internal, $url ): bool {
 		return (bool)preg_match( '/^' .
 			# If server is proto relative, check also for http/https links
 			( substr( $internal, 0, 2 ) === '//' ? '(?:https?:)?' : '' ) .
@@ -911,17 +1051,18 @@ class ParserOutput extends CacheTime {
 		);
 	}
 
-	public function addExternalLink( $url ) {
+	public function addExternalLink( $url ): void {
 		# We don't register links pointing to our own server, unless... :-)
-		global $wgServer, $wgRegisterInternalExternals;
-
+		$config = MediaWikiServices::getInstance()->getMainConfig();
+		$server = $config->get( MainConfigNames::Server );
+		$registerInternalExternals = $config->get( MainConfigNames::RegisterInternalExternals );
 		# Replace unnecessary URL escape codes with the referenced character
 		# This prevents spammers from hiding links from the filters
 		$url = Parser::normalizeLinkUrl( $url );
 
 		$registerExternalLink = true;
-		if ( !$wgRegisterInternalExternals ) {
-			$registerExternalLink = !self::isLinkInternal( $wgServer, $url );
+		if ( !$registerInternalExternals ) {
+			$registerExternalLink = !self::isLinkInternal( $server, $url );
 		}
 		if ( $registerExternalLink ) {
 			$this->mExternalLinks[$url] = 1;
@@ -934,7 +1075,7 @@ class ParserOutput extends CacheTime {
 	 * @param LinkTarget $link (used to require Title until 1.38)
 	 * @param int|null $id Optional known page_id so we can skip the lookup
 	 */
-	public function addLink( LinkTarget $link, $id = null ) {
+	public function addLink( LinkTarget $link, $id = null ): void {
 		if ( $link->isExternal() ) {
 			// Don't record interwikis in pagelinks
 			$this->addInterwikiLink( $link );
@@ -970,7 +1111,7 @@ class ParserOutput extends CacheTime {
 	 * @param string|false|null $timestamp MW timestamp of file creation (or false if non-existing)
 	 * @param string|false|null $sha1 Base 36 SHA-1 of file (or false if non-existing)
 	 */
-	public function addImage( $name, $timestamp = null, $sha1 = null ) {
+	public function addImage( $name, $timestamp = null, $sha1 = null ): void {
 		$this->mImages[$name] = 1;
 		if ( $timestamp !== null && $sha1 !== null ) {
 			$this->mFileSearchOptions[$name] = [ 'time' => $timestamp, 'sha1' => $sha1 ];
@@ -984,7 +1125,7 @@ class ParserOutput extends CacheTime {
 	 * @param int $page_id
 	 * @param int $rev_id
 	 */
-	public function addTemplate( $link, $page_id, $rev_id ) {
+	public function addTemplate( $link, $page_id, $rev_id ): void {
 		$ns = $link->getNamespace();
 		$dbk = $link->getDBkey();
 		if ( !isset( $this->mTemplates[$ns] ) ) {
@@ -1003,7 +1144,7 @@ class ParserOutput extends CacheTime {
 	 *
 	 * @throws MWException If given invalid input
 	 */
-	public function addInterwikiLink( $link ) {
+	public function addInterwikiLink( $link ): void {
 		if ( !$link->isExternal() ) {
 			throw new MWException( 'Non-interwiki link passed, internal parser error.' );
 		}
@@ -1021,7 +1162,7 @@ class ParserOutput extends CacheTime {
 	 * @param string $section
 	 * @param string|bool $tag
 	 */
-	public function addHeadItem( $section, $tag = false ) {
+	public function addHeadItem( $section, $tag = false ): void {
 		if ( $tag !== false ) {
 			$this->mHeadItems[$tag] = $section;
 		} else {
@@ -1031,17 +1172,27 @@ class ParserOutput extends CacheTime {
 
 	/**
 	 * @see OutputPage::addModules
-	 * @param string|array $modules
+	 * @param string[] $modules
 	 */
-	public function addModules( $modules ) {
+	public function addModules( $modules ): void {
+		if ( !is_array( $modules ) ) {
+			// This method used to take string|array as an argument, but
+			// we're trying to simplify the API.
+			wfDeprecated( __METHOD__ . ' with non-array argument', '1.38' );
+		}
 		$this->mModules = array_merge( $this->mModules, (array)$modules );
 	}
 
 	/**
 	 * @see OutputPage::addModuleStyles
-	 * @param string|array $modules
+	 * @param string[] $modules
 	 */
-	public function addModuleStyles( $modules ) {
+	public function addModuleStyles( $modules ): void {
+		if ( !is_array( $modules ) ) {
+			// This method used to take string|array as an argument, but
+			// we're trying to simplify the API.
+			wfDeprecated( __METHOD__ . ' with non-array argument', '1.38' );
+		}
 		$this->mModuleStyles = array_merge( $this->mModuleStyles, (array)$modules );
 	}
 
@@ -1051,8 +1202,10 @@ class ParserOutput extends CacheTime {
 	 * @param string|array $keys Key or array of key/value pairs.
 	 * @param mixed|null $value [optional] Value of the configuration variable.
 	 * @since 1.23
+	 * @deprecated since 1.38, use ::setJsConfigVar() or ::appendJsConfigVar()
+	 *  which ensures compatibility with asynchronous parsing.
 	 */
-	public function addJsConfigVars( $keys, $value = null ) {
+	public function addJsConfigVars( $keys, $value = null ): void {
 		if ( is_array( $keys ) ) {
 			foreach ( $keys as $key => $value ) {
 				$this->mJsConfigVars[$key] = $value;
@@ -1064,17 +1217,105 @@ class ParserOutput extends CacheTime {
 	}
 
 	/**
-	 * Copy items from the OutputPage object into this one
+	 * Add a variable to be set in mw.config in JavaScript.
 	 *
+	 * In order to ensure the result is independent of the parse order, the values
+	 * set here must be unique -- that is, you can pass the same $key
+	 * multiple times but ONLY if the $value is identical each time.
+	 * If you want to collect multiple pieces of data under a single key,
+	 * use ::appendJsConfigVar().
+	 *
+	 * @param string $key Key to use under mw.config
+	 * @param mixed|null $value Value of the configuration variable.
+	 * @since 1.38
+	 */
+	public function setJsConfigVar( string $key, $value ): void {
+		if (
+			array_key_exists( $key, $this->mJsConfigVars ) &&
+			$this->mJsConfigVars[$key] !== $value
+		) {
+			// Ensure that a key is mapped to only a single value in order
+			// to prevent the resulting array from varying if content
+			// is parsed in a different order.
+			throw new InvalidArgumentException( "Multiple conflicting values given for $key" );
+		}
+		$this->mJsConfigVars[$key] = $value;
+	}
+
+	/**
+	 * Append a value to a variable to be set in mw.config in JavaScript.
+	 *
+	 * In order to ensure the result is independent of the parse order,
+	 * the value of this key will be an associative array, mapping all of
+	 * the values set under that key to true.  (The array is implicitly
+	 * ordered in PHP, but you should treat it as unordered.)
+	 * If you want a non-array type for the key, and can ensure that only
+	 * a single value will be set, you should use ::setJsConfigVar() instead.
+	 *
+	 * @param string $key Key to use under mw.config
+	 * @param string $value Value to append to the configuration variable.
+	 * @param string $strategy Merge strategy:
+	 *  only MW_MERGE_STRATEGY_UNION is currently supported and external callers
+	 *  should treat this parameter as @internal at this time and omit it.
+	 * @since 1.38
+	 */
+	public function appendJsConfigVar(
+		string $key,
+		string $value,
+		string $strategy = self::MW_MERGE_STRATEGY_UNION
+	): void {
+		if ( $strategy !== self::MW_MERGE_STRATEGY_UNION ) {
+			throw new InvalidArgumentException( "Unknown merge strategy $strategy." );
+		}
+		if ( !array_key_exists( $key, $this->mJsConfigVars ) ) {
+			$this->mJsConfigVars[$key] = [
+				// Indicate how these values are to be merged.
+				self::MW_MERGE_STRATEGY_KEY => $strategy,
+			];
+		} elseif ( !is_array( $this->mJsConfigVars[$key] ) ) {
+			throw new InvalidArgumentException( "Mixing set and append for $key" );
+		} elseif ( ( $this->mJsConfigVars[$key][self::MW_MERGE_STRATEGY_KEY] ?? null ) !== $strategy ) {
+			throw new InvalidArgumentException( "Conflicting merge strategies for $key" );
+		}
+		$this->mJsConfigVars[$key][$value] = true;
+	}
+
+	/**
+	 * Accommodate very basic transcluding of a temporary OutputPage object into parser output.
+	 *
+	 * This is a fragile method that cannot be relied upon in any meaningful way.
+	 * It exists solely to support the wikitext feature of transcluding a SpecialPage, and
+	 * only has to work for that use case to ensure relevant styles are loaded, and that
+	 * essential config vars needed between SpecialPage and a JS feature are added.
+	 *
+	 * This relies on there being no overlap between modules or config vars added by
+	 * the SpecialPage and those added by parser extensions. If there is overlap,
+	 * then arise and break one or both sides. This is expected and unsupported.
+	 *
+	 * @internal For use by Parser for basic special page transclusion
 	 * @param OutputPage $out
 	 */
-	public function addOutputPageMetadata( OutputPage $out ) {
-		$this->addModules( $out->getModules() );
-		$this->addModuleStyles( $out->getModuleStyles() );
-		$this->addJsConfigVars( $out->getJsConfigVars() );
+	public function addOutputPageMetadata( OutputPage $out ): void {
+		// This should eventually use the same merge mechanism used
+		// internally to merge ParserOutputs together.
 
-		$this->mHeadItems = array_merge( $this->mHeadItems, $out->getHeadItemsArray() );
+		// Take the strictest click-jacking policy. This is to ensure any one-click features
+		// such as patrol or rollback on the transcluded special page will result in the wiki page
+		// disallowing embedding in cross-origin iframes. Articles are generally allowed to be
+		// embedded. Pages that transclude special pages are expected to be user pages or
+		// other non-content pages that content re-users won't discover or care about.
 		$this->mPreventClickjacking = $this->mPreventClickjacking || $out->getPreventClickjacking();
+
+		$this->addModuleStyles( $out->getModuleStyles() );
+
+		// TODO: Figure out if style modules suffice, or whether the below is needed as well.
+		// Are there special pages that permit transcluding/including and also have JS modules
+		// that should be activate on the host page?
+		$this->addModules( $out->getModules() );
+		$this->mJsConfigVars = self::mergeMapStrategy(
+			$this->mJsConfigVars, $out->getJsConfigVars()
+		);
+		$this->mHeadItems = array_merge( $this->mHeadItems, $out->getHeadItemsArray() );
 	}
 
 	/**
@@ -1086,8 +1327,6 @@ class ParserOutput extends CacheTime {
 	 * to TrackingCategories::CORE_TRACKING_CATEGORIES, and extensions
 	 * should add to "TrackingCategories" in their extension.json.
 	 *
-	 * @todo Migrate some code to TrackingCategories
-	 *
 	 * @param string $msg Message key
 	 * @param PageReference $page the page which is being tracked
 	 *        (used to require a Title until 1.38)
@@ -1096,7 +1335,7 @@ class ParserOutput extends CacheTime {
 	 * @deprecated since 1.38, use Parser::addTrackingCategory or
 	 *   TrackingCategories::addTrackingCategory() instead
 	 */
-	public function addTrackingCategory( $msg, PageReference $page ) {
+	public function addTrackingCategory( $msg, PageReference $page ): bool {
 		wfDeprecated( __METHOD__, '1.38' );
 		$trackingCategories = MediaWikiServices::getInstance()->getTrackingCategories();
 		return $trackingCategories->addTrackingCategory( $this, $msg, $page );
@@ -1113,7 +1352,7 @@ class ParserOutput extends CacheTime {
 	 *
 	 * @param string $text Desired title text
 	 */
-	public function setDisplayTitle( $text ) {
+	public function setDisplayTitle( $text ): void {
 		$this->setTitleText( $text );
 		$this->setPageProperty( 'displaytitle', $text );
 	}
@@ -1138,7 +1377,7 @@ class ParserOutput extends CacheTime {
 	 * Attach a flag to the output so that it can be checked later to handle special cases
 	 *
 	 * @param string $flag
-	 * @deprecated Use ::setOutputFlag()
+	 * @deprecated since 1.38; use ::setOutputFlag()
 	 */
 	public function setFlag( $flag ): void {
 		$this->mFlags[$flag] = true;
@@ -1147,7 +1386,7 @@ class ParserOutput extends CacheTime {
 	/**
 	 * @param string $flag
 	 * @return bool Whether the given flag was set to signify a special case
-	 * @deprecated Use ::getOutputFlag()
+	 * @deprecated since 1.38; use ::getOutputFlag()
 	 */
 	public function getFlag( $flag ): bool {
 		return isset( $this->mFlags[$flag] );
@@ -1157,7 +1396,7 @@ class ParserOutput extends CacheTime {
 	 * @return string[] List of flags signifying special cases
 	 * @internal
 	 */
-	public function getAllFlags() {
+	public function getAllFlags(): array {
 		return array_keys( $this->mFlags );
 	}
 
@@ -1167,7 +1406,7 @@ class ParserOutput extends CacheTime {
 	 * @param int|float|string|bool|null $value
 	 * @deprecated since 1.38, renamed to ::setPageProperty()
 	 */
-	public function setProperty( $name, $value ) {
+	public function setProperty( $name, $value ): void {
 		wfDeprecated( __METHOD__, '1.38' );
 		$this->setPageProperty( $name, $value );
 	}
@@ -1179,18 +1418,19 @@ class ParserOutput extends CacheTime {
 	 * was set for the given property name.
 	 *
 	 * @note You need to use getPageProperties() to check for boolean and null properties.
-	 * @deprecated since 1.38, renamed to ::getPageProperty()
+	 * @deprecated since 1.38, renamed to ::getPageProperty() and returns `null`
+	 *  if no value was set.
 	 */
 	public function getProperty( $name ) {
 		wfDeprecated( __METHOD__, '1.38' );
-		return $this->getPageProperty( $name );
+		return $this->getPageProperty( $name ) ?? false;
 	}
 
 	/**
 	 * @param string $name
 	 * @deprecated since 1.38, renamed to ::unsetPageProperty()
 	 */
-	public function unsetProperty( $name ) {
+	public function unsetProperty( $name ): void {
 		wfDeprecated( __METHOD__, '1.38' );
 		$this->unsetPageProperty( $name );
 	}
@@ -1231,6 +1471,14 @@ class ParserOutput extends CacheTime {
 	 *     Wikimedia Commons.
 	 *     This is not actually implemented, yet but would be pretty cool.
 	 *
+	 * @note It is strongly recommended that only strings be used for $value.
+	 *  Although any JSON-serializable value can be stored/fetched in
+	 *  ParserOutput, when the values are stored to the database
+	 *  (in deferred/LinksUpdate/PagePropsTable.php) they will be stringified:
+	 *  booleans will be converted to '0' and '1', null will become '',
+	 *  and everything else will be cast to string.  Page properties
+	 *  obtained from the PageProps service will always be strings.
+	 *
 	 * @note Do not use setPageProperty() to set a property which is only used
 	 * in a context where the ParserOutput object itself is already available,
 	 * for example a normal page view. There is no need to save such a property
@@ -1240,7 +1488,7 @@ class ParserOutput extends CacheTime {
 	 * If you are writing an extension where you want to set a property in the
 	 * parser which is used by an OutputPageParserOutput hook, you have to
 	 * associate the extension data directly with the ParserOutput object.
-	 * Since MediaWiki 1.21, you can use setExtensionData() to do this:
+	 * Since MediaWiki 1.21, you should use setExtensionData() to do this:
 	 *
 	 * @par Example:
 	 * @code
@@ -1254,18 +1502,6 @@ class ParserOutput extends CacheTime {
 	 *    $output->getExtensionData( 'my_ext_foo' );
 	 * @endcode
 	 *
-	 * In MediaWiki 1.20 and older, you have to use a custom member variable
-	 * within the ParserOutput object:
-	 *
-	 * @par Example:
-	 * @code
-	 *    $parser->getOutput()->my_ext_foo = '...';
-	 * @endcode
-	 *
-	 * @note Only scalar values like numbers and strings are supported
-	 * as a value. Attempt to use an object or array will
-	 * not work properly with LinksUpdate.
-	 *
 	 * @param string $name
 	 * @param int|float|string|bool|null $value
 	 * @since 1.38
@@ -1277,14 +1513,16 @@ class ParserOutput extends CacheTime {
 	/**
 	 * Look up a page property.
 	 * @param string $name The page property name to look up.
-	 * @return int|float|string|bool The value previously set using setPageProperty(). False if null or no value
-	 * was set for the given property name.
+	 * @return int|float|string|bool|null The value previously set using setPageProperty().
+	 * Returns null if no value was set for the given property name.
 	 *
-	 * @note You need to use getPageProperties() to check for boolean and null properties.
+	 * @note You would need to use ::getPageProperties() to test for an
+	 *  explicitly-set null value; but see the note in ::setPageProperty()
+	 *  about avoiding the use of non-string values.
 	 * @since 1.38
 	 */
 	public function getPageProperty( string $name ) {
-		return $this->mProperties[$name] ?? false;
+		return $this->mProperties[$name] ?? null;
 	}
 
 	/**
@@ -1315,6 +1553,15 @@ class ParserOutput extends CacheTime {
 	 * should use ::setExtensionData() rather than creating new flags
 	 * with ::setOutputFlag() in order to prevent namespace conflicts.
 	 *
+	 * Flags are always combined with OR.  That is, the flag is set in
+	 * the resulting ParserOutput if the flag is set in *any* of the
+	 * fragments composing the ParserOutput.
+	 *
+	 * @note The combination policy means that a ParserOutput may end
+	 * up with both INDEX_POLICY and NO_INDEX_POLICY set.  It is
+	 * expected that NO_INDEX_POLICY "wins" in that case. (T16899)
+	 * (This resolution is implemented in ::getIndexPolicy().)
+	 *
 	 * @param string $name A flag name
 	 * @param bool $val
 	 * @since 1.38
@@ -1330,14 +1577,11 @@ class ParserOutput extends CacheTime {
 			break;
 
 		case ParserOutputFlags::NO_INDEX_POLICY:
+			$this->mNoIndexSet = $val;
+			break;
+
 		case ParserOutputFlags::INDEX_POLICY:
-			if ( !$val ) {
-				$this->setIndexPolicy( '' );
-			} elseif ( $name === ParserOutputFlags::INDEX_POLICY ) {
-				$this->setIndexPolicy( 'index' );
-			} else {
-				$this->setIndexPolicy( 'noindex' );
-			}
+			$this->mIndexSet = $val;
 			break;
 
 		case ParserOutputFlags::NEW_SECTION:
@@ -1383,10 +1627,10 @@ class ParserOutput extends CacheTime {
 			return $this->getEnableOOUI();
 
 		case ParserOutputFlags::INDEX_POLICY:
-			return $this->getIndexPolicy() === 'index';
+			return $this->mIndexSet;
 
 		case ParserOutputFlags::NO_INDEX_POLICY:
-			return $this->getIndexPolicy() === 'noindex';
+			return $this->mNoIndexSet;
 
 		case ParserOutputFlags::NEW_SECTION:
 			return $this->getNewSection();
@@ -1436,8 +1680,14 @@ class ParserOutput extends CacheTime {
 	 * @endcode
 	 *
 	 * @note Only scalar values, e.g. numbers, strings, arrays or MediaWiki\Json\JsonUnserializable
-	 * instances are supported as a value. Attempt to set other class instance as a extension data
+	 * instances are supported as a value. Attempt to set other class instance as extension data
 	 * will break ParserCache for the page.
+	 *
+	 * @note Since MW 1.38 the practice of setting conflicting values for
+	 * the same key has been deprecated.  As with ::setJsConfigVar(), if
+	 * you set the same key multiple times on a ParserOutput, it is expected
+	 * that the value will be identical each time.  If you want to collect
+	 * multiple pieces of data under a single key, use ::appendExtensionData().
 	 *
 	 * @param string $key The key for accessing the data. Extensions should take care to avoid
 	 *   conflicts in naming keys. It is suggested to use the extension's name as a prefix.
@@ -1446,12 +1696,65 @@ class ParserOutput extends CacheTime {
 	 *   Setting a value to null is equivalent to removing the value.
 	 * @since 1.21
 	 */
-	public function setExtensionData( $key, $value ) {
+	public function setExtensionData( $key, $value ): void {
+		if (
+			array_key_exists( $key, $this->mExtensionData ) &&
+			$this->mExtensionData[$key] !== $value
+		) {
+			// This behavior was deprecated in 1.38.  We will eventually
+			// emit a warning here, then throw an exception.
+		}
 		if ( $value === null ) {
 			unset( $this->mExtensionData[$key] );
 		} else {
 			$this->mExtensionData[$key] = $value;
 		}
+	}
+
+	/**
+	 * Appends arbitrary data to this ParserObject. This can be used
+	 * to store some information in the ParserOutput object for later
+	 * use during page output. The data will be cached along with the
+	 * ParserOutput object, but unlike data set using
+	 * setPageProperty(), it is not recorded in the database.
+	 *
+	 * See ::setExtensionData() for more details on rationale and use.
+	 *
+	 * In order to provide for out-of-order/asynchronous/incremental
+	 * parsing, this method appends values to a set.  See
+	 * ::setExtensionData() for the flag-like version of this method.
+	 *
+	 * @note Only values which can be array keys are currently supported
+	 * as values.
+	 *
+	 * @param string $key The key for accessing the data. Extensions should take care to avoid
+	 *   conflicts in naming keys. It is suggested to use the extension's name as a prefix.
+	 *
+	 * @param int|string $value The value to append to the list.
+	 * @param string $strategy Merge strategy:
+	 *  only MW_MERGE_STRATEGY_UNION is currently supported and external callers
+	 *  should treat this parameter as @internal at this time and omit it.
+	 * @since 1.38
+	 */
+	public function appendExtensionData(
+		string $key,
+		$value,
+		string $strategy = self::MW_MERGE_STRATEGY_UNION
+	): void {
+		if ( $strategy !== self::MW_MERGE_STRATEGY_UNION ) {
+			throw new InvalidArgumentException( "Unknown merge strategy $strategy." );
+		}
+		if ( !array_key_exists( $key, $this->mExtensionData ) ) {
+			$this->mExtensionData[$key] = [
+				// Indicate how these values are to be merged.
+				self::MW_MERGE_STRATEGY_KEY => $strategy,
+			];
+		} elseif ( !is_array( $this->mExtensionData[$key] ) ) {
+			throw new InvalidArgumentException( "Mixing set and append for $key" );
+		} elseif ( ( $this->mExtensionData[$key][self::MW_MERGE_STRATEGY_KEY] ?? null ) !== $strategy ) {
+			throw new InvalidArgumentException( "Conflicting merge strategies for $key" );
+		}
+		$this->mExtensionData[$key][$value] = true;
 	}
 
 	/**
@@ -1466,10 +1769,15 @@ class ParserOutput extends CacheTime {
 	 *         or null if no value was set for this key.
 	 */
 	public function getExtensionData( $key ) {
-		return $this->mExtensionData[$key] ?? null;
+		$value = $this->mExtensionData[$key] ?? null;
+		if ( is_array( $value ) ) {
+			// Don't expose our internal merge strategy key.
+			unset( $value[self::MW_MERGE_STRATEGY_KEY] );
+		}
+		return $value;
 	}
 
-	private static function getTimes( $clock = null ) {
+	private static function getTimes( $clock = null ): array {
 		$ret = [];
 		if ( !$clock || $clock === 'wall' ) {
 			$ret['wall'] = microtime( true );
@@ -1486,7 +1794,7 @@ class ParserOutput extends CacheTime {
 	 * Resets the parse start timestamps for future calls to getTimeSinceStart()
 	 * @since 1.22
 	 */
-	public function resetParseStartTime() {
+	public function resetParseStartTime(): void {
 		$this->mParseStartTime = self::getTimes();
 	}
 
@@ -1523,13 +1831,13 @@ class ParserOutput extends CacheTime {
 	 *
 	 * Note that all values are interpreted as wikitext, and so should be
 	 * encoded with htmlspecialchars() as necessary, but should avoid complex
-	 * HTML for sanity of display in the "NewPP limit report" comment.
+	 * HTML for display in the "NewPP limit report" comment.
 	 *
 	 * @since 1.22
 	 * @param string $key Message key
 	 * @param mixed $value Appropriate for Message::params()
 	 */
-	public function setLimitReportData( $key, $value ) {
+	public function setLimitReportData( $key, $value ): void {
 		$this->mLimitReportData[$key] = $value;
 
 		if ( is_array( $value ) ) {
@@ -1553,6 +1861,83 @@ class ParserOutput extends CacheTime {
 		}
 	}
 
+	private function renderDebugInfo(): string {
+		$text = '';
+
+		$limitReportData = $this->getLimitReportData();
+		// If nothing set it, we can't get it.
+		if ( $limitReportData ) {
+			$limitReport = "NewPP limit report\n";
+
+			if ( array_key_exists( 'cachereport-origin', $limitReportData ) ) {
+				$limitReport .= "Parsed by {$limitReportData['cachereport-origin']}\n";
+			}
+
+			if ( array_key_exists( 'cachereport-timestamp', $limitReportData ) ) {
+				$limitReport .= "Cached time: {$limitReportData['cachereport-timestamp']}\n";
+			}
+
+			if ( array_key_exists( 'cachereport-ttl', $limitReportData ) ) {
+				$limitReport .= "Cache expiry: {$limitReportData['cachereport-ttl']}\n";
+			}
+
+			if ( array_key_exists( 'cachereport-transientcontent', $limitReportData ) ) {
+				$transient = $limitReportData['cachereport-transientcontent'] ? 'true' : 'false';
+				$limitReport .= "Reduced expiry: $transient\n";
+			}
+
+			// TODO: flags should go into limit report too.
+			$limitReport .= 'Complications: [' . implode( ', ', $this->getAllFlags() ) . "]\n";
+
+			foreach ( $limitReportData as $key => $value ) {
+				if ( in_array( $key, [
+					'cachereport-origin',
+					'cachereport-timestamp',
+					'cachereport-ttl',
+					'cachereport-transientcontent',
+					'limitreport-timingprofile',
+				] ) ) {
+					// These keys are processed separately.
+					continue;
+				}
+				if ( Hooks::runner()->onParserLimitReportFormat(
+					$key, $value, $limitReport, false, false )
+				) {
+					$keyMsg = wfMessage( $key )->inLanguage( 'en' )->useDatabase( false );
+					$valueMsg = wfMessage( [ "$key-value-text", "$key-value" ] )
+						->inLanguage( 'en' )->useDatabase( false );
+					if ( !$valueMsg->exists() ) {
+						$valueMsg = new RawMessage( '$1' );
+					}
+					if ( !$keyMsg->isDisabled() && !$valueMsg->isDisabled() ) {
+						$valueMsg->params( $value );
+						$limitReport .= "{$keyMsg->text()}: {$valueMsg->text()}\n";
+					}
+				}
+			}
+			// Since we're not really outputting HTML, decode the entities and
+			// then re-encode the things that need hiding inside HTML comments.
+			$limitReport = htmlspecialchars_decode( $limitReport );
+
+			// Sanitize for comment. Note '‐' in the replacement is U+2010,
+			// which looks much like the problematic '-'.
+			$limitReport = str_replace( [ '-', '&' ], [ '‐', '&amp;' ], $limitReport );
+			$text = "\n<!-- \n$limitReport-->\n";
+
+			$profileReport = $limitReportData['limitreport-timingprofile'] ?? null;
+			if ( $profileReport ) {
+				$text .= "<!--\nTransclusion expansion time report (%,ms,calls,template)\n";
+				$text .= implode( "\n", $profileReport ) . "\n-->\n";
+			}
+		}
+
+		if ( $this->mCacheMessage ) {
+			$text .= "\n<!-- $this->mCacheMessage\n -->\n";
+		}
+
+		return $text;
+	}
+
 	/**
 	 * Check whether the cache TTL was lowered from the site default.
 	 *
@@ -1570,17 +1955,20 @@ class ParserOutput extends CacheTime {
 	 * @return bool
 	 */
 	public function hasReducedExpiry(): bool {
-		global $wgParserCacheExpireTime;
+		$parserCacheExpireTime = MediaWikiServices::getInstance()->getMainConfig()->get(
+			MainConfigNames::ParserCacheExpireTime );
 
-		return $this->getCacheExpiry() < $wgParserCacheExpireTime;
+		return $this->getCacheExpiry() < $parserCacheExpireTime;
 	}
 
 	/**
 	 * @see ParserOutput::hasReducedExpiry
 	 * @return bool
 	 * @since 1.25
+	 * @deprecated since 1.38: use ::hasReducedExpiry()
 	 */
-	public function hasDynamicContent() {
+	public function hasDynamicContent(): bool {
+		wfDeprecated( __METHOD__, '1.38' );
 		return $this->hasReducedExpiry();
 	}
 
@@ -1613,7 +2001,7 @@ class ParserOutput extends CacheTime {
 	 * @deprecated since 1.38:
 	 *   use ::setPreventClickjacking() or ::getPreventClickjacking()
 	 */
-	public function preventClickjacking( $flag ) {
+	public function preventClickjacking( $flag ): bool {
 		wfDeprecated( __METHOD__, '1.38' );
 		$old = $this->getPreventClickjacking();
 		if ( $flag !== null ) {
@@ -1628,7 +2016,7 @@ class ParserOutput extends CacheTime {
 	 * @param int $ttl
 	 * @since 1.28
 	 */
-	public function updateRuntimeAdaptiveExpiry( $ttl ) {
+	public function updateRuntimeAdaptiveExpiry( $ttl ): void {
 		$this->mMaxAdaptiveExpiry = min( $ttl, $this->mMaxAdaptiveExpiry );
 		$this->updateCacheExpiry( $ttl );
 	}
@@ -1642,7 +2030,7 @@ class ParserOutput extends CacheTime {
 	 * @since 1.35
 	 * @param string $src CSP source e.g. example.com
 	 */
-	public function addExtraCSPDefaultSrc( $src ) {
+	public function addExtraCSPDefaultSrc( $src ): void {
 		$this->mExtraDefaultSrcs[] = $src;
 	}
 
@@ -1652,7 +2040,7 @@ class ParserOutput extends CacheTime {
 	 * @since 1.35
 	 * @param string $src CSP source e.g. example.com
 	 */
-	public function addExtraCSPStyleSrc( $src ) {
+	public function addExtraCSPStyleSrc( $src ): void {
 		$this->mExtraStyleSrcs[] = $src;
 	}
 
@@ -1664,7 +2052,7 @@ class ParserOutput extends CacheTime {
 	 * @since 1.35
 	 * @param string $src CSP source e.g. example.com
 	 */
-	public function addExtraCSPScriptSrc( $src ) {
+	public function addExtraCSPScriptSrc( $src ): void {
 		$this->mExtraScriptSrcs[] = $src;
 	}
 
@@ -1673,7 +2061,7 @@ class ParserOutput extends CacheTime {
 	 *
 	 * @since 1.28
 	 */
-	public function finalizeAdaptiveCacheExpiry() {
+	public function finalizeAdaptiveCacheExpiry(): void {
 		if ( is_infinite( $this->mMaxAdaptiveExpiry ) ) {
 			return; // not set
 		}
@@ -1696,7 +2084,7 @@ class ParserOutput extends CacheTime {
 	public function __sleep() {
 		return array_filter( array_keys( get_object_vars( $this ) ),
 			static function ( $field ) {
-				if ( $field === 'mParseStartTime' ) {
+				if ( $field === 'mParseStartTime' || $field === 'mWarningMsgs' ) {
 					return false;
 				}
 				// Unserializing unknown private fields in HHVM causes
@@ -1713,7 +2101,7 @@ class ParserOutput extends CacheTime {
 	 *
 	 * @param ParserOutput $source
 	 */
-	public function mergeInternalMetaDataFrom( ParserOutput $source ) {
+	public function mergeInternalMetaDataFrom( ParserOutput $source ): void {
 		$this->mOutputHooks = self::mergeList( $this->mOutputHooks, $source->getOutputHooks() );
 		$this->mWarnings = self::mergeMap( $this->mWarnings, $source->mWarnings ); // don't use getter
 		$this->mTimestamp = $this->useMaxValue( $this->mTimestamp, $source->getTimestamp() );
@@ -1745,16 +2133,16 @@ class ParserOutput extends CacheTime {
 	/**
 	 * Merges HTML metadata such as head items, JS config vars, and HTTP cache control info
 	 * from $source into this ParserOutput. This should be used whenever the HTML in $source
-	 * has been somehow mered into the HTML of this ParserOutput.
+	 * has been somehow merged into the HTML of this ParserOutput.
 	 *
 	 * @param ParserOutput $source
 	 */
-	public function mergeHtmlMetaDataFrom( ParserOutput $source ) {
+	public function mergeHtmlMetaDataFrom( ParserOutput $source ): void {
 		// HTML and HTTP
 		$this->mHeadItems = self::mergeMixedList( $this->mHeadItems, $source->getHeadItems() );
 		$this->mModules = self::mergeList( $this->mModules, $source->getModules() );
 		$this->mModuleStyles = self::mergeList( $this->mModuleStyles, $source->getModuleStyles() );
-		$this->mJsConfigVars = self::mergeMap( $this->mJsConfigVars, $source->getJsConfigVars() );
+		$this->mJsConfigVars = self::mergeMapStrategy( $this->mJsConfigVars, $source->mJsConfigVars );
 		$this->mMaxAdaptiveExpiry = min( $this->mMaxAdaptiveExpiry, $source->mMaxAdaptiveExpiry );
 		$this->mExtraStyleSrcs = self::mergeList(
 			$this->mExtraStyleSrcs,
@@ -1770,11 +2158,8 @@ class ParserOutput extends CacheTime {
 		);
 
 		// "noindex" always wins!
-		if ( $this->mIndexPolicy === 'noindex' || $source->mIndexPolicy === 'noindex' ) {
-			$this->mIndexPolicy = 'noindex';
-		} elseif ( $this->mIndexPolicy !== 'index' ) {
-			$this->mIndexPolicy = $source->mIndexPolicy;
-		}
+		$this->mIndexSet = $this->mIndexSet || $source->mIndexSet;
+		$this->mNoIndexSet = $this->mNoIndexSet || $source->mNoIndexSet;
 
 		// Skin control
 		$this->mNewSection = $this->mNewSection || $source->getNewSection();
@@ -1805,7 +2190,7 @@ class ParserOutput extends CacheTime {
 		// NOTE: include extension data in "tracking meta data" as well as "html meta data"!
 		// TODO: add a $mergeStrategy parameter to setExtensionData to allow different
 		// kinds of extension data to be merged in different ways.
-		$this->mExtensionData = self::mergeMap(
+		$this->mExtensionData = self::mergeMapStrategy(
 			$this->mExtensionData,
 			$source->mExtensionData
 		);
@@ -1818,7 +2203,7 @@ class ParserOutput extends CacheTime {
 	 *
 	 * @param ParserOutput $source
 	 */
-	public function mergeTrackingMetaDataFrom( ParserOutput $source ) {
+	public function mergeTrackingMetaDataFrom( ParserOutput $source ): void {
 		$this->mLanguageLinks = self::mergeList( $this->mLanguageLinks, $source->getLanguageLinks() );
 		$this->mCategories = self::mergeMap( $this->mCategories, $source->getCategories() );
 		$this->mLinks = self::merge2D( $this->mLinks, $source->getLinks() );
@@ -1837,30 +2222,151 @@ class ParserOutput extends CacheTime {
 
 		// TODO: add a $mergeStrategy parameter to setPageProperty to allow different
 		// kinds of properties to be merged in different ways.
+		// (Model this after ::appendJsConfigVar(); use ::mergeMapStrategy here)
 		$this->mProperties = self::mergeMap( $this->mProperties, $source->getPageProperties() );
 
 		// NOTE: include extension data in "tracking meta data" as well as "html meta data"!
-		// TODO: add a $mergeStrategy parameter to setExtensionData to allow different
-		// kinds of extension data to be merged in different ways.
-		$this->mExtensionData = self::mergeMap(
+		$this->mExtensionData = self::mergeMapStrategy(
 			$this->mExtensionData,
 			$source->mExtensionData
 		);
 	}
 
-	private static function mergeMixedList( array $a, array $b ) {
+	/**
+	 * Adds the metadata collected in this ParserOutput to the supplied
+	 * ContentMetadataCollector.  This is similar to ::mergeHtmlMetaDataFrom()
+	 * but in the opposite direction, since ParserOutput is read/write while
+	 * ContentMetadataCollector is write-only.
+	 *
+	 * @param ContentMetadataCollector $metadata
+	 * @since 1.38
+	 */
+	public function collectMetadata( ContentMetadataCollector $metadata ): void {
+		// Uniform handling of all boolean flags: they are OR'ed together.
+		$flags = array_keys(
+			$this->mFlags + array_flip( ParserOutputFlags::cases() )
+		);
+		foreach ( $flags as $name ) {
+			if ( $this->getOutputFlag( $name ) ) {
+				$metadata->setOutputFlag( $name );
+			}
+		}
+		// @todo: Accumulators should also be handled uniformly
+		foreach ( $this->mCategories as $cat => $key ) {
+			$metadata->addCategory( $cat, $key );
+		}
+		$metadata->addModules( $this->mModules );
+		$metadata->addModuleStyles( $this->mModuleStyles );
+		foreach ( $this->mJsConfigVars as $key => $value ) {
+			if ( is_array( $value ) && isset( $value[self::MW_MERGE_STRATEGY_KEY] ) ) {
+				$strategy = $value[self::MW_MERGE_STRATEGY_KEY];
+				foreach ( $value as $item => $ignore ) {
+					if ( $item !== self::MW_MERGE_STRATEGY_KEY ) {
+						$metadata->appendJsConfigVar( $key, $item, $strategy );
+					}
+				}
+			} elseif ( $metadata instanceof ParserOutput &&
+				array_key_exists( $key, $metadata->mJsConfigVars )
+			) {
+				// This behavior is deprecated, will likely result in
+				// incorrect output, and we'll eventually emit a
+				// warning here---but at the moment this is usually
+				// caused by limitations in Parsoid and/or use of
+				// the ParserAfterParse hook: T303015#7770480
+				$metadata->mJsConfigVars[$key] = $value;
+			} else {
+				$metadata->setJsConfigVar( $key, $value );
+			}
+		}
+		foreach ( $this->mExtensionData as $key => $value ) {
+			if ( is_array( $value ) && isset( $value[self::MW_MERGE_STRATEGY_KEY] ) ) {
+				$strategy = $value[self::MW_MERGE_STRATEGY_KEY];
+				foreach ( $value as $item => $ignore ) {
+					if ( $item !== self::MW_MERGE_STRATEGY_KEY ) {
+						$metadata->appendExtensionData( $key, $item, $strategy );
+					}
+				}
+			} elseif ( $metadata instanceof ParserOutput &&
+				array_key_exists( $key, $metadata->mExtensionData )
+			) {
+				// This behavior is deprecated, will likely result in
+				// incorrect output, and we'll eventually emit a
+				// warning here---but at the moment this is usually
+				// caused by limitations in Parsoid and/or use of
+				// the ParserAfterParse hook: T303015#7770480
+				$metadata->mExtensionData[$key] = $value;
+			} else {
+				$metadata->setExtensionData( $key, $value );
+			}
+		}
+		foreach ( $this->mExternalLinks as $url => $ignore ) {
+			$metadata->addExternalLink( $url );
+		}
+		foreach ( $this->mProperties as $prop => $value ) {
+			$metadata->setPageProperty( $prop, $value );
+		}
+		foreach ( $this->mWarningMsgs as $msg => $args ) {
+			$metadata->addWarningMsg( $msg, ...$args );
+		}
+		foreach ( $this->mLimitReportData as $key => $value ) {
+			$metadata->setLimitReportData( $key, $value );
+		}
+	}
+
+	private static function mergeMixedList( array $a, array $b ): array {
 		return array_unique( array_merge( $a, $b ), SORT_REGULAR );
 	}
 
-	private static function mergeList( array $a, array $b ) {
+	private static function mergeList( array $a, array $b ): array {
 		return array_values( array_unique( array_merge( $a, $b ), SORT_REGULAR ) );
 	}
 
-	private static function mergeMap( array $a, array $b ) {
+	private static function mergeMap( array $a, array $b ): array {
 		return array_replace( $a, $b );
 	}
 
-	private static function merge2D( array $a, array $b ) {
+	private static function mergeMapStrategy( array $a, array $b ): array {
+		foreach ( $b as $key => $bValue ) {
+			if ( !array_key_exists( $key, $a ) ) {
+				$a[$key] = $bValue;
+			} elseif (
+				is_array( $a[$key] ) &&
+				isset( $a[$key][self::MW_MERGE_STRATEGY_KEY] ) &&
+				isset( $bValue[self::MW_MERGE_STRATEGY_KEY] )
+			) {
+				$strategy = $bValue[self::MW_MERGE_STRATEGY_KEY];
+				if ( $strategy !== $a[$key][self::MW_MERGE_STRATEGY_KEY] ) {
+					throw new InvalidArgumentException( "Conflicting merge strategy for $key" );
+				}
+				if ( $strategy === self::MW_MERGE_STRATEGY_UNION ) {
+					// Note the array_merge is *not* safe to use here, because
+					// the $bValue is expected to be a map from items to `true`.
+					// If the item is a numeric string like '1' then array_merge
+					// will convert it to an integer and renumber the array!
+					$a[$key] = array_replace( $a[$key], $bValue );
+				} else {
+					throw new InvalidArgumentException( "Unknown merge strategy $strategy" );
+				}
+			} else {
+				$valuesSame = ( $a[$key] === $bValue );
+				if ( ( !$valuesSame ) &&
+					 is_object( $a[$key] ) &&
+					 is_object( $bValue )
+				) {
+					$jsonCodec = MediaWikiServices::getInstance()->getJsonCodec();
+					$valuesSame = ( $jsonCodec->serialize( $a[$key] ) === $jsonCodec->serialize( $bValue ) );
+				}
+				if ( !$valuesSame ) {
+					// Silently replace for now; in the future will first emit
+					// a deprecation warning, and then (later) throw.
+					$a[$key] = $bValue;
+				}
+			}
+		}
+		return $a;
+	}
+
+	private static function merge2D( array $a, array $b ): array {
 		$values = [];
 		$keys = array_merge( array_keys( $a ), array_keys( $b ) );
 
@@ -1879,7 +2385,7 @@ class ParserOutput extends CacheTime {
 		return $values;
 	}
 
-	private static function useEachMinValue( array $a, array $b ) {
+	private static function useEachMinValue( array $a, array $b ): array {
 		$values = [];
 		$keys = array_merge( array_keys( $a ), array_keys( $b ) );
 
@@ -1953,11 +2459,12 @@ class ParserOutput extends CacheTime {
 			'TOCHTML' => $this->mTOCHTML,
 			'Timestamp' => $this->mTimestamp,
 			'EnableOOUI' => $this->mEnableOOUI,
-			'IndexPolicy' => $this->mIndexPolicy,
+			'IndexPolicy' => $this->getIndexPolicy(),
 			// may contain arbitrary structures!
 			'ExtensionData' => $this->mExtensionData,
 			'LimitReportData' => $this->mLimitReportData,
 			'LimitReportJSData' => $this->mLimitReportJSData,
+			'CacheMessage' => $this->mCacheMessage,
 			'ParseStartTime' => $this->mParseStartTime,
 			'PreventClickjacking' => $this->mPreventClickjacking,
 			'ExtraScriptSrcs' => $this->mExtraScriptSrcs,
@@ -1984,7 +2491,7 @@ class ParserOutput extends CacheTime {
 		return $data;
 	}
 
-	public static function newFromJsonArray( JsonUnserializer $unserializer, array $json ) {
+	public static function newFromJsonArray( JsonUnserializer $unserializer, array $json ): ParserOutput {
 		$parserOutput = new ParserOutput();
 		$parserOutput->initFromJson( $unserializer, $json );
 		return $parserOutput;
@@ -1995,7 +2502,7 @@ class ParserOutput extends CacheTime {
 	 * @param JsonUnserializer $unserializer
 	 * @param array $jsonData
 	 */
-	protected function initFromJson( JsonUnserializer $unserializer, array $jsonData ) {
+	protected function initFromJson( JsonUnserializer $unserializer, array $jsonData ): void {
 		parent::initFromJson( $unserializer, $jsonData );
 
 		$this->mText = $jsonData['Text'];
@@ -2025,10 +2532,11 @@ class ParserOutput extends CacheTime {
 		$this->mTOCHTML = $jsonData['TOCHTML'];
 		$this->mTimestamp = $jsonData['Timestamp'];
 		$this->mEnableOOUI = $jsonData['EnableOOUI'];
-		$this->mIndexPolicy = $jsonData['IndexPolicy'];
+		$this->setIndexPolicy( $jsonData['IndexPolicy'] );
 		$this->mExtensionData = $unserializer->unserializeArray( $jsonData['ExtensionData'] ?? [] );
 		$this->mLimitReportData = $jsonData['LimitReportData'];
 		$this->mLimitReportJSData = $jsonData['LimitReportJSData'];
+		$this->mCacheMessage = $jsonData['CacheMessage'] ?? '';
 		$this->mParseStartTime = $jsonData['ParseStartTime'];
 		$this->mPreventClickjacking = $jsonData['PreventClickjacking'];
 		$this->mExtraScriptSrcs = $jsonData['ExtraScriptSrcs'];
@@ -2094,6 +2602,11 @@ class ParserOutput extends CacheTime {
 		if ( $priorAccessedOptions ) {
 			$this->mParseUsedOptions = $priorAccessedOptions;
 		}
+		// Backwards compatibility, pre 1.39
+		$priorIndexPolicy = $this->getGhostFieldValue( 'mIndexPolicy' );
+		if ( $priorIndexPolicy ) {
+			$this->setIndexPolicy( $priorIndexPolicy );
+		}
 	}
 
 	public function __get( $name ) {
@@ -2106,7 +2619,7 @@ class ParserOutput extends CacheTime {
 			wfDeprecatedMsg( "ParserOutput::{$name} dynamic property read access deprecated", '1.38' );
 			return $this->$name;
 		} else {
-			trigger_error( "Inaccessible property via __set(): $name" );
+			trigger_error( "Inaccessible property via __get(): $name" );
 			return null;
 		}
 	}

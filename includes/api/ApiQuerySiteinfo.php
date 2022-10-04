@@ -25,9 +25,12 @@ use MediaWiki\Interwiki\InterwikiLookup;
 use MediaWiki\Languages\LanguageConverterFactory;
 use MediaWiki\Languages\LanguageFactory;
 use MediaWiki\Languages\LanguageNameUtils;
+use MediaWiki\MainConfigNames;
+use MediaWiki\ResourceLoader\SkinModule;
 use MediaWiki\SpecialPage\SpecialPageFactory;
 use MediaWiki\User\UserGroupManager;
 use MediaWiki\User\UserOptionsLookup;
+use Wikimedia\ParamValidator\ParamValidator;
 use Wikimedia\Rdbms\ILoadBalancer;
 
 /**
@@ -135,7 +138,6 @@ class ApiQuerySiteinfo extends ApiQueryBase {
 	public function execute() {
 		$params = $this->extractRequestParams();
 		$done = [];
-		$fit = false;
 		foreach ( $params['prop'] as $p ) {
 			switch ( $p ) {
 				case 'general':
@@ -231,26 +233,27 @@ class ApiQuerySiteinfo extends ApiQueryBase {
 		$mainPage = Title::newMainPage();
 		$data['mainpage'] = $mainPage->getPrefixedText();
 		$data['base'] = wfExpandUrl( $mainPage->getFullURL(), PROTO_CURRENT );
-		$data['sitename'] = $config->get( 'Sitename' );
-		$data['mainpageisdomainroot'] = (bool)$config->get( 'MainPageIsDomainRoot' );
+		$data['sitename'] = $config->get( MainConfigNames::Sitename );
+		$data['mainpageisdomainroot'] = (bool)$config->get( MainConfigNames::MainPageIsDomainRoot );
 
 		// A logo can either be a relative or an absolute path
 		// make sure we always return an absolute path
-		$logo = ResourceLoaderSkinModule::getAvailableLogos( $config );
+		$logo = SkinModule::getAvailableLogos( $config );
 		$data['logo'] = wfExpandUrl( $logo['1x'], PROTO_RELATIVE );
 
 		$data['generator'] = 'MediaWiki ' . MW_VERSION;
 
 		$data['phpversion'] = PHP_VERSION;
 		$data['phpsapi'] = PHP_SAPI;
-		$data['dbtype'] = $config->get( 'DBtype' );
+		$data['dbtype'] = $config->get( MainConfigNames::DBtype );
 		$data['dbversion'] = $this->getDB()->getServerVersion();
 
 		$allowFrom = [ '' ];
 		$allowException = true;
-		if ( !$config->get( 'AllowExternalImages' ) ) {
-			$data['imagewhitelistenabled'] = (bool)$config->get( 'EnableImageWhitelist' );
-			$allowFrom = $config->get( 'AllowExternalImagesFrom' );
+		if ( !$config->get( MainConfigNames::AllowExternalImages ) ) {
+			$data['imagewhitelistenabled'] =
+				(bool)$config->get( MainConfigNames::EnableImageWhitelist );
+			$allowFrom = $config->get( MainConfigNames::AllowExternalImagesFrom );
 			$allowException = !empty( $allowFrom );
 		}
 		if ( $allowException ) {
@@ -278,23 +281,24 @@ class ApiQuerySiteinfo extends ApiQueryBase {
 		$data['linktrail'] = $linktrail ?: '';
 
 		$data['legaltitlechars'] = Title::legalChars();
-		$data['invalidusernamechars'] = $config->get( 'InvalidUsernameCharacters' );
+		$data['invalidusernamechars'] = $config->get( MainConfigNames::InvalidUsernameCharacters );
 
-		$data['allunicodefixes'] = (bool)$config->get( 'AllUnicodeFixes' );
+		$data['allunicodefixes'] = (bool)$config->get( MainConfigNames::AllUnicodeFixes );
 		$data['fixarabicunicode'] = true; // Config removed in 1.35, always true
 		$data['fixmalayalamunicode'] = true; // Config removed in 1.35, always true
 
-		global $IP;
-		$git = SpecialVersion::getGitHeadSha1( $IP );
+		$baseDir = $this->getConfig()->get( MainConfigNames::BaseDirectory );
+		$git = SpecialVersion::getGitHeadSha1( $baseDir );
 		if ( $git ) {
 			$data['git-hash'] = $git;
 			$data['git-branch'] =
-				SpecialVersion::getGitCurrentBranch( $GLOBALS['IP'] );
+				SpecialVersion::getGitCurrentBranch( $baseDir );
 		}
 
 		// 'case-insensitive' option is reserved for future
-		$data['case'] = $config->get( 'CapitalLinks' ) ? 'first-letter' : 'case-sensitive';
-		$data['lang'] = $config->get( 'LanguageCode' );
+		$data['case'] =
+			$config->get( MainConfigNames::CapitalLinks ) ? 'first-letter' : 'case-sensitive';
+		$data['lang'] = $config->get( MainConfigNames::LanguageCode );
 
 		$fallbacks = [];
 		foreach ( $this->contentLanguage->getFallbackLanguages() as $code ) {
@@ -324,55 +328,60 @@ class ApiQuerySiteinfo extends ApiQueryBase {
 		}
 		$data['writeapi'] = true; // Deprecated since MW 1.32
 
-		$data['maxarticlesize'] = $config->get( 'MaxArticleSize' ) * 1024;
+		$data['maxarticlesize'] = $config->get( MainConfigNames::MaxArticleSize ) * 1024;
 
-		$tz = $config->get( 'Localtimezone' );
-		$offset = $config->get( 'LocalTZoffset' );
+		$tz = $config->get( MainConfigNames::Localtimezone );
+		$offset = $config->get( MainConfigNames::LocalTZoffset );
 		$data['timezone'] = $tz;
 		$data['timeoffset'] = (int)$offset;
-		$data['articlepath'] = $config->get( 'ArticlePath' );
-		$data['scriptpath'] = $config->get( 'ScriptPath' );
-		$data['script'] = $config->get( 'Script' );
-		$data['variantarticlepath'] = $config->get( 'VariantArticlePath' );
+		$data['articlepath'] = $config->get( MainConfigNames::ArticlePath );
+		$data['scriptpath'] = $config->get( MainConfigNames::ScriptPath );
+		$data['script'] = $config->get( MainConfigNames::Script );
+		$data['variantarticlepath'] = $config->get( MainConfigNames::VariantArticlePath );
 		$data[ApiResult::META_BC_BOOLS][] = 'variantarticlepath';
-		$data['server'] = $config->get( 'Server' );
-		$data['servername'] = $config->get( 'ServerName' );
+		$data['server'] = $config->get( MainConfigNames::Server );
+		$data['servername'] = $config->get( MainConfigNames::ServerName );
 		$data['wikiid'] = WikiMap::getCurrentWikiId();
 		$data['time'] = wfTimestamp( TS_ISO_8601, time() );
 
-		$data['misermode'] = (bool)$config->get( 'MiserMode' );
+		$data['misermode'] = (bool)$config->get( MainConfigNames::MiserMode );
 
 		$data['uploadsenabled'] = UploadBase::isEnabled();
 		$data['maxuploadsize'] = UploadBase::getMaxUploadSize();
 		$data['minuploadchunksize'] = ApiUpload::getMinUploadChunkSize( $config );
 
-		$data['galleryoptions'] = $config->get( 'GalleryOptions' );
+		$data['galleryoptions'] = $config->get( MainConfigNames::GalleryOptions );
 
-		$data['thumblimits'] = $config->get( 'ThumbLimits' );
+		$data['thumblimits'] = $config->get( MainConfigNames::ThumbLimits );
 		ApiResult::setArrayType( $data['thumblimits'], 'BCassoc' );
 		ApiResult::setIndexedTagName( $data['thumblimits'], 'limit' );
 		$data['imagelimits'] = [];
 		ApiResult::setArrayType( $data['imagelimits'], 'BCassoc' );
 		ApiResult::setIndexedTagName( $data['imagelimits'], 'limit' );
-		foreach ( $config->get( 'ImageLimits' ) as $k => $limit ) {
+		foreach ( $config->get( MainConfigNames::ImageLimits ) as $k => $limit ) {
 			$data['imagelimits'][$k] = [ 'width' => $limit[0], 'height' => $limit[1] ];
 		}
 
-		$favicon = $config->get( 'Favicon' );
-		if ( !empty( $favicon ) ) {
-			// wgFavicon can either be a relative or an absolute path
-			// make sure we always return an absolute path
-			$data['favicon'] = wfExpandUrl( $favicon, PROTO_RELATIVE );
+		$favicon = $config->get( MainConfigNames::Favicon );
+		if ( $favicon ) {
+			// Expand any local path to full URL to improve API usability (T77093).
+			$data['favicon'] = wfExpandUrl( $favicon );
 		}
 
-		$data['centralidlookupprovider'] = $config->get( 'CentralIdLookupProvider' );
-		$providerIds = array_keys( $config->get( 'CentralIdLookupProviders' ) );
+		$data['centralidlookupprovider'] =
+			$config->get( MainConfigNames::CentralIdLookupProvider );
+		$providerIds = array_keys( $config->get( MainConfigNames::CentralIdLookupProviders ) );
 		$data['allcentralidlookupproviders'] = $providerIds;
 
-		$data['interwikimagic'] = (bool)$config->get( 'InterwikiMagic' );
-		$data['magiclinks'] = $config->get( 'EnableMagicLinks' );
+		$data['interwikimagic'] = (bool)$config->get( MainConfigNames::InterwikiMagic );
+		$data['magiclinks'] = $config->get( MainConfigNames::EnableMagicLinks );
 
-		$data['categorycollation'] = $config->get( 'CategoryCollation' );
+		$data['categorycollation'] = $config->get( MainConfigNames::CategoryCollation );
+
+		$data['nofollowlinks'] = $config->get( MainConfigNames::NoFollowLinks );
+		$data['nofollownsexceptions'] = $config->get( MainConfigNames::NoFollowNsExceptions );
+		$data['nofollowdomainexceptions'] = $config->get( MainConfigNames::NoFollowDomainExceptions );
+		$data['externallinktarget'] = $config->get( MainConfigNames::ExternalLinkTarget );
 
 		$this->getHookRunner()->onAPIQuerySiteInfoGeneralInfo( $this, $data );
 
@@ -380,7 +389,7 @@ class ApiQuerySiteinfo extends ApiQueryBase {
 	}
 
 	protected function appendNamespaces( $property ) {
-		$nsProtection = $this->getConfig()->get( 'NamespaceProtection' );
+		$nsProtection = $this->getConfig()->get( MainConfigNames::NamespaceProtection );
 
 		$data = [
 			ApiResult::META_TYPE => 'assoc',
@@ -485,9 +494,9 @@ class ApiQuerySiteinfo extends ApiQueryBase {
 
 	protected function appendInterwikiMap( $property, $filter ) {
 		if ( $filter === 'local' ) {
-			$local = 1;
+			$local = true;
 		} elseif ( $filter === '!local' ) {
-			$local = 0;
+			$local = false;
 		} else {
 			// $filter === null
 			$local = null;
@@ -495,15 +504,15 @@ class ApiQuerySiteinfo extends ApiQueryBase {
 
 		$params = $this->extractRequestParams();
 		$langCode = $params['inlanguagecode'] ?? '';
-		$interwikiMagic = $this->getConfig()->get( 'InterwikiMagic' );
+		$interwikiMagic = $this->getConfig()->get( MainConfigNames::InterwikiMagic );
 
 		if ( $interwikiMagic ) {
 			$langNames = $this->languageNameUtils->getLanguageNames( $langCode );
 		}
 
 		$getPrefixes = $this->interwikiLookup->getAllPrefixes( $local );
-		$extraLangPrefixes = $this->getConfig()->get( 'ExtraInterlanguageLinkPrefixes' );
-		$localInterwikis = $this->getConfig()->get( 'LocalInterwikis' );
+		$extraLangPrefixes = $this->getConfig()->get( MainConfigNames::ExtraInterlanguageLinkPrefixes );
+		$localInterwikis = $this->getConfig()->get( MainConfigNames::LocalInterwikis );
 		$data = [];
 
 		foreach ( $getPrefixes as $row ) {
@@ -526,12 +535,12 @@ class ApiQuerySiteinfo extends ApiQueryBase {
 			if ( $interwikiMagic && in_array( $prefix, $extraLangPrefixes ) ) {
 				$val['extralanglink'] = true;
 
-				$linktext = wfMessage( "interlanguage-link-$prefix" );
+				$linktext = $this->msg( "interlanguage-link-$prefix" );
 				if ( !$linktext->isDisabled() ) {
 					$val['linktext'] = $linktext->text();
 				}
 
-				$sitename = wfMessage( "interlanguage-link-sitename-$prefix" );
+				$sitename = $this->msg( "interlanguage-link-sitename-$prefix" );
 				if ( !$sitename->isDisabled() ) {
 					$val['sitename'] = $sitename->text();
 				}
@@ -556,7 +565,7 @@ class ApiQuerySiteinfo extends ApiQueryBase {
 
 	protected function appendDbReplLagInfo( $property, $includeAll ) {
 		$data = [];
-		$showHostnames = $this->getConfig()->get( 'ShowHostnames' );
+		$showHostnames = $this->getConfig()->get( MainConfigNames::ShowHostnames );
 		if ( $includeAll ) {
 			if ( !$showHostnames ) {
 				$this->dieWithError( 'apierror-siteinfo-includealldenied', 'includeAllDenied' );
@@ -606,14 +615,14 @@ class ApiQuerySiteinfo extends ApiQueryBase {
 		$data = [];
 		$result = $this->getResult();
 		$allGroups = array_values( $this->userGroupManager->listAllGroups() );
-		foreach ( $config->get( 'GroupPermissions' ) as $group => $permissions ) {
+		foreach ( $config->get( MainConfigNames::GroupPermissions ) as $group => $permissions ) {
 			$arr = [
 				'name' => $group,
 				'rights' => array_keys( $permissions, true ),
 			];
 
 			if ( $numberInGroup ) {
-				$autopromote = $config->get( 'Autopromote' );
+				$autopromote = $config->get( MainConfigNames::Autopromote );
 
 				if ( $group == 'user' ) {
 					$arr['number'] = SiteStats::users();
@@ -624,10 +633,10 @@ class ApiQuerySiteinfo extends ApiQueryBase {
 			}
 
 			$groupArr = [
-				'add' => $config->get( 'AddGroups' ),
-				'remove' => $config->get( 'RemoveGroups' ),
-				'add-self' => $config->get( 'GroupsAddToSelf' ),
-				'remove-self' => $config->get( 'GroupsRemoveFromSelf' )
+				'add' => $config->get( MainConfigNames::AddGroups ),
+				'remove' => $config->get( MainConfigNames::RemoveGroups ),
+				'add-self' => $config->get( MainConfigNames::GroupsAddToSelf ),
+				'remove-self' => $config->get( MainConfigNames::GroupsRemoveFromSelf )
 			];
 
 			foreach ( $groupArr as $type => $rights ) {
@@ -656,7 +665,9 @@ class ApiQuerySiteinfo extends ApiQueryBase {
 
 	protected function appendFileExtensions( $property ) {
 		$data = [];
-		foreach ( array_unique( $this->getConfig()->get( 'FileExtensions' ) ) as $ext ) {
+		foreach (
+			array_unique( $this->getConfig()->get( MainConfigNames::FileExtensions ) ) as $ext
+		) {
 			$data[] = [ 'ext' => $ext ];
 		}
 		ApiResult::setIndexedTagName( $data, 'fe' );
@@ -665,8 +676,8 @@ class ApiQuerySiteinfo extends ApiQueryBase {
 	}
 
 	protected function appendInstalledLibraries( $property ) {
-		global $IP;
-		$path = "$IP/vendor/composer/installed.json";
+		$baseDir = $this->getConfig()->get( MainConfigNames::BaseDirectory );
+		$path = "$baseDir/vendor/composer/installed.json";
 		if ( !file_exists( $path ) ) {
 			return true;
 		}
@@ -768,16 +779,17 @@ class ApiQuerySiteinfo extends ApiQueryBase {
 
 	protected function appendRightsInfo( $property ) {
 		$config = $this->getConfig();
-		$rightsPage = $config->get( 'RightsPage' );
-		if ( is_string( $rightsPage ) ) {
+		$rightsPage = $config->get( MainConfigNames::RightsPage );
+		// The default value is null, but the installer sets it to empty string
+		if ( strlen( (string)$rightsPage ) ) {
 			$title = Title::newFromText( $rightsPage );
-			$url = wfExpandUrl( $title, PROTO_CURRENT );
+			$url = wfExpandUrl( $title->getLinkURL(), PROTO_CURRENT );
 		} else {
 			$title = false;
-			$url = $config->get( 'RightsUrl' );
+			$url = $config->get( MainConfigNames::RightsUrl );
 		}
-		$text = $config->get( 'RightsText' );
-		if ( $title && !strlen( $text ) ) {
+		$text = $config->get( MainConfigNames::RightsText );
+		if ( $title && !strlen( (string)$text ) ) {
 			$text = $title->getPrefixedText();
 		}
 
@@ -792,10 +804,10 @@ class ApiQuerySiteinfo extends ApiQueryBase {
 	protected function appendRestrictions( $property ) {
 		$config = $this->getConfig();
 		$data = [
-			'types' => $config->get( 'RestrictionTypes' ),
-			'levels' => $config->get( 'RestrictionLevels' ),
-			'cascadinglevels' => $config->get( 'CascadingRestrictionLevels' ),
-			'semiprotectedlevels' => $config->get( 'SemiprotectedRestrictionLevels' ),
+			'types' => $config->get( MainConfigNames::RestrictionTypes ),
+			'levels' => $config->get( MainConfigNames::RestrictionLevels ),
+			'cascadinglevels' => $config->get( MainConfigNames::CascadingRestrictionLevels ),
+			'semiprotectedlevels' => $config->get( MainConfigNames::SemiprotectedRestrictionLevels ),
 		];
 
 		ApiResult::setArrayType( $data['types'], 'BCarray' );
@@ -937,7 +949,7 @@ class ApiQuerySiteinfo extends ApiQueryBase {
 
 	public function appendProtocols( $property ) {
 		// Make a copy of the global so we don't try to set the _element key of it - T47130
-		$protocols = array_values( $this->getConfig()->get( 'UrlProtocols' ) );
+		$protocols = array_values( $this->getConfig()->get( MainConfigNames::UrlProtocols ) );
 		ApiResult::setArrayType( $protocols, 'BCarray' );
 		ApiResult::setIndexedTagName( $protocols, 'p' );
 
@@ -951,12 +963,12 @@ class ApiQuerySiteinfo extends ApiQueryBase {
 	}
 
 	public function appendUploadDialog( $property ) {
-		$config = $this->getConfig()->get( 'UploadDialog' );
+		$config = $this->getConfig()->get( MainConfigNames::UploadDialog );
 		return $this->getResult()->addValue( 'query', $property, $config );
 	}
 
 	public function appendSubscribedHooks( $property ) {
-		$hooks = $this->getConfig()->get( 'Hooks' );
+		$hooks = $this->getConfig()->get( MainConfigNames::Hooks );
 		$myWgHooks = $hooks;
 		ksort( $myWgHooks );
 
@@ -980,7 +992,7 @@ class ApiQuerySiteinfo extends ApiQueryBase {
 	public function getCacheMode( $params ) {
 		// Messages for $wgExtraInterlanguageLinkPrefixes depend on user language
 		if (
-			count( $this->getConfig()->get( 'ExtraInterlanguageLinkPrefixes' ) ) &&
+			count( $this->getConfig()->get( MainConfigNames::ExtraInterlanguageLinkPrefixes ) ) &&
 			$params['prop'] !== null &&
 			in_array( 'interwikimap', $params['prop'] )
 		) {
@@ -993,9 +1005,9 @@ class ApiQuerySiteinfo extends ApiQueryBase {
 	public function getAllowedParams() {
 		return [
 			'prop' => [
-				ApiBase::PARAM_DFLT => 'general',
-				ApiBase::PARAM_ISMULTI => true,
-				ApiBase::PARAM_TYPE => [
+				ParamValidator::PARAM_DEFAULT => 'general',
+				ParamValidator::PARAM_ISMULTI => true,
+				ParamValidator::PARAM_TYPE => [
 					'general',
 					'namespaces',
 					'namespacealiases',
@@ -1024,7 +1036,7 @@ class ApiQuerySiteinfo extends ApiQueryBase {
 				ApiBase::PARAM_HELP_MSG_PER_VALUE => [],
 			],
 			'filteriw' => [
-				ApiBase::PARAM_TYPE => [
+				ParamValidator::PARAM_TYPE => [
 					'local',
 					'!local',
 				]

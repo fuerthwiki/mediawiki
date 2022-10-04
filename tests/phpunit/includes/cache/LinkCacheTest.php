@@ -42,12 +42,14 @@ class LinkCacheTest extends MediaWikiIntegrationTestCase {
 	private function getPageRow( $offset = 0 ) {
 		return (object)[
 			'page_id' => 8 + $offset,
+			'page_namespace' => 0,
+			'page_title' => 'Test ' . $offset,
 			'page_len' => 18,
 			'page_is_redirect' => 0,
 			'page_latest' => 118 + $offset,
 			'page_content_model' => CONTENT_MODEL_TEXT,
 			'page_lang' => 'xyz',
-			'page_restrictions' => 'test',
+			'page_is_new' => 0,
 			'page_touched' => '20200202020202',
 		];
 	}
@@ -102,10 +104,6 @@ class LinkCacheTest extends MediaWikiIntegrationTestCase {
 		$this->assertSame(
 			$row->page_lang,
 			$linkCache->getGoodLinkFieldObj( $page, 'lang' )
-		);
-		$this->assertSame(
-			$row->page_restrictions,
-			$linkCache->getGoodLinkFieldObj( $page, 'restrictions' )
 		);
 
 		$this->assertEquals(
@@ -181,7 +179,6 @@ class LinkCacheTest extends MediaWikiIntegrationTestCase {
 			'page_latest' => 0,
 			'page_content_model' => null,
 			'page_lang' => null,
-			'page_restrictions' => null
 		];
 
 		$actualRow = (array)$linkCache->getGoodLinkRow( $page->getNamespace(), $page->getDBkey() );
@@ -490,6 +487,30 @@ class LinkCacheTest extends MediaWikiIntegrationTestCase {
 				$flags
 			)
 		);
+	}
+
+	/**
+	 * @covers LinkCache::getGoodLinkRow()
+	 */
+	public function testGetGoodLinkRowGetsIncompleteCachedInfo() {
+		// Pages in some namespaces use the WAN cache: Template, File, Category, MediaWiki
+		$existing = new TitleValue( NS_TEMPLATE, 'Existing' );
+		$brokenRow = $this->getPageRow( 3 );
+		unset( $brokenRow->page_len ); // make incomplete row
+
+		$cache = new HashBagOStuff();
+		$wanCache = new WANObjectCache( [ 'cache' => $cache ] );
+		$linkCache = $this->newLinkCache( $wanCache );
+
+		// force the incomplete row into the cache
+		$keys = $linkCache->getMutableCacheKeys( $wanCache, $existing );
+		$wanCache->set( $keys[0], $brokenRow );
+
+		// check that we are not getting the broken row, but load a good row
+		$callback = [ $this, 'getRowIfExisting' ];
+		$row = $linkCache->getGoodLinkRow( $existing->getNamespace(), $existing->getDBkey(), $callback );
+
+		$this->assertNotEquals( $brokenRow, $row );
 	}
 
 	/**

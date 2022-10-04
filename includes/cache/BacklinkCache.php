@@ -27,6 +27,7 @@
 
 use MediaWiki\Cache\CacheKeyHelper;
 use MediaWiki\HookContainer\ProtectedHookAccessorTrait;
+use MediaWiki\MainConfigNames;
 use MediaWiki\MediaWikiServices;
 use MediaWiki\Page\PageIdentityValue;
 use MediaWiki\Page\PageReference;
@@ -191,7 +192,7 @@ class BacklinkCache {
 	 * @param string $table
 	 * @param int|bool $startId
 	 * @param int|bool $endId
-	 * @param int $max
+	 * @param int|float $max Integer, or INF for no max
 	 * @return TitleArrayFromResult
 	 */
 	public function getLinks( $table, $startId = false, $endId = false, $max = INF ) {
@@ -235,8 +236,8 @@ class BacklinkCache {
 				$res = $this->getDB()->select(
 					$table,
 					[ 'page_id' => $fromField ],
-					array_filter( $conds, static function ( $clause ) { // kind of janky
-						return !preg_match( '/(\b|=)page_id(\b|=)/', $clause );
+					array_filter( (array)$conds, static function ( $clause ) { // kind of janky
+						return !preg_match( '/(\b|=)page_id(\b|=)/', (string)$clause );
 					} ),
 					__METHOD__,
 					$options
@@ -282,6 +283,7 @@ class BacklinkCache {
 			return $prefixes[$table];
 		} else {
 			$prefix = null;
+			// @phan-suppress-next-line PhanTypeMismatchArgument Type mismatch on pass-by-ref args
 			$this->getHookRunner()->onBacklinkCacheGetPrefix( $table, $prefix );
 			if ( $prefix ) {
 				return $prefix;
@@ -296,19 +298,23 @@ class BacklinkCache {
 	 * on the page table.
 	 * @param string $table
 	 * @throws MWException
-	 * @return array|null
+	 * @return array
 	 */
 	protected function getConditions( $table ) {
 		$prefix = $this->getPrefix( $table );
 
 		switch ( $table ) {
 			case 'pagelinks':
-			case 'templatelinks':
 				$conds = [
 					"{$prefix}_namespace" => $this->page->getNamespace(),
 					"{$prefix}_title" => $this->page->getDBkey(),
 					"page_id={$prefix}_from"
 				];
+				break;
+			case 'templatelinks':
+				$linksMigration = MediaWikiServices::getInstance()->getLinksMigration();
+				$conds = $linksMigration->getLinksConditions( $table, TitleValue::newFromPage( $this->page ) );
+				$conds[] = "page_id={$prefix}_from";
 				break;
 			case 'redirect':
 				$conds = [
@@ -331,7 +337,11 @@ class BacklinkCache {
 			default:
 				$conds = null;
 				$this->getHookRunner()->onBacklinkCacheGetConditions( $table,
-					Title::castFromPageReference( $this->page ), $conds );
+					// @phan-suppress-next-line PhanTypeMismatchArgumentNullable castFrom does not return null here
+					Title::castFromPageReference( $this->page ),
+					// @phan-suppress-next-line PhanTypeMismatchArgument Type mismatch on pass-by-ref args
+					$conds
+				);
 				if ( !$conds ) {
 					throw new MWException( "Invalid table \"$table\" in " . __CLASS__ );
 				}
@@ -352,11 +362,11 @@ class BacklinkCache {
 	/**
 	 * Get the approximate number of backlinks
 	 * @param string $table
-	 * @param int $max Only count up to this many backlinks
+	 * @param int|float $max Only count up to this many backlinks, or INF for no max
 	 * @return int
 	 */
 	public function getNumLinks( $table, $max = INF ) {
-		global $wgUpdateRowsPerJob;
+		$updateRowsPerJob = MediaWikiServices::getInstance()->getMainConfig()->get( MainConfigNames::UpdateRowsPerJob );
 
 		// 1) try partition cache ...
 		if ( isset( $this->partitionCache[$table] ) ) {
@@ -393,9 +403,9 @@ class BacklinkCache {
 		if ( is_infinite( $max ) ) { // no limit at all
 			// Use partition() since it will batch the query and skip the JOIN.
 			// Use $wgUpdateRowsPerJob just to encourage cache reuse for jobs.
-			$this->partition( $table, $wgUpdateRowsPerJob ); // updates $this->partitionCache
-			return $this->partitionCache[$table][$wgUpdateRowsPerJob]['numRows'];
-		} else { // probably some sane limit
+			$this->partition( $table, $updateRowsPerJob ); // updates $this->partitionCache
+			return $this->partitionCache[$table][$updateRowsPerJob]['numRows'];
+		} else {
 			// Fetch the full title info, since the caller will likely need it next
 			$count = iterator_count( $this->getLinkPages( $table, false, false, $max ) );
 			if ( $count < $max ) { // full count
@@ -528,7 +538,7 @@ class BacklinkCache {
 				$end = (int)$row->page_id;
 			}
 
-			# Sanity check order
+			# Check order
 			if ( $start && $end && $start > $end ) {
 				throw new MWException( __METHOD__ . ': Internal error: query result out of order' );
 			}
@@ -576,16 +586,17 @@ class BacklinkCache {
 
 		// @todo: use UNION without breaking tests that use temp tables
 		$resSets = [];
+		$conds = [
+			'tl_from = pr_page',
+			'pr_cascade' => 1,
+			'page_id = tl_from'
+		];
+		$linksMigration = MediaWikiServices::getInstance()->getLinksMigration();
+		$linkConds = $linksMigration->getLinksConditions( 'templatelinks', TitleValue::newFromPage( $this->page ) );
 		$resSets[] = $dbr->select(
 			[ 'templatelinks', 'page_restrictions', 'page' ],
 			[ 'page_namespace', 'page_title', 'page_id' ],
-			[
-				'tl_namespace' => $this->page->getNamespace(),
-				'tl_title' => $this->page->getDBkey(),
-				'tl_from = pr_page',
-				'pr_cascade' => 1,
-				'page_id = tl_from'
-			],
+			array_merge( $conds, $linkConds ),
 			__METHOD__,
 			[ 'DISTINCT' ]
 		);

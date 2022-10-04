@@ -1,7 +1,5 @@
 <?php
 /**
- * Dummy language that return the message names.
- *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
@@ -18,17 +16,19 @@
  * http://www.gnu.org/copyleft/gpl.html
  *
  * @file
- * @ingroup Language
  */
 
 /**
- * For all translated messages, this returns the name of the message bracketed.
+ * Dummy language that return the message names.
+ *
+ * For all translated messages, this returns a special value handled in Message::format()
+ * to display the message key (and fallback keys) and the parameters passed to the message.
  * This does not affect untranslated messages.
  *
  * NOTE: It returns a valid title, because there are some poorly written
  * extensions that assume the contents of some messages are valid.
  *
- * @ingroup Language
+ * @ingroup Languages
  */
 class LanguageQqx extends Language {
 	/**
@@ -36,6 +36,7 @@ class LanguageQqx extends Language {
 	 * @return string
 	 */
 	public function getMessage( $key ) {
-		return "($key$*)";
+		// Special value replaced in Message::format()
+		return '($*)';
 	}
 }

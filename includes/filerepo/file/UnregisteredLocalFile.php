@@ -1,7 +1,5 @@
 <?php
 /**
- * File without associated database record.
- *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
@@ -18,12 +16,15 @@
  * http://www.gnu.org/copyleft/gpl.html
  *
  * @file
- * @ingroup FileAbstraction
  */
 
+use MediaWiki\MediaWikiServices;
+
 /**
- * A file object referring to either a standalone local file, or a file in a
- * local repository with no database, for example an FileRepo repository.
+ * File without associated database record.
+ *
+ * Represents a standalone local file, or a file in a local repository
+ * with no database, for example a FileRepo repository.
  *
  * Read-only.
  *
@@ -159,7 +160,7 @@ class UnregisteredLocalFile extends File {
 	 */
 	public function getMimeType() {
 		if ( !isset( $this->mime ) ) {
-			$magic = MediaWiki\MediaWikiServices::getInstance()->getMimeAnalyzer();
+			$magic = MediaWikiServices::getInstance()->getMimeAnalyzer();
 			$this->mime = $magic->guessMimeType( $this->getLocalRefPath() );
 		}
 

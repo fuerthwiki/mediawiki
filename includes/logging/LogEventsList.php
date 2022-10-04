@@ -25,6 +25,7 @@
 
 use MediaWiki\HookContainer\HookRunner;
 use MediaWiki\Linker\LinkRenderer;
+use MediaWiki\MainConfigNames;
 use MediaWiki\MediaWikiServices;
 use MediaWiki\Page\PageReference;
 use MediaWiki\Permissions\Authority;
@@ -136,7 +137,7 @@ class LogEventsList extends ContextSource {
 		}
 
 		// Title pattern, if allowed
-		if ( !$this->getConfig()->get( 'MiserMode' ) ) {
+		if ( !$this->getConfig()->get( MainConfigNames::MiserMode ) ) {
 			$formDescriptor['pattern'] = $this->getTitlePatternDesc( $pattern );
 		}
 
@@ -432,8 +433,6 @@ class LogEventsList extends ContextSource {
 			return '';
 		}
 
-		$user = $this->getUser();
-
 		// If change tag editing is available to this user, return the checkbox
 		if ( $this->flags & self::USE_CHECKBOXES && $this->showTagEditUI ) {
 			return Xml::check(
@@ -449,18 +448,19 @@ class LogEventsList extends ContextSource {
 		}
 
 		$del = '';
+		$authority = $this->getAuthority();
 		// Don't show useless checkbox to people who cannot hide log entries
-		if ( $this->getAuthority()->isAllowed( 'deletedhistory' ) ) {
-			$canHide = $this->getAuthority()->isAllowed( 'deletelogentry' );
-			$canViewSuppressedOnly = $this->getAuthority()->isAllowed( 'viewsuppressed' ) &&
-				!$this->getAuthority()->isAllowed( 'suppressrevision' );
+		if ( $authority->isAllowed( 'deletedhistory' ) ) {
+			$canHide = $authority->isAllowed( 'deletelogentry' );
+			$canViewSuppressedOnly = $authority->isAllowed( 'viewsuppressed' ) &&
+				!$authority->isAllowed( 'suppressrevision' );
 			$entryIsSuppressed = self::isDeleted( $row, LogPage::DELETED_RESTRICTED );
 			$canViewThisSuppressedEntry = $canViewSuppressedOnly && $entryIsSuppressed;
 			if ( $row->log_deleted || $canHide ) {
 				// Show checkboxes instead of links.
 				if ( $canHide && $this->flags & self::USE_CHECKBOXES && !$canViewThisSuppressedEntry ) {
 					// If event was hidden from sysops
-					if ( !self::userCan( $row, LogPage::DELETED_RESTRICTED, $user ) ) {
+					if ( !self::userCan( $row, LogPage::DELETED_RESTRICTED, $authority ) ) {
 						$del = Xml::check( 'deleterevisions', false, [ 'disabled' => 'disabled' ] );
 					} else {
 						$del = Xml::check(
@@ -471,7 +471,7 @@ class LogEventsList extends ContextSource {
 					}
 				} else {
 					// If event was hidden from sysops
-					if ( !self::userCan( $row, LogPage::DELETED_RESTRICTED, $user ) ) {
+					if ( !self::userCan( $row, LogPage::DELETED_RESTRICTED, $authority ) ) {
 						$del = Linker::revDeleteLinkDisabled( $canHide );
 					} else {
 						$query = [
@@ -552,7 +552,7 @@ class LogEventsList extends ContextSource {
 	 * @return bool
 	 */
 	public static function userCanViewLogType( $type, Authority $performer ) {
-		$logRestrictions = MediaWikiServices::getInstance()->getMainConfig()->get( 'LogRestrictions' );
+		$logRestrictions = MediaWikiServices::getInstance()->getMainConfig()->get( MainConfigNames::LogRestrictions );
 		if ( isset( $logRestrictions[$type] ) && !$performer->isAllowed( $logRestrictions[$type] )
 		) {
 			return false;
@@ -643,7 +643,7 @@ class LogEventsList extends ContextSource {
 			$types,
 			$user,
 			$page,
-			'',
+			false,
 			$conds,
 			false,
 			false,
@@ -683,23 +683,11 @@ class LogEventsList extends ContextSource {
 
 		if ( $logBody ) {
 			if ( $msgKey[0] ) {
-				$dir = $context->getLanguage()->getDir();
-				$lang = $context->getLanguage()->getHtmlCode();
-
-				$s = Xml::openElement( 'div', [
-					'class' => "warningbox mw-warning-with-logexcerpt mw-content-$dir",
-					'dir' => $dir,
-					'lang' => $lang,
-				] );
-
-				// @phan-suppress-next-line PhanSuspiciousValueComparison
-				if ( count( $msgKey ) == 1 ) {
-					$s .= $context->msg( $msgKey[0] )->parseAsBlock();
-				} else { // Process additional arguments
-					$args = $msgKey;
-					array_shift( $args );
-					$s .= $context->msg( $msgKey[0], $args )->parseAsBlock();
+				$msg = $context->msg( ...$msgKey );
+				if ( $page instanceof PageReference ) {
+					$msg->page( $page );
 				}
+				$s .= $msg->parseAsBlock();
 			}
 			$s .= $loglist->beginLogEventsList() .
 				$logBody .
@@ -753,7 +741,23 @@ class LogEventsList extends ContextSource {
 		}
 
 		if ( $logBody && $msgKey[0] ) {
-			$s .= '</div>';
+			// TODO: The condition above is weird. Should this be done in any other cases?
+			// Or is it always true in practice?
+
+			// Mark as interface language (T60685)
+			$dir = $context->getLanguage()->getDir();
+			$lang = $context->getLanguage()->getHtmlCode();
+			$s = Html::rawElement( 'div', [
+				'class' => "mw-content-$dir",
+				'dir' => $dir,
+				'lang' => $lang,
+			], $s );
+
+			// Wrap in warning box
+			$s = Html::warningBox(
+				$s,
+				'mw-warning-with-logexcerpt'
+			);
 		}
 
 		// @phan-suppress-next-line PhanSuspiciousValueComparison
@@ -784,7 +788,7 @@ class LogEventsList extends ContextSource {
 	 * @throws InvalidArgumentException
 	 */
 	public static function getExcludeClause( $db, $audience = 'public', Authority $performer = null ) {
-		global $wgLogRestrictions;
+		$logRestrictions = MediaWikiServices::getInstance()->getMainConfig()->get( MainConfigNames::LogRestrictions );
 
 		if ( $audience != 'public' && $performer === null ) {
 			throw new InvalidArgumentException(
@@ -796,7 +800,7 @@ class LogEventsList extends ContextSource {
 		$hiddenLogs = [];
 
 		// Don't show private logs to unprivileged users
-		foreach ( $wgLogRestrictions as $logType => $right ) {
+		foreach ( $logRestrictions as $logType => $right ) {
 			if ( $audience == 'public' || !$performer->isAllowed( $right )
 			) {
 				$hiddenLogs[] = $logType;

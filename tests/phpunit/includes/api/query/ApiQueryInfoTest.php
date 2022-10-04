@@ -1,7 +1,7 @@
 <?php
 
 use MediaWiki\Block\DatabaseBlock;
-use MediaWiki\MediaWikiServices;
+use MediaWiki\MainConfigNames;
 use Wikimedia\Timestamp\ConvertibleTimestamp;
 
 /**
@@ -21,9 +21,9 @@ class ApiQueryInfoTest extends ApiTestCase {
 			[ 'watchlist', 'watchlist_expiry' ]
 		);
 
-		$this->setMwGlobals( [
-			'wgWatchlistExpiry' => true,
-			'wgWatchlistExpiryMaxDuration' => '6 months',
+		$this->overrideConfigValues( [
+			MainConfigNames::WatchlistExpiry => true,
+			MainConfigNames::WatchlistExpiryMaxDuration => '6 months',
 		] );
 	}
 
@@ -169,7 +169,7 @@ class ApiQueryInfoTest extends ApiTestCase {
 			'enableAutoblock' => true,
 		] );
 
-		$blockStore = MediaWikiServices::getInstance()->getDatabaseBlockStore();
+		$blockStore = $this->getServiceContainer()->getDatabaseBlockStore();
 		$blockStore->insertBlock( $block );
 
 		$page = $this->getExistingTestPage( 'Pluto' );

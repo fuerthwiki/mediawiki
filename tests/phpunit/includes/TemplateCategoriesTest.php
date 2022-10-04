@@ -3,20 +3,18 @@
 /**
  * @group Database
  */
-class TemplateCategoriesTest extends MediaWikiLangTestCase {
+class TemplateCategoriesTest extends MediaWikiIntegrationTestCase {
 
 	/**
-	 * Broken per T165099.
-	 *
-	 * @group Broken
 	 * @covers Title::getParentCategories
 	 */
 	public function testTemplateCategories() {
 		$user = new User();
 		$this->overrideUserPermissions( $user, [ 'createpage', 'edit', 'purge', 'delete' ] );
+		$wikiPageFactory = $this->getServiceContainer()->getWikiPageFactory();
 
-		$title = Title::newFromText( "Categorized from template" );
-		$page = WikiPage::factory( $title );
+		$title = Title::makeTitle( NS_MAIN, "Categorized from template" );
+		$page = $wikiPageFactory->newFromTitle( $title );
 		$page->doUserEditContent(
 			new WikitextContent( '{{Categorising template}}' ),
 			$user,
@@ -30,15 +28,15 @@ class TemplateCategoriesTest extends MediaWikiLangTestCase {
 		);
 
 		// Create template
-		$template = WikiPage::factory( Title::newFromText( 'Template:Categorising template' ) );
+		$template = $wikiPageFactory->newFromTitle( Title::makeTitle( NS_TEMPLATE, 'Categorising template' ) );
 		$template->doUserEditContent(
 			new WikitextContent( '[[Category:Solved bugs]]' ),
 			$user,
 			'Add a category through a template'
 		);
 
-		// Run the job queue
 		$this->runJobs();
+		DeferredUpdates::doUpdates();
 
 		// Make sure page is in the category
 		$this->assertEquals(
@@ -54,8 +52,8 @@ class TemplateCategoriesTest extends MediaWikiLangTestCase {
 			'Change the category added by the template'
 		);
 
-		// Run the job queue
 		$this->runJobs();
+		DeferredUpdates::doUpdates();
 
 		// Make sure page is in the right category
 		$this->assertEquals(
@@ -65,10 +63,10 @@ class TemplateCategoriesTest extends MediaWikiLangTestCase {
 		);
 
 		// Now delete the template
-		$template->doDeleteArticleReal( 'Delete the template', $user );
+		$this->deletePage( $template, 'Delete the template', $user );
 
-		// Run the job queue
 		$this->runJobs();
+		DeferredUpdates::doUpdates();
 
 		// Make sure the page is no longer in the category
 		$this->assertEquals(

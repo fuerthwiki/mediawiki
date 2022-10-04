@@ -202,7 +202,7 @@ class CommentParser {
 	) {
 		// @todo $append here is something of a hack to preserve the status
 		// quo. Someone who knows more about bidi and such should decide
-		// (1) what sane rendering even *is* for an LTR edit summary on an RTL
+		// (1) what sensible rendering even *is* for an LTR edit summary on an RTL
 		// wiki, both when autocomments exist and when they don't, and
 		// (2) what markup will make that actually happen.
 		$append = '';
@@ -384,7 +384,8 @@ class CommentParser {
 					if ( isset( $match[1][0] ) && $match[1][0] == ':' ) {
 						$match[1] = substr( $match[1], 1 );
 					}
-					if ( $match[1] !== false && $match[1] !== '' ) {
+					// @phan-suppress-next-line PhanTypePossiblyInvalidDimOffset False positive
+					if ( $match[1] !== false && $match[1] !== null && $match[1] !== '' ) {
 						if ( preg_match(
 							$this->contLang->linkTrail(),
 							$match[3],
@@ -419,6 +420,8 @@ class CommentParser {
 				if ( $linkMarker ) {
 					// If the link is still valid, go ahead and replace it in!
 					$comment = preg_replace(
+						// @phan-suppress-next-next-line PhanPossiblyUndeclaredVariable linkRegexp set when used
+						// @phan-suppress-next-line PhanTypeMismatchArgumentNullableInternal linkRegexp set when used
 						$linkRegexp,
 						$linkMarker,
 						$comment,
@@ -440,7 +443,7 @@ class CommentParser {
 	 */
 	private function addLinkMarker( $callback ) {
 		$nextId = count( $this->links );
-		if ( strlen( $nextId ) > self::MAX_ID_SIZE ) {
+		if ( strlen( (string)$nextId ) > self::MAX_ID_SIZE ) {
 			throw new \RuntimeException( 'Too many links in comment batch' );
 		}
 		$this->links[] = $callback;
@@ -457,8 +460,8 @@ class CommentParser {
 	 * @return string
 	 */
 	private function addPageLink( LinkTarget $target, $text, $wikiId ) {
-		// Handle external links (not including interwiki links)
 		if ( $wikiId !== null && $wikiId !== false && !$target->isExternal() ) {
+			// Handle links from a foreign wiki ID
 			return Linker::makeExternalLink(
 				\WikiMap::getForeignURL(
 					$wikiId,
@@ -471,9 +474,9 @@ class CommentParser {
 				$text,
 				/* escape = */ false // Already escaped
 			);
-		}
-
-		if ( $this->linkCache->getGoodLinkID( $target ) ) {
+		} elseif ( $this->linkCache->getGoodLinkID( $target ) ||
+			Title::newFromLinkTarget( $target )->isAlwaysKnown()
+		) {
 			// Already known
 			return $this->linkRenderer->makeKnownLink( $target, new HtmlArmor( $text ) );
 		} elseif ( $this->linkCache->isBadLink( $target ) ) {
@@ -484,6 +487,7 @@ class CommentParser {
 		// Defer page link
 		if ( !$this->linkBatch ) {
 			$this->linkBatch = $this->linkBatchFactory->newLinkBatch();
+			$this->linkBatch->setCaller( __METHOD__ );
 		}
 		$this->linkBatch->addObj( $target );
 		return $this->addLinkMarker( function () use ( $target, $text ) {

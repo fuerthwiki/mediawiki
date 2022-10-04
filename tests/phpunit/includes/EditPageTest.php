@@ -1,6 +1,7 @@
 <?php
 
-use MediaWiki\MediaWikiServices;
+use MediaWiki\MainConfigNames;
+use MediaWiki\MainConfigSchema;
 use MediaWiki\Revision\RevisionRecord;
 use MediaWiki\Storage\EditResult;
 use MediaWiki\User\UserIdentity;
@@ -20,20 +21,16 @@ class EditPageTest extends MediaWikiLangTestCase {
 	protected function setUp(): void {
 		parent::setUp();
 
-		$contLang = MediaWikiServices::getInstance()->getContentLanguage();
-		$this->setContentLang( $contLang );
-
-		$this->setMwGlobals( [
-			'wgExtraNamespaces' => [
+		$this->overrideConfigValues( [
+			MainConfigNames::ExtraNamespaces => [
 				12312 => 'Dummy',
 				12313 => 'Dummy_talk',
 			],
-			'wgNamespaceContentModels' => [ 12312 => 'testing' ],
+			MainConfigNames::NamespaceContentModels => [ 12312 => 'testing' ],
+			MainConfigNames::ContentHandlers =>
+				[ 'testing' => 'DummyContentHandlerForTesting' ] +
+				MainConfigSchema::getDefaultValue( MainConfigNames::ContentHandlers ),
 		] );
-		$this->mergeMwGlobalArrayValue(
-			'wgContentHandlers',
-			[ 'testing' => 'DummyContentHandlerForTesting' ]
-		);
 	}
 
 	/**
@@ -141,14 +138,14 @@ class EditPageTest extends MediaWikiLangTestCase {
 			$user = $this->getTestUser()->getUser();
 		}
 
-		$page = WikiPage::factory( $title );
+		$wikiPageFactory = $this->getServiceContainer()->getWikiPageFactory();
+		$page = $wikiPageFactory->newFromTitle( $title );
 
 		if ( $baseText !== null ) {
 			$content = ContentHandler::makeContent( $baseText, $title );
 			$page->doUserEditContent( $content, $user, "base text for test" );
 			$this->forceRevisionDate( $page, '20120101000000' );
 
-			// sanity check
 			$page->clear();
 			$content = $page->getContent();
 
@@ -199,7 +196,7 @@ class EditPageTest extends MediaWikiLangTestCase {
 				"Expected result code mismatch. $message" );
 		}
 
-		$page = WikiPage::factory( $title );
+		$page = $wikiPageFactory->newFromTitle( $title );
 
 		if ( $expectedText !== null ) {
 			// check resulting page text
@@ -287,15 +284,16 @@ class EditPageTest extends MediaWikiLangTestCase {
 	) {
 		$checkId = null;
 
-		$this->setMwGlobals( 'wgHooks', [
-			'PageSaveComplete' => [ static function (
+		$this->setTemporaryHook(
+			'PageSaveComplete',
+			static function (
 				WikiPage $page, UserIdentity $user, string $summary,
 				int $flags, RevisionRecord $revisionRecord, EditResult $editResult
 			) use ( &$checkId ) {
 				$checkId = $revisionRecord->getId();
 				// types/refs checked
-			} ],
-		] );
+			}
+		);
 
 		$edit = [ 'wpTextbox1' => $editText ];
 		if ( $ignoreBlank ) {
@@ -306,7 +304,7 @@ class EditPageTest extends MediaWikiLangTestCase {
 
 		if ( $expectedCode != EditPage::AS_BLANK_ARTICLE ) {
 			$latest = $page->getLatest();
-			$page->doDeleteArticleReal( $pageTitle, $this->getTestSysop()->getUser() );
+			$this->deletePage( $page );
 
 			$this->assertGreaterThan( 0, $latest, "Page revision ID updated in object" );
 			$this->assertEquals( $latest, $checkId, "Revision in Status for hook" );
@@ -321,15 +319,16 @@ class EditPageTest extends MediaWikiLangTestCase {
 		$desc, $pageTitle, $user, $editText, $expectedCode, $expectedText, $ignoreBlank = false
 	) {
 		$checkIds = [];
-		$this->setMwGlobals( 'wgHooks', [
-			'PageSaveComplete' => [ static function (
+		$this->setTemporaryHook(
+			'PageSaveComplete',
+			static function (
 				WikiPage $page, UserIdentity $user, string $summary,
 				int $flags, RevisionRecord $revisionRecord, EditResult $editResult
 			) use ( &$checkIds ) {
 				$checkIds[] = $revisionRecord->getId();
 				// types/refs checked
-			} ],
-		] );
+			}
+		);
 
 		wfGetDB( DB_PRIMARY )->begin( __METHOD__ );
 
@@ -351,13 +350,13 @@ class EditPageTest extends MediaWikiLangTestCase {
 
 		if ( $expectedCode != EditPage::AS_BLANK_ARTICLE ) {
 			$latest = $page->getLatest();
-			$page->doDeleteArticleReal( $pageTitle, $this->getTestSysop()->getUser() );
+			$this->deletePage( $page );
 
 			$this->assertGreaterThan( 0, $latest, "Page #1 revision ID updated in object" );
 			$this->assertEquals( $latest, $checkIds[0], "Revision #1 in Status for hook" );
 
 			$latest2 = $page2->getLatest();
-			$page2->doDeleteArticleReal( $pageTitle2, $this->getTestSysop()->getUser() );
+			$this->deletePage( $page2 );
 
 			$this->assertGreaterThan( 0, $latest2, "Page #2 revision ID updated in object" );
 			$this->assertEquals( $latest2, $checkIds[1], "Revision #2 in Status for hook" );
@@ -369,15 +368,16 @@ class EditPageTest extends MediaWikiLangTestCase {
 	 */
 	public function testUpdatePage() {
 		$checkIds = [];
-		$this->setMwGlobals( 'wgHooks', [
-			'PageSaveComplete' => [ static function (
+		$this->setTemporaryHook(
+			'PageSaveComplete',
+			static function (
 				WikiPage $page, UserIdentity $user, string $summary,
 				int $flags, RevisionRecord $revisionRecord, EditResult $editResult
 			) use ( &$checkIds ) {
 				$checkIds[] = $revisionRecord->getId();
 				// types/refs checked
-			} ],
-		] );
+			}
+		);
 
 		$text = "one";
 		$edit = [
@@ -479,15 +479,16 @@ class EditPageTest extends MediaWikiLangTestCase {
 		$this->forceRevisionDate( $page, '20120101000000' );
 
 		$checkIds = [];
-		$this->setMwGlobals( 'wgHooks', [
-			'PageSaveComplete' => [ static function (
+		$this->setTemporaryHook(
+			'PageSaveComplete',
+			static function (
 				WikiPage $page, UserIdentity $user, string $summary,
 				int $flags, RevisionRecord $revisionRecord, EditResult $editResult
 			) use ( &$checkIds ) {
 				$checkIds[] = $revisionRecord->getId();
 				// types/refs checked
-			} ],
-		] );
+			}
+		);
 
 		wfGetDB( DB_PRIMARY )->begin( __METHOD__ );
 
@@ -663,13 +664,11 @@ hello
 		// create page
 		$ns = $this->getDefaultWikitextNS();
 		$title = Title::newFromText( __METHOD__, $ns );
-		$page = WikiPage::factory( $title );
+		$wikiPageFactory = $this->getServiceContainer()->getWikiPageFactory();
+		$page = $wikiPageFactory->newFromTitle( $title );
 
 		if ( $page->exists() ) {
-			$page->doDeleteArticleReal(
-				"clean slate for testing",
-				$this->getTestSysop()->getUser()
-			);
+			$this->deletePage( $page, "clean slate for testing" );
 		}
 
 		$elmosEdit['wpTextbox1'] = 'Elmo\'s text';
@@ -795,13 +794,11 @@ hello
 		// create page
 		$ns = $this->getDefaultWikitextNS();
 		$title = Title::newFromText( 'EditPageTest_testAutoMerge', $ns );
-		$page = WikiPage::factory( $title );
+		$wikiPageFactory = $this->getServiceContainer()->getWikiPageFactory();
+		$page = $wikiPageFactory->newFromTitle( $title );
 
 		if ( $page->exists() ) {
-			$page->doDeleteArticleReal(
-				"clean slate for testing",
-				$this->getTestSysop()->getUser()
-			);
+			$this->deletePage( $page, "clean slate for testing" );
 		}
 
 		$baseEdit = [
@@ -882,8 +879,8 @@ hello
 			'format' => CONTENT_FORMAT_WIKITEXT,
 		] );
 
-		$this->assertFalse( $status->isOK() );
-		$this->assertEquals( EditPage::AS_NO_CHANGE_CONTENT_MODEL, $status->getValue() );
+		$this->assertStatusNotOK( $status );
+		$this->assertStatusValue( EditPage::AS_NO_CHANGE_CONTENT_MODEL, $status );
 	}
 
 	/** @covers EditPage */
@@ -909,8 +906,8 @@ hello
 			'format' => CONTENT_FORMAT_WIKITEXT,
 		] );
 
-		$this->assertFalse( $status->isOK() );
-		$this->assertEquals( EditPage::AS_NO_CHANGE_CONTENT_MODEL, $status->getValue() );
+		$this->assertStatusNotOK( $status );
+		$this->assertStatusValue( EditPage::AS_NO_CHANGE_CONTENT_MODEL, $status );
 	}
 
 	private function doEditDummyNonTextPage( array $edit ): Status {
@@ -935,7 +932,7 @@ hello
 	 */
 	public function testWatchlistExpiry( $existingExpiry, $postVal, $selected, $options ) {
 		// Set up config and fake current time.
-		$this->setMwGlobals( 'wgWatchlistExpiry', true );
+		$this->overrideConfigValue( MainConfigNames::WatchlistExpiry, true );
 		MWTimestamp::setFakeTime( '20200505120000' );
 		$user = $this->getTestUser()->getUser();
 		$this->assertTrue( $user->isRegistered() );
@@ -969,7 +966,7 @@ hello
 	}
 
 	public function provideWatchlistExpiry() {
-		$standardOptions = [ 'infinite', '1 week', '1 month', '3 months', '6 months' ];
+		$standardOptions = [ 'infinite', '1 week', '1 month', '3 months', '6 months', '1 year' ];
 		return [
 			'not watched, request nothing' => [
 				'existingExpiry' => '',

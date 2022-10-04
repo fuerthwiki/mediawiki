@@ -2,11 +2,10 @@
 
 namespace MediaWiki\Session;
 
-use MediaWiki\MediaWikiServices;
+use MediaWiki\MainConfigNames;
 use MediaWikiIntegrationTestCase;
 use MultiConfig;
 use Psr\Log\LogLevel;
-use RequestContext;
 use Wikimedia\TestingAccessWrapper;
 
 /**
@@ -18,20 +17,23 @@ class BotPasswordSessionProviderTest extends MediaWikiIntegrationTestCase {
 	use SessionProviderTestTrait;
 
 	private $config;
+	private $configHash;
 
-	private function getProvider( $name = null, $prefix = null ) {
+	private function getProvider( $name = null, $prefix = null, $isApiRequest = true ) {
 		global $wgSessionProviders;
 
 		$params = [
 			'priority' => 40,
 			'sessionCookieName' => $name,
 			'sessionCookieOptions' => [],
+			'isApiRequest' => $isApiRequest,
 		];
 		if ( $prefix !== null ) {
 			$params['sessionCookieOptions']['prefix'] = $prefix;
 		}
 
-		if ( !$this->config ) {
+		$configHash = json_encode( [ $name, $prefix, $isApiRequest ] );
+		if ( !$this->config || $this->configHash !== $configHash ) {
 			$this->config = new \HashConfig( [
 				'CookiePrefix' => 'wgCookiePrefix',
 				'EnableBotPasswords' => true,
@@ -40,12 +42,14 @@ class BotPasswordSessionProviderTest extends MediaWikiIntegrationTestCase {
 					BotPasswordSessionProvider::class => [
 						'class' => BotPasswordSessionProvider::class,
 						'args' => [ $params ],
+						'services' => [ 'GrantsInfo' ],
 					]
 				],
 			] );
+			$this->configHash = $configHash;
 		}
 		$manager = new SessionManager( [
-			'config' => new MultiConfig( [ $this->config, RequestContext::getMain()->getConfig() ] ),
+			'config' => new MultiConfig( [ $this->config, $this->getServiceContainer()->getMainConfig() ] ),
 			'logger' => new \Psr\Log\NullLogger,
 			'store' => new TestBagOStuff,
 		] );
@@ -56,18 +60,18 @@ class BotPasswordSessionProviderTest extends MediaWikiIntegrationTestCase {
 	protected function setUp(): void {
 		parent::setUp();
 
-		$this->setMwGlobals( [
-			'wgEnableBotPasswords' => true,
-			'wgBotPasswordsDatabase' => false,
-			'wgCentralIdLookupProvider' => 'local',
-			'wgGrantPermissions' => [
+		$this->overrideConfigValues( [
+			MainConfigNames::EnableBotPasswords => true,
+			MainConfigNames::BotPasswordsDatabase => false,
+			MainConfigNames::CentralIdLookupProvider => 'local',
+			MainConfigNames::GrantPermissions => [
 				'test' => [ 'read' => true ],
 			],
 		] );
 	}
 
 	public function addDBDataOnce() {
-		$passwordFactory = MediaWikiServices::getInstance()->getPasswordFactory();
+		$passwordFactory = $this->getServiceContainer()->getPasswordFactory();
 		$passwordHash = $passwordFactory->newFromPlaintext( 'foobaz' );
 
 		$sysop = static::getTestSysop()->getUser();
@@ -97,8 +101,10 @@ class BotPasswordSessionProviderTest extends MediaWikiIntegrationTestCase {
 	}
 
 	public function testConstructor() {
+		$grantsInfo = $this->getServiceContainer()->getGrantsInfo();
+
 		try {
-			$provider = new BotPasswordSessionProvider();
+			$provider = new BotPasswordSessionProvider( $grantsInfo );
 			$this->fail( 'Expected exception not thrown' );
 		} catch ( \InvalidArgumentException $ex ) {
 			$this->assertSame(
@@ -108,9 +114,12 @@ class BotPasswordSessionProviderTest extends MediaWikiIntegrationTestCase {
 		}
 
 		try {
-			$provider = new BotPasswordSessionProvider( [
-				'priority' => SessionInfo::MIN_PRIORITY - 1
-			] );
+			$provider = new BotPasswordSessionProvider(
+				$grantsInfo,
+				[
+					'priority' => SessionInfo::MIN_PRIORITY - 1
+				]
+			);
 			$this->fail( 'Expected exception not thrown' );
 		} catch ( \InvalidArgumentException $ex ) {
 			$this->assertSame(
@@ -120,9 +129,12 @@ class BotPasswordSessionProviderTest extends MediaWikiIntegrationTestCase {
 		}
 
 		try {
-			$provider = new BotPasswordSessionProvider( [
-				'priority' => SessionInfo::MAX_PRIORITY + 1
-			] );
+			$provider = new BotPasswordSessionProvider(
+				$grantsInfo,
+				[
+					'priority' => SessionInfo::MAX_PRIORITY + 1
+				]
+			);
 			$this->fail( 'Expected exception not thrown' );
 		} catch ( \InvalidArgumentException $ex ) {
 			$this->assertSame(
@@ -131,26 +143,33 @@ class BotPasswordSessionProviderTest extends MediaWikiIntegrationTestCase {
 			);
 		}
 
-		$provider = new BotPasswordSessionProvider( [
-			'priority' => 40
-		] );
+		$provider = new BotPasswordSessionProvider(
+			$grantsInfo,
+			[ 'priority' => 40 ]
+		);
 		$priv = TestingAccessWrapper::newFromObject( $provider );
 		$this->assertSame( 40, $priv->priority );
 		$this->assertSame( '_BPsession', $priv->sessionCookieName );
 		$this->assertSame( [], $priv->sessionCookieOptions );
 
-		$provider = new BotPasswordSessionProvider( [
-			'priority' => 40,
-			'sessionCookieName' => null,
-		] );
+		$provider = new BotPasswordSessionProvider(
+			$grantsInfo,
+			[
+				'priority' => 40,
+				'sessionCookieName' => null,
+			]
+		);
 		$priv = TestingAccessWrapper::newFromObject( $provider );
 		$this->assertSame( '_BPsession', $priv->sessionCookieName );
 
-		$provider = new BotPasswordSessionProvider( [
-			'priority' => 40,
-			'sessionCookieName' => 'Foo',
-			'sessionCookieOptions' => [ 'Bar' ],
-		] );
+		$provider = new BotPasswordSessionProvider(
+			$grantsInfo,
+			[
+				'priority' => 40,
+				'sessionCookieName' => 'Foo',
+				'sessionCookieOptions' => [ 'Bar' ],
+			]
+		);
 		$priv = TestingAccessWrapper::newFromObject( $provider );
 		$this->assertSame( 'Foo', $priv->sessionCookieName );
 		$this->assertSame( [ 'Bar' ], $priv->sessionCookieOptions );
@@ -167,14 +186,13 @@ class BotPasswordSessionProviderTest extends MediaWikiIntegrationTestCase {
 	}
 
 	public function testProvideSessionInfo() {
-		$provider = $this->getProvider();
 		$request = new \FauxRequest;
 		$request->setCookie( '_BPsession', 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 'wgCookiePrefix' );
 
-		if ( !defined( 'MW_API' ) ) {
-			$this->assertNull( $provider->provideSessionInfo( $request ) );
-			define( 'MW_API', 1 );
-		}
+		$provider = $this->getProvider( null, null, false );
+		$this->assertNull( $provider->provideSessionInfo( $request ) );
+
+		$provider = $this->getProvider();
 
 		$info = $provider->provideSessionInfo( $request );
 		$this->assertInstanceOf( SessionInfo::class, $info );

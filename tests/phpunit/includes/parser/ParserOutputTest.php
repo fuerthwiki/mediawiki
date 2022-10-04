@@ -1,5 +1,6 @@
 <?php
 
+use MediaWiki\MainConfigNames;
 use MediaWiki\Page\PageReferenceValue;
 use MediaWiki\Tests\Parser\ParserCacheSerializationTestCases;
 use Wikimedia\TestingAccessWrapper;
@@ -18,9 +19,10 @@ class ParserOutputTest extends MediaWikiLangTestCase {
 		parent::setUp();
 
 		MWTimestamp::setFakeTime( ParserCacheSerializationTestCases::FAKE_TIME );
-		$this->setMwGlobals( [
-			'wgParserCacheExpireTime' => ParserCacheSerializationTestCases::FAKE_CACHE_EXPIRY
-		] );
+		$this->overrideConfigValue(
+			MainConfigNames::ParserCacheExpireTime,
+			ParserCacheSerializationTestCases::FAKE_CACHE_EXPIRY
+		);
 	}
 
 	/**
@@ -91,6 +93,35 @@ class ParserOutputTest extends MediaWikiLangTestCase {
 	}
 
 	/**
+	 * @covers ParserOutput::appendJsConfigVar
+	 * @covers ParserOutput::setJsConfigVar
+	 * @covers ParserOutput::getJsConfigVars
+	 */
+	public function testJsConfigVars() {
+		$po = new ParserOutput();
+
+		$po->setJsConfigVar( 'a', '1' );
+		$po->appendJsConfigVar( 'b', 'a' );
+		$po->appendJsConfigVar( 'b', '0' );
+
+		$this->assertEqualsCanonicalizing( [
+			'a' => 1,
+			'b' => [ 'a' => true, '0' => true ],
+		], $po->getJsConfigVars() );
+
+		$po->setJsConfigVar( 'c', '2' );
+		$po->appendJsConfigVar( 'b', 'b' );
+		$po->appendJsConfigVar( 'b', '1' );
+
+		$this->assertEqualsCanonicalizing( [
+			'a' => 1,
+			'b' => [ 'a' => true, 'b' => true, '0' => true, '1' => true ],
+			'c' => 2,
+		], $po->getJsConfigVars() );
+	}
+
+	/**
+	 * @covers ParserOutput::appendExtensionData
 	 * @covers ParserOutput::setExtensionData
 	 * @covers ParserOutput::getExtensionData
 	 */
@@ -98,6 +129,7 @@ class ParserOutputTest extends MediaWikiLangTestCase {
 		$po = new ParserOutput();
 
 		$po->setExtensionData( "one", "Foo" );
+		$po->appendExtensionData( "three", "abc" );
 
 		$this->assertEquals( "Foo", $po->getExtensionData( "one" ) );
 		$this->assertNull( $po->getExtensionData( "spam" ) );
@@ -106,9 +138,23 @@ class ParserOutputTest extends MediaWikiLangTestCase {
 		$this->assertEquals( "Foo", $po->getExtensionData( "one" ) );
 		$this->assertEquals( "Bar", $po->getExtensionData( "two" ) );
 
+		// Note that overwriting extension data (as this test case
+		// does) is deprecated and will eventually throw an
+		// exception. However, at the moment it is still worth testing
+		// this case to ensure backward compatibility. (T300981)
 		$po->setExtensionData( "one", null );
 		$this->assertNull( $po->getExtensionData( "one" ) );
 		$this->assertEquals( "Bar", $po->getExtensionData( "two" ) );
+
+		$this->assertEqualsCanonicalizing( [
+			'abc' => true,
+		], $po->getExtensionData( "three" ) );
+
+		$po->appendExtensionData( "three", "xyz" );
+		$this->assertEqualsCanonicalizing( [
+			'abc' => true,
+			'xyz' => true,
+		], $po->getExtensionData( "three" ) );
 	}
 
 	/**
@@ -135,7 +181,7 @@ class ParserOutputTest extends MediaWikiLangTestCase {
 		$po->unsetPageProperty( 'foo' );
 
 		$properties = $po->getPageProperties();
-		$this->assertSame( false, $po->getPageProperty( 'foo' ) );
+		$this->assertSame( null, $po->getPageProperty( 'foo' ) );
 		$this->assertArrayNotHasKey( 'foo', $properties );
 	}
 
@@ -195,28 +241,28 @@ class ParserOutputTest extends MediaWikiLangTestCase {
 	/**
 	 * @covers ParserOutput::getText
 	 * @dataProvider provideGetText
+	 * @dataProvider provideGetTextBackCompat
+	 * @dataProvider provideGetTextBackCompat2
 	 * @param array $options Options to getText()
 	 * @param string $text Parser text
 	 * @param string $expect Expected output
 	 */
 	public function testGetText( $options, $text, $expect ) {
-		$this->setMwGlobals( [
-			'wgArticlePath' => '/wiki/$1',
-			'wgScriptPath' => '/w',
-			'wgScript' => '/w/index.php',
+		$this->overrideConfigValues( [
+			MainConfigNames::ArticlePath => '/wiki/$1',
+			MainConfigNames::ScriptPath => '/w',
+			MainConfigNames::Script => '/w/index.php',
 		] );
 
 		$po = new ParserOutput( $text );
+		$po->setTOCHTML( self::provideGetTextToC() );
 		$actual = $po->getText( $options );
 		$this->assertSame( $expect, $actual );
 	}
 
-	public static function provideGetText() {
-		// phpcs:disable Generic.Files.LineLength
-		$text = <<<EOF
-<p>Test document.
-</p>
-<mw:toc><div id="toc" class="toc"><div class="toctitle"><h2>Contents</h2></div>
+	public static function provideGetTextToC() {
+		$toc = <<<EOF
+<div id="toc" class="toc"><div class="toctitle"><h2>Contents</h2></div>
 <ul>
 <li class="toclevel-1 tocsection-1"><a href="#Section_1"><span class="tocnumber">1</span> <span class="toctext">Section 1</span></a></li>
 <li class="toclevel-1 tocsection-2"><a href="#Section_2"><span class="tocnumber">2</span> <span class="toctext">Section 2</span></a>
@@ -227,7 +273,228 @@ class ParserOutputTest extends MediaWikiLangTestCase {
 <li class="toclevel-1 tocsection-4"><a href="#Section_3"><span class="tocnumber">3</span> <span class="toctext">Section 3</span></a></li>
 </ul>
 </div>
-</mw:toc>
+
+EOF;
+		return $toc;
+	}
+
+	// REMOVE THIS ONCE Parser::TOC_START IS REMOVED
+	public static function provideGetTextBackCompat() {
+		$toc = self::provideGetTextToc();
+		$text = <<<EOF
+<p>Test document.
+</p>
+<mw:toc>$toc</mw:toc>
+<h2><span class="mw-headline" id="Section_1">Section 1</span><mw:editsection page="Test Page" section="1">Section 1</mw:editsection></h2>
+<p>One
+</p>
+<h2><span class="mw-headline" id="Section_2">Section 2</span><mw:editsection page="Test Page" section="2">Section 2</mw:editsection></h2>
+<p>Two
+</p>
+<h3><span class="mw-headline" id="Section_2.1">Section 2.1</span><mw:editsection page="Talk:User:Bug_T261347" section="3">Section 2.1</mw:editsection></h3>
+<p>Two point one
+</p>
+<h2><span class="mw-headline" id="Section_3">Section 3</span><mw:editsection page="Test Page" section="4">Section 3</mw:editsection></h2>
+<p>Three
+</p>
+EOF;
+
+		return [
+			'No options (mw:toc)' => [
+				[], $text, <<<EOF
+<p>Test document.
+</p>
+<div id="toc" class="toc"><div class="toctitle"><h2>Contents</h2></div>
+<ul>
+<li class="toclevel-1 tocsection-1"><a href="#Section_1"><span class="tocnumber">1</span> <span class="toctext">Section 1</span></a></li>
+<li class="toclevel-1 tocsection-2"><a href="#Section_2"><span class="tocnumber">2</span> <span class="toctext">Section 2</span></a>
+<ul>
+<li class="toclevel-2 tocsection-3"><a href="#Section_2.1"><span class="tocnumber">2.1</span> <span class="toctext">Section 2.1</span></a></li>
+</ul>
+</li>
+<li class="toclevel-1 tocsection-4"><a href="#Section_3"><span class="tocnumber">3</span> <span class="toctext">Section 3</span></a></li>
+</ul>
+</div>
+
+<h2><span class="mw-headline" id="Section_1">Section 1</span><span class="mw-editsection"><span class="mw-editsection-bracket">[</span><a href="/w/index.php?title=Test_Page&amp;action=edit&amp;section=1" title="Edit section: Section 1">edit</a><span class="mw-editsection-bracket">]</span></span></h2>
+<p>One
+</p>
+<h2><span class="mw-headline" id="Section_2">Section 2</span><span class="mw-editsection"><span class="mw-editsection-bracket">[</span><a href="/w/index.php?title=Test_Page&amp;action=edit&amp;section=2" title="Edit section: Section 2">edit</a><span class="mw-editsection-bracket">]</span></span></h2>
+<p>Two
+</p>
+<h3><span class="mw-headline" id="Section_2.1">Section 2.1</span></h3>
+<p>Two point one
+</p>
+<h2><span class="mw-headline" id="Section_3">Section 3</span><span class="mw-editsection"><span class="mw-editsection-bracket">[</span><a href="/w/index.php?title=Test_Page&amp;action=edit&amp;section=4" title="Edit section: Section 3">edit</a><span class="mw-editsection-bracket">]</span></span></h2>
+<p>Three
+</p>
+EOF
+			],
+			'Disable section edit links (mw:toc)' => [
+				[ 'enableSectionEditLinks' => false ], $text, <<<EOF
+<p>Test document.
+</p>
+<div id="toc" class="toc"><div class="toctitle"><h2>Contents</h2></div>
+<ul>
+<li class="toclevel-1 tocsection-1"><a href="#Section_1"><span class="tocnumber">1</span> <span class="toctext">Section 1</span></a></li>
+<li class="toclevel-1 tocsection-2"><a href="#Section_2"><span class="tocnumber">2</span> <span class="toctext">Section 2</span></a>
+<ul>
+<li class="toclevel-2 tocsection-3"><a href="#Section_2.1"><span class="tocnumber">2.1</span> <span class="toctext">Section 2.1</span></a></li>
+</ul>
+</li>
+<li class="toclevel-1 tocsection-4"><a href="#Section_3"><span class="tocnumber">3</span> <span class="toctext">Section 3</span></a></li>
+</ul>
+</div>
+
+<h2><span class="mw-headline" id="Section_1">Section 1</span></h2>
+<p>One
+</p>
+<h2><span class="mw-headline" id="Section_2">Section 2</span></h2>
+<p>Two
+</p>
+<h3><span class="mw-headline" id="Section_2.1">Section 2.1</span></h3>
+<p>Two point one
+</p>
+<h2><span class="mw-headline" id="Section_3">Section 3</span></h2>
+<p>Three
+</p>
+EOF
+			],
+			'Disable TOC, but wrap (mw:toc)' => [
+				[ 'allowTOC' => false, 'wrapperDivClass' => 'mw-parser-output' ], $text, <<<EOF
+<div class="mw-parser-output"><p>Test document.
+</p>
+
+<h2><span class="mw-headline" id="Section_1">Section 1</span><span class="mw-editsection"><span class="mw-editsection-bracket">[</span><a href="/w/index.php?title=Test_Page&amp;action=edit&amp;section=1" title="Edit section: Section 1">edit</a><span class="mw-editsection-bracket">]</span></span></h2>
+<p>One
+</p>
+<h2><span class="mw-headline" id="Section_2">Section 2</span><span class="mw-editsection"><span class="mw-editsection-bracket">[</span><a href="/w/index.php?title=Test_Page&amp;action=edit&amp;section=2" title="Edit section: Section 2">edit</a><span class="mw-editsection-bracket">]</span></span></h2>
+<p>Two
+</p>
+<h3><span class="mw-headline" id="Section_2.1">Section 2.1</span></h3>
+<p>Two point one
+</p>
+<h2><span class="mw-headline" id="Section_3">Section 3</span><span class="mw-editsection"><span class="mw-editsection-bracket">[</span><a href="/w/index.php?title=Test_Page&amp;action=edit&amp;section=4" title="Edit section: Section 3">edit</a><span class="mw-editsection-bracket">]</span></span></h2>
+<p>Three
+</p></div>
+EOF
+			],
+		];
+		// phpcs:enable
+	}
+
+	// REMOVE THIS ONCE ParserCache is transitioned to <meta> placeholder
+	public static function provideGetTextBackCompat2() {
+		// phpcs:disable Generic.Files.LineLength
+		$toc = self::provideGetTextToc();
+		$text = <<<EOF
+<p>Test document.
+</p>
+<mw:tocplace></mw:tocplace>
+<h2><span class="mw-headline" id="Section_1">Section 1</span><mw:editsection page="Test Page" section="1">Section 1</mw:editsection></h2>
+<p>One
+</p>
+<h2><span class="mw-headline" id="Section_2">Section 2</span><mw:editsection page="Test Page" section="2">Section 2</mw:editsection></h2>
+<p>Two
+</p>
+<h3><span class="mw-headline" id="Section_2.1">Section 2.1</span><mw:editsection page="Talk:User:Bug_T261347" section="3">Section 2.1</mw:editsection></h3>
+<p>Two point one
+</p>
+<h2><span class="mw-headline" id="Section_3">Section 3</span><mw:editsection page="Test Page" section="4">Section 3</mw:editsection></h2>
+<p>Three
+</p>
+EOF;
+
+		return [
+			'No options (meta tag)' => [
+				[], $text, <<<EOF
+<p>Test document.
+</p>
+<div id="toc" class="toc"><div class="toctitle"><h2>Contents</h2></div>
+<ul>
+<li class="toclevel-1 tocsection-1"><a href="#Section_1"><span class="tocnumber">1</span> <span class="toctext">Section 1</span></a></li>
+<li class="toclevel-1 tocsection-2"><a href="#Section_2"><span class="tocnumber">2</span> <span class="toctext">Section 2</span></a>
+<ul>
+<li class="toclevel-2 tocsection-3"><a href="#Section_2.1"><span class="tocnumber">2.1</span> <span class="toctext">Section 2.1</span></a></li>
+</ul>
+</li>
+<li class="toclevel-1 tocsection-4"><a href="#Section_3"><span class="tocnumber">3</span> <span class="toctext">Section 3</span></a></li>
+</ul>
+</div>
+
+<h2><span class="mw-headline" id="Section_1">Section 1</span><span class="mw-editsection"><span class="mw-editsection-bracket">[</span><a href="/w/index.php?title=Test_Page&amp;action=edit&amp;section=1" title="Edit section: Section 1">edit</a><span class="mw-editsection-bracket">]</span></span></h2>
+<p>One
+</p>
+<h2><span class="mw-headline" id="Section_2">Section 2</span><span class="mw-editsection"><span class="mw-editsection-bracket">[</span><a href="/w/index.php?title=Test_Page&amp;action=edit&amp;section=2" title="Edit section: Section 2">edit</a><span class="mw-editsection-bracket">]</span></span></h2>
+<p>Two
+</p>
+<h3><span class="mw-headline" id="Section_2.1">Section 2.1</span></h3>
+<p>Two point one
+</p>
+<h2><span class="mw-headline" id="Section_3">Section 3</span><span class="mw-editsection"><span class="mw-editsection-bracket">[</span><a href="/w/index.php?title=Test_Page&amp;action=edit&amp;section=4" title="Edit section: Section 3">edit</a><span class="mw-editsection-bracket">]</span></span></h2>
+<p>Three
+</p>
+EOF
+			],
+			'Disable section edit links (meta tag)' => [
+				[ 'enableSectionEditLinks' => false ], $text, <<<EOF
+<p>Test document.
+</p>
+<div id="toc" class="toc"><div class="toctitle"><h2>Contents</h2></div>
+<ul>
+<li class="toclevel-1 tocsection-1"><a href="#Section_1"><span class="tocnumber">1</span> <span class="toctext">Section 1</span></a></li>
+<li class="toclevel-1 tocsection-2"><a href="#Section_2"><span class="tocnumber">2</span> <span class="toctext">Section 2</span></a>
+<ul>
+<li class="toclevel-2 tocsection-3"><a href="#Section_2.1"><span class="tocnumber">2.1</span> <span class="toctext">Section 2.1</span></a></li>
+</ul>
+</li>
+<li class="toclevel-1 tocsection-4"><a href="#Section_3"><span class="tocnumber">3</span> <span class="toctext">Section 3</span></a></li>
+</ul>
+</div>
+
+<h2><span class="mw-headline" id="Section_1">Section 1</span></h2>
+<p>One
+</p>
+<h2><span class="mw-headline" id="Section_2">Section 2</span></h2>
+<p>Two
+</p>
+<h3><span class="mw-headline" id="Section_2.1">Section 2.1</span></h3>
+<p>Two point one
+</p>
+<h2><span class="mw-headline" id="Section_3">Section 3</span></h2>
+<p>Three
+</p>
+EOF
+			],
+			'Disable TOC, but wrap (meta tag)' => [
+				[ 'allowTOC' => false, 'wrapperDivClass' => 'mw-parser-output' ], $text, <<<EOF
+<div class="mw-parser-output"><p>Test document.
+</p>
+
+<h2><span class="mw-headline" id="Section_1">Section 1</span><span class="mw-editsection"><span class="mw-editsection-bracket">[</span><a href="/w/index.php?title=Test_Page&amp;action=edit&amp;section=1" title="Edit section: Section 1">edit</a><span class="mw-editsection-bracket">]</span></span></h2>
+<p>One
+</p>
+<h2><span class="mw-headline" id="Section_2">Section 2</span><span class="mw-editsection"><span class="mw-editsection-bracket">[</span><a href="/w/index.php?title=Test_Page&amp;action=edit&amp;section=2" title="Edit section: Section 2">edit</a><span class="mw-editsection-bracket">]</span></span></h2>
+<p>Two
+</p>
+<h3><span class="mw-headline" id="Section_2.1">Section 2.1</span></h3>
+<p>Two point one
+</p>
+<h2><span class="mw-headline" id="Section_3">Section 3</span><span class="mw-editsection"><span class="mw-editsection-bracket">[</span><a href="/w/index.php?title=Test_Page&amp;action=edit&amp;section=4" title="Edit section: Section 3">edit</a><span class="mw-editsection-bracket">]</span></span></h2>
+<p>Three
+</p></div>
+EOF
+			],
+		];
+		// phpcs:enable
+	}
+
+	public static function provideGetText() {
+		$toc = self::provideGetTextToc();
+		$text = <<<EOF
+<p>Test document.
+</p>
+<meta property="mw:PageProp/toc" />
 <h2><span class="mw-headline" id="Section_1">Section 1</span><mw:editsection page="Test Page" section="1">Section 1</mw:editsection></h2>
 <p>One
 </p>
@@ -360,10 +627,13 @@ EOF
 	 * @covers ParserOutput::hasText
 	 */
 	public function testHasText() {
-		$po = new ParserOutput();
+		$po = new ParserOutput( '' );
 		$this->assertTrue( $po->hasText() );
 
 		$po = new ParserOutput( null );
+		$this->assertFalse( $po->hasText() );
+
+		$po = new ParserOutput();
 		$this->assertFalse( $po->hasText() );
 
 		$po = new ParserOutput( '' );
@@ -372,6 +642,10 @@ EOF
 		$po = new ParserOutput( null );
 		$po->setText( '' );
 		$this->assertTrue( $po->hasText() );
+
+		$po = new ParserOutput( 'foo' );
+		$po->setText( null );
+		$this->assertFalse( $po->hasText() );
 	}
 
 	/**
@@ -415,9 +689,7 @@ EOF
 	 * @dataProvider provideGetText_absoluteURLs
 	 */
 	public function testGetText_absoluteURLs( string $text, string $expectedText ) {
-		$this->setMwGlobals( [
-			'wgServer' => '//TEST_SERVER'
-		] );
+		$this->overrideConfigValue( MainConfigNames::Server, '//TEST_SERVER' );
 		$parserOutput = new ParserOutput( $text );
 		$this->assertSame( $expectedText, $parserOutput->getText( [ 'absoluteURLs' => true ] ) );
 	}
@@ -477,9 +749,11 @@ EOF
 		$a = new ParserOutput();
 		$a->addHeadItem( '<foo1>' );
 		$a->addHeadItem( '<bar1>', 'bar' );
-		$a->addModules( 'test-module-a' );
-		$a->addModuleStyles( 'test-module-styles-a' );
-		$a->addJsConfigVars( 'test-config-var-a', 'a' );
+		$a->addModules( [ 'test-module-a' ] );
+		$a->addModuleStyles( [ 'test-module-styles-a' ] );
+		$a->setJsConfigVar( 'test-config-var-a', 'a' );
+		$a->appendJsConfigVar( 'test-config-var-c', 'abc' );
+		$a->appendJsConfigVar( 'test-config-var-c', 'def' );
 		$a->addExtraCSPStyleSrc( 'css.com' );
 		$a->addExtraCSPStyleSrc( 'css2.com' );
 		$a->addExtraCSPScriptSrc( 'js.com' );
@@ -489,15 +763,21 @@ EOF
 		$b->setIndexPolicy( 'noindex' );
 		$b->addHeadItem( '<foo2>' );
 		$b->addHeadItem( '<bar2>', 'bar' );
-		$b->addModules( 'test-module-b' );
-		$b->addModuleStyles( 'test-module-styles-b' );
-		$b->addJsConfigVars( 'test-config-var-b', 'b' );
-		$b->addJsConfigVars( 'test-config-var-a', 'X' );
+		$b->addModules( [ 'test-module-b' ] );
+		$b->addModuleStyles( [ 'test-module-styles-b' ] );
+		$b->setJsConfigVar( 'test-config-var-b', 'b' );
+		$b->setJsConfigVar( 'test-config-var-a', 'X' );
+		$a->appendJsConfigVar( 'test-config-var-c', 'xyz' );
+		$a->appendJsConfigVar( 'test-config-var-c', 'def' );
 		$b->addExtraCSPStyleSrc( 'https://css.ca' );
 		$b->addExtraCSPScriptSrc( 'jscript.com' );
 		$b->addExtraCSPScriptSrc( 'vbscript.com' );
 		$b->addExtraCSPDefaultSrc( 'img.com/foo.jpg' );
 
+		// Note that overwriting test-config-var-a during the merge
+		// (as this test case does) is deprecated and will eventually
+		// throw an exception. However, at the moment it is still worth
+		// testing this case to ensure backward compatibility. (T300307)
 		yield 'head items and friends' => [ $a, $b, [
 			'getHeadItems' => [
 				'<foo1>',
@@ -515,6 +795,9 @@ EOF
 			'getJsConfigVars' => [
 				'test-config-var-a' => 'X', // overwritten
 				'test-config-var-b' => 'b',
+				'test-config-var-c' => [ // merged safely
+					'abc' => true, 'def' => true, 'xyz' => true,
+				],
 			],
 			'getExtraCSPStyleSrcs' => [
 				'css.com',
@@ -563,6 +846,7 @@ EOF
 
 		$a->setExtensionData( 'foo', 'Foo!' );
 		$a->setExtensionData( 'bar', 'Bar!' );
+		$a->appendExtensionData( 'bat', 'abc' );
 
 		$b = new ParserOutput();
 		$b->setNoGallery( true );
@@ -575,7 +859,12 @@ EOF
 
 		$b->setExtensionData( 'zoo', 'Zoo!' );
 		$b->setExtensionData( 'bar', 'Barrr!' );
+		$b->appendExtensionData( 'bat', 'xyz' );
 
+		// Note that overwriting extension data during the merge
+		// (as this test case does for 'bar') is deprecated and will eventually
+		// throw an exception. However, at the moment it is still worth
+		// testing this case to ensure backward compatibility. (T300981)
 		yield 'skin control flags' => [ $a, $b, [
 			'getNewSection' => true,
 			'getHideNewSection' => true,
@@ -584,14 +873,17 @@ EOF
 			'getPreventClickjacking' => true,
 			'getIndicators' => [
 				'foo' => 'Foo!',
-				'bar' => 'Barrr!',
+				'bar' => 'Barrr!', // overwritten
 				'zoo' => 'Zoo!',
 			],
 			'getWrapperDivClass' => 'foo bar',
 			'$mExtensionData' => [
 				'foo' => 'Foo!',
-				'bar' => 'Barrr!',
+				'bar' => 'Barrr!', // overwritten
 				'zoo' => 'Zoo!',
+				// internal strategy key is exposed here because we're looking
+				// at the raw property value, not using getExtensionData()
+				'bat' => [ 'abc' => true, 'xyz' => true, '_mw-strategy' => 'union' ],
 			],
 		] ];
 	}
@@ -623,14 +915,23 @@ EOF
 		$po = TestingAccessWrapper::newFromObject( $po );
 
 		foreach ( $expected as $method => $value ) {
+			$canonicalize = false;
 			if ( $method[0] === '$' ) {
 				$field = substr( $method, 1 );
 				$actual = $po->__get( $field );
 			} else {
 				$actual = $po->__call( $method, [] );
 			}
+			if ( $method === 'getJsConfigVars' ) {
+				$canonicalize = true;
+			}
 
-			$this->assertEquals( $value, $actual, $method );
+			if ( $canonicalize ) {
+				// order of entries isn't significant
+				$this->assertEqualsCanonicalizing( $value, $actual, $method );
+			} else {
+				$this->assertEquals( $value, $actual, $method );
+			}
 		}
 	}
 
@@ -749,6 +1050,7 @@ EOF
 
 		$a->setExtensionData( 'foo', 'Foo!' );
 		$a->setExtensionData( 'bar', 'Bar!' );
+		$a->appendExtensionData( 'bat', 'abc' );
 
 		$b = new ParserOutput();
 
@@ -757,17 +1059,25 @@ EOF
 
 		$b->setExtensionData( 'zoo', 'Zoo!' );
 		$b->setExtensionData( 'bar', 'Barrr!' );
+		$b->appendExtensionData( 'bat', 'xyz' );
 
+		// Note that overwriting extension data during the merge
+		// (as this test case does for 'bar') is deprecated and will eventually
+		// throw an exception. However, at the moment it is still worth
+		// testing this case to ensure backward compatibility. (T300981)
 		yield 'properties' => [ $a, $b, [
 			'getPageProperties' => [
 				'foo' => 'Foo!',
-				'bar' => 'Barrr!',
+				'bar' => 'Barrr!', // overwritten
 				'zoo' => 'Zoo!',
 			],
 			'$mExtensionData' => [
 				'foo' => 'Foo!',
-				'bar' => 'Barrr!',
+				'bar' => 'Barrr!', // overwritten
 				'zoo' => 'Zoo!',
+				// internal strategy key is exposed here because we're looking
+				// at the raw property value, not using getExtensionData()
+				'bat' => [ 'abc' => true, 'xyz' => true, '_mw-strategy' => 'union' ],
 			],
 		] ];
 	}
@@ -795,6 +1105,7 @@ EOF
 		// hooks
 		$a = new ParserOutput();
 
+		$this->hideDeprecated( 'ParserOutput::addOutputHook' );
 		$a->addOutputHook( 'foo', 'X' );
 		$a->addOutputHook( 'bar' );
 
@@ -829,6 +1140,7 @@ EOF
 
 		$b->addWarningMsg( 'template-equals-warning' );
 		$b->addWarningMsg( 'template-loop-warning', 'D' );
+		$this->hideDeprecated( 'ParserOutput::addWarning' );
 		$b->addWarning( 'Old School' ); // test the deprecated ::addWarning()
 
 		$b->setFlag( 'zoo' );

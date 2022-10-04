@@ -27,6 +27,7 @@
 
 use MediaWiki\HookContainer\HookContainer;
 use MediaWiki\HookContainer\HookRunner;
+use MediaWiki\MainConfigNames;
 use MediaWiki\MediaWikiServices;
 
 class ContentSecurityPolicy {
@@ -95,8 +96,8 @@ class ContentSecurityPolicy {
 	 * @since 1.35
 	 */
 	public function sendHeaders() {
-		$cspConfig = $this->mwConfig->get( 'CSPHeader' );
-		$cspConfigReportOnly = $this->mwConfig->get( 'CSPReportOnlyHeader' );
+		$cspConfig = $this->mwConfig->get( MainConfigNames::CSPHeader );
+		$cspConfigReportOnly = $this->mwConfig->get( MainConfigNames::CSPReportOnlyHeader );
 
 		$this->sendCSPHeader( $cspConfig, self::FULL_MODE );
 		$this->sendCSPHeader( $cspConfigReportOnly, self::REPORT_ONLY_MODE );
@@ -235,7 +236,7 @@ class ContentSecurityPolicy {
 			$reportUri = $this->getReportUri( $mode );
 		}
 
-		// Only send an img-src, if we're sending a restricitve default.
+		// Only send an img-src, if we're sending a restrictive default.
 		if ( !is_array( $defaultSrc )
 			|| !in_array( '*', $defaultSrc )
 			|| !in_array( 'data:', $defaultSrc )
@@ -246,12 +247,12 @@ class ContentSecurityPolicy {
 			// allowing all (Assuming there is a small number of sites).
 			// For now, the external image feature disables the limits
 			// CSP puts on external images.
-			if ( $mwConfig->get( 'AllowExternalImages' )
-				|| $mwConfig->get( 'AllowExternalImagesFrom' )
-				|| $mwConfig->get( 'AllowImageTag' )
+			if ( $mwConfig->get( MainConfigNames::AllowExternalImages )
+				|| $mwConfig->get( MainConfigNames::AllowExternalImagesFrom )
+				|| $mwConfig->get( MainConfigNames::AllowImageTag )
 			) {
 				$imgSrc = [ '*', 'data:', 'blob:' ];
-			} elseif ( $mwConfig->get( 'EnableImageWhitelist' ) ) {
+			} elseif ( $mwConfig->get( MainConfigNames::EnableImageWhitelist ) ) {
 				$whitelist = wfMessage( 'external_image_whitelist' )
 					->inContentLanguage()
 					->plain();
@@ -345,7 +346,7 @@ class ContentSecurityPolicy {
 			$bits = wfParseUrl( $url );
 		}
 		if ( $bits && isset( $bits['host'] )
-			&& $bits['host'] !== $this->mwConfig->get( 'ServerName' )
+			&& $bits['host'] !== $this->mwConfig->get( MainConfigNames::ServerName )
 		) {
 			$result = $bits['host'];
 			if ( $bits['scheme'] !== '' ) {
@@ -365,7 +366,8 @@ class ContentSecurityPolicy {
 	private function getAdditionalSelfUrlsScript() {
 		$additionalUrls = [];
 		// wgExtensionAssetsPath for ?debug=true mode
-		$pathVars = [ 'LoadScript', 'ExtensionAssetsPath', 'ResourceBasePath' ];
+		$pathVars = [ MainConfigNames::LoadScript, MainConfigNames::ExtensionAssetsPath,
+			MainConfigNames::ResourceBasePath ];
 
 		foreach ( $pathVars as $path ) {
 			$url = $this->mwConfig->get( $path );
@@ -374,9 +376,9 @@ class ContentSecurityPolicy {
 				$additionalUrls[] = $preparedUrl;
 			}
 		}
-		$RLSources = $this->mwConfig->get( 'ResourceLoaderSources' );
-		foreach ( $RLSources as $wiki => $sources ) {
-			foreach ( $sources as $id => $value ) {
+		$RLSources = $this->mwConfig->get( MainConfigNames::ResourceLoaderSources );
+		foreach ( $RLSources as $sources ) {
+			foreach ( $sources as $value ) {
 				$url = $this->prepareUrlForCSP( $value );
 				if ( $url ) {
 					$additionalUrls[] = $url;
@@ -395,7 +397,7 @@ class ContentSecurityPolicy {
 	 */
 	private function getAdditionalSelfUrls() {
 		// XXX on a foreign repo, the included description page can have anything on it,
-		// including inline scripts. But nobody sane does that.
+		// including inline scripts. But nobody does that.
 
 		// In principle, you can have even more complex configs... (e.g. The urlsByExt option)
 		$pathUrls = [];
@@ -418,7 +420,8 @@ class ContentSecurityPolicy {
 		$repoGroup->forEachForeignRepo( $callback, [ &$pathUrls ] );
 
 		// Globals that might point to a different domain
-		$pathGlobals = [ 'LoadScript', 'ExtensionAssetsPath', 'StylePath', 'ResourceBasePath' ];
+		$pathGlobals = [ MainConfigNames::LoadScript, MainConfigNames::ExtensionAssetsPath,
+			MainConfigNames::StylePath, MainConfigNames::ResourceBasePath ];
 		foreach ( $pathGlobals as $path ) {
 			$pathUrls[] = $this->mwConfig->get( $path );
 		}
@@ -428,10 +431,10 @@ class ContentSecurityPolicy {
 				$additionalSelfUrls[] = $preparedUrl;
 			}
 		}
-		$RLSources = $this->mwConfig->get( 'ResourceLoaderSources' );
+		$RLSources = $this->mwConfig->get( MainConfigNames::ResourceLoaderSources );
 
-		foreach ( $RLSources as $wiki => $sources ) {
-			foreach ( $sources as $id => $value ) {
+		foreach ( $RLSources as $sources ) {
+			foreach ( $sources as $value ) {
 				$url = $this->prepareUrlForCSP( $value );
 				if ( $url ) {
 					$additionalSelfUrls[] = $url;
@@ -456,7 +459,7 @@ class ContentSecurityPolicy {
 	 */
 	private function getCORSSources() {
 		$additionalUrls = [];
-		$CORSSources = $this->mwConfig->get( 'CrossSiteAJAXdomains' );
+		$CORSSources = $this->mwConfig->get( MainConfigNames::CrossSiteAJAXdomains );
 		foreach ( $CORSSources as $source ) {
 			if ( strpos( $source, '?' ) !== false ) {
 				// CSP doesn't support single char wildcard
@@ -507,8 +510,8 @@ class ContentSecurityPolicy {
 	 */
 	public static function isNonceRequired( Config $config ) {
 		$configs = [
-			$config->get( 'CSPHeader' ),
-			$config->get( 'CSPReportOnlyHeader' )
+			$config->get( MainConfigNames::CSPHeader ),
+			$config->get( MainConfigNames::CSPReportOnlyHeader )
 		];
 		return self::isNonceRequiredArray( $configs );
 	}

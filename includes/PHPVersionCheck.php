@@ -29,11 +29,11 @@
  * and MW current version are hardcoded in this class.
  *
  * @note This class uses setter methods instead of a constructor so that
- * it can be compatible with PHP 4, PHP 5 and PHP 7 (without warnings).
+ * it can be compatible with PHP 4 through PHP 8 (without warnings).
  */
 class PHPVersionCheck {
 	/** @var string The number of the MediaWiki version used. If you're updating MW_VERSION in Defines.php, you must also update this value. */
-	var $mwVersion = '1.38';
+	var $mwVersion = '1.40';
 
 	/** @var string[] A mapping of PHP functions to PHP extensions. */
 	var $functionsExtensionsMapping = array(
@@ -78,7 +78,7 @@ class PHPVersionCheck {
 	 * Displays an error, if the installed PHP version does not meet the minimum requirement.
 	 */
 	function checkRequiredPHPVersion() {
-		$minimumVersion = '7.2.22';
+		$minimumVersion = '7.4.3';
 
 		/**
 		 * This is a list of known-bad ranges of PHP versions. Syntax is like SemVer – either:
@@ -94,9 +94,6 @@ class PHPVersionCheck {
 		 * Remember to drop irrelevant ranges when bumping $minimumVersion.
 		 */
 		$knownBad = array(
-			'CVE-2019-11048' => '7.3.0 - 7.3.18',
-			// https://bugs.php.net/bug.php?id=79174 as a regression from https://bugs.php.net/bug.php?id=78929
-			'T243667, T291127' => '7.4.0 - 7.4.2'
 		);
 
 		$passes = version_compare( PHP_VERSION, $minimumVersion, '>=' );
@@ -171,9 +168,9 @@ HTML;
 			$web['longHtml'] = <<<HTML
 		<p>
 		MediaWiki also has some external dependencies that need to be installed via
-		composer or from a separate git repo. Please see
-		<a href="https://www.mediawiki.org/wiki/Download_from_Git#Fetch_external_libraries">mediawiki.org</a>
-		for help on installing the required components.
+		composer or from a separate git repo. Please see the
+		<a href="https://www.mediawiki.org/wiki/Download_from_Git#Fetch_external_libraries">instructions
+		for installing libraries</a> on mediawiki.org for help on installing the required components.
 		</p>
 HTML;
 			// phpcs:enable Generic.Files.LineLength

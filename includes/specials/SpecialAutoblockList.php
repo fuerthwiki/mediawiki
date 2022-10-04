@@ -111,10 +111,9 @@ class SpecialAutoblockList extends SpecialPage {
 			]
 		];
 
-		$context = new DerivativeContext( $this->getContext() );
-		$context->setTitle( $this->getPageTitle() ); // Remove subpage
-		$form = HTMLForm::factory( 'ooui', $fields, $context );
+		$form = HTMLForm::factory( 'ooui', $fields, $this->getContext() );
 		$form->setMethod( 'get' )
+			->setTitle( $this->getPageTitle() ) // Remove subpage
 			->setFormIdentifier( 'blocklist' )
 			->setWrapperLegendMsg( 'autoblocklist-legend' )
 			->setSubmitTextMsg( 'autoblocklist-submit' )
@@ -139,16 +138,17 @@ class SpecialAutoblockList extends SpecialPage {
 		}
 
 		return new BlockListPager(
-			$this,
-			$conds,
-			$this->linkBatchFactory,
-			$this->blockRestrictionStore,
-			$this->loadBalancer,
-			$this->getSpecialPageFactory(),
-			$this->commentStore,
-			$this->blockUtils,
+			$this->getContext(),
 			$this->blockActionInfo,
-			$this->rowCommentFormatter
+			$this->blockRestrictionStore,
+			$this->blockUtils,
+			$this->commentStore,
+			$this->linkBatchFactory,
+			$this->getLinkRenderer(),
+			$this->loadBalancer,
+			$this->rowCommentFormatter,
+			$this->getSpecialPageFactory(),
+			$conds
 		);
 	}
 

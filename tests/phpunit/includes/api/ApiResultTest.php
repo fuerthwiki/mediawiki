@@ -1,7 +1,5 @@
 <?php
 
-use MediaWiki\MediaWikiServices;
-
 /**
  * @covers ApiResult
  * @group API
@@ -89,7 +87,7 @@ class ApiResultTest extends MediaWikiIntegrationTestCase {
 		}
 
 		$arr = [];
-		$title = Title::newFromText( "MediaWiki:Foobar" );
+		$title = Title::makeTitle( NS_MEDIAWIKI, "Foobar" );
 		$obj = (object)[ 'foo' => 1, 'bar' => 2 ];
 		ApiResult::setValue( $arr, 'title', $title );
 		ApiResult::setValue( $arr, 'obj', $obj );
@@ -336,7 +334,7 @@ class ApiResultTest extends MediaWikiIntegrationTestCase {
 		}
 
 		$result->reset();
-		$title = Title::newFromText( "MediaWiki:Foobar" );
+		$title = Title::makeTitle( NS_MEDIAWIKI, "Foobar" );
 		$obj = (object)[ 'foo' => 1, 'bar' => 2 ];
 		$result->addValue( null, 'title', $title );
 		$result->addValue( null, 'obj', $obj );
@@ -478,7 +476,7 @@ class ApiResultTest extends MediaWikiIntegrationTestCase {
 
 		$result = new ApiResult( 10 );
 		$formatter = new ApiErrorFormatter( $result,
-			MediaWikiServices::getInstance()->getLanguageFactory()->getLanguage( 'en' ),
+			$this->getServiceContainer()->getLanguageFactory()->getLanguage( 'en' ),
 			'none', false );
 		$result->setErrorFormatter( $formatter );
 		$this->assertFalse( $result->addValue( null, 'foo', '12345678901' ) );

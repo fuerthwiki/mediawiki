@@ -5,7 +5,6 @@ namespace MediaWiki\Tests\Storage;
 use BagOStuff;
 use EmptyBagOStuff;
 use HashBagOStuff;
-use MediaWiki\MediaWikiServices;
 use MediaWiki\Storage\NameTableAccessException;
 use MediaWiki\Storage\NameTableStore;
 use MediaWikiIntegrationTestCase;
@@ -51,7 +50,7 @@ class NameTableStoreTest extends MediaWikiIntegrationTestCase {
 	 */
 	private function getMockLoadBalancer( $db ) {
 		$mock = $this->createMock( LoadBalancer::class );
-		$mock->method( 'getConnectionRef' )->willReturn( $db );
+		$mock->method( 'getConnection' )->willReturn( $db );
 		return $mock;
 	}
 
@@ -333,7 +332,7 @@ class NameTableStoreTest extends MediaWikiIntegrationTestCase {
 	}
 
 	public function testGetAndAcquireIdInsertCallback() {
-		// FIXME: fails under postgres
+		// Postgres does not allow to specify the SERIAL column on insert to fake an id
 		$this->markTestSkippedIfDbType( 'postgres' );
 
 		$store = $this->getNameTableSqlStore(
@@ -350,7 +349,7 @@ class NameTableStoreTest extends MediaWikiIntegrationTestCase {
 	}
 
 	public function testTransactionRollback() {
-		$lb = MediaWikiServices::getInstance()->getDBLoadBalancer();
+		$lb = $this->getServiceContainer()->getDBLoadBalancer();
 
 		// Two instances hitting the real database using separate caches.
 		$store1 = new NameTableStore(
@@ -391,10 +390,8 @@ class NameTableStoreTest extends MediaWikiIntegrationTestCase {
 				return true;
 			} );
 
-		$lb = $this->getMockBuilder( LoadBalancer::class )
-			->disableOriginalConstructor()
-			->getMock();
-		$lb->method( 'getConnectionRef' )
+		$lb = $this->createMock( LoadBalancer::class );
+		$lb->method( 'getConnection' )
 			->willReturn( $db );
 
 		// Two instances hitting the real database using separate caches.
@@ -416,7 +413,7 @@ class NameTableStoreTest extends MediaWikiIntegrationTestCase {
 		// FIXME: https://phabricator.wikimedia.org/T259085
 		$this->markTestSkippedIfDbType( 'sqlite' );
 
-		$lb = MediaWikiServices::getInstance()->getDBLoadBalancer();
+		$lb = $this->getServiceContainer()->getDBLoadBalancer();
 
 		// Two instances hitting the real database using separate caches.
 		$store1 = new NameTableStore(
@@ -463,7 +460,7 @@ class NameTableStoreTest extends MediaWikiIntegrationTestCase {
 	public function testTransactionDoubleRollback() {
 		$fname = __METHOD__;
 
-		$lb = MediaWikiServices::getInstance()->getDBLoadBalancer();
+		$lb = $this->getServiceContainer()->getDBLoadBalancer();
 		$store = new NameTableStore(
 			$lb,
 			$this->getHashWANObjectCache( new HashBagOStuff() ),

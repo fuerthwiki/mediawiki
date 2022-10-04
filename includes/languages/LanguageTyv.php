@@ -1,7 +1,5 @@
 <?php
 /**
- * Tyvan (Тыва дыл) specific code.
- *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
@@ -18,15 +16,17 @@
  * http://www.gnu.org/copyleft/gpl.html
  *
  * @file
- * @ingroup Language
  */
+
+use MediaWiki\MainConfigNames;
+use MediaWiki\MediaWikiServices;
 
 /**
  * Tyvan localization (Тыва дыл)
  *
  * From friends at tyvawiki.org
  *
- * @ingroup Language
+ * @ingroup Languages
  */
 class LanguageTyv extends Language {
 	/**
@@ -38,9 +38,10 @@ class LanguageTyv extends Language {
 	 * @return string
 	 */
 	public function convertGrammar( $word, $case ) {
-		global $wgGrammarForms;
-		if ( isset( $wgGrammarForms['tyv'][$case][$word] ) ) {
-			return $wgGrammarForms['tyv'][$case][$word];
+		$grammarForms =
+			MediaWikiServices::getInstance()->getMainConfig()->get( MainConfigNames::GrammarForms );
+		if ( isset( $grammarForms['tyv'][$case][$word] ) ) {
+			return $grammarForms['tyv'][$case][$word];
 		}
 
 		// Set up some constants...

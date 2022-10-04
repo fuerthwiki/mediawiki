@@ -1,6 +1,6 @@
 <?php
 
-use MediaWiki\MediaWikiServices;
+use MediaWiki\MainConfigNames;
 
 /**
  * Abstract class to support upload tests
@@ -19,10 +19,7 @@ abstract class ApiUploadTestCase extends ApiTestCase {
 	protected function setUp(): void {
 		parent::setUp();
 
-		$this->setMwGlobals( [
-			'wgEnableUploads' => true,
-		] );
-
+		$this->overrideConfigValue( MainConfigNames::EnableUploads, true );
 		$this->clearFakeUploads();
 	}
 
@@ -35,7 +32,7 @@ abstract class ApiUploadTestCase extends ApiTestCase {
 	 */
 	public function deleteFileByTitle( $title ) {
 		if ( $title->exists() ) {
-			$file = MediaWikiServices::getInstance()->getRepoGroup()
+			$file = $this->getServiceContainer()->getRepoGroup()
 				->findFile( $title, [ 'ignoreRedirect' => true ] );
 			$noOldArchive = ""; // yes this really needs to be set this way
 			$comment = "removing for test";
@@ -54,8 +51,8 @@ abstract class ApiUploadTestCase extends ApiTestCase {
 				return false;
 			}
 
-			$page = WikiPage::factory( $title );
-			$page->doDeleteArticleReal( "removing for test", $user );
+			$page = $this->getServiceContainer()->getWikiPageFactory()->newFromTitle( $title );
+			$this->deletePage( $page, "removing for test" );
 
 			// see if it now doesn't exist; reload
 			$title = Title::newFromText( $title->getText(), NS_FILE );
@@ -85,7 +82,7 @@ abstract class ApiUploadTestCase extends ApiTestCase {
 	 */
 	public function deleteFileByContent( $filePath ) {
 		$hash = FSFile::getSha1Base36FromPath( $filePath );
-		$dupes = MediaWikiServices::getInstance()->getRepoGroup()->findBySha1( $hash );
+		$dupes = $this->getServiceContainer()->getRepoGroup()->findBySha1( $hash );
 		$success = true;
 		foreach ( $dupes as $dupe ) {
 			$success &= $this->deleteFileByTitle( $dupe->getTitle() );
@@ -108,7 +105,7 @@ abstract class ApiUploadTestCase extends ApiTestCase {
 	 */
 	protected function fakeUploadFile( $fieldName, $fileName, $type, $filePath ) {
 		$tmpName = $this->getNewTempFile();
-		if ( !file_exists( $filePath ) ) {
+		if ( !is_file( $filePath ) ) {
 			throw new Exception( "$filePath doesn't exist!" );
 		}
 

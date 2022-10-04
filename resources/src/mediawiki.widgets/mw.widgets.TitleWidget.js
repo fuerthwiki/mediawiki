@@ -162,12 +162,11 @@
 		}
 
 		return this.getInterwikiPrefixesPromise().then( function ( interwikiPrefixes ) {
-			var interwiki;
 			// Optimization: check we have any prefixes.
 			if ( interwikiPrefixes.length ) {
-				interwiki = query.substring( 0, query.indexOf( ':' ) );
+				var interwiki = query.slice( 0, Math.max( 0, query.indexOf( ':' ) ) );
 				if (
-					interwiki && interwiki !== '' &&
+					interwiki !== '' &&
 					interwikiPrefixes.indexOf( interwiki ) !== -1
 				) {
 					// Interwiki prefix is valid: return the original query as a valid title
@@ -420,7 +419,7 @@
 	mw.widgets.TitleWidget.prototype.getOptionWidgetData = function ( title, data ) {
 		var mwTitle = new mw.Title( title ),
 			description = data.description;
-		if ( data.missing && !description ) {
+		if ( !description && ( data.missing && !data.known ) ) {
 			description = mw.msg( 'mw-widgets-titleinput-description-new-page' );
 		}
 		return {
@@ -431,7 +430,7 @@
 			showImages: this.showImages,
 			imageUrl: this.showImages ? data.imageUrl : null,
 			description: this.showDescriptions ? description : null,
-			missing: data.missing,
+			missing: data.missing && !data.known,
 			redirect: data.redirect,
 			disambiguation: data.disambiguation,
 			query: this.highlightSearchQuery ? this.getQueryValue() : null,

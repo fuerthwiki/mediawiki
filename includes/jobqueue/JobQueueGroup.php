@@ -30,12 +30,6 @@ use Wikimedia\UUID\GlobalIdGenerator;
  * @since 1.21
  */
 class JobQueueGroup {
-	/**
-	 * @var JobQueueGroup[]
-	 * @deprecated 1.37
-	 */
-	protected static $instances = [];
-
 	/** @var MapCacheLRU */
 	protected $cache;
 
@@ -107,24 +101,6 @@ class JobQueueGroup {
 	}
 
 	/**
-	 * @deprecated 1.37 Use JobQueueGroupFactory::makeJobQueueGroup
-	 * @param bool|string $domain Wiki domain ID
-	 * @return JobQueueGroup
-	 */
-	public static function singleton( $domain = false ) {
-		return MediaWikiServices::getInstance()->getJobQueueGroupFactory()->makeJobQueueGroup( $domain );
-	}
-
-	/**
-	 * Destroy the singleton instances
-	 *
-	 * @deprecated 1.37
-	 * @return void
-	 */
-	public static function destroySingletons() {
-	}
-
-	/**
 	 * Get the job queue object for a given queue type
 	 *
 	 * @param string $type
@@ -132,11 +108,7 @@ class JobQueueGroup {
 	 */
 	public function get( $type ) {
 		$conf = [ 'domain' => $this->domain, 'type' => $type ];
-		if ( isset( $this->jobTypeConfiguration[$type] ) ) {
-			$conf += $this->jobTypeConfiguration[$type];
-		} else {
-			$conf += $this->jobTypeConfiguration['default'];
-		}
+		$conf += $this->jobTypeConfiguration[$type] ?? $this->jobTypeConfiguration['default'];
 		if ( !isset( $conf['readOnlyReason'] ) ) {
 			$conf['readOnlyReason'] = $this->readOnlyMode->getReason();
 		}
@@ -488,7 +460,7 @@ class JobQueueGroup {
 	 * @throws InvalidArgumentException
 	 */
 	private function assertValidJobs( array $jobs ) {
-		foreach ( $jobs as $job ) { // sanity checks
+		foreach ( $jobs as $job ) {
 			if ( !( $job instanceof IJobSpecification ) ) {
 				$type = is_object( $job ) ? get_class( $job ) : gettype( $job );
 				throw new InvalidArgumentException( "Expected IJobSpecification objects, got " . $type );

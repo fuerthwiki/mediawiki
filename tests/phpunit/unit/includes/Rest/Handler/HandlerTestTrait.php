@@ -2,6 +2,7 @@
 
 namespace MediaWiki\Tests\Rest\Handler;
 
+use MediaWiki\HookContainer\HookContainer;
 use MediaWiki\Permissions\Authority;
 use MediaWiki\Rest\Handler;
 use MediaWiki\Rest\HttpException;
@@ -16,7 +17,7 @@ use PHPUnit\Framework\Assert;
 use PHPUnit\Framework\MockObject\MockObject;
 use Wikimedia\Message\ITextFormatter;
 use Wikimedia\Message\MessageValue;
-use Wikimedia\ObjectFactory;
+use Wikimedia\ObjectFactory\ObjectFactory;
 use Wikimedia\Services\ServiceContainer;
 
 /**
@@ -29,6 +30,7 @@ use Wikimedia\Services\ServiceContainer;
  */
 trait HandlerTestTrait {
 	use MockAuthorityTrait;
+	use SessionHelperTestTrait;
 
 	/**
 	 * Calls init() on the Handler, supplying a mock Router and ResponseFactory.
@@ -37,15 +39,17 @@ trait HandlerTestTrait {
 	 * @param Handler $handler
 	 * @param RequestInterface $request
 	 * @param array $config
-	 * @param array $hooks Hook overrides
+	 * @param HookContainer|array $hooks Hook container or array of hooks
 	 * @param Authority|null $authority
+	 * @param bool $csrfSafe
 	 */
 	private function initHandler(
 		Handler $handler,
 		RequestInterface $request,
 		$config = [],
 		$hooks = [],
-		Authority $authority = null
+		Authority $authority = null,
+		bool $csrfSafe = false
 	) {
 		$formatter = $this->createMock( ITextFormatter::class );
 		$formatter->method( 'format' )->willReturnCallback( static function ( MessageValue $msg ) {
@@ -59,15 +63,17 @@ trait HandlerTestTrait {
 		$router = $this->createNoOpMock( Router::class, [ 'getRouteUrl' ] );
 		$router->method( 'getRouteUrl' )->willReturnCallback( static function ( $route, $path = [], $query = [] ) {
 			foreach ( $path as $param => $value ) {
-				$route = str_replace( '{' . $param . '}', urlencode( $value ), $route );
+				$route = str_replace( '{' . $param . '}', urlencode( (string)$value ), $route );
 			}
 			return wfAppendQuery( 'https://wiki.example.com/rest' . $route, $query );
 		} );
 
 		$authority = $authority ?: $this->mockAnonUltimateAuthority();
-		$hookContainer = $this->createHookContainer( $hooks );
+		$hookContainer = $hooks instanceof HookContainer ? $hooks : $this->createHookContainer( $hooks );
 
-		$handler->init( $router, $request, $config, $authority, $responseFactory, $hookContainer );
+		$handler->init( $router, $request, $config, $authority, $responseFactory, $hookContainer,
+			$this->getSession( $csrfSafe )
+		);
 	}
 
 	/**
@@ -116,10 +122,11 @@ trait HandlerTestTrait {
 	 * @param Handler $handler
 	 * @param RequestInterface $request
 	 * @param array $config
-	 * @param array $hooks Hook overrides
+	 * @param HookContainer|array $hooks Hook container or array of hooks
 	 * @param array $validatedParams Path/query params to return as already valid
 	 * @param array $validatedBody Body params to return as already valid
 	 * @param Authority|null $authority
+	 * @param bool $csrfSafe
 	 * @return ResponseInterface
 	 */
 	private function executeHandler(
@@ -129,12 +136,13 @@ trait HandlerTestTrait {
 		$hooks = [],
 		$validatedParams = [],
 		$validatedBody = [],
-		Authority $authority = null
+		Authority $authority = null,
+		bool $csrfSafe = false
 	): ResponseInterface {
 		// supply defaults for required fields in $config
 		$config += [ 'path' => '/test' ];
 
-		$this->initHandler( $handler, $request, $config, $hooks, $authority );
+		$this->initHandler( $handler, $request, $config, $hooks, $authority, $csrfSafe );
 		$validator = null;
 		if ( $validatedParams || $validatedBody ) {
 			/** @var Validator|MockObject $validator */
@@ -166,10 +174,11 @@ trait HandlerTestTrait {
 	 * @param Handler $handler
 	 * @param RequestInterface $request
 	 * @param array $config
-	 * @param array $hooks
+	 * @param HookContainer|array $hooks Hook container or array of hooks
 	 * @param array $validatedParams
 	 * @param array $validatedBody
 	 * @param Authority|null $authority
+	 * @param bool $csrfSafe
 	 * @return array
 	 */
 	private function executeHandlerAndGetBodyData(
@@ -179,10 +188,11 @@ trait HandlerTestTrait {
 		$hooks = [],
 		$validatedParams = [],
 		$validatedBody = [],
-		Authority $authority = null
+		Authority $authority = null,
+		bool $csrfSafe = false
 	): array {
 		$response = $this->executeHandler( $handler, $request, $config, $hooks,
-			$validatedParams, $validatedBody, $authority );
+			$validatedParams, $validatedBody, $authority, $csrfSafe );
 
 		$this->assertTrue(
 			$response->getStatusCode() >= 200 && $response->getStatusCode() < 300,
@@ -203,7 +213,7 @@ trait HandlerTestTrait {
 	 * @param Handler $handler
 	 * @param RequestInterface $request
 	 * @param array $config
-	 * @param array $hooks
+	 * @param HookContainer|array $hooks Hook container or array of hooks
 	 *
 	 * @return HttpException
 	 */

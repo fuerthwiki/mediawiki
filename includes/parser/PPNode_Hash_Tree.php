@@ -111,7 +111,8 @@ class PPNode_Hash_Tree implements PPNode {
 		$attribs = '';
 		for ( $node = $this->getFirstChild(); $node; $node = $node->getNextSibling() ) {
 			if ( $node instanceof PPNode_Hash_Attr ) {
-				$attribs .= ' ' . $node->name . '="' . htmlspecialchars( $node->value ) . '"';
+				$attribs .= ' ' . $node->name .
+					'="' . htmlspecialchars( $node->value, ENT_COMPAT ) . '"';
 			} else {
 				$inner .= $node->__toString();
 			}
@@ -314,7 +315,7 @@ class PPNode_Hash_Tree implements PPNode {
 	 */
 	public static function splitRawHeading( array $children ) {
 		$bits = [];
-		foreach ( $children as $i => $child ) {
+		foreach ( $children as $child ) {
 			if ( !is_array( $child ) ) {
 				continue;
 			}

@@ -1,7 +1,5 @@
 <?php
 
-use MediaWiki\MediaWikiServices;
-
 /**
  * @group Database
  * @group Cache
@@ -43,10 +41,10 @@ class GenderCacheTest extends MediaWikiLangTestCase {
 	 * @covers GenderCache::getGenderOf
 	 */
 	public function testUserName( $userKey, $expectedGender ) {
-		$genderCache = MediaWikiServices::getInstance()->getGenderCache();
+		$genderCache = $this->getServiceContainer()->getGenderCache();
 		$username = self::$nameMap[$userKey] ?? $userKey;
 		$gender = $genderCache->getGenderOf( $username );
-		$this->assertEquals( $gender, $expectedGender, "GenderCache normal" );
+		$this->assertEquals( $expectedGender, $gender, "GenderCache normal" );
 	}
 
 	/**
@@ -57,9 +55,9 @@ class GenderCacheTest extends MediaWikiLangTestCase {
 	 */
 	public function testUserObjects( $userKey, $expectedGender ) {
 		$username = self::$nameMap[$userKey] ?? $userKey;
-		$genderCache = MediaWikiServices::getInstance()->getGenderCache();
+		$genderCache = $this->getServiceContainer()->getGenderCache();
 		$gender = $genderCache->getGenderOf( $username );
-		$this->assertEquals( $gender, $expectedGender, "GenderCache normal" );
+		$this->assertEquals( $expectedGender, $gender, "GenderCache normal" );
 	}
 
 	public static function provideUserGenders() {
@@ -83,9 +81,9 @@ class GenderCacheTest extends MediaWikiLangTestCase {
 	 */
 	public function testStripSubpages( $userKey, $expectedGender ) {
 		$username = self::$nameMap[$userKey] ?? $userKey;
-		$genderCache = MediaWikiServices::getInstance()->getGenderCache();
+		$genderCache = $this->getServiceContainer()->getGenderCache();
 		$gender = $genderCache->getGenderOf( "$username/subpage" );
-		$this->assertEquals( $gender, $expectedGender, "GenderCache must strip of subpages" );
+		$this->assertEquals( $expectedGender, $gender, "GenderCache must strip of subpages" );
 	}
 
 	/**
@@ -95,7 +93,7 @@ class GenderCacheTest extends MediaWikiLangTestCase {
 	public function testWithoutDB() {
 		$this->overrideMwServices();
 
-		$services = MediaWikiServices::getInstance();
+		$services = $this->getServiceContainer();
 		$services->disableService( 'DBLoadBalancer' );
 		$services->disableService( 'DBLoadBalancerFactory' );
 

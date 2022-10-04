@@ -3,19 +3,19 @@
 namespace Wikimedia\Rdbms;
 
 use InvalidArgumentException;
-use UnexpectedValueException;
 
 /**
- * DBPrimaryPos class for MySQL/MariaDB
+ * DBPrimaryPos implementation for MySQL and MariaDB.
  *
  * Note that primary positions and sync logic here make some assumptions:
- *  - Binlog-based usage assumes single-source replication and non-hierarchical replication.
- *  - GTID-based usage allows getting/syncing with multi-source replication. It is assumed
- *    that GTID sets are complete (e.g. include all domains on the server).
+ *
+ * - Binlog-based usage assumes single-source replication and non-hierarchical replication.
+ * - GTID-based usage allows getting/syncing with multi-source replication. It is assumed
+ *   that GTID sets are complete (e.g. include all domains on the server).
  *
  * @see https://mariadb.com/kb/en/library/gtid/
  * @see https://dev.mysql.com/doc/refman/5.6/en/replication-gtids-concepts.html
- * @since 1.37
+ * @internal
  */
 class MySQLPrimaryPos implements DBPrimaryPos {
 	/** @var string One of (BINARY_LOG, GTID_MYSQL, GTID_MARIA) */
@@ -70,12 +70,12 @@ class MySQLPrimaryPos implements DBPrimaryPos {
 					throw new InvalidArgumentException( "Invalid GTID '$gtid'." );
 				}
 
-				list( $domain, $eventNumber ) = $components;
+				[ $domain, $eventNumber ] = $components;
 				if ( isset( $this->gtids[$domain] ) ) {
 					// For MySQL, handle the case where some past issue caused a gap in the
 					// executed GTID set, e.g. [last_purged+1,N-1] and [N+1,N+2+K]. Ignore the
 					// gap by using the GTID with the highest ending event number.
-					list( , $otherEventNumber ) = self::parseGTID( $this->gtids[$domain] );
+					[ , $otherEventNumber ] = self::parseGTID( $this->gtids[$domain] );
 					if ( $eventNumber > $otherEventNumber ) {
 						$this->gtids[$domain] = $gtid;
 					}
@@ -133,37 +133,6 @@ class MySQLPrimaryPos implements DBPrimaryPos {
 
 		// Comparing totally different binlogs does not make sense
 		return false;
-	}
-
-	public function channelsMatch( DBPrimaryPos $pos ) {
-		if ( !( $pos instanceof self ) ) {
-			throw new InvalidArgumentException( "Position not an instance of " . __CLASS__ );
-		}
-
-		// Prefer GTID comparisons, which work with multi-tier replication
-		$thisPosDomains = array_keys( $this->getActiveGtidCoordinates() );
-		$thatPosDomains = array_keys( $pos->getActiveGtidCoordinates() );
-		if ( $thisPosDomains && $thatPosDomains ) {
-			// Check that $this has a GTID for at least one domain also in $pos; due to MariaDB
-			// quirks, prior primary switch-overs may result in inactive garbage GTIDs that cannot
-			// easily be cleaned up. Assume that the domains in both this and $pos cover the
-			// relevant active channels.
-			return array_intersect( $thatPosDomains, $thisPosDomains ) ? true : false;
-		}
-
-		// Fallback to the binlog file comparisons
-		$thisBinPos = $this->getBinlogCoordinates();
-		$thatBinPos = $pos->getBinlogCoordinates();
-
-		return ( $thisBinPos && $thatBinPos && $thisBinPos['binlog'] === $thatBinPos['binlog'] );
-	}
-
-	/**
-	 * @return string|null Base name of binary log files
-	 * @since 1.31
-	 */
-	public function getLogName() {
-		return $this->gtids ? null : $this->binLog;
 	}
 
 	/**
@@ -266,7 +235,7 @@ class MySQLPrimaryPos implements DBPrimaryPos {
 		$gtidInfos = [];
 
 		foreach ( $this->gtids as $gtid ) {
-			list( $domain, $pos, $server ) = self::parseGTID( $gtid );
+			[ $domain, $pos, $server ] = self::parseGTID( $gtid );
 
 			$ignore = false;
 			// Filter out GTIDs from non-active replication domains
@@ -318,7 +287,7 @@ class MySQLPrimaryPos implements DBPrimaryPos {
 	/**
 	 * @see https://dev.mysql.com/doc/refman/5.7/en/show-master-status.html
 	 * @see https://dev.mysql.com/doc/refman/5.7/en/show-slave-status.html
-	 * @return array|bool Map of (binlog:<string>, pos:(<integer>, <integer>)) or false
+	 * @return array|false Map of (binlog:<string>, pos:(<integer>, <integer>)) or false
 	 */
 	protected function getBinlogCoordinates() {
 		return ( $this->binLog !== null && $this->logPos !== null )
@@ -326,32 +295,30 @@ class MySQLPrimaryPos implements DBPrimaryPos {
 			: false;
 	}
 
-	public function serialize() {
-		return serialize( [
+	public static function newFromArray( array $data ) {
+		$pos = new self( $data['position'], $data['asOfTime'] );
+
+		if ( isset( $data['activeDomain'] ) ) {
+			$pos->setActiveDomain( $data['activeDomain'] );
+		}
+		if ( isset( $data['activeServerId'] ) ) {
+			$pos->setActiveOriginServerId( $data['activeServerId'] );
+		}
+		if ( isset( $data['activeServerUUID'] ) ) {
+			$pos->setActiveOriginServerUUID( $data['activeServerUUID'] );
+		}
+		return $pos;
+	}
+
+	public function toArray(): array {
+		return [
+			'_type_' => get_class( $this ),
 			'position' => $this->__toString(),
 			'activeDomain' => $this->activeDomain,
 			'activeServerId' => $this->activeServerId,
 			'activeServerUUID' => $this->activeServerUUID,
 			'asOfTime' => $this->asOfTime
-		] );
-	}
-
-	public function unserialize( $serialized ) {
-		$data = unserialize( $serialized );
-		if ( !is_array( $data ) ) {
-			throw new UnexpectedValueException( __METHOD__ . ": cannot unserialize position" );
-		}
-
-		$this->init( $data['position'], $data['asOfTime'] );
-		if ( isset( $data['activeDomain'] ) ) {
-			$this->setActiveDomain( $data['activeDomain'] );
-		}
-		if ( isset( $data['activeServerId'] ) ) {
-			$this->setActiveOriginServerId( $data['activeServerId'] );
-		}
-		if ( isset( $data['activeServerUUID'] ) ) {
-			$this->setActiveOriginServerUUID( $data['activeServerUUID'] );
-		}
+		];
 	}
 
 	/**
@@ -363,6 +330,7 @@ class MySQLPrimaryPos implements DBPrimaryPos {
 			// @phan-suppress-next-line PhanTypeArraySuspiciousNullable
 			: $this->getLogFile() . "/{$this->logPos[self::CORD_EVENT]}";
 	}
+
 }
 
 /**

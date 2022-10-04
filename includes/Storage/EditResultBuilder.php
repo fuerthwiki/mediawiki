@@ -25,6 +25,7 @@
 namespace MediaWiki\Storage;
 
 use MediaWiki\Config\ServiceOptions;
+use MediaWiki\MainConfigNames;
 use MediaWiki\Revision\RevisionRecord;
 use MediaWiki\Revision\RevisionStore;
 use Wikimedia\Assert\Assert;
@@ -38,7 +39,7 @@ use Wikimedia\Assert\Assert;
 class EditResultBuilder {
 
 	public const CONSTRUCTOR_OPTIONS = [
-		'ManualRevertSearchRadius',
+		MainConfigNames::ManualRevertSearchRadius,
 	];
 
 	/**
@@ -215,7 +216,7 @@ class EditResultBuilder {
 	 * If successful, mutates the builder accordingly.
 	 */
 	private function detectManualRevert() {
-		$searchRadius = $this->options->get( 'ManualRevertSearchRadius' );
+		$searchRadius = $this->options->get( MainConfigNames::ManualRevertSearchRadius );
 		if ( !$searchRadius ||
 			// we already marked this as a revert
 			$this->revertMethod !== null ||
@@ -302,12 +303,13 @@ class EditResultBuilder {
 			return false;
 		}
 
-		if ( !$this->getOriginalRevision() ) {
+		$originalRevision = $this->getOriginalRevision();
+		if ( !$originalRevision ) {
 			// we can't find the original revision for some reason, better return false
 			return false;
 		}
 
-		return $this->revisionRecord->hasSameContent( $this->getOriginalRevision() );
+		return $this->revisionRecord->hasSameContent( $originalRevision );
 	}
 
 	/**

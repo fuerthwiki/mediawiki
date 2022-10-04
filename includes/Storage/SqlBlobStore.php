@@ -40,6 +40,7 @@ use Wikimedia\Assert\Assert;
 use Wikimedia\AtEase\AtEase;
 use Wikimedia\Rdbms\IDatabase;
 use Wikimedia\Rdbms\ILoadBalancer;
+use Wikimedia\Rdbms\IResultWrapper;
 
 /**
  * Service for storing and loading Content objects.
@@ -154,15 +155,6 @@ class SqlBlobStore implements IDBAccessObject, BlobStore {
 	}
 
 	/**
-	 * @deprecated since 1.34 No longer needed
-	 * @return null
-	 */
-	public function getLegacyEncodingConversionLang() {
-		wfDeprecated( __METHOD__ );
-		return null;
-	}
-
-	/**
 	 * Set the legacy encoding to assume for blobs that do not have the utf-8 flag set.
 	 *
 	 * @note The second parameter, Language $language, was removed in 1.34.
@@ -238,14 +230,9 @@ class SqlBlobStore implements IDBAccessObject, BlobStore {
 
 			$dbw = $this->getDBConnection( DB_PRIMARY );
 
-			$old_id = $dbw->nextSequenceValue( 'text_old_id_seq' );
 			$dbw->insert(
 				'text',
-				[
-					'old_id' => $old_id,
-					'old_text' => $data,
-					'old_flags' => $flags,
-				],
+				[ 'old_text' => $data, 'old_flags' => $flags ],
 				__METHOD__
 			);
 
@@ -396,10 +383,14 @@ class SqlBlobStore implements IDBAccessObject, BlobStore {
 			__METHOD__,
 			$options
 		);
+		$numRows = 0;
+		if ( $rows instanceof IResultWrapper ) {
+			$numRows = $rows->numRows();
+		}
 
 		// Fallback to DB_PRIMARY in some cases if not all the rows were found, using the appropriate
 		// options, such as FOR UPDATE to avoid missing rows due to REPEATABLE-READ.
-		if ( $dbConnection->numRows( $rows ) !== count( $textIds ) && $fallbackIndex !== null ) {
+		if ( $numRows !== count( $textIds ) && $fallbackIndex !== null ) {
 			$fetchedTextIds = [];
 			foreach ( $rows as $row ) {
 				$fetchedTextIds[] = $row->old_id;
@@ -421,7 +412,10 @@ class SqlBlobStore implements IDBAccessObject, BlobStore {
 
 		foreach ( $rows as $row ) {
 			$blobAddress = $textIdToBlobAddress[$row->old_id];
-			$blob = $this->expandBlob( $row->old_text, $row->old_flags, $blobAddress );
+			$blob = false;
+			if ( $row->old_text !== null ) {
+				$blob = $this->expandBlob( $row->old_text, $row->old_flags, $blobAddress );
+			}
 			if ( $blob === false ) {
 				$errors[$blobAddress] = "Bad data in text row {$row->old_id}."
 					. ' Use findBadBlobs.php to remedy.';
@@ -709,7 +703,7 @@ class SqlBlobStore implements IDBAccessObject, BlobStore {
 
 		$schema = strtolower( $m[1] );
 		$id = $m[2];
-		$parameters = isset( $m[4] ) ? wfCgiToArray( $m[4] ) : [];
+		$parameters = wfCgiToArray( $m[4] ?? '' );
 
 		return [ $schema, $id, $parameters ];
 	}

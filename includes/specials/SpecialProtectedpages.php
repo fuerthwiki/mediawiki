@@ -23,6 +23,8 @@
 
 use MediaWiki\Cache\LinkBatchFactory;
 use MediaWiki\CommentFormatter\RowCommentFormatter;
+use MediaWiki\MainConfigNames;
+use MediaWiki\Permissions\RestrictionStore;
 use Wikimedia\Rdbms\ILoadBalancer;
 
 /**
@@ -49,19 +51,24 @@ class SpecialProtectedpages extends SpecialPage {
 	/** @var RowCommentFormatter */
 	private $rowCommentFormatter;
 
+	/** @var RestrictionStore */
+	private $restrictionStore;
+
 	/**
 	 * @param LinkBatchFactory $linkBatchFactory
 	 * @param ILoadBalancer $loadBalancer
 	 * @param CommentStore $commentStore
 	 * @param UserCache $userCache
 	 * @param RowCommentFormatter $rowCommentFormatter
+	 * @param RestrictionStore $restrictionStore
 	 */
 	public function __construct(
 		LinkBatchFactory $linkBatchFactory,
 		ILoadBalancer $loadBalancer,
 		CommentStore $commentStore,
 		UserCache $userCache,
-		RowCommentFormatter $rowCommentFormatter
+		RowCommentFormatter $rowCommentFormatter,
+		RestrictionStore $restrictionStore
 	) {
 		parent::__construct( 'Protectedpages' );
 		$this->linkBatchFactory = $linkBatchFactory;
@@ -69,6 +76,7 @@ class SpecialProtectedpages extends SpecialPage {
 		$this->commentStore = $commentStore;
 		$this->userCache = $userCache;
 		$this->rowCommentFormatter = $rowCommentFormatter;
+		$this->restrictionStore = $restrictionStore;
 	}
 
 	public function execute( $par ) {
@@ -90,7 +98,13 @@ class SpecialProtectedpages extends SpecialPage {
 		$noRedirect = in_array( 'noredirect', $filters );
 
 		$pager = new ProtectedPagesPager(
-			$this,
+			$this->getContext(),
+			$this->commentStore,
+			$this->linkBatchFactory,
+			$this->getLinkRenderer(),
+			$this->loadBalancer,
+			$this->rowCommentFormatter,
+			$this->userCache,
 			[],
 			$type,
 			$level,
@@ -99,13 +113,7 @@ class SpecialProtectedpages extends SpecialPage {
 			$size,
 			$indefOnly,
 			$cascadeOnly,
-			$noRedirect,
-			$this->getLinkRenderer(),
-			$this->linkBatchFactory,
-			$this->loadBalancer,
-			$this->commentStore,
-			$this->userCache,
-			$this->rowCommentFormatter
+			$noRedirect
 		);
 
 		$this->getOutput()->addHTML( $this->showOptions(
@@ -182,7 +190,7 @@ class SpecialProtectedpages extends SpecialPage {
 		$options = [];
 
 		// First pass to load the log names
-		foreach ( Title::getFilteredRestrictionTypes( true ) as $type ) {
+		foreach ( $this->restrictionStore->listAllRestrictionTypes( true ) as $type ) {
 			// Messages: restriction-edit, restriction-move, restriction-create, restriction-upload
 			$text = $this->msg( "restriction-$type" )->text();
 			$m[$text] = $type;
@@ -213,7 +221,7 @@ class SpecialProtectedpages extends SpecialPage {
 		$options = [];
 
 		// First pass to load the log names
-		foreach ( $this->getConfig()->get( 'RestrictionLevels' ) as $type ) {
+		foreach ( $this->getConfig()->get( MainConfigNames::RestrictionLevels ) as $type ) {
 			// Messages used can be 'restriction-level-sysop' and 'restriction-level-autoconfirmed'
 			if ( $type != '' && $type != '*' ) {
 				$text = $this->msg( "restriction-level-$type" )->text();

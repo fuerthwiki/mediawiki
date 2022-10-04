@@ -3,7 +3,7 @@
 namespace MediaWiki\Tests\Maintenance;
 
 use BaseDump;
-use MediaWiki\Storage\SlotRecord;
+use MediaWiki\Revision\SlotRecord;
 use MediaWikiIntegrationTestCase;
 
 /**
@@ -166,7 +166,6 @@ class BaseDumpTest extends MediaWikiIntegrationTestCase {
 		$fname = $this->getNewTempFile();
 
 		// The header of every prefetch file
-		// phpcs:ignore Generic.Files.LineLength
 		$header = '<mediawiki>
   <siteinfo>
     <sitename>wikisvn</sitename>

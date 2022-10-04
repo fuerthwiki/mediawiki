@@ -1,7 +1,5 @@
 <?php
 /**
- * Bosnian (bosanski) specific code.
- *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
@@ -18,13 +16,15 @@
  * http://www.gnu.org/copyleft/gpl.html
  *
  * @file
- * @ingroup Language
  */
+
+use MediaWiki\MainConfigNames;
+use MediaWiki\MediaWikiServices;
 
 /**
  * Bosnian (bosanski)
  *
- * @ingroup Language
+ * @ingroup Languages
  */
 class LanguageBs extends Language {
 	/**
@@ -39,9 +39,10 @@ class LanguageBs extends Language {
 	 * @return string
 	 */
 	public function convertGrammar( $word, $case ) {
-		global $wgGrammarForms;
-		if ( isset( $wgGrammarForms['bs'][$case][$word] ) ) {
-			return $wgGrammarForms['bs'][$case][$word];
+		$grammarForms =
+			MediaWikiServices::getInstance()->getMainConfig()->get( MainConfigNames::GrammarForms );
+		if ( isset( $grammarForms['bs'][$case][$word] ) ) {
+			return $grammarForms['bs'][$case][$word];
 		}
 		switch ( $case ) {
 			case 'instrumental': # instrumental

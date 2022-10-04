@@ -25,6 +25,7 @@
  * @author Daniel Kinzler
  */
 
+use MediaWiki\MainConfigNames;
 use MediaWiki\MediaWikiServices;
 
 /**
@@ -116,13 +117,14 @@ class TextContent extends AbstractContent {
 	 * @return bool
 	 */
 	public function isCountable( $hasLinks = null ) {
-		global $wgArticleCountMethod;
+		$articleCountMethod = MediaWikiServices::getInstance()->getMainConfig()->get(
+			MainConfigNames::ArticleCountMethod );
 
 		if ( $this->isRedirect() ) {
 			return false;
 		}
 
-		if ( $wgArticleCountMethod === 'any' ) {
+		if ( $articleCountMethod === 'any' ) {
 			return true;
 		}
 

@@ -1,8 +1,5 @@
 <?php
 /**
- * Provides of semaphore semantics for restricting the number
- * of workers that may be concurrently performing the same task.
- *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
@@ -21,28 +18,34 @@
  * @file
  */
 
-use Wikimedia\ObjectFactory;
+use MediaWiki\MainConfigNames;
+use MediaWiki\MediaWikiServices;
+use Wikimedia\ObjectFactory\ObjectFactory;
 
 /**
- * When you have many workers (threads/servers) giving service, and a
+ * Semaphore semantics to restrict how many workers may concurrently perform a task.
+ *
+ * When you have many workers (threads/servers) in service, and a
  * cached item expensive to produce expires, you may get several workers
- * doing the job at the same time.
+ * computing the same expensive item at the same time.
  *
- * Given enough requests and the item expiring fast (non-cacheable,
- * lots of edits...) that single work can end up unfairly using most (all)
- * of the cpu of the pool. This is also known as 'Michael Jackson effect'
- * since this effect triggered on the english wikipedia on the day Michael
- * Jackson died, the biographical article got hit with several edits per
- * minutes and hundreds of read hits.
+ * Given enough incoming requests and the item expiring quickly (non-cacheable,
+ * or lots of edits or other invalidation events) that single task can end up
+ * unfairly using most (or all) of the CPUs of the server cluster.
+ * This is also known as "Michael Jackson effect", as this scenario happened on
+ * the English Wikipedia in 2009 on the day Michael Jackson died.
+ * See also <https://wikitech.wikimedia.org/wiki/Michael_Jackson_effect>.
  *
- * The PoolCounter provides semaphore semantics for restricting the number
- * of workers that may be concurrently performing such single task. Only one
- * key can be locked by any PoolCounter instance of a process, except for keys
- * that start with "nowait:". However, only 0 timeouts (non-blocking requests)
- * can be used with "nowait:" keys.
+ * PoolCounter was created to provide semaphore semantics to restrict the number
+ * of workers that may be concurrently performing a given task. Only one key
+ * can be locked by any PoolCounter instance of a process, except for keys
+ * that start with "nowait:". However, only non-blocking requests (timeout=0)
+ * may be used with a "nowait:" key.
  *
- * By default PoolCounterNull is used, which provides no locking. You
- * can get a useful one in the PoolCounter extension.
+ * By default PoolCounterNull is used, which provides no locking.
+ * Install the poolcounterd service from
+ * <https://gerrit.wikimedia.org/g/mediawiki/services/poolcounter> to
+ * enable this feature.
  */
 abstract class PoolCounter {
 	/* Return codes */
@@ -77,7 +80,7 @@ abstract class PoolCounter {
 	 */
 	private $isMightWaitKey;
 	/**
-	 * @var bool Whether this process holds a "might wait" lock key
+	 * @var int Whether this process holds a "might wait" lock key
 	 */
 	private static $acquiredMightWaitKey = 0;
 
@@ -117,11 +120,12 @@ abstract class PoolCounter {
 	 * @return PoolCounter
 	 */
 	public static function factory( string $type, string $key ) {
-		global $wgPoolCounterConf;
-		if ( !isset( $wgPoolCounterConf[$type] ) ) {
+		$poolCounterConf = MediaWikiServices::getInstance()->getMainConfig()
+			->get( MainConfigNames::PoolCounterConf );
+		if ( !isset( $poolCounterConf[$type] ) ) {
 			return new PoolCounterNull;
 		}
-		$conf = $wgPoolCounterConf[$type];
+		$conf = $poolCounterConf[$type];
 
 		/** @var PoolCounter $poolCounter */
 		$poolCounter = ObjectFactory::getObjectFromSpec(
@@ -171,8 +175,8 @@ abstract class PoolCounter {
 	abstract public function release();
 
 	/**
-	 * Checks that the lock request is sane.
-	 * @return Status - good for sane requests fatal for insane
+	 * Checks that the lock request is sensible.
+	 * @return Status good for sensible requests, fatal for the not so sensible
 	 * @since 1.25
 	 */
 	final protected function precheckAcquire() {

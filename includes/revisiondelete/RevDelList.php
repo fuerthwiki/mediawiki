@@ -147,7 +147,7 @@ abstract class RevDelList extends RevisionListBase {
 			return $status;
 		}
 
-		$dbw->startAtomic( __METHOD__ );
+		$dbw->startAtomic( __METHOD__, $dbw::ATOMIC_CANCELABLE );
 		$dbw->onTransactionResolution(
 			function () {
 				// Release locks on commit or error
@@ -278,7 +278,7 @@ abstract class RevDelList extends RevisionListBase {
 		$status->merge( $this->doPreCommitUpdates() );
 		if ( !$status->isOK() ) {
 			// Fatal error, such as no configured archive directory or I/O failures
-			$this->lbFactory->rollbackPrimaryChanges( __METHOD__ );
+			$dbw->cancelAtomic( __METHOD__ );
 			return $status;
 		}
 
@@ -288,7 +288,7 @@ abstract class RevDelList extends RevisionListBase {
 		$this->updateLog(
 			$logType,
 			[
-				'title' => $this->title,
+				'page' => $this->page,
 				'count' => $successCount,
 				'newBits' => $virtualNewBits,
 				'oldBits' => $virtualOldBits,
@@ -356,7 +356,7 @@ abstract class RevDelList extends RevisionListBase {
 	 * @param array $params Associative array of parameters:
 	 *     newBits:         The new value of the *_deleted bitfield
 	 *     oldBits:         The old value of the *_deleted bitfield.
-	 *     title:           The target title
+	 *     page:            The target page reference
 	 *     ids:             The ID list
 	 *     comment:         The log comment
 	 *     authorActors:    The array of the actor IDs of the offenders
@@ -373,7 +373,7 @@ abstract class RevDelList extends RevisionListBase {
 		$logParams = $this->getLogParams( $params );
 		// Actually add the deletion log entry
 		$logEntry = new ManualLogEntry( $logType, $this->getLogAction() );
-		$logEntry->setTarget( $params['title'] );
+		$logEntry->setTarget( $params['page'] );
 		$logEntry->setComment( $params['comment'] );
 		$logEntry->setParameters( $logParams );
 		$logEntry->setPerformer( $this->getUser() );

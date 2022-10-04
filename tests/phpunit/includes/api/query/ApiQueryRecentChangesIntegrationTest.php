@@ -1,7 +1,7 @@
 <?php
 
 use MediaWiki\Linker\LinkTarget;
-use MediaWiki\MediaWikiServices;
+use MediaWiki\Permissions\Authority;
 
 /**
  * @group API
@@ -21,21 +21,21 @@ class ApiQueryRecentChangesIntegrationTest extends ApiTestCase {
 		return $this->getTestUser()->getUser();
 	}
 
-	private function doPageEdit( User $user, LinkTarget $target, $summary ) {
+	private function doPageEdit( Authority $performer, LinkTarget $target, $summary ) {
 		static $i = 0;
 
-		$title = Title::newFromLinkTarget( $target );
-		$page = WikiPage::factory( $title );
-		$page->doUserEditContent(
-			ContentHandler::makeContent( __CLASS__ . $i++, $title ),
-			$user,
-			$summary
+		$this->editPage(
+			$target,
+			__CLASS__ . $i++,
+			$summary,
+			NS_MAIN,
+			$performer
 		);
 	}
 
 	private function doMinorPageEdit( User $user, LinkTarget $target, $summary ) {
 		$title = Title::newFromLinkTarget( $target );
-		$page = WikiPage::factory( $title );
+		$page = $this->getServiceContainer()->getWikiPageFactory()->newFromTitle( $title );
 		$page->doUserEditContent(
 			ContentHandler::makeContent( __CLASS__, $title ),
 			$user,
@@ -46,7 +46,7 @@ class ApiQueryRecentChangesIntegrationTest extends ApiTestCase {
 
 	private function doBotPageEdit( User $user, LinkTarget $target, $summary ) {
 		$title = Title::newFromLinkTarget( $target );
-		$page = WikiPage::factory( $title );
+		$page = $this->getServiceContainer()->getWikiPageFactory()->newFromTitle( $title );
 		$page->doUserEditContent(
 			ContentHandler::makeContent( __CLASS__, $title ),
 			$user,
@@ -57,18 +57,12 @@ class ApiQueryRecentChangesIntegrationTest extends ApiTestCase {
 
 	private function doAnonPageEdit( LinkTarget $target, $summary ) {
 		$title = Title::newFromLinkTarget( $target );
-		$page = WikiPage::factory( $title );
+		$page = $this->getServiceContainer()->getWikiPageFactory()->newFromTitle( $title );
 		$page->doUserEditContent(
 			ContentHandler::makeContent( __CLASS__, $title ),
 			User::newFromId( 0 ),
 			$summary
 		);
-	}
-
-	private function deletePage( LinkTarget $target, $reason ) {
-		$title = Title::newFromLinkTarget( $target );
-		$page = WikiPage::factory( $title );
-		$page->doDeleteArticleReal( $reason, $this->getTestSysop()->getUser() );
 	}
 
 	/**
@@ -403,7 +397,8 @@ class ApiQueryRecentChangesIntegrationTest extends ApiTestCase {
 			$target,
 			'Create the page that will be deleted'
 		);
-		$this->deletePage( $target, 'Important Reason' );
+		$wikiPage = $this->getServiceContainer()->getWikiPageFactory()->newFromLinkTarget( $target );
+		$this->deletePage( $wikiPage, 'Important Reason' );
 	}
 
 	public function testLoginfoPropParameter() {
@@ -653,7 +648,7 @@ class ApiQueryRecentChangesIntegrationTest extends ApiTestCase {
 			]
 		);
 		$title = Title::newFromLinkTarget( $subjectTarget );
-		$revision = MediaWikiServices::getInstance()
+		$revision = $this->getServiceContainer()
 			->getRevisionLookup()
 			->getRevisionByTitle( $title );
 

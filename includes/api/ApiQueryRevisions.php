@@ -21,6 +21,7 @@
  */
 
 use MediaWiki\Content\IContentHandlerFactory;
+use MediaWiki\Content\Renderer\ContentRenderer;
 use MediaWiki\Content\Transform\ContentTransformer;
 use MediaWiki\ParamValidator\TypeDef\UserDef;
 use MediaWiki\Revision\RevisionRecord;
@@ -28,6 +29,7 @@ use MediaWiki\Revision\RevisionStore;
 use MediaWiki\Revision\SlotRoleRegistry;
 use MediaWiki\Storage\NameTableAccessException;
 use MediaWiki\Storage\NameTableStore;
+use Wikimedia\ParamValidator\ParamValidator;
 
 /**
  * A query action to enumerate revisions of a given page, or show top revisions
@@ -57,6 +59,7 @@ class ApiQueryRevisions extends ApiQueryRevisionsBase {
 	 * @param SlotRoleRegistry $slotRoleRegistry
 	 * @param NameTableStore $changeTagDefStore
 	 * @param ActorMigration $actorMigration
+	 * @param ContentRenderer $contentRenderer
 	 * @param ContentTransformer $contentTransformer
 	 */
 	public function __construct(
@@ -68,6 +71,7 @@ class ApiQueryRevisions extends ApiQueryRevisionsBase {
 		SlotRoleRegistry $slotRoleRegistry,
 		NameTableStore $changeTagDefStore,
 		ActorMigration $actorMigration,
+		ContentRenderer $contentRenderer,
 		ContentTransformer $contentTransformer
 	) {
 		parent::__construct(
@@ -78,6 +82,7 @@ class ApiQueryRevisions extends ApiQueryRevisionsBase {
 			$contentHandlerFactory,
 			$parserFactory,
 			$slotRoleRegistry,
+			$contentRenderer,
 			$contentTransformer
 		);
 		$this->revisionStore = $revisionStore;
@@ -86,8 +91,6 @@ class ApiQueryRevisions extends ApiQueryRevisionsBase {
 	}
 
 	protected function run( ApiPageSet $resultPageSet = null ) {
-		global $wgActorTableSchemaMigrationStage;
-
 		$params = $this->extractRequestParams( false );
 
 		// If any of those parameters are used, work in 'enumeration' mode.
@@ -145,17 +148,6 @@ class ApiQueryRevisions extends ApiQueryRevisionsBase {
 			'revision' => 'rev_timestamp',
 		];
 		$useIndex = [];
-
-		if ( $params['user'] !== null &&
-			( $wgActorTableSchemaMigrationStage & SCHEMA_COMPAT_READ_TEMP )
-		) {
-			// We're going to want to use the page_actor_timestamp index (on revision_actor_temp)
-			// so use that table's denormalized fields.
-			$idField = 'revactor_rev';
-			$tsField = 'revactor_timestamp';
-			$pageField = 'revactor_page';
-		}
-
 		if ( $resultPageSet === null ) {
 			$this->parseParameters( $params );
 			$opts = [ 'page' ];
@@ -163,15 +155,6 @@ class ApiQueryRevisions extends ApiQueryRevisionsBase {
 				$opts[] = 'user';
 			}
 			$revQuery = $this->revisionStore->getQueryInfo( $opts );
-
-			if ( $idField !== 'rev_id' ) {
-				$aliasFields = [ 'rev_id' => $idField, 'rev_timestamp' => $tsField, 'rev_page' => $pageField ];
-				$revQuery['fields'] = array_merge(
-					$aliasFields,
-					array_diff( $revQuery['fields'], array_keys( $aliasFields ) )
-				);
-			}
-
 			$this->addTables( $revQuery['tables'] );
 			$this->addFields( $revQuery['fields'] );
 			$this->addJoinConds( $revQuery['joins'] );
@@ -235,16 +218,14 @@ class ApiQueryRevisions extends ApiQueryRevisionsBase {
 			$this->requireMaxOneParameter( $params, 'user', 'excludeuser' );
 
 			if ( $params['continue'] !== null ) {
-				$cont = explode( '|', $params['continue'] );
-				$this->dieContinueUsageIf( count( $cont ) != 2 );
-				$op = ( $params['dir'] === 'newer' ? '>' : '<' );
-				$continueTimestamp = $db->addQuotes( $db->timestamp( $cont[0] ) );
+				$cont = $this->parseContinueParamOrDie( $params['continue'], [ 'string', 'int' ] );
+				$op = ( $params['dir'] === 'newer' ? '>=' : '<=' );
+				$continueTimestamp = $db->timestamp( $cont[0] );
 				$continueId = (int)$cont[1];
-				$this->dieContinueUsageIf( $continueId != $cont[1] );
-				$this->addWhere( "$tsField $op $continueTimestamp OR " .
-					"($tsField = $continueTimestamp AND " .
-					"$idField $op= $continueId)"
-				);
+				$this->addWhere( $db->buildComparison( $op, [
+					$tsField => $continueTimestamp,
+					$idField => $continueId,
+				] ) );
 			}
 
 			// Convert startid/endid to timestamps (T163532)
@@ -280,33 +261,43 @@ class ApiQueryRevisions extends ApiQueryRevisionsBase {
 						$params['end'] = $row->ts;
 					}
 				}
+				// @phan-suppress-next-line PhanTypePossiblyInvalidDimOffset False positive
 				if ( $params['startid'] !== null && $params['start'] === null ) {
 					$p = $this->encodeParamName( 'startid' );
 					$this->dieWithError( [ 'apierror-revisions-badid', $p ], "badid_$p" );
 				}
+				// @phan-suppress-next-line PhanTypePossiblyInvalidDimOffset False positive
 				if ( $params['endid'] !== null && $params['end'] === null ) {
 					$p = $this->encodeParamName( 'endid' );
 					$this->dieWithError( [ 'apierror-revisions-badid', $p ], "badid_$p" );
 				}
 
+				// @phan-suppress-next-line PhanTypePossiblyInvalidDimOffset False positive
 				if ( $params['start'] !== null ) {
-					$op = ( $params['dir'] === 'newer' ? '>' : '<' );
-					$ts = $db->addQuotes( $db->timestampOrNull( $params['start'] ) );
+					$op = ( $params['dir'] === 'newer' ? '>=' : '<=' );
+					// @phan-suppress-next-line PhanTypePossiblyInvalidDimOffset False positive
+					$ts = $db->timestampOrNull( $params['start'] );
 					if ( $params['startid'] !== null ) {
-						$this->addWhere( "$tsField $op $ts OR "
-							. "$tsField = $ts AND $idField $op= " . (int)$params['startid'] );
+						$this->addWhere( $db->buildComparison( $op, [
+							$tsField => $ts,
+							$idField => (int)$params['startid'],
+						] ) );
 					} else {
-						$this->addWhere( "$tsField $op= $ts" );
+						$this->addWhere( $db->buildComparison( $op, [ $tsField => $ts ] ) );
 					}
 				}
+				// @phan-suppress-next-line PhanTypePossiblyInvalidDimOffset False positive
 				if ( $params['end'] !== null ) {
-					$op = ( $params['dir'] === 'newer' ? '<' : '>' ); // Yes, opposite of the above
-					$ts = $db->addQuotes( $db->timestampOrNull( $params['end'] ) );
+					$op = ( $params['dir'] === 'newer' ? '<=' : '>=' ); // Yes, opposite of the above
+					// @phan-suppress-next-line PhanTypePossiblyInvalidDimOffset False positive
+					$ts = $db->timestampOrNull( $params['end'] );
 					if ( $params['endid'] !== null ) {
-						$this->addWhere( "$tsField $op $ts OR "
-							. "$tsField = $ts AND $idField $op= " . (int)$params['endid'] );
+						$this->addWhere( $db->buildComparison( $op, [
+							$tsField => $ts,
+							$idField => (int)$params['endid'],
+						] ) );
 					} else {
-						$this->addWhere( "$tsField $op= $ts" );
+						$this->addWhere( $db->buildComparison( $op, [ $tsField => $ts ] ) );
 					}
 				}
 			} else {
@@ -318,7 +309,7 @@ class ApiQueryRevisions extends ApiQueryRevisionsBase {
 			$this->addOption( 'ORDER BY', [ "rev_timestamp $sort", "rev_id $sort" ] );
 
 			// There is only one ID, use it
-			$ids = array_keys( $pageSet->getGoodTitles() );
+			$ids = array_keys( $pageSet->getGoodPages() );
 			$this->addWhereFld( $pageField, reset( $ids ) );
 
 			if ( $params['user'] !== null ) {
@@ -332,15 +323,11 @@ class ApiQueryRevisions extends ApiQueryRevisionsBase {
 				$this->addJoinConds( $actorQuery['joins'] );
 				$this->addWhere( 'NOT(' . $actorQuery['conds'] . ')' );
 			} else {
-				// T270033 Index renaming
-				$revIndex = $this->getDB()->indexExists( 'revision', 'page_timestamp',  __METHOD__ )
-					? 'page_timestamp'
-					: 'rev_page_timestamp';
 				// T258480: MariaDB ends up using rev_page_actor_timestamp in some cases here.
 				// Last checked with MariaDB 10.4.13
 				// Unless we are filtering by user (see above), we always want to use the
 				// "history" index on the revision table, namely page_timestamp.
-				$useIndex['revision'] = $revIndex;
+				$useIndex['revision'] = 'rev_page_timestamp';
 			}
 
 			if ( $params['user'] !== null || $params['excludeuser'] !== null ) {
@@ -372,27 +359,23 @@ class ApiQueryRevisions extends ApiQueryRevisionsBase {
 		} elseif ( $pageCount > 0 ) {
 			// Always targets the rev_page_id index
 
-			$titles = $pageSet->getGoodTitles();
+			$pageids = array_keys( $pageSet->getGoodPages() );
 
 			// When working in multi-page non-enumeration mode,
 			// limit to the latest revision only
 			$this->addWhere( 'page_latest=rev_id' );
 
 			// Get all page IDs
-			$this->addWhereFld( 'page_id', array_keys( $titles ) );
+			$this->addWhereFld( 'page_id', $pageids );
 			// Every time someone relies on equality propagation, god kills a kitten :)
-			$this->addWhereFld( 'rev_page', array_keys( $titles ) );
+			$this->addWhereFld( 'rev_page', $pageids );
 
 			if ( $params['continue'] !== null ) {
-				$cont = explode( '|', $params['continue'] );
-				$this->dieContinueUsageIf( count( $cont ) != 2 );
-				$pageid = (int)$cont[0];
-				$revid = (int)$cont[1];
-				$this->addWhere(
-					"rev_page > $pageid OR " .
-					"(rev_page = $pageid AND " .
-					"rev_id >= $revid)"
-				);
+				$cont = $this->parseContinueParamOrDie( $params['continue'], [ 'int', 'int' ] );
+				$this->addWhere( $db->buildComparison( '>=', [
+					'rev_page' => $cont[0],
+					'rev_id' => $cont[1],
+				] ) );
 			}
 			$this->addOption( 'ORDER BY', [
 				'rev_page',
@@ -461,24 +444,24 @@ class ApiQueryRevisions extends ApiQueryRevisionsBase {
 	public function getAllowedParams() {
 		$ret = parent::getAllowedParams() + [
 			'startid' => [
-				ApiBase::PARAM_TYPE => 'integer',
+				ParamValidator::PARAM_TYPE => 'integer',
 				ApiBase::PARAM_HELP_MSG_INFO => [ [ 'singlepageonly' ] ],
 			],
 			'endid' => [
-				ApiBase::PARAM_TYPE => 'integer',
+				ParamValidator::PARAM_TYPE => 'integer',
 				ApiBase::PARAM_HELP_MSG_INFO => [ [ 'singlepageonly' ] ],
 			],
 			'start' => [
-				ApiBase::PARAM_TYPE => 'timestamp',
+				ParamValidator::PARAM_TYPE => 'timestamp',
 				ApiBase::PARAM_HELP_MSG_INFO => [ [ 'singlepageonly' ] ],
 			],
 			'end' => [
-				ApiBase::PARAM_TYPE => 'timestamp',
+				ParamValidator::PARAM_TYPE => 'timestamp',
 				ApiBase::PARAM_HELP_MSG_INFO => [ [ 'singlepageonly' ] ],
 			],
 			'dir' => [
-				ApiBase::PARAM_DFLT => 'older',
-				ApiBase::PARAM_TYPE => [
+				ParamValidator::PARAM_DEFAULT => 'older',
+				ParamValidator::PARAM_TYPE => [
 					'newer',
 					'older'
 				],
@@ -486,13 +469,13 @@ class ApiQueryRevisions extends ApiQueryRevisionsBase {
 				ApiBase::PARAM_HELP_MSG_INFO => [ [ 'singlepageonly' ] ],
 			],
 			'user' => [
-				ApiBase::PARAM_TYPE => 'user',
+				ParamValidator::PARAM_TYPE => 'user',
 				UserDef::PARAM_ALLOWED_USER_TYPES => [ 'name', 'ip', 'id', 'interwiki' ],
 				UserDef::PARAM_RETURN_OBJECT => true,
 				ApiBase::PARAM_HELP_MSG_INFO => [ [ 'singlepageonly' ] ],
 			],
 			'excludeuser' => [
-				ApiBase::PARAM_TYPE => 'user',
+				ParamValidator::PARAM_TYPE => 'user',
 				UserDef::PARAM_ALLOWED_USER_TYPES => [ 'name', 'ip', 'id', 'interwiki' ],
 				UserDef::PARAM_RETURN_OBJECT => true,
 				ApiBase::PARAM_HELP_MSG_INFO => [ [ 'singlepageonly' ] ],

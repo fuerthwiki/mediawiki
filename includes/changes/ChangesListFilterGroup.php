@@ -88,7 +88,7 @@ abstract class ChangesListFilterGroup {
 	 * Priority integer.  Higher values means higher up in the
 	 * group list.
 	 *
-	 * @var string
+	 * @var int
 	 */
 	protected $priority;
 
@@ -207,7 +207,7 @@ abstract class ChangesListFilterGroup {
 	/**
 	 * Creates a filter of the appropriate type for this group, from the definition
 	 *
-	 * @param array $filterDefinition Filter definition
+	 * @param array $filterDefinition
 	 * @return ChangesListFilter Filter
 	 */
 	abstract protected function createFilter( array $filterDefinition );
@@ -358,7 +358,7 @@ abstract class ChangesListFilterGroup {
 			return $b->getPriority() <=> $a->getPriority();
 		} );
 
-		foreach ( $this->filters as $filterName => $filter ) {
+		foreach ( $this->filters as $filter ) {
 			if ( $filter->displaysOnStructuredUi() ) {
 				$filterData = $filter->getJsData();
 				$output['messageKeys'] = array_merge(
@@ -401,12 +401,7 @@ abstract class ChangesListFilterGroup {
 	 * @return ChangesListFilterGroup[]
 	 */
 	public function getConflictingGroups() {
-		return array_map(
-			static function ( $conflictDesc ) {
-				return $conflictDesc[ 'groupObject' ];
-			},
-			$this->conflictingGroups
-		);
+		return array_column( $this->conflictingGroups, 'groupObject' );
 	}
 
 	/**
@@ -415,12 +410,7 @@ abstract class ChangesListFilterGroup {
 	 * @return ChangesListFilter[]
 	 */
 	public function getConflictingFilters() {
-		return array_map(
-			static function ( $conflictDesc ) {
-				return $conflictDesc[ 'filterObject' ];
-			},
-			$this->conflictingFilters
-		);
+		return array_column( $this->conflictingFilters, 'filterObject' );
 	}
 
 	/**

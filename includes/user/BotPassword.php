@@ -20,6 +20,7 @@
 
 use MediaWiki\Auth\AuthenticationResponse;
 use MediaWiki\Auth\Throttler;
+use MediaWiki\MainConfigNames;
 use MediaWiki\MediaWikiServices;
 use MediaWiki\Session\BotPasswordSessionProvider;
 use MediaWiki\Session\SessionManager;
@@ -194,8 +195,9 @@ class BotPassword implements IDBAccessObject {
 	 * @return string
 	 */
 	public static function getSeparator() {
-		global $wgUserrightsInterwikiDelimiter;
-		return $wgUserrightsInterwikiDelimiter;
+		$userrightsInterwikiDelimiter = MediaWikiServices::getInstance()
+			->getMainConfig()->get( MainConfigNames::UserrightsInterwikiDelimiter );
+		return $userrightsInterwikiDelimiter;
 	}
 
 	/**
@@ -283,7 +285,7 @@ class BotPassword implements IDBAccessObject {
 
 	/**
 	 * Invalidate all passwords for a user, by name
-	 * @param string $username User name
+	 * @param string $username
 	 * @return bool Whether any passwords were invalidated
 	 */
 	public static function invalidateAllPasswordsForUser( $username ) {
@@ -303,9 +305,10 @@ class BotPassword implements IDBAccessObject {
 	public static function invalidateAllPasswordsForCentralId( $centralId ) {
 		wfDeprecated( __METHOD__, '1.37' );
 
-		global $wgEnableBotPasswords;
+		$enableBotPasswords = MediaWikiServices::getInstance()->getMainConfig()
+			->get( MainConfigNames::EnableBotPasswords );
 
-		if ( !$wgEnableBotPasswords ) {
+		if ( !$enableBotPasswords ) {
 			return false;
 		}
 
@@ -321,7 +324,7 @@ class BotPassword implements IDBAccessObject {
 
 	/**
 	 * Remove all passwords for a user, by name
-	 * @param string $username User name
+	 * @param string $username
 	 * @return bool Whether any passwords were removed
 	 */
 	public static function removeAllPasswordsForUser( $username ) {
@@ -341,9 +344,10 @@ class BotPassword implements IDBAccessObject {
 	public static function removeAllPasswordsForCentralId( $centralId ) {
 		wfDeprecated( __METHOD__, '1.37' );
 
-		global $wgEnableBotPasswords;
+		$enableBotPasswords = MediaWikiServices::getInstance()->getMainConfig()
+			->get( MainConfigNames::EnableBotPasswords );
 
-		if ( !$wgEnableBotPasswords ) {
+		if ( !$enableBotPasswords ) {
 			return false;
 		}
 
@@ -362,8 +366,8 @@ class BotPassword implements IDBAccessObject {
 	 * @return string
 	 */
 	public static function generatePassword( $config ) {
-		return PasswordFactory::generateRandomPasswordString(
-			max( self::PASSWORD_MINLENGTH, $config->get( 'MinimalPasswordLength' ) ) );
+		return PasswordFactory::generateRandomPasswordString( max(
+			self::PASSWORD_MINLENGTH, $config->get( MainConfigNames::MinimalPasswordLength ) ) );
 	}
 
 	/**
@@ -402,9 +406,11 @@ class BotPassword implements IDBAccessObject {
 	 * @return Status On success, the good status's value is the new Session object
 	 */
 	public static function login( $username, $password, WebRequest $request ) {
-		global $wgEnableBotPasswords, $wgPasswordAttemptThrottle;
-
-		if ( !$wgEnableBotPasswords ) {
+		$enableBotPasswords = MediaWikiServices::getInstance()->getMainConfig()
+			->get( MainConfigNames::EnableBotPasswords );
+		$passwordAttemptThrottle = MediaWikiServices::getInstance()->getMainConfig()
+			->get( MainConfigNames::PasswordAttemptThrottle );
+		if ( !$enableBotPasswords ) {
 			return Status::newFatal( 'botpasswords-disabled' );
 		}
 
@@ -431,8 +437,8 @@ class BotPassword implements IDBAccessObject {
 		}
 
 		$throttle = null;
-		if ( !empty( $wgPasswordAttemptThrottle ) ) {
-			$throttle = new Throttler( $wgPasswordAttemptThrottle, [
+		if ( !empty( $passwordAttemptThrottle ) ) {
+			$throttle = new Throttler( $passwordAttemptThrottle, [
 				'type' => 'botpassword',
 				'cache' => ObjectCache::getLocalClusterInstance(),
 			] );

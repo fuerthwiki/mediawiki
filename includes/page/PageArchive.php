@@ -21,15 +21,12 @@
 use MediaWiki\MediaWikiServices;
 use MediaWiki\Page\UndeletePage;
 use MediaWiki\Revision\RevisionRecord;
-use MediaWiki\Revision\RevisionStore;
 use MediaWiki\User\UserIdentity;
 use Wikimedia\Rdbms\IDatabase;
-use Wikimedia\Rdbms\ILoadBalancer;
 use Wikimedia\Rdbms\IResultWrapper;
 
 /**
  * Used to show archived pages and eventually restore them.
- * @todo Refactor into an ArchivedRevisionLookup service (T290022)
  */
 class PageArchive {
 
@@ -42,21 +39,11 @@ class PageArchive {
 	/** @var Status|null */
 	protected $revisionStatus;
 
-	/** @var ILoadBalancer */
-	private $loadBalancer;
-
-	/** @var RevisionStore */
-	private $revisionStore;
-
 	/**
 	 * @param Title $title
 	 */
 	public function __construct( Title $title ) {
 		$this->title = $title;
-
-		$services = MediaWikiServices::getInstance();
-		$this->loadBalancer = $services->getDBLoadBalancer();
-		$this->revisionStore = $services->getRevisionStore();
 	}
 
 	/**
@@ -165,39 +152,12 @@ class PageArchive {
 	 * List the revisions of the given page. Returns result wrapper with
 	 * various archive table fields.
 	 *
+	 * @deprecated since 1.38 Use ArchivedRevisionLookup::listRevisions
 	 * @return IResultWrapper|bool
 	 */
 	public function listRevisions() {
-		$queryInfo = $this->revisionStore->getArchiveQueryInfo();
-
-		$conds = [
-			'ar_namespace' => $this->title->getNamespace(),
-			'ar_title' => $this->title->getDBkey(),
-		];
-
-		// NOTE: ordering by ar_timestamp and ar_id, to remove ambiguity.
-		// XXX: Ideally, we would be ordering by ar_timestamp and ar_rev_id, but since we
-		// don't have an index on ar_rev_id, that causes a file sort.
-		$options = [ 'ORDER BY' => [ 'ar_timestamp DESC', 'ar_id DESC' ] ];
-
-		ChangeTags::modifyDisplayQuery(
-			$queryInfo['tables'],
-			$queryInfo['fields'],
-			$conds,
-			$queryInfo['joins'],
-			$options,
-			''
-		);
-
-		$dbr = $this->loadBalancer->getConnectionRef( DB_REPLICA );
-		return $dbr->select(
-			$queryInfo['tables'],
-			$queryInfo['fields'],
-			$conds,
-			__METHOD__,
-			$options,
-			$queryInfo['joins']
-		);
+		$lookup = MediaWikiServices::getInstance()->getArchivedRevisionLookup();
+		return $lookup->listRevisions( $this->title );
 	}
 
 	/**
@@ -213,7 +173,8 @@ class PageArchive {
 			return null;
 		}
 
-		$dbr = $this->loadBalancer->getConnectionRef( DB_REPLICA );
+		$loadBalancer = MediaWikiServices::getInstance()->getDBLoadBalancer();
+		$dbr = $loadBalancer->getConnectionRef( DB_REPLICA );
 		$fileQuery = ArchivedFile::getQueryInfo();
 		return $dbr->select(
 			$fileQuery['tables'],
@@ -230,58 +191,27 @@ class PageArchive {
 	 *
 	 * @internal only for use in SpecialUndelete
 	 *
+	 * @deprecated since 1.38 Use ArchivedRevisionLookup::getRevisionRecordByTimestamp
 	 * @param string $timestamp
 	 * @return RevisionRecord|null
 	 */
 	public function getRevisionRecordByTimestamp( $timestamp ) {
-		$dbr = $this->loadBalancer->getConnectionRef( DB_REPLICA );
-		$rec = $this->getRevisionByConditions(
-			[ 'ar_timestamp' => $dbr->timestamp( $timestamp ) ]
-		);
-		return $rec;
+		$lookup = MediaWikiServices::getInstance()->getArchivedRevisionLookup();
+		return $lookup->getRevisionRecordByTimestamp( $this->title, $timestamp );
 	}
 
 	/**
 	 * Return the archived revision with the given ID.
 	 *
 	 * @since 1.35
+	 * @deprecated since 1.38 Use ArchivedRevisionLookup::getArchivedRevisionRecord
 	 *
 	 * @param int $revId
 	 * @return RevisionRecord|null
 	 */
 	public function getArchivedRevisionRecord( int $revId ) {
-		return $this->getRevisionByConditions( [ 'ar_rev_id' => $revId ] );
-	}
-
-	/**
-	 * @param array $conditions
-	 * @param array $options
-	 *
-	 * @return RevisionRecord|null
-	 */
-	private function getRevisionByConditions( array $conditions, array $options = [] ) {
-		$dbr = $this->loadBalancer->getConnectionRef( DB_REPLICA );
-		$arQuery = $this->revisionStore->getArchiveQueryInfo();
-
-		$conditions += [
-			'ar_namespace' => $this->title->getNamespace(),
-			'ar_title' => $this->title->getDBkey(),
-		];
-
-		$row = $dbr->selectRow(
-			$arQuery['tables'],
-			$arQuery['fields'],
-			$conditions,
-			__METHOD__,
-			$options,
-			$arQuery['joins']
-		);
-
-		if ( $row ) {
-			return $this->revisionStore->newRevisionFromArchiveRow( $row, 0, $this->title );
-		}
-
-		return null;
+		$lookup = MediaWikiServices::getInstance()->getArchivedRevisionLookup();
+		return $lookup->getArchivedRevisionRecord( $this->title, $revId );
 	}
 
 	/**
@@ -292,91 +222,37 @@ class PageArchive {
 	 * unusual time issues.
 	 *
 	 * @since 1.35
+	 * @deprecated since 1.38 Use ArchivedRevisionLookup::getPreviousRevisionRecord
 	 *
 	 * @param string $timestamp
 	 * @return RevisionRecord|null Null when there is no previous revision
 	 */
 	public function getPreviousRevisionRecord( string $timestamp ) {
-		$dbr = $this->loadBalancer->getConnectionRef( DB_REPLICA );
-
-		// Check the previous deleted revision...
-		$row = $dbr->selectRow( 'archive',
-			[ 'ar_rev_id', 'ar_timestamp' ],
-			[ 'ar_namespace' => $this->title->getNamespace(),
-				'ar_title' => $this->title->getDBkey(),
-				'ar_timestamp < ' .
-				$dbr->addQuotes( $dbr->timestamp( $timestamp ) ) ],
-			__METHOD__,
-			[
-				'ORDER BY' => 'ar_timestamp DESC',
-			] );
-		$prevDeleted = $row ? wfTimestamp( TS_MW, $row->ar_timestamp ) : false;
-		$prevDeletedId = $row ? intval( $row->ar_rev_id ) : null;
-
-		$row = $dbr->selectRow( [ 'page', 'revision' ],
-			[ 'rev_id', 'rev_timestamp' ],
-			[
-				'page_namespace' => $this->title->getNamespace(),
-				'page_title' => $this->title->getDBkey(),
-				'page_id = rev_page',
-				'rev_timestamp < ' .
-				$dbr->addQuotes( $dbr->timestamp( $timestamp ) ) ],
-			__METHOD__,
-			[
-				'ORDER BY' => 'rev_timestamp DESC',
-			] );
-		$prevLive = $row ? wfTimestamp( TS_MW, $row->rev_timestamp ) : false;
-		$prevLiveId = $row ? intval( $row->rev_id ) : null;
-
-		if ( $prevLive && $prevLive > $prevDeleted ) {
-			// Most prior revision was live
-			$rec = $this->revisionStore->getRevisionById( $prevLiveId );
-		} elseif ( $prevDeleted ) {
-			// Most prior revision was deleted
-			$rec = $this->getArchivedRevisionRecord( $prevDeletedId );
-		} else {
-			$rec = null;
-		}
-
-		return $rec;
+		$lookup = MediaWikiServices::getInstance()->getArchivedRevisionLookup();
+		return $lookup->getPreviousRevisionRecord( $this->title, $timestamp );
 	}
 
 	/**
 	 * Returns the ID of the latest deleted revision.
 	 *
+	 * @deprecated since 1.38 Use ArchivedRevisionLookup::getLastRevisionId
 	 * @return int|false The revision's ID, or false if there is no deleted revision.
 	 */
 	public function getLastRevisionId() {
-		$dbr = $this->loadBalancer->getConnectionRef( DB_REPLICA );
-		$revId = $dbr->selectField(
-			'archive',
-			'ar_rev_id',
-			[ 'ar_namespace' => $this->title->getNamespace(),
-				'ar_title' => $this->title->getDBkey() ],
-			__METHOD__,
-			[ 'ORDER BY' => [ 'ar_timestamp DESC', 'ar_id DESC' ] ]
-		);
-
-		return $revId ? intval( $revId ) : false;
+		$lookup = MediaWikiServices::getInstance()->getArchivedRevisionLookup();
+		return $lookup->getLastRevisionId( $this->title );
 	}
 
 	/**
 	 * Quick check if any archived revisions are present for the page.
 	 * This says nothing about whether the page currently exists in the page table or not.
 	 *
+	 * @deprecated since 1.38 Use ArchivedRevisionLookup::hasArchivedRevisions
 	 * @return bool
 	 */
 	public function isDeleted() {
-		$dbr = $this->loadBalancer->getConnectionRef( DB_REPLICA );
-		$row = $dbr->selectRow(
-			[ 'archive' ],
-			'1', // We don't care about the value. Allow the database to optimize.
-			[ 'ar_namespace' => $this->title->getNamespace(),
-				'ar_title' => $this->title->getDBkey() ],
-			__METHOD__
-		);
-
-		return (bool)$row;
+		$lookup = MediaWikiServices::getInstance()->getArchivedRevisionLookup();
+		return $lookup->hasArchivedRevisions( $this->title );
 	}
 
 	/**
@@ -446,6 +322,7 @@ class PageArchive {
 	 * @return Status|null
 	 */
 	public function getFileStatus() {
+		wfDeprecated( __METHOD__, '1.38' );
 		return $this->fileStatus;
 	}
 
@@ -454,6 +331,7 @@ class PageArchive {
 	 * @return Status|null
 	 */
 	public function getRevisionStatus() {
+		wfDeprecated( __METHOD__, '1.38' );
 		return $this->revisionStatus;
 	}
 }

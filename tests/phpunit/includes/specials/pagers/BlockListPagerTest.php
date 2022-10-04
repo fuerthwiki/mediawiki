@@ -8,8 +8,10 @@ use MediaWiki\Block\Restriction\NamespaceRestriction;
 use MediaWiki\Block\Restriction\PageRestriction;
 use MediaWiki\Cache\LinkBatchFactory;
 use MediaWiki\CommentFormatter\RowCommentFormatter;
-use MediaWiki\MediaWikiServices;
+use MediaWiki\Linker\LinkRenderer;
+use MediaWiki\MainConfigNames;
 use MediaWiki\SpecialPage\SpecialPageFactory;
+use Wikimedia\Rdbms\FakeResultWrapper;
 use Wikimedia\Rdbms\ILoadBalancer;
 use Wikimedia\TestingAccessWrapper;
 
@@ -19,58 +21,61 @@ use Wikimedia\TestingAccessWrapper;
  */
 class BlockListPagerTest extends MediaWikiIntegrationTestCase {
 
-	/**
-	 * @var LinkBatchFactory
-	 */
-	private $linkBatchFactory;
+	/** @var BlockActionInfo */
+	private $blockActionInfo;
 
 	/** @var BlockRestrictionStore */
 	private $blockRestrictionStore;
 
-	/** @var ILoadBalancer */
-	private $loadBalancer;
-
-	/** @var SpecialPageFactory */
-	private $specialPageFactory;
+	/** @var BlockUtils */
+	private $blockUtils;
 
 	/** @var CommentStore */
 	private $commentStore;
 
-	/** @var BlockUtils */
-	private $blockUtils;
+	/** @var LinkRenderer */
+	private $linkRenderer;
 
-	/** @var BlockActionInfo */
-	private $blockActionInfo;
+	/** @var LinkBatchFactory */
+	private $linkBatchFactory;
+
+	/** @var ILoadBalancer */
+	private $loadBalancer;
 
 	/** @var RowCommentFormatter */
 	private $rowCommentFormatter;
 
+	/** @var SpecialPageFactory */
+	private $specialPageFactory;
+
 	protected function setUp(): void {
 		parent::setUp();
 
-		$services = MediaWikiServices::getInstance();
-		$this->linkBatchFactory = $services->getLinkBatchFactory();
-		$this->blockRestrictionStore = $services->getBlockRestrictionStore();
-		$this->loadBalancer = $services->getDBLoadBalancer();
-		$this->specialPageFactory = $services->getSpecialPageFactory();
-		$this->commentStore = $services->getCommentStore();
-		$this->blockUtils = $services->getBlockUtils();
+		$services = $this->getServiceContainer();
 		$this->blockActionInfo = $services->getBlockActionInfo();
+		$this->blockRestrictionStore = $services->getBlockRestrictionStore();
+		$this->blockUtils = $services->getBlockUtils();
+		$this->commentStore = $services->getCommentStore();
+		$this->linkBatchFactory = $services->getLinkBatchFactory();
+		$this->linkRenderer = $services->getLinkRenderer();
+		$this->loadBalancer = $services->getDBLoadBalancer();
 		$this->rowCommentFormatter = $services->getRowCommentFormatter();
+		$this->specialPageFactory = $services->getSpecialPageFactory();
 	}
 
 	private function getBlockListPager() {
 		return new BlockListPager(
-			new SpecialPage(),
-			[],
-			$this->linkBatchFactory,
-			$this->blockRestrictionStore,
-			$this->loadBalancer,
-			$this->specialPageFactory,
-			$this->commentStore,
-			$this->blockUtils,
+			RequestContext::getMain(),
 			$this->blockActionInfo,
-			$this->rowCommentFormatter
+			$this->blockRestrictionStore,
+			$this->blockUtils,
+			$this->commentStore,
+			$this->linkBatchFactory,
+			$this->linkRenderer,
+			$this->loadBalancer,
+			$this->rowCommentFormatter,
+			$this->specialPageFactory,
+			[]
 		);
 	}
 
@@ -93,9 +98,6 @@ class BlockListPagerTest extends MediaWikiIntegrationTestCase {
 
 		$formatted = $pager->formatValue( $name, $value );
 		$this->assertStringMatchesFormat( $expected, $formatted );
-
-		// Reset the time.
-		MWTimestamp::setFakeTime( false );
 	}
 
 	/**
@@ -171,9 +173,9 @@ class BlockListPagerTest extends MediaWikiIntegrationTestCase {
 	 * @covers ::getRestrictionListHTML
 	 */
 	public function testFormatValueRestrictions() {
-		$this->setMwGlobals( [
-			'wgArticlePath' => '/wiki/$1',
-			'wgScript' => '/w/index.php',
+		$this->overrideConfigValues( [
+			MainConfigNames::ArticlePath => '/wiki/$1',
+			MainConfigNames::Script => '/w/index.php',
 		] );
 
 		$pager = $this->getBlockListPager();
@@ -242,7 +244,7 @@ class BlockListPagerTest extends MediaWikiIntegrationTestCase {
 		$this->tablesUsed[] = 'user';
 
 		// Test the Link Cache.
-		$linkCache = MediaWikiServices::getInstance()->getLinkCache();
+		$linkCache = $this->getServiceContainer()->getLinkCache();
 		$wrappedlinkCache = TestingAccessWrapper::newFromObject( $linkCache );
 		$admin = $this->getTestSysop()->getUser();
 
@@ -305,7 +307,7 @@ class BlockListPagerTest extends MediaWikiIntegrationTestCase {
 		$block->setRestrictions( [
 			new PageRestriction( 0, $page->getId() ),
 		] );
-		$blockStore = MediaWikiServices::getInstance()->getDatabaseBlockStore();
+		$blockStore = $this->getServiceContainer()->getDatabaseBlockStore();
 		$blockStore->insertBlock( $block );
 
 		$result = $this->db->newSelectQueryBuilder()

@@ -20,9 +20,14 @@
  * @file
  */
 
+use MediaWiki\MainConfigNames;
+use MediaWiki\Page\UndeletePage;
+use MediaWiki\Page\UndeletePageFactory;
+use MediaWiki\Page\WikiPageFactory;
 use MediaWiki\Permissions\Authority;
 use MediaWiki\User\UserOptionsLookup;
 use MediaWiki\Watchlist\WatchlistManager;
+use Wikimedia\ParamValidator\ParamValidator;
 
 /**
  * @ingroup API
@@ -31,25 +36,38 @@ class ApiUndelete extends ApiBase {
 
 	use ApiWatchlistTrait;
 
+	/** @var UndeletePageFactory */
+	private $undeletePageFactory;
+
+	/** @var WikiPageFactory */
+	private $wikiPageFactory;
+
 	/**
 	 * @param ApiMain $mainModule
 	 * @param string $moduleName
 	 * @param WatchlistManager $watchlistManager
 	 * @param UserOptionsLookup $userOptionsLookup
+	 * @param UndeletePageFactory $undeletePageFactory
+	 * @param WikiPageFactory $wikiPageFactory
 	 */
 	public function __construct(
 		ApiMain $mainModule,
 		$moduleName,
 		WatchlistManager $watchlistManager,
-		UserOptionsLookup $userOptionsLookup
+		UserOptionsLookup $userOptionsLookup,
+		UndeletePageFactory $undeletePageFactory,
+		WikiPageFactory $wikiPageFactory
 	) {
 		parent::__construct( $mainModule, $moduleName );
 
 		// Variables needed in ApiWatchlistTrait trait
-		$this->watchlistExpiryEnabled = $this->getConfig()->get( 'WatchlistExpiry' );
-		$this->watchlistMaxDuration = $this->getConfig()->get( 'WatchlistExpiryMaxDuration' );
+		$this->watchlistExpiryEnabled = $this->getConfig()->get( MainConfigNames::WatchlistExpiry );
+		$this->watchlistMaxDuration =
+			$this->getConfig()->get( MainConfigNames::WatchlistExpiryMaxDuration );
 		$this->watchlistManager = $watchlistManager;
 		$this->userOptionsLookup = $userOptionsLookup;
+		$this->undeletePageFactory = $undeletePageFactory;
+		$this->wikiPageFactory = $wikiPageFactory;
 	}
 
 	public function execute() {
@@ -68,18 +86,6 @@ class ApiUndelete extends ApiBase {
 			$this->dieWithError( [ 'apierror-invalidtitle', wfEscapeWikiText( $params['title'] ) ] );
 		}
 
-		if ( !$this->getAuthority()->authorizeWrite( 'undelete', $titleObj ) ) {
-			$this->dieWithError( 'permdenied-undelete' );
-		}
-
-		// Check if user can add tags
-		if ( $params['tags'] !== null ) {
-			$ableToTag = ChangeTags::canAddTagsAccompanyingChange( $params['tags'], $this->getAuthority() );
-			if ( !$ableToTag->isOK() ) {
-				$this->dieStatus( $ableToTag );
-			}
-		}
-
 		// Convert timestamps
 		if ( !isset( $params['timestamps'] ) ) {
 			$params['timestamps'] = [];
@@ -91,20 +97,35 @@ class ApiUndelete extends ApiBase {
 			$params['timestamps'][$i] = wfTimestamp( TS_MW, $ts );
 		}
 
-		$pa = new PageArchive( $titleObj );
-		$retval = $pa->undeleteAsUser(
-			( $params['timestamps'] ?? [] ),
-			$user,
-			$params['reason'],
-			$params['fileids'] ?: [],
-			false,
-			$params['tags'] ?: []
-		);
-		if ( !is_array( $retval ) ) {
+		$undeletePage = $this->undeletePageFactory->newUndeletePage(
+				$this->wikiPageFactory->newFromTitle( $titleObj ),
+				$this->getAuthority()
+			)
+			->setUndeleteOnlyTimestamps( $params['timestamps'] ?? [] )
+			->setUndeleteOnlyFileVersions( $params['fileids'] ?: [] )
+			->setTags( $params['tags'] ?: [] );
+
+		if ( $params['undeletetalk'] ) {
+			$undeletePage->setUndeleteAssociatedTalk( true );
+		}
+
+		$status = $undeletePage->undeleteIfAllowed( $params['reason'] );
+		if ( $status->isOK() ) {
+			// in case there are warnings
+			$this->addMessagesFromStatus( $status );
+		} else {
+			$this->dieStatus( $status );
+		}
+
+		$restoredRevs = $status->getValue()[UndeletePage::REVISIONS_RESTORED];
+		$restoredFiles = $status->getValue()[UndeletePage::FILES_RESTORED];
+
+		if ( $restoredRevs === 0 && $restoredFiles === 0 ) {
+			// BC for code that predates UndeletePage
 			$this->dieWithError( 'apierror-cantundelete' );
 		}
 
-		if ( $retval[1] ) {
+		if ( $restoredFiles ) {
 			$this->getHookRunner()->onFileUndeleteComplete(
 				$titleObj, $params['fileids'],
 				$this->getUser(), $params['reason'] );
@@ -115,9 +136,9 @@ class ApiUndelete extends ApiBase {
 
 		$info = [
 			'title' => $titleObj->getPrefixedText(),
-			'revisions' => (int)$retval[0],
-			'fileversions' => (int)$retval[1],
-			'reason' => $retval[2]
+			'revisions' => $restoredRevs,
+			'fileversions' => $restoredFiles,
+			'reason' => $params['reason']
 		];
 		$this->getResult()->addValue( null, $this->getModuleName(), $info );
 	}
@@ -133,22 +154,23 @@ class ApiUndelete extends ApiBase {
 	public function getAllowedParams() {
 		return [
 			'title' => [
-				ApiBase::PARAM_TYPE => 'string',
-				ApiBase::PARAM_REQUIRED => true
+				ParamValidator::PARAM_TYPE => 'string',
+				ParamValidator::PARAM_REQUIRED => true
 			],
 			'reason' => '',
 			'tags' => [
-				ApiBase::PARAM_TYPE => 'tags',
-				ApiBase::PARAM_ISMULTI => true,
+				ParamValidator::PARAM_TYPE => 'tags',
+				ParamValidator::PARAM_ISMULTI => true,
 			],
 			'timestamps' => [
-				ApiBase::PARAM_TYPE => 'timestamp',
-				ApiBase::PARAM_ISMULTI => true,
+				ParamValidator::PARAM_TYPE => 'timestamp',
+				ParamValidator::PARAM_ISMULTI => true,
 			],
 			'fileids' => [
-				ApiBase::PARAM_TYPE => 'integer',
-				ApiBase::PARAM_ISMULTI => true,
+				ParamValidator::PARAM_TYPE => 'integer',
+				ParamValidator::PARAM_ISMULTI => true,
 			],
+			'undeletetalk' => false,
 		] + $this->getWatchlistParams();
 	}
 

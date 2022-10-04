@@ -1,7 +1,5 @@
 <?php
 /**
- * Generator of database load balancing objects.
- *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
@@ -18,15 +16,22 @@
  * http://www.gnu.org/copyleft/gpl.html
  *
  * @file
- * @ingroup Database
  */
-
 namespace Wikimedia\Rdbms;
 
 use InvalidArgumentException;
 
 /**
- * A simple single-primary DB LBFactory that gets its configuration from the b/c globals
+ * Manager for sites with a single "main" cluster and any number of "external" clusters
+ *
+ * @see LBFactoryMulti
+ *
+ * The class allows for large site farms to split up their data in the following ways:
+ *   - Vertically shard compact site-specific data by site (e.g. page/comment metadata)
+ *   - Vertically shard compact global data by module (e.g. account/notification data)
+ *   - Horizontally shard any bulk data by blob key (e.g. page/comment content)
+ *
+ * @ingroup Database
  */
 class LBFactorySimple extends LBFactory {
 	/** @var LoadBalancer */
@@ -74,40 +79,35 @@ class LBFactorySimple extends LBFactory {
 		}
 	}
 
-	public function newMainLB( $domain = false, $owner = null ): ILoadBalancer {
+	public function newMainLB( $domain = false ): ILoadBalancerForOwner {
 		return $this->newLoadBalancer(
 			self::CLUSTER_MAIN_DEFAULT,
-			$this->mainServers,
-			$owner
+			$this->mainServers
 		);
 	}
 
 	public function getMainLB( $domain = false ): ILoadBalancer {
 		if ( $this->mainLB === null ) {
-			$this->mainLB = $this->newMainLB( $domain, $this->getOwnershipId() );
+			$this->mainLB = $this->newMainLB( $domain );
 		}
 
 		return $this->mainLB;
 	}
 
-	public function newExternalLB( $cluster, $owner = null ): ILoadBalancer {
+	public function newExternalLB( $cluster ): ILoadBalancerForOwner {
 		if ( !isset( $this->externalServersByCluster[$cluster] ) ) {
 			throw new InvalidArgumentException( "Unknown cluster '$cluster'." );
 		}
 
 		return $this->newLoadBalancer(
 			$cluster,
-			$this->externalServersByCluster[$cluster],
-			$owner
+			$this->externalServersByCluster[$cluster]
 		);
 	}
 
 	public function getExternalLB( $cluster ): ILoadBalancer {
 		if ( !isset( $this->externalLBs[$cluster] ) ) {
-			$this->externalLBs[$cluster] = $this->newExternalLB(
-				$cluster,
-				$this->getOwnershipId()
-			);
+			$this->externalLBs[$cluster] = $this->newExternalLB( $cluster );
 		}
 
 		return $this->externalLBs[$cluster];
@@ -126,9 +126,9 @@ class LBFactorySimple extends LBFactory {
 		return $lbs;
 	}
 
-	private function newLoadBalancer( string $clusterName, array $servers, $owner ) {
+	private function newLoadBalancer( string $clusterName, array $servers ) {
 		$lb = new LoadBalancer( array_merge(
-			$this->baseLoadBalancerParams( $owner ),
+			$this->baseLoadBalancerParams(),
 			[
 				'servers' => $servers,
 				'loadMonitor' => $this->loadMonitorConfig,
@@ -141,11 +141,21 @@ class LBFactorySimple extends LBFactory {
 	}
 
 	public function forEachLB( $callback, array $params = [] ) {
+		wfDeprecated( __METHOD__, '1.39' );
 		if ( $this->mainLB !== null ) {
 			$callback( $this->mainLB, ...$params );
 		}
 		foreach ( $this->externalLBs as $lb ) {
 			$callback( $lb, ...$params );
+		}
+	}
+
+	protected function getLBsForOwner() {
+		if ( $this->mainLB !== null ) {
+			yield $this->mainLB;
+		}
+		foreach ( $this->externalLBs as $lb ) {
+			yield $lb;
 		}
 	}
 }

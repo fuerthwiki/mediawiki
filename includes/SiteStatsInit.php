@@ -17,6 +17,8 @@
  *
  * @file
  */
+
+use MediaWiki\MainConfigNames;
 use MediaWiki\MediaWikiServices;
 use Wikimedia\Rdbms\IDatabase;
 
@@ -57,10 +59,17 @@ class SiteStatsInit {
 	 * @return int
 	 */
 	public function edits() {
-		$this->edits = $this->dbr->selectField( 'revision', 'COUNT(*)', '', __METHOD__ );
-		$this->edits += $this->dbr->selectField( 'archive', 'COUNT(*)', '', __METHOD__ );
+		$this->edits = $this->countTableRows( 'revision' );
+		$this->edits += $this->countTableRows( 'archive' );
 
 		return $this->edits;
+	}
+
+	private function countTableRows( string $tableName ) {
+		return (int)$this->dbr->newSelectQueryBuilder()
+			->select( 'COUNT(*)' )
+			->from( $tableName )
+			->caller( __METHOD__ )->fetchField();
 	}
 
 	/**
@@ -69,24 +78,19 @@ class SiteStatsInit {
 	 */
 	public function articles() {
 		$services = MediaWikiServices::getInstance();
+		$queryBuilder = $this->dbr->newSelectQueryBuilder()
+			->select( 'COUNT(DISTINCT page_id)' )
+			->from( 'page' )
+			->where( [
+					'page_namespace' => $services->getNamespaceInfo()->getContentNamespaces(),
+					'page_is_redirect' => 0,
+				] );
 
-		$tables = [ 'page' ];
-		$conds = [
-			'page_namespace' => $services->getNamespaceInfo()->getContentNamespaces(),
-			'page_is_redirect' => 0,
-		];
-
-		if ( $services->getMainConfig()->get( 'ArticleCountMethod' ) == 'link' ) {
-			$tables[] = 'pagelinks';
-			$conds[] = 'pl_from=page_id';
+		if ( $services->getMainConfig()->get( MainConfigNames::ArticleCountMethod ) == 'link' ) {
+			$queryBuilder->join( 'pagelinks', null, 'pl_from=page_id' );
 		}
 
-		$this->articles = $this->dbr->selectField(
-			$tables,
-			'COUNT(DISTINCT page_id)',
-			$conds,
-			__METHOD__
-		);
+		$this->articles = $queryBuilder->caller( __METHOD__ )->fetchField();
 
 		return $this->articles;
 	}
@@ -96,7 +100,7 @@ class SiteStatsInit {
 	 * @return int
 	 */
 	public function pages() {
-		$this->pages = $this->dbr->selectField( 'page', 'COUNT(*)', '', __METHOD__ );
+		$this->pages = $this->countTableRows( 'page' );
 
 		return $this->pages;
 	}
@@ -106,7 +110,7 @@ class SiteStatsInit {
 	 * @return int
 	 */
 	public function users() {
-		$this->users = $this->dbr->selectField( 'user', 'COUNT(*)', '', __METHOD__ );
+		$this->users = $this->countTableRows( 'user' );
 
 		return $this->users;
 	}
@@ -116,7 +120,7 @@ class SiteStatsInit {
 	 * @return int
 	 */
 	public function files() {
-		$this->files = $this->dbr->selectField( 'image', 'COUNT(*)', '', __METHOD__ );
+		$this->files = $this->countTableRows( 'image' );
 
 		return $this->files;
 	}
@@ -167,26 +171,58 @@ class SiteStatsInit {
 		}
 	}
 
+	private function getShardedValue( $value, $noShards, $rowId ) {
+		$remainder = $value % $noShards;
+		$quotient = (int)( ( $value - $remainder ) / $noShards );
+		// Add the reminder to the first row
+		if ( $rowId === 1 ) {
+			return $quotient + $remainder;
+		}
+		return $quotient;
+	}
+
 	/**
 	 * Refresh site_stats
 	 */
 	public function refresh() {
-		$set = [
-			'ss_total_edits' => $this->edits ?? $this->edits(),
-			'ss_good_articles' => $this->articles ?? $this->articles(),
-			'ss_total_pages' => $this->pages ?? $this->pages(),
-			'ss_users' => $this->users ?? $this->users(),
-			'ss_images' => $this->files ?? $this->files(),
-		];
-		$row = [ 'ss_row_id' => 1 ] + $set;
+		if ( MediaWikiServices::getInstance()->getMainConfig()->get( MainConfigNames::MultiShardSiteStats ) ) {
+			$shardCnt = SiteStatsUpdate::SHARDS_ON;
+			for ( $i = 1; $i <= $shardCnt; $i++ ) {
+				$set = [
+					'ss_total_edits' => $this->getShardedValue( $this->edits ?? $this->edits(), $shardCnt, $i ),
+					'ss_good_articles' => $this->getShardedValue( $this->articles ?? $this->articles(), $shardCnt, $i ),
+					'ss_total_pages' => $this->getShardedValue( $this->pages ?? $this->pages(), $shardCnt, $i ),
+					'ss_users' => $this->getShardedValue( $this->users ?? $this->users(), $shardCnt, $i ),
+					'ss_images' => $this->getShardedValue( $this->files ?? $this->files(), $shardCnt, $i ),
+				];
+				$row = [ 'ss_row_id' => $i ] + $set;
 
-		self::getDB( DB_PRIMARY )->upsert(
-			'site_stats',
-			$row,
-			'ss_row_id',
-			$set,
-			__METHOD__
-		);
+				self::getDB( DB_PRIMARY )->upsert(
+					'site_stats',
+					$row,
+					'ss_row_id',
+					$set,
+					__METHOD__
+				);
+			}
+		} else {
+			$set = [
+				'ss_total_edits' => $this->edits ?? $this->edits(),
+				'ss_good_articles' => $this->articles ?? $this->articles(),
+				'ss_total_pages' => $this->pages ?? $this->pages(),
+				'ss_users' => $this->users ?? $this->users(),
+				'ss_images' => $this->files ?? $this->files(),
+			];
+			$row = [ 'ss_row_id' => 1 ] + $set;
+
+			self::getDB( DB_PRIMARY )->upsert(
+				'site_stats',
+				$row,
+				'ss_row_id',
+				$set,
+				__METHOD__
+			);
+		}
 	}
 
 	/**

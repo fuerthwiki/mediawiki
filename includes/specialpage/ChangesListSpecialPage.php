@@ -1,7 +1,5 @@
 <?php
 /**
- * Special page which uses a ChangesList to show query results.
- *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
@@ -18,11 +16,12 @@
  * http://www.gnu.org/copyleft/gpl.html
  *
  * @file
- * @ingroup SpecialPage
  */
 
 use MediaWiki\Logger\LoggerFactory;
+use MediaWiki\MainConfigNames;
 use MediaWiki\MediaWikiServices;
+use MediaWiki\ResourceLoader as RL;
 use MediaWiki\User\UserIdentity;
 use OOUI\IconWidget;
 use Wikimedia\Rdbms\DBQueryTimeoutError;
@@ -32,16 +31,12 @@ use Wikimedia\Rdbms\IResultWrapper;
 
 /**
  * Special page which uses a ChangesList to show query results.
- * @todo Way too many public functions, most of them should be protected
+ *
+ * @todo Most of the functions here should be protected instead of public.
  *
  * @ingroup SpecialPage
  */
 abstract class ChangesListSpecialPage extends SpecialPage {
-	/**
-	 * Maximum length of a tag description in UTF-8 characters.
-	 * Longer descriptions will be truncated.
-	 */
-	private const TAG_DESC_CHARACTER_LIMIT = 120;
 
 	/** @var string */
 	protected $rcSubpage;
@@ -109,6 +104,7 @@ abstract class ChangesListSpecialPage extends SpecialPage {
 							IDatabase $dbr, &$tables, &$fields, &$conds, &$query_options, &$join_conds
 						) {
 							$conds['actor_user'] = null;
+							$join_conds['recentchanges_actor'] = [ 'JOIN', 'actor_id=rc_actor' ];
 						},
 						'isReplacedInStructuredUi' => true,
 
@@ -123,6 +119,7 @@ abstract class ChangesListSpecialPage extends SpecialPage {
 							IDatabase $dbr, &$tables, &$fields, &$conds, &$query_options, &$join_conds
 						) {
 							$conds[] = 'actor_user IS NOT NULL';
+							$join_conds['recentchanges_actor'] = [ 'JOIN', 'actor_id=rc_actor' ];
 						},
 						'isReplacedInStructuredUi' => true,
 					]
@@ -218,6 +215,7 @@ abstract class ChangesListSpecialPage extends SpecialPage {
 						) {
 							$user = $ctx->getUser();
 							$conds[] = 'actor_name<>' . $dbr->addQuotes( $user->getName() );
+							$join_conds['recentchanges_actor'] = [ 'JOIN', 'actor_id=rc_actor' ];
 						},
 						'cssClassSuffix' => 'self',
 						'isRowApplicableCallable' => static function ( IContextSource $ctx, RecentChange $rc ) {
@@ -238,6 +236,7 @@ abstract class ChangesListSpecialPage extends SpecialPage {
 							} else {
 								$conds['actor_user'] = $user->getId();
 							}
+							$join_conds['recentchanges_actor'] = [ 'JOIN', 'actor_id=rc_actor' ];
 						},
 						'cssClassSuffix' => 'others',
 						'isRowApplicableCallable' => static function ( IContextSource $ctx, RecentChange $rc ) {
@@ -563,7 +562,6 @@ abstract class ChangesListSpecialPage extends SpecialPage {
 	 */
 	protected function areFiltersInConflict() {
 		$opts = $this->getOptions();
-		/** @var ChangesListFilterGroup $group */
 		foreach ( $this->getFilterGroups() as $group ) {
 			if ( $group->getConflictingGroups() ) {
 				wfLogWarning(
@@ -572,16 +570,13 @@ abstract class ChangesListSpecialPage extends SpecialPage {
 				);
 			}
 
-			/** @var ChangesListFilter $conflictingFilter */
 			foreach ( $group->getConflictingFilters() as $conflictingFilter ) {
 				if ( $conflictingFilter->activelyInConflictWithGroup( $group, $opts ) ) {
 					return true;
 				}
 			}
 
-			/** @var ChangesListFilter $filter */
 			foreach ( $group->getFilters() as $filter ) {
-				/** @var ChangesListFilter $conflictingFilter */
 				foreach ( $filter->getConflictingFilters() as $conflictingFilter ) {
 					if (
 						$conflictingFilter->activelyInConflictWithFilter( $filter, $opts ) &&
@@ -607,7 +602,7 @@ abstract class ChangesListSpecialPage extends SpecialPage {
 		$this->considerActionsForDefaultSavedQuery( $subpage );
 
 		// Enable OOUI and module for the clock icon.
-		if ( $this->getConfig()->get( 'WatchlistExpiry' ) ) {
+		if ( $this->getConfig()->get( MainConfigNames::WatchlistExpiry ) ) {
 			$this->getOutput()->enableOOUI();
 			$this->getOutput()->addModules( 'mediawiki.special.changeslist.watchlistexpiry' );
 		}
@@ -672,7 +667,7 @@ abstract class ChangesListSpecialPage extends SpecialPage {
 			$this->outputTimeout();
 		}
 
-		if ( $this->getConfig()->get( 'EnableWANCacheReaper' ) ) {
+		if ( $this->getConfig()->get( MainConfigNames::EnableWANCacheReaper ) ) {
 			// Clean up any bad page entries for titles showing up in RC
 			DeferredUpdates::addUpdate( new WANCacheReapUpdate(
 				$this->getDB(),
@@ -711,13 +706,12 @@ abstract class ChangesListSpecialPage extends SpecialPage {
 			// the default saved query
 			count( $knownParams ) === 0
 		) {
+			$prefJson = MediaWikiServices::getInstance()
+				->getUserOptionsLookup()
+				->getOption( $this->getUser(), $this->getSavedQueriesPreferenceName() );
+
 			// Get the saved queries data and parse it
-			$savedQueries = FormatJson::decode(
-				MediaWikiServices::getInstance()
-					->getUserOptionsLookup()
-					->getOption( $this->getUser(), $this->getSavedQueriesPreferenceName() ),
-				true
-			);
+			$savedQueries = $prefJson ? FormatJson::decode( $prefJson, true ) : false;
 
 			if ( $savedQueries && isset( $savedQueries[ 'default' ] ) ) {
 				// Only load queries that are 'version' 2, since those
@@ -758,14 +752,13 @@ abstract class ChangesListSpecialPage extends SpecialPage {
 	}
 
 	/**
-	 * @see $wgRCLinkDays in DefaultSettings.php.
-	 * @see $wgRCFilterByAge in DefaultSettings.php.
+	 * @see \MediaWiki\MainConfigSchema::RCLinkDays and \MediaWiki\MainConfigSchema::RCFilterByAge.
 	 * @return int[]
 	 */
 	protected function getLinkDays() {
-		$linkDays = $this->getConfig()->get( 'RCLinkDays' );
-		$filterByAge = $this->getConfig()->get( 'RCFilterByAge' );
-		$maxAge = $this->getConfig()->get( 'RCMaxAge' );
+		$linkDays = $this->getConfig()->get( MainConfigNames::RCLinkDays );
+		$filterByAge = $this->getConfig()->get( MainConfigNames::RCFilterByAge );
+		$maxAge = $this->getConfig()->get( MainConfigNames::RCMaxAge );
 		if ( $filterByAge ) {
 			// Trim it to only links which are within $wgRCMaxAge.
 			// Note that we allow one link higher than the max for things like
@@ -814,8 +807,9 @@ abstract class ChangesListSpecialPage extends SpecialPage {
 			$out->addJsConfigVars(
 				'StructuredChangeFiltersDisplayConfig',
 				[
-					'maxDays' => (int)$this->getConfig()->get( 'RCMaxAge' ) / ( 24 * 3600 ), // Translate to days
-					'limitArray' => $this->getConfig()->get( 'RCLinkLimits' ),
+					'maxDays' => // Translate to days
+						(int)$this->getConfig()->get( MainConfigNames::RCMaxAge ) / ( 24 * 3600 ),
+					'limitArray' => $this->getConfig()->get( MainConfigNames::RCLinkLimits ),
 					'limitDefault' => $this->getDefaultLimit(),
 					'daysArray' => $this->getLinkDays(),
 					'daysDefault' => $this->getDefaultDays(),
@@ -847,14 +841,16 @@ abstract class ChangesListSpecialPage extends SpecialPage {
 	 * Get essential data about getRcFiltersConfigVars() for change detection.
 	 *
 	 * @internal For use by Resources.php only.
-	 * @see ResourceLoaderModule::getDefinitionSummary() and ResourceLoaderModule::getVersionHash()
-	 * @param ResourceLoaderContext $context
+	 * @see Module::getDefinitionSummary() and Module::getVersionHash()
+	 * @param RL\Context $context
 	 * @return array
 	 */
-	public static function getRcFiltersConfigSummary( ResourceLoaderContext $context ) {
+	public static function getRcFiltersConfigSummary( RL\Context $context ) {
+		$lang = MediaWikiServices::getInstance()->getLanguageFactory()
+			->getLanguage( $context->getLanguage() );
 		return [
 			// Reduce version computation by avoiding Message parsing
-			'RCFiltersChangeTags' => self::getChangeTagListSummary( $context ),
+			'RCFiltersChangeTags' => ChangeTags::getChangeTagListSummary( $context, $lang ),
 			'StructuredChangeFiltersEditWatchlistUrl' =>
 				SpecialPage::getTitleFor( 'EditWatchlist' )->getLocalURL()
 		];
@@ -864,116 +860,17 @@ abstract class ChangesListSpecialPage extends SpecialPage {
 	 * Get config vars to export with the mediawiki.rcfilters.filters.ui module.
 	 *
 	 * @internal For use by Resources.php only.
-	 * @param ResourceLoaderContext $context
+	 * @param RL\Context $context
 	 * @return array
 	 */
-	public static function getRcFiltersConfigVars( ResourceLoaderContext $context ) {
+	public static function getRcFiltersConfigVars( RL\Context $context ) {
+		$lang = MediaWikiServices::getInstance()->getLanguageFactory()
+			->getLanguage( $context->getLanguage() );
 		return [
-			'RCFiltersChangeTags' => self::getChangeTagList( $context ),
+			'RCFiltersChangeTags' => ChangeTags::getChangeTagList( $context, $lang ),
 			'StructuredChangeFiltersEditWatchlistUrl' =>
 				SpecialPage::getTitleFor( 'EditWatchlist' )->getLocalURL()
 		];
-	}
-
-	/**
-	 * Get information about change tags, without parsing messages, for getRcFiltersConfigSummary().
-	 *
-	 * Message contents are the raw values (->plain()), because parsing messages is expensive.
-	 * Even though we're not parsing messages, building a data structure with the contents of
-	 * hundreds of i18n messages is still not cheap (see T223260#5370610), so the result of this
-	 * function is cached in WANCache for 24 hours.
-	 *
-	 * Returns an array of associative arrays with information about each tag:
-	 * - name: Tag name (string)
-	 * - labelMsg: Short description message (Message object, or false for hidden tags)
-	 * - label: Short description message (raw message contents)
-	 * - descriptionMsg: Long description message (Message object)
-	 * - description: Long description message (raw message contents)
-	 * - cssClass: CSS class to use for RC entries with this tag
-	 * - hits: Number of RC entries that have this tag
-	 *
-	 * @param ResourceLoaderContext $context
-	 * @return array[] Information about each tag
-	 */
-	protected static function getChangeTagListSummary( ResourceLoaderContext $context ) {
-		$cache = MediaWikiServices::getInstance()->getMainWANObjectCache();
-		return $cache->getWithSetCallback(
-			$cache->makeKey( 'ChangesListSpecialPage-changeTagListSummary', $context->getLanguage() ),
-			WANObjectCache::TTL_DAY,
-			static function ( $oldValue, &$ttl, array &$setOpts ) use ( $context ) {
-				$explicitlyDefinedTags = array_fill_keys( ChangeTags::listExplicitlyDefinedTags(), 0 );
-				$softwareActivatedTags = array_fill_keys( ChangeTags::listSoftwareActivatedTags(), 0 );
-
-				$tagStats = ChangeTags::tagUsageStatistics();
-				$tagHitCounts = array_merge( $explicitlyDefinedTags, $softwareActivatedTags, $tagStats );
-
-				$result = [];
-				foreach ( $tagHitCounts as $tagName => $hits ) {
-					if (
-						(
-							// Only get active tags
-							isset( $explicitlyDefinedTags[ $tagName ] ) ||
-							isset( $softwareActivatedTags[ $tagName ] )
-						) &&
-						// Only get tags with more than 0 hits
-						$hits > 0
-					) {
-						$labelMsg = ChangeTags::tagShortDescriptionMessage( $tagName, $context );
-						$descriptionMsg = ChangeTags::tagLongDescriptionMessage( $tagName, $context );
-						$result[] = [
-							'name' => $tagName,
-							'labelMsg' => $labelMsg,
-							'label' => $labelMsg ? $labelMsg->plain() : $tagName,
-							'descriptionMsg' => $descriptionMsg,
-							'description' => $descriptionMsg ? $descriptionMsg->plain() : '',
-							'cssClass' => Sanitizer::escapeClass( 'mw-tag-' . $tagName ),
-							'hits' => $hits,
-						];
-					}
-				}
-				return $result;
-			}
-		);
-	}
-
-	/**
-	 * Get information about change tags to export to JS via getRcFiltersConfigVars().
-	 *
-	 * This manipulates the label and description of each tag, which are parsed, stripped
-	 * and (in the case of description) truncated versions of these messages. Message
-	 * parsing is expensive, so to detect whether the tag list has changed, use
-	 * getChangeTagListSummary() instead.
-	 *
-	 * The result of this function is cached in WANCache for 24 hours.
-	 *
-	 * @param ResourceLoaderContext $context
-	 * @return array[] Same as getChangeTagListSummary(), with messages parsed, stripped and truncated
-	 */
-	protected static function getChangeTagList( ResourceLoaderContext $context ) {
-		$tags = self::getChangeTagListSummary( $context );
-		$language = MediaWikiServices::getInstance()->getLanguageFactory()
-			->getLanguage( $context->getLanguage() );
-		foreach ( $tags as &$tagInfo ) {
-			if ( $tagInfo['labelMsg'] ) {
-				$tagInfo['label'] = Sanitizer::stripAllTags( $tagInfo['labelMsg']->parse() );
-			} else {
-				$tagInfo['label'] = $context->msg( 'rcfilters-tag-hidden', $tagInfo['name'] )->text();
-			}
-			$tagInfo['description'] = $tagInfo['descriptionMsg'] ?
-				$language->truncateForVisual(
-					Sanitizer::stripAllTags( $tagInfo['descriptionMsg']->parse() ),
-					self::TAG_DESC_CHARACTER_LIMIT
-				) :
-				'';
-			unset( $tagInfo['labelMsg'] );
-			unset( $tagInfo['descriptionMsg'] );
-		}
-
-		// Instead of sorting by hit count (disabled for now), sort by display name
-		usort( $tags, static function ( $a, $b ) {
-			return strcasecmp( $a['label'], $b['label'] );
-		} );
-		return $tags;
 	}
 
 	/**
@@ -1053,7 +950,7 @@ abstract class ChangesListSpecialPage extends SpecialPage {
 
 		$changeTypeGroup = $this->getFilterGroup( 'changeType' );
 
-		if ( $this->getConfig()->get( 'RCWatchCategoryMembership' ) ) {
+		if ( $this->getConfig()->get( MainConfigNames::RCWatchCategoryMembership ) ) {
 			$transformedHideCategorizationDef = $this->transformFilterDefinition(
 				$this->hideCategorizationFilterDefinition
 			);
@@ -1195,9 +1092,9 @@ abstract class ChangesListSpecialPage extends SpecialPage {
 
 	/**
 	 * Get a FormOptions object containing the default options. By default, returns
-	 * some basic options.  The filters listed explicitly here are overriden in this
+	 * some basic options.  The filters listed explicitly here are overridden in this
 	 * method, in subclasses, but most filters (e.g. hideminor, userExpLevel filters,
-	 * and more) are structured.  Structured filters are overriden in registerFilters.
+	 * and more) are structured.  Structured filters are overridden in registerFilters.
 	 * not here.
 	 *
 	 * @return FormOptions
@@ -1281,7 +1178,7 @@ abstract class ChangesListSpecialPage extends SpecialPage {
 			return $b->getPriority() <=> $a->getPriority();
 		} );
 
-		foreach ( $this->filterGroups as $groupName => $group ) {
+		foreach ( $this->filterGroups as $group ) {
 			$groupOutput = $group->getJsData();
 			if ( $groupOutput !== null ) {
 				$output['messageKeys'] = array_merge(
@@ -1366,7 +1263,8 @@ abstract class ChangesListSpecialPage extends SpecialPage {
 		}
 
 		$opts->validateIntBounds( 'limit', 0, 5000 );
-		$opts->validateBounds( 'days', 0, $this->getConfig()->get( 'RCMaxAge' ) / ( 3600 * 24 ) );
+		$opts->validateBounds( 'days', 0,
+			$this->getConfig()->get( MainConfigNames::RCMaxAge ) / ( 3600 * 24 ) );
 	}
 
 	/**
@@ -1526,12 +1424,7 @@ abstract class ChangesListSpecialPage extends SpecialPage {
 			$namespaces = $this->expandSymbolicNamespaceFilters( $namespaces );
 
 			$namespaceInfo = MediaWikiServices::getInstance()->getNamespaceInfo();
-			$namespaces = array_filter(
-				$namespaces,
-				static function ( $ns ) use ( $namespaceInfo ) {
-					return $namespaceInfo->exists( $ns );
-				}
-			);
+			$namespaces = array_filter( $namespaces, [ $namespaceInfo, 'exists' ] );
 
 			if ( $namespaces !== [] ) {
 				// Namespaces are just ints, use them as int when acting with the database
@@ -1539,15 +1432,8 @@ abstract class ChangesListSpecialPage extends SpecialPage {
 
 				if ( $opts[ 'associated' ] ) {
 					$associatedNamespaces = array_map(
-						static function ( $ns ) use ( $namespaceInfo ){
-							return $namespaceInfo->getAssociated( $ns );
-						},
-						array_filter(
-							$namespaces,
-							static function ( $ns ) use ( $namespaceInfo ) {
-								return $namespaceInfo->hasTalkNamespace( $ns );
-							}
-						)
+						[ $namespaceInfo, 'getAssociated' ],
+						array_filter( $namespaces, [ $namespaceInfo, 'hasTalkNamespace' ] )
 					);
 					$namespaces = array_unique( array_merge( $namespaces, $associatedNamespaces ) );
 				}
@@ -1737,7 +1623,7 @@ abstract class ChangesListSpecialPage extends SpecialPage {
 		# The legend showing what the letters and stuff mean
 		$legend = Html::openElement( 'dl' ) . "\n";
 		# Iterates through them and gets the messages for both letter and tooltip
-		$legendItems = $context->getConfig()->get( 'RecentChangesFlags' );
+		$legendItems = $context->getConfig()->get( MainConfigNames::RecentChangesFlags );
 		if ( !( $user->useRCPatrol() || $user->useNPPatrol() ) ) {
 			unset( $legendItems['unpatrolled'] );
 		}
@@ -1765,7 +1651,7 @@ abstract class ChangesListSpecialPage extends SpecialPage {
 			$context->msg( 'recentchanges-label-plusminus' )->text()
 		) . "\n";
 		// Watchlist expiry clock icon.
-		if ( $context->getConfig()->get( 'WatchlistExpiry' ) ) {
+		if ( $context->getConfig()->get( MainConfigNames::WatchlistExpiry ) ) {
 			$widget = new IconWidget( [
 				'icon' => 'clock',
 				'classes' => [ 'mw-changesList-watchlistExpiry' ],
@@ -1849,11 +1735,6 @@ abstract class ChangesListSpecialPage extends SpecialPage {
 	public function filterOnUserExperienceLevel( $specialPageClassName, $context, $dbr,
 		&$tables, &$fields, &$conds, &$query_options, &$join_conds, $selectedExpLevels, $now = 0
 	) {
-		global $wgLearnerEdits,
-			$wgExperiencedUserEdits,
-			$wgLearnerMemberSince,
-			$wgExperiencedUserMemberSince;
-
 		$LEVEL_COUNT = 5;
 
 		// If all levels are selected, don't filter
@@ -1875,11 +1756,13 @@ abstract class ChangesListSpecialPage extends SpecialPage {
 			!in_array( 'unregistered', $selectedExpLevels )
 		) {
 			$conds[] = 'actor_user IS NOT NULL';
+			$join_conds['recentchanges_actor'] = [ 'JOIN', 'actor_id=rc_actor' ];
 			return;
 		}
 
 		if ( $selectedExpLevels === [ 'unregistered' ] ) {
 			$conds['actor_user'] = null;
+			$join_conds['recentchanges_actor'] = [ 'JOIN', 'actor_id=rc_actor' ];
 			return;
 		}
 
@@ -1890,12 +1773,15 @@ abstract class ChangesListSpecialPage extends SpecialPage {
 			$now = time();
 		}
 		$secondsPerDay = 86400;
-		$learnerCutoff = $now - $wgLearnerMemberSince * $secondsPerDay;
-		$experiencedUserCutoff = $now - $wgExperiencedUserMemberSince * $secondsPerDay;
+		$config = $this->getConfig();
+		$learnerCutoff =
+			$now - $config->get( MainConfigNames::LearnerMemberSince ) * $secondsPerDay;
+		$experiencedUserCutoff =
+			$now - $config->get( MainConfigNames::ExperiencedUserMemberSince ) * $secondsPerDay;
 
 		$aboveNewcomer = $dbr->makeList(
 			[
-				'user_editcount >= ' . intval( $wgLearnerEdits ),
+				'user_editcount >= ' . intval( $config->get( MainConfigNames::LearnerEdits ) ),
 				$dbr->makeList( [
 					'user_registration IS NULL',
 					'user_registration <= ' . $dbr->addQuotes( $dbr->timestamp( $learnerCutoff ) ),
@@ -1906,7 +1792,7 @@ abstract class ChangesListSpecialPage extends SpecialPage {
 
 		$aboveLearner = $dbr->makeList(
 			[
-				'user_editcount >= ' . intval( $wgExperiencedUserEdits ),
+				'user_editcount >= ' . intval( $config->get( MainConfigNames::ExperiencedUserEdits ) ),
 				$dbr->makeList( [
 					'user_registration IS NULL',
 					'user_registration <= ' .
@@ -1921,6 +1807,7 @@ abstract class ChangesListSpecialPage extends SpecialPage {
 		if ( in_array( 'unregistered', $selectedExpLevels ) ) {
 			$selectedExpLevels = array_diff( $selectedExpLevels, [ 'unregistered' ] );
 			$conditions['actor_user'] = null;
+			$join_conds['recentchanges_actor'] = [ 'JOIN', 'actor_id=rc_actor' ];
 		}
 
 		if ( $selectedExpLevels === [ 'newcomer' ] ) {
@@ -1943,6 +1830,7 @@ abstract class ChangesListSpecialPage extends SpecialPage {
 			$conditions[] = $aboveNewcomer;
 		} elseif ( $selectedExpLevels === [ 'experienced', 'learner', 'newcomer' ] ) {
 			$conditions[] = 'actor_user IS NOT NULL';
+			$join_conds['recentchanges_actor'] = [ 'JOIN', 'actor_id=rc_actor' ];
 		}
 
 		if ( count( $conditions ) > 1 ) {
@@ -1972,11 +1860,7 @@ abstract class ChangesListSpecialPage extends SpecialPage {
 	 * @param UserIdentity $user
 	 * @return bool
 	 */
-	public static function checkStructuredFilterUiEnabled( $user ) {
-		if ( $user instanceof Config ) {
-			wfDeprecated( __METHOD__ . ' with Config argument', '1.34' );
-			$user = func_get_arg( 1 );
-		}
+	public static function checkStructuredFilterUiEnabled( UserIdentity $user ) {
 		return !MediaWikiServices::getInstance()
 			->getUserOptionsLookup()
 			->getOption( $user, 'rcenhancedfilters-disable' );

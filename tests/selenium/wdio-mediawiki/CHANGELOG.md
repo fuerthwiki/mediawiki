@@ -1,4 +1,19 @@
-## 1.2.0
+## 2.2.0 / 2022-07-29
+
+* selenium: Default to larger window size (T314115)
+
+## 2.1.0 / 2022-05-19
+
+* Use @wdio/spec-reporter.
+
+## 2.0.0 / 2022-01-11
+
+The wdio-mediawiki library now requires WebdriverIO async mode.
+
+* Util: Added `getMWApiResponse()` and `isTargetNotWikitext()`.
+* CreateAccountPage: Added initial version.
+
+## 1.2.0 / 2021-01-11
 
 * Set default configuration to retry tests in a spec file once upon failure
 

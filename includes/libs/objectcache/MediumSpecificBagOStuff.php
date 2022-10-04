@@ -32,16 +32,15 @@ use Wikimedia\WaitConditionLoop;
  * @since 1.34
  */
 abstract class MediumSpecificBagOStuff extends BagOStuff {
-	/** @var array<string,array> Map of (key => (class, depth, expiry) */
+	/** @var array<string,array> Map of (key => (class LOCK_* constant => value) */
 	protected $locks = [];
-	/** @var int ERR_* class constant */
-	protected $lastError = self::ERR_NONE;
-	/** @var int Seconds */
-	protected $syncTimeout;
 	/** @var int Bytes; chunk size of segmented cache values */
 	protected $segmentationSize;
 	/** @var int Bytes; maximum total size of a segmented cache value */
 	protected $segmentedValueMaxSize;
+
+	/** @var float Seconds; maximum expected seconds for a lock ping to reach the backend */
+	protected $maxLockSendDelay = 0.05;
 
 	/** @var array */
 	private $duplicateKeyLookups = [];
@@ -50,16 +49,10 @@ abstract class MediumSpecificBagOStuff extends BagOStuff {
 	/** @var bool */
 	private $dupeTrackScheduled = false;
 
-	/** @var callable[] */
-	protected $busyCallbacks = [];
-
-	/** @var array[] Map of (key => (PHP variable value, serialized value)) */
-	protected $preparedValues = [];
-
-	/** @var string Component to use for key construction of blob segment keys */
+	/** Component to use for key construction of blob segment keys */
 	private const SEGMENT_COMPONENT = 'segment';
 
-	/** @var int Idiom for doGet() to return extra information by reference */
+	/** Idiom for doGet() to return extra information by reference */
 	protected const PASS_BY_REF = -1;
 
 	protected const METRIC_OP_GET = 'get';
@@ -82,7 +75,6 @@ abstract class MediumSpecificBagOStuff extends BagOStuff {
 	 *   - logger: Psr\Log\LoggerInterface instance
 	 *   - reportDupes: Whether to emit warning log messages for all keys that were
 	 *      requested more than once (requires an asyncHandler).
-	 *   - syncTimeout: How long to wait with WRITE_SYNC in seconds.
 	 *   - segmentationSize: The chunk size, in bytes, of segmented values. The value should
 	 *      not exceed the maximum size of values in the storage backend, as configured by
 	 *      the site administrator.
@@ -91,18 +83,19 @@ abstract class MediumSpecificBagOStuff extends BagOStuff {
 	 *      amount of I/O between application and cache servers that the network can handle.
 	 * @param array $params
 	 * @phpcs:ignore Generic.Files.LineLength
-	 * @phan-param array{logger?:Psr\Log\LoggerInterface,asyncHandler?:callable,reportDupes?:bool,syncTimeout?:int,segmentationSize?:int,segmentedValueMaxSize?:int} $params
+	 * @phan-param array{logger?:Psr\Log\LoggerInterface,asyncHandler?:callable,reportDupes?:bool,segmentationSize?:int|float,segmentedValueMaxSize?:int} $params
 	 */
 	public function __construct( array $params = [] ) {
 		parent::__construct( $params );
 
-		if ( !empty( $params['reportDupes'] ) && is_callable( $this->asyncHandler ) ) {
+		if ( !empty( $params['reportDupes'] ) && $this->asyncHandler ) {
 			$this->reportDupes = true;
 		}
 
-		$this->syncTimeout = $params['syncTimeout'] ?? 3;
-		$this->segmentationSize = $params['segmentationSize'] ?? 8388608; // 8MiB
-		$this->segmentedValueMaxSize = $params['segmentedValueMaxSize'] ?? 67108864; // 64MiB
+		// Default to 8MiB if segmentationSize is not set
+		$this->segmentationSize = $params['segmentationSize'] ?? 8388608;
+		// Default to 64MiB if segmentedValueMaxSize is not set
+		$this->segmentedValueMaxSize = $params['segmentedValueMaxSize'] ?? 67108864;
 	}
 
 	/**
@@ -158,9 +151,13 @@ abstract class MediumSpecificBagOStuff extends BagOStuff {
 	}
 
 	/**
+	 * Get an item
+	 *
+	 * The CAS token should be null if the key does not exist or the value is corrupt
+	 *
 	 * @param string $key
 	 * @param int $flags Bitfield of BagOStuff::READ_* constants [optional]
-	 * @param mixed|null &$casToken cas() token if MediumSpecificBagOStuff::PASS_BY_REF [returned]
+	 * @param mixed &$casToken CAS token if MediumSpecificBagOStuff::PASS_BY_REF [returned]
 	 * @return mixed Returns false on failure or if the item does not exist
 	 */
 	abstract protected function doGet( $key, $flags = 0, &$casToken = null );
@@ -175,9 +172,9 @@ abstract class MediumSpecificBagOStuff extends BagOStuff {
 	 * @return bool Success
 	 */
 	public function set( $key, $value, $exptime = 0, $flags = 0 ) {
-		list( $entry, $usable ) = $this->makeValueOrSegmentList( $key, $value, $exptime, $flags );
+		$entry = $this->makeValueOrSegmentList( $key, $value, $exptime, $flags, $ok );
 		// Only when all segments (if any) are stored should the main key be changed
-		return $usable ? $this->doSet( $key, $entry, $exptime, $flags ) : false;
+		return $ok ? $this->doSet( $key, $entry, $exptime, $flags ) : false;
 	}
 
 	/**
@@ -213,7 +210,8 @@ abstract class MediumSpecificBagOStuff extends BagOStuff {
 		}
 
 		if ( !SerializedValueContainer::isSegmented( $mainValue ) ) {
-			return true; // no segments to delete
+			// no segments to delete
+			return true;
 		}
 
 		$orderedKeys = array_map(
@@ -236,9 +234,9 @@ abstract class MediumSpecificBagOStuff extends BagOStuff {
 	abstract protected function doDelete( $key, $flags = 0 );
 
 	public function add( $key, $value, $exptime = 0, $flags = 0 ) {
-		list( $entry, $usable ) = $this->makeValueOrSegmentList( $key, $value, $exptime, $flags );
+		$entry = $this->makeValueOrSegmentList( $key, $value, $exptime, $flags, $ok );
 		// Only when all segments (if any) are stored should the main key be changed
-		return $usable ? $this->doAdd( $key, $entry, $exptime, $flags ) : false;
+		return $ok ? $this->doAdd( $key, $entry, $exptime, $flags ) : false;
 	}
 
 	/**
@@ -258,7 +256,7 @@ abstract class MediumSpecificBagOStuff extends BagOStuff {
 	 * The callback function returns the new value given the current value
 	 * (which will be false if not present), and takes the arguments:
 	 * (this BagOStuff, cache key, current value, TTL).
-	 * The TTL parameter is reference set to $exptime. It can be overriden in the callback.
+	 * The TTL parameter is reference set to $exptime. It can be overridden in the callback.
 	 * Nothing is stored nor deleted if the callback returns false.
 	 *
 	 * @param string $key
@@ -284,14 +282,14 @@ abstract class MediumSpecificBagOStuff extends BagOStuff {
 	final protected function mergeViaCas( $key, callable $callback, $exptime, $attempts, $flags ) {
 		$attemptsLeft = $attempts;
 		do {
-			$token = self::PASS_BY_REF; // passed by reference
+			$token = self::PASS_BY_REF;
 			// Get the old value and CAS token from cache
-			$this->clearLastError();
+			$watchPoint = $this->watchErrors();
 			$currentValue = $this->resolveSegments(
 				$key,
 				$this->doGet( $key, $flags, $token )
 			);
-			if ( $this->getLastError() ) {
+			if ( $this->getLastError( $watchPoint ) ) {
 				// Don't spam slow retries due to network problems (retry only on races)
 				$this->logger->warning(
 					__METHOD__ . ' failed due to read I/O error on get() for {key}.',
@@ -305,13 +303,16 @@ abstract class MediumSpecificBagOStuff extends BagOStuff {
 			$value = $callback( $this, $key, $currentValue, $exptime );
 			$keyWasNonexistant = ( $currentValue === false );
 			$valueMatchesOldValue = ( $value === $currentValue );
-			unset( $currentValue ); // free RAM in case the value is large
+			// free RAM in case the value is large
+			unset( $currentValue );
 
-			$this->clearLastError();
+			$watchPoint = $this->watchErrors();
 			if ( $value === false || $exptime < 0 ) {
-				$success = true; // do nothing
+				// do nothing
+				$success = true;
 			} elseif ( $valueMatchesOldValue && $attemptsLeft !== $attempts ) {
-				$success = true; // recently set by another thread to the same value
+				// recently set by another thread to the same value
+				$success = true;
 			} elseif ( $keyWasNonexistant ) {
 				// Try to create the key, failing if it gets created in the meantime
 				$success = $this->add( $key, $value, $exptime, $flags );
@@ -319,7 +320,7 @@ abstract class MediumSpecificBagOStuff extends BagOStuff {
 				// Try to update the key, failing if it gets changed in the meantime
 				$success = $this->cas( $token, $key, $value, $exptime, $flags );
 			}
-			if ( $this->getLastError() ) {
+			if ( $this->getLastError( $watchPoint ) ) {
 				// Don't spam slow retries due to network problems (retry only on races)
 				$this->logger->warning(
 					__METHOD__ . ' failed due to write I/O error for {key}.',
@@ -335,9 +336,9 @@ abstract class MediumSpecificBagOStuff extends BagOStuff {
 	}
 
 	/**
-	 * Check and set an item
+	 * Set an item if the current CAS token matches the provided CAS token
 	 *
-	 * @param mixed $casToken
+	 * @param mixed $casToken Only set the item if it still has this CAS token
 	 * @param string $key
 	 * @param mixed $value
 	 * @param int $exptime Either an interval in seconds or a unix timestamp for expiry
@@ -351,18 +352,19 @@ abstract class MediumSpecificBagOStuff extends BagOStuff {
 				[ 'key' => $key ]
 			);
 
-			return false; // caller may have meant to use add()?
+			// caller may have meant to use add()?
+			return false;
 		}
 
-		list( $entry, $usable ) = $this->makeValueOrSegmentList( $key, $value, $exptime, $flags );
+		$entry = $this->makeValueOrSegmentList( $key, $value, $exptime, $flags, $ok );
 		// Only when all segments (if any) are stored should the main key be changed
-		return $usable ? $this->doCas( $casToken, $key, $entry, $exptime, $flags ) : false;
+		return $ok ? $this->doCas( $casToken, $key, $entry, $exptime, $flags ) : false;
 	}
 
 	/**
-	 * Check and set an item
+	 * Set an item if the current CAS token matches the provided CAS token
 	 *
-	 * @param mixed $casToken
+	 * @param mixed $casToken CAS token from an existing version of the key
 	 * @param string $key
 	 * @param mixed $value
 	 * @param int $exptime Either an interval in seconds or a unix timestamp for expiry
@@ -372,36 +374,55 @@ abstract class MediumSpecificBagOStuff extends BagOStuff {
 	protected function doCas( $casToken, $key, $value, $exptime = 0, $flags = 0 ) {
 		// @TODO: the use of lock() assumes that all other relevant sets() use a lock
 		if ( !$this->lock( $key, 0 ) ) {
-			return false; // non-blocking
+			// non-blocking
+			return false;
 		}
 
-		$curCasToken = self::PASS_BY_REF; // passed by reference
-		$this->clearLastError();
-		$this->doGet( $key, self::READ_LATEST, $curCasToken );
-		if ( is_object( $curCasToken ) ) {
-			// Using === does not work with objects since it checks for instance identity
-			throw new UnexpectedValueException( "CAS token cannot be an object" );
-		}
-		if ( $this->getLastError() ) {
+		$curCasToken = self::PASS_BY_REF;
+		$watchPoint = $this->watchErrors();
+		$exists = ( $this->doGet( $key, self::READ_LATEST, $curCasToken ) !== false );
+		if ( $this->getLastError( $watchPoint ) ) {
 			// Fail if the old CAS token could not be read
 			$success = false;
 			$this->logger->warning(
 				__METHOD__ . ' failed due to write I/O error for {key}.',
 				[ 'key' => $key ]
 			);
-		} elseif ( $casToken === $curCasToken ) {
+		} elseif ( $exists && $this->tokensMatch( $casToken, $curCasToken ) ) {
 			$success = $this->doSet( $key, $value, $exptime, $flags );
 		} else {
-			$success = false; // mismatched or failed
+			// mismatched or failed
+			$success = false;
 			$this->logger->info(
 				__METHOD__ . ' failed due to race condition for {key}.',
-				[ 'key' => $key ]
+				[ 'key' => $key, 'key_exists' => $exists ]
 			);
 		}
 
 		$this->unlock( $key );
 
 		return $success;
+	}
+
+	/**
+	 * @param mixed $value CAS token for an existing key
+	 * @param mixed $otherValue CAS token for an existing key
+	 * @return bool Whether the two tokens match
+	 */
+	final protected function tokensMatch( $value, $otherValue ) {
+		$type = gettype( $value );
+		// Ideally, tokens are counters, timestamps, hashes, or serialized PHP values.
+		// However, some classes might use the PHP values themselves.
+		if ( $type !== gettype( $otherValue ) ) {
+			return false;
+		}
+		// Serialize both tokens to strictly compare objects or arrays (which might objects
+		// nested inside). Note that this will not apply if integer/string CAS tokens are used.
+		if ( $type === 'array' || $type === 'object' ) {
+			return ( serialize( $value ) === serialize( $otherValue ) );
+		}
+		// For string/integer tokens, use a simple comparison
+		return ( $value === $otherValue );
 	}
 
 	/**
@@ -457,6 +478,23 @@ abstract class MediumSpecificBagOStuff extends BagOStuff {
 		return $ok;
 	}
 
+	public function incrWithInit( $key, $exptime, $step = 1, $init = null, $flags = 0 ) {
+		$step = (int)$step;
+		$init = is_int( $init ) ? $init : $step;
+
+		return $this->doIncrWithInit( $key, $exptime, $step, $init, $flags );
+	}
+
+	/**
+	 * @param string $key
+	 * @param int $exptime
+	 * @param int $step
+	 * @param int $init
+	 * @param int $flags
+	 * @return int|bool New value or false on failure
+	 */
+	abstract protected function doIncrWithInit( $key, $exptime, $step, $init, $flags );
+
 	/**
 	 * @param string $key
 	 * @param int $timeout
@@ -506,18 +544,18 @@ abstract class MediumSpecificBagOStuff extends BagOStuff {
 		$fname = __METHOD__;
 		$loop = new WaitConditionLoop(
 			function () use ( $key, $exptime, $fname, &$lockTsUnix ) {
-				$this->clearLastError();
+				$watchPoint = $this->watchErrors();
 				if ( $this->add( $this->makeLockKey( $key ), 1, $exptime ) ) {
 					$lockTsUnix = microtime( true );
 
-					return WaitConditionLoop::CONDITION_REACHED; // locked!
-				} elseif ( $this->getLastError() ) {
+					return WaitConditionLoop::CONDITION_REACHED;
+				} elseif ( $this->getLastError( $watchPoint ) ) {
 					$this->logger->warning(
 						"$fname failed due to I/O error for {key}.",
 						[ 'key' => $key ]
 					);
 
-					return WaitConditionLoop::CONDITION_ABORTED; // network partition?
+					return WaitConditionLoop::CONDITION_ABORTED;
 				}
 
 				return WaitConditionLoop::CONDITION_CONTINUE;
@@ -575,21 +613,24 @@ abstract class MediumSpecificBagOStuff extends BagOStuff {
 	 * @return bool Success
 	 */
 	protected function doUnlock( $key ) {
-		// Estimate the remaining TTL of the lock key
-		$curTTL = $this->locks[$key][self::LOCK_EXPIRY] - $this->getCurrentTime();
-		// Maximum expected one-way-delay for a query to reach the backend
-		$maxOWD = 0.050;
-
 		$released = false;
 
-		if ( ( $curTTL - $maxOWD ) > 0 ) {
-			// The lock key is extremely unlikely to expire before a deletion operation
-			// sent from this method arrives on the relevant backend server
+		// Estimate the remaining TTL of the lock key
+		$curTTL = $this->locks[$key][self::LOCK_EXPIRY] - $this->getCurrentTime();
+
+		// Check the risk of race conditions for key deletion
+		if ( $this->getQoS( self::ATTR_DURABILITY ) <= self::QOS_DURABILITY_SCRIPT ) {
+			// Lock (and data) keys use memory specific to this request (e.g. HashBagOStuff)
+			$isSafe = true;
+		} else {
+			// It is unsafe to delete the lock key if there is a serious risk of the key already
+			// being claimed by another thread before the delete operation reaches the backend
+			$isSafe = ( $curTTL > $this->maxLockSendDelay );
+		}
+
+		if ( $isSafe ) {
 			$released = $this->doDelete( $this->makeLockKey( $key ) );
 		} else {
-			// It is unsafe for this method to delete the lock key due to the risk of it
-			// expiring and being claimed by another thread before the deletion operation
-			// arrives on the backend server
 			$this->logger->warning(
 				"Lock for {key} held too long ({age} sec).",
 				[ 'key' => $key, 'curTTL' => $curTTL ]
@@ -752,22 +793,6 @@ abstract class MediumSpecificBagOStuff extends BagOStuff {
 		return $res;
 	}
 
-	public function incrWithInit( $key, $exptime, $value = 1, $init = null, $flags = 0 ) {
-		$init = is_int( $init ) ? $init : $value;
-		$this->clearLastError();
-		$newValue = $this->incr( $key, $value, $flags );
-		if ( $newValue === false && !$this->getLastError() ) {
-			// No key set; initialize
-			$newValue = $this->add( $key, (int)$init, $exptime, $flags ) ? $init : false;
-			if ( $newValue === false && !$this->getLastError() ) {
-				// Raced out initializing; increment
-				$newValue = $this->incr( $key, $value, $flags );
-			}
-		}
-
-		return $newValue;
-	}
-
 	/**
 	 * Get and reassemble the chunks of blob at the given key
 	 *
@@ -795,7 +820,8 @@ abstract class MediumSpecificBagOStuff extends BagOStuff {
 				if ( isset( $segmentsByKey[$segmentKey] ) ) {
 					$parts[] = $segmentsByKey[$segmentKey];
 				} else {
-					return false; // missing segment
+					// missing segment
+					return false;
 				}
 			}
 
@@ -805,58 +831,65 @@ abstract class MediumSpecificBagOStuff extends BagOStuff {
 		return $mainValue;
 	}
 
-	/**
-	 * Get the "last error" registered; clearLastError() should be called manually
-	 * @return int ERR_* constant for the "last error" registry
-	 * @since 1.23
-	 */
-	public function getLastError() {
-		return $this->lastError;
-	}
-
-	/**
-	 * Clear the "last error" registry
-	 * @since 1.23
-	 */
-	public function clearLastError() {
-		$this->lastError = self::ERR_NONE;
-	}
-
-	/**
-	 * Set the "last error" registry
-	 * @param int $err ERR_* constant
-	 * @since 1.23
-	 */
-	protected function setLastError( $err ) {
-		$this->lastError = $err;
-	}
-
 	final public function addBusyCallback( callable $workCallback ) {
-		$this->busyCallbacks[] = $workCallback;
+		wfDeprecated( __METHOD__, '1.39' );
 	}
 
 	/**
-	 * Determine the entry (inline or segment list) to store under a key to save the value
+	 * Check if a value should use a segmentation wrapper due to its size
+	 *
+	 * In order to avoid extra serialization and/or twice-serialized wrappers, just check if
+	 * the value is a large string. Support cache wrappers (e.g. WANObjectCache) that use 2D
+	 * arrays to wrap values. This does not recurse in order to avoid overhead from complex
+	 * structures and the risk of infinite loops (due to references).
+	 *
+	 * @param mixed $value
+	 * @param int $flags
+	 * @return bool
+	 */
+	private function useSegmentationWrapper( $value, $flags ) {
+		if (
+			$this->segmentationSize === INF ||
+			!$this->fieldHasFlags( $flags, self::WRITE_ALLOW_SEGMENTS )
+		) {
+			return false;
+		}
+
+		if ( is_string( $value ) ) {
+			return ( strlen( $value ) >= $this->segmentationSize );
+		}
+
+		if ( is_array( $value ) ) {
+			// Expect that the contained value will be one of the first array entries
+			foreach ( array_slice( $value, 0, 4 ) as $v ) {
+				if ( is_string( $v ) && strlen( $v ) >= $this->segmentationSize ) {
+					return true;
+				}
+			}
+		}
+
+		// Avoid breaking functions for incrementing/decrementing integer key values
+		return false;
+	}
+
+	/**
+	 * Make the entry to store at a key (inline or segment list), storing any segments
 	 *
 	 * @param string $key
 	 * @param mixed $value
 	 * @param int $exptime
 	 * @param int $flags
-	 * @return array (inline value or segment list, whether the entry is usable)
+	 * @param mixed|null &$ok Whether the entry is usable (e.g. no missing segments) [returned]
+	 * @return mixed The entry (inline value, wrapped inline value, or wrapped segment list)
 	 * @since 1.34
 	 */
-	final protected function makeValueOrSegmentList( $key, $value, $exptime, $flags ) {
+	final protected function makeValueOrSegmentList( $key, $value, $exptime, $flags, &$ok ) {
 		$entry = $value;
-		$usable = true;
+		$ok = true;
 
-		if (
-			$this->fieldHasFlags( $flags, self::WRITE_ALLOW_SEGMENTS ) &&
-			!is_int( $value ) && // avoid breaking incr()/decr()
-			is_finite( $this->segmentationSize )
-		) {
+		if ( $this->useSegmentationWrapper( $value, $flags ) ) {
 			$segmentSize = $this->segmentationSize;
 			$maxTotalSize = $this->segmentedValueMaxSize;
-
 			$serialized = $this->getSerialized( $value, $key );
 			$size = strlen( $serialized );
 			if ( $size > $maxTotalSize ) {
@@ -864,9 +897,6 @@ abstract class MediumSpecificBagOStuff extends BagOStuff {
 					"Value for {key} exceeds $maxTotalSize bytes; cannot segment.",
 					[ 'key' => $key ]
 				);
-			} elseif ( $size <= $segmentSize ) {
-				// The serialized value was already computed, so just use it inline
-				$entry = SerializedValueContainer::newUnified( $serialized );
 			} else {
 				// Split the serialized value into chunks and store them at different keys
 				$chunksByKey = [];
@@ -879,13 +909,13 @@ abstract class MediumSpecificBagOStuff extends BagOStuff {
 					$chunksByKey[$chunkKey] = $segment;
 					$segmentHashes[] = $hash;
 				}
-				$flags &= ~self::WRITE_ALLOW_SEGMENTS; // sanity
-				$usable = $this->setMulti( $chunksByKey, $exptime, $flags );
+				$flags &= ~self::WRITE_ALLOW_SEGMENTS;
+				$ok = $this->setMulti( $chunksByKey, $exptime, $flags );
 				$entry = SerializedValueContainer::newSegmented( $segmentHashes );
 			}
 		}
 
-		return [ $entry, $usable ];
+		return $entry;
 	}
 
 	/**
@@ -970,6 +1000,19 @@ abstract class MediumSpecificBagOStuff extends BagOStuff {
 		return $this->makeKeyInternal( $this->keyspace, func_get_args() );
 	}
 
+	/**
+	 * Make a cache key for the given keyspace and components
+	 *
+	 * Long components might be converted to respective hashes due to size constraints.
+	 * In extreme cases, all of them might be combined into a single hash component.
+	 *
+	 * @param string $keyspace Keyspace component
+	 * @param string[]|int[] $components Key components (key collection name first)
+	 * @return string Keyspace-prepended list of encoded components as a colon-separated value
+	 * @since 1.27
+	 */
+	abstract protected function makeKeyInternal( $keyspace, $components );
+
 	protected function convertGenericKey( $key ) {
 		$components = $this->componentsFromGenericKey( $key );
 		if ( count( $components ) < 2 ) {
@@ -994,107 +1037,18 @@ abstract class MediumSpecificBagOStuff extends BagOStuff {
 		return $this->segmentedValueMaxSize;
 	}
 
-	public function setNewPreparedValues( array $valueByKey ) {
-		$this->preparedValues = [];
-
-		$sizes = [];
-		foreach ( $valueByKey as $key => $value ) {
-			if ( $value === false ) {
-				$sizes[] = null; // not storable, don't bother
-				continue;
-			}
-
-			$serialized = $this->serialize( $value );
-			$sizes[] = ( $serialized !== false ) ? strlen( $serialized ) : null;
-
-			$this->preparedValues[$key] = [ $value, $serialized ];
-		}
-
-		return $sizes;
-	}
-
 	/**
-	 * Get the serialized form a value, using any applicable prepared value
-	 *
-	 * @see BagOStuff::setNewPreparedValues()
+	 * Get the serialized form a value, logging a warning if it involves custom classes
 	 *
 	 * @param mixed $value
 	 * @param string $key
-	 * @return string|int String/integer representation
+	 * @return string|int String/integer representation of value
 	 * @since 1.35
 	 */
 	protected function getSerialized( $value, $key ) {
-		// Reuse any available prepared (serialized) value
-		if ( array_key_exists( $key, $this->preparedValues ) ) {
-			list( $prepValue, $prepSerialized ) = $this->preparedValues[$key];
-			// Normally, this comparison should only take a few microseconds to confirm a match.
-			// Using "===" on variables of different types is always fast. It is also fast for
-			// variables of matching type int, float, bool, null, and object. Lastly, it is fast
-			// for comparing arrays/strings if they are copy-on-write references, which should be
-			// the case at this point, assuming prepareValues() was called correctly.
-			if ( $prepValue === $value ) {
-				unset( $this->preparedValues[$key] );
-
-				return $prepSerialized;
-			}
-		}
-
 		$this->checkValueSerializability( $value, $key );
 
 		return $this->serialize( $value );
-	}
-
-	/**
-	 * Estimate the size of a variable once serialized
-	 *
-	 * @param mixed $value
-	 * @param int $depth Current stack depth
-	 * @param int &$loops Number of iterable nodes visited
-	 * @return int|null Size in bytes; null for unsupported variable types
-	 * @since 1.35
-	 */
-	protected function guessSerialValueSize( $value, $depth = 0, &$loops = 0 ) {
-		// Include serialization format overhead estimates roughly based on serialize(),
-		// without counting . Also, int/float variables use the largest case
-		// byte size for numbers of that type; this avoids CPU overhead for large arrays.
-		switch ( gettype( $value ) ) {
-			case 'string':
-				// E.g. "<type><delim1><quote><value><quote><delim2>"
-				return strlen( $value ) + 5;
-			case 'integer':
-				// E.g. "<type><delim1><sign><2^63><delim2>";
-				// ceil(log10 (2^63)) = 19
-				return 23;
-			case 'double':
-				// E.g. "<type><delim1><sign><2^52><esign><2^10><delim2>"
-				// ceil(log10 (2^52)) = 16 and ceil(log10 (2^10)) = 4
-				return 25;
-			case 'boolean':
-				// E.g. "true" becomes "1" and "false" is not storable
-				return $value ? 1 : null;
-			case 'NULL':
-				return 1; // "\0"
-			case 'array':
-			case 'object':
-				// Give up and guess if there is too much depth
-				if ( $depth >= 5 && $loops >= 256 ) {
-					return 1024;
-				}
-
-				++$loops;
-				// E.g. "<type><delim1><brace><<Kn><Vn> for all n><brace><delim2>"
-				$size = 5;
-				// Note that casting to an array includes private object members
-				foreach ( (array)$value as $k => $v ) {
-					// Inline the recursive result here for performance
-					$size += is_string( $k ) ? ( strlen( $k ) + 5 ) : 23;
-					$size += $this->guessSerialValueSize( $v, $depth + 1, $loops );
-				}
-
-				return $size;
-			default:
-				return null; // invalid
-		}
 	}
 
 	/**
@@ -1185,7 +1139,7 @@ abstract class MediumSpecificBagOStuff extends BagOStuff {
 	 * @param string $op Operation name as a MediumSpecificBagOStuff::METRIC_OP_* constant
 	 * @param array<int,string>|array<string,int[]> $keyInfo Key list, if payload sizes are not
 	 *  applicable, otherwise, map of (key => (send payload size, receive payload size)); send
-	 *  and receive sizes are null where not applicable and receive sizes are "false" for keys
+	 *  and receive sizes are 0 where not applicable and receive sizes are "false" for keys
 	 *  that were not found during read operations
 	 */
 	protected function updateOpStats( string $op, array $keyInfo ) {
@@ -1197,8 +1151,8 @@ abstract class MediumSpecificBagOStuff extends BagOStuff {
 				list( $sPayloadSize, $rPayloadSize ) = $keyOrSizes;
 			} else {
 				$key = $keyOrSizes;
-				$sPayloadSize = null;
-				$rPayloadSize = null;
+				$sPayloadSize = 0;
+				$rPayloadSize = 0;
 			}
 
 			// Metric prefix for the cache wrapper and key collection name

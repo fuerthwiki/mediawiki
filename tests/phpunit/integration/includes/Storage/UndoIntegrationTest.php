@@ -7,8 +7,8 @@ use EditPage;
 use FauxRequest;
 use McrUndoAction;
 use MediaWiki\Revision\RevisionStoreRecord;
+use MediaWiki\Revision\SlotRecord;
 use MediaWiki\Storage\EditResult;
-use MediaWiki\Storage\SlotRecord;
 use MediaWikiIntegrationTestCase;
 use OutputPage;
 use RequestContext;
@@ -67,15 +67,18 @@ class UndoIntegrationTest extends MediaWikiIntegrationTestCase {
 		$context->setOutput( $outputPage );
 		$context->setUser( $this->getTestSysop()->getUser() );
 
-		$revisionRenderer = $this->getServiceContainer()->getRevisionRenderer();
-		$revisionLookup = $this->getServiceContainer()->getRevisionLookup();
-		$readOnlyMode = $this->getServiceContainer()->getReadOnlyMode();
+		$services = $this->getServiceContainer();
+		$revisionRenderer = $services->getRevisionRenderer();
+		$revisionLookup = $services->getRevisionLookup();
+		$readOnlyMode = $services->getReadOnlyMode();
+		$config = $services->getMainConfig();
 		return new class(
 			$article,
 			$context,
 			$readOnlyMode,
 			$revisionLookup,
-			$revisionRenderer
+			$revisionRenderer,
+			$config
 		) extends McrUndoAction {
 			public function show() {
 				// Instead of trying to actually display anything, just initialize the class.
@@ -368,7 +371,7 @@ class UndoIntegrationTest extends MediaWikiIntegrationTestCase {
 			$originalRevIndex
 		);
 
-		$wikiPage = new WikiPage( Title::newFromText( self::PAGE_NAME ) );
+		$wikiPage = $this->getServiceContainer()->getWikiPageFactory()->newFromTitle( Title::newFromText( self::PAGE_NAME ) );
 		$wikiPage->doUserEditContent(
 			new WikitextContent( $newContent ),
 			$this->getTestSysop()->getUser(),

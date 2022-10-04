@@ -44,6 +44,9 @@
 				"rtl": "../wikimediaui/images/icons/funnel-rtl.svg"
 			}
 		},
+		"hand": {
+			"file": "../wikimediaui/images/icons/hand.svg"
+		},
 		"heart": {
 			"file": "../wikimediaui/images/icons/heart.svg"
 		},
@@ -115,9 +118,6 @@
 		},
 		"settings": {
 			"file": "../wikimediaui/images/icons/settings.svg"
-		},
-		"stopHand": {
-			"file": "../wikimediaui/images/icons/stopHand.svg"
 		},
 		"subtract": {
 			"file": "../wikimediaui/images/icons/subtract.svg"

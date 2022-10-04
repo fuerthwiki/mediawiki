@@ -61,7 +61,7 @@ class SpecialTrackingCategories extends SpecialPage {
 		$this->getOutput()->setPreventClickjacking( false );
 		$this->getOutput()->addModuleStyles( [
 			'jquery.tablesorter.styles',
-			'mediawiki.pager.tablePager'
+			'mediawiki.pager.styles'
 		] );
 		$this->getOutput()->addModules( 'jquery.tablesorter' );
 		$this->getOutput()->addHTML(
@@ -83,7 +83,7 @@ class SpecialTrackingCategories extends SpecialPage {
 		$categoryList = $this->trackingCategories->getTrackingCategories();
 
 		$batch = $this->linkBatchFactory->newLinkBatch();
-		foreach ( $categoryList as $catMsg => $data ) {
+		foreach ( $categoryList as $data ) {
 			$batch->addObj( $data['msg'] );
 			foreach ( $data['cats'] as $catTitle ) {
 				$batch->addObj( $catTitle );

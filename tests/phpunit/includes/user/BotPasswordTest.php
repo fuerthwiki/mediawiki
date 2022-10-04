@@ -1,6 +1,6 @@
 <?php
 
-use MediaWiki\MediaWikiServices;
+use MediaWiki\MainConfigNames;
 use MediaWiki\Session\SessionManager;
 use Wikimedia\ScopedCallback;
 use Wikimedia\TestingAccessWrapper;
@@ -20,14 +20,14 @@ class BotPasswordTest extends MediaWikiIntegrationTestCase {
 	protected function setUp(): void {
 		parent::setUp();
 
-		$this->setMwGlobals( [
-			'wgEnableBotPasswords' => true,
-			'wgBotPasswordsDatabase' => false,
-			'wgCentralIdLookupProvider' => 'BotPasswordTest OkMock',
-			'wgGrantPermissions' => [
+		$this->overrideConfigValues( [
+			MainConfigNames::EnableBotPasswords => true,
+			MainConfigNames::BotPasswordsDatabase => false,
+			MainConfigNames::CentralIdLookupProvider => 'BotPasswordTest OkMock',
+			MainConfigNames::GrantPermissions => [
 				'test' => [ 'read' => true ],
 			],
-			'wgUserrightsInterwikiDelimiter' => '@',
+			MainConfigNames::UserrightsInterwikiDelimiter => '@',
 		] );
 
 		$this->testUser = $this->getMutableTestUser();
@@ -58,7 +58,7 @@ class BotPasswordTest extends MediaWikiIntegrationTestCase {
 	}
 
 	public function addDBData() {
-		$passwordFactory = MediaWikiServices::getInstance()->getPasswordFactory();
+		$passwordFactory = $this->getServiceContainer()->getPasswordFactory();
 		$passwordHash = $passwordFactory->newFromPlaintext( 'foobaz' );
 
 		$dbw = wfGetDB( DB_PRIMARY );
@@ -104,15 +104,11 @@ class BotPasswordTest extends MediaWikiIntegrationTestCase {
 
 		$this->assertNull( BotPassword::newFromUser( $user, 'DoesNotExist' ) );
 
-		$this->setMwGlobals( [
-			'wgCentralIdLookupProvider' => 'BotPasswordTest FailMock'
-		] );
+		$this->overrideConfigValue( MainConfigNames::CentralIdLookupProvider, 'BotPasswordTest FailMock' );
 		$this->assertNull( BotPassword::newFromUser( $user, 'BotPassword' ) );
 
 		$this->assertSame( '@', BotPassword::getSeparator() );
-		$this->setMwGlobals( [
-			'wgUserrightsInterwikiDelimiter' => '#',
-		] );
+		$this->overrideConfigValue( MainConfigNames::UserrightsInterwikiDelimiter, '#' );
 		$this->assertSame( '#', BotPassword::getSeparator() );
 	}
 
@@ -209,8 +205,8 @@ class BotPasswordTest extends MediaWikiIntegrationTestCase {
 		$bp1 = TestingAccessWrapper::newFromObject( BotPassword::newFromCentralId( 42, 'BotPassword' ) );
 		$bp2 = TestingAccessWrapper::newFromObject( BotPassword::newFromCentralId( 43, 'BotPassword' ) );
 
-		$this->assertNotInstanceOf( InvalidPassword::class, $bp1->getPassword(), 'sanity check' );
-		$this->assertNotInstanceOf( InvalidPassword::class, $bp2->getPassword(), 'sanity check' );
+		$this->assertNotInstanceOf( InvalidPassword::class, $bp1->getPassword() );
+		$this->assertNotInstanceOf( InvalidPassword::class, $bp2->getPassword() );
 		BotPassword::invalidateAllPasswordsForUser( $this->testUserName );
 		$this->assertInstanceOf( InvalidPassword::class, $bp1->getPassword() );
 		$this->assertNotInstanceOf( InvalidPassword::class, $bp2->getPassword() );
@@ -220,8 +216,8 @@ class BotPasswordTest extends MediaWikiIntegrationTestCase {
 	}
 
 	public function testRemoveAllPasswordsForUser() {
-		$this->assertNotNull( BotPassword::newFromCentralId( 42, 'BotPassword' ), 'sanity check' );
-		$this->assertNotNull( BotPassword::newFromCentralId( 43, 'BotPassword' ), 'sanity check' );
+		$this->assertNotNull( BotPassword::newFromCentralId( 42, 'BotPassword' ) );
+		$this->assertNotNull( BotPassword::newFromCentralId( 43, 'BotPassword' ) );
 
 		BotPassword::removeAllPasswordsForUser( $this->testUserName );
 
@@ -259,10 +255,10 @@ class BotPasswordTest extends MediaWikiIntegrationTestCase {
 
 	public function testLogin() {
 		// Test failure when bot passwords aren't enabled
-		$this->setMwGlobals( 'wgEnableBotPasswords', false );
+		$this->overrideConfigValue( MainConfigNames::EnableBotPasswords, false );
 		$status = BotPassword::login( "{$this->testUserName}@BotPassword", 'foobaz', new FauxRequest );
 		$this->assertEquals( Status::newFatal( 'botpasswords-disabled' ), $status );
-		$this->setMwGlobals( 'wgEnableBotPasswords', true );
+		$this->overrideConfigValue( MainConfigNames::EnableBotPasswords, true );
 
 		// Test failure when BotPasswordSessionProvider isn't configured
 		$manager = new SessionManager( [
@@ -271,25 +267,25 @@ class BotPasswordTest extends MediaWikiIntegrationTestCase {
 		] );
 		$reset = MediaWiki\Session\TestUtils::setSessionManagerSingleton( $manager );
 		$this->assertNull(
-			$manager->getProvider( MediaWiki\Session\BotPasswordSessionProvider::class ),
-			'sanity check'
+			$manager->getProvider( MediaWiki\Session\BotPasswordSessionProvider::class )
 		);
 		$status = BotPassword::login( "{$this->testUserName}@BotPassword", 'foobaz', new FauxRequest );
 		$this->assertEquals( Status::newFatal( 'botpasswords-no-provider' ), $status );
 		ScopedCallback::consume( $reset );
 
 		// Now configure BotPasswordSessionProvider for further tests...
-		$mainConfig = RequestContext::getMain()->getConfig();
+		$mainConfig = $this->getServiceContainer()->getMainConfig();
 		$config = new HashConfig( [
 			'SessionProviders' => $mainConfig->get( 'SessionProviders' ) + [
 				MediaWiki\Session\BotPasswordSessionProvider::class => [
 					'class' => MediaWiki\Session\BotPasswordSessionProvider::class,
 					'args' => [ [ 'priority' => 40 ] ],
+					'services' => [ 'GrantsInfo' ],
 				]
 			],
 		] );
 		$manager = new SessionManager( [
-			'config' => new MultiConfig( [ $config, RequestContext::getMain()->getConfig() ] ),
+			'config' => new MultiConfig( [ $config, $mainConfig ] ),
 			'logger' => new Psr\Log\NullLogger,
 			'store' => new EmptyBagOStuff,
 		] );
@@ -328,12 +324,11 @@ class BotPasswordTest extends MediaWikiIntegrationTestCase {
 		$request = new FauxRequest;
 		$this->assertNotInstanceOf(
 			MediaWiki\Session\BotPasswordSessionProvider::class,
-			$request->getSession()->getProvider(),
-			'sanity check'
+			$request->getSession()->getProvider()
 		);
 		$status = BotPassword::login( "{$this->testUserName}@BotPassword", 'foobaz', $request );
 		$this->assertInstanceOf( Status::class, $status );
-		$this->assertTrue( $status->isGood() );
+		$this->assertStatusGood( $status );
 		$session = $status->getValue();
 		$this->assertInstanceOf( MediaWiki\Session\Session::class, $session );
 		$this->assertInstanceOf(
@@ -349,7 +344,7 @@ class BotPasswordTest extends MediaWikiIntegrationTestCase {
 	 * @param string|null $password
 	 */
 	public function testSave( $password ) {
-		$passwordFactory = MediaWikiServices::getInstance()->getPasswordFactory();
+		$passwordFactory = $this->getServiceContainer()->getPasswordFactory();
 
 		$bp = BotPassword::newUnsaved( [
 			'centralId' => 42,
@@ -357,9 +352,9 @@ class BotPasswordTest extends MediaWikiIntegrationTestCase {
 			'restrictions' => MWRestrictions::newFromJson( '{"IPAddresses":["127.0.0.0/8"]}' ),
 			'grants' => [ 'test' ],
 		] );
-		$this->assertFalse( $bp->isSaved(), 'sanity check' );
+		$this->assertFalse( $bp->isSaved() );
 		$this->assertNull(
-			BotPassword::newFromCentralId( 42, 'TestSave', BotPassword::READ_LATEST ), 'sanity check'
+			BotPassword::newFromCentralId( 42, 'TestSave', BotPassword::READ_LATEST )
 		);
 
 		$passwordHash = $password ? $passwordFactory->newFromPlaintext( $password ) : null;
@@ -453,7 +448,7 @@ class BotPasswordTest extends MediaWikiIntegrationTestCase {
 
 		$status = $bp->save( 'insert' );
 
-		$this->assertFalse( $status->isGood() );
+		$this->assertStatusNotGood( $status );
 		$this->assertNotEmpty( $status->getErrors() );
 
 		$this->assertSame(

@@ -22,9 +22,11 @@
 
 use MediaWiki\HookContainer\ProtectedHookAccessorTrait;
 use MediaWiki\Linker\LinkTarget;
+use MediaWiki\MainConfigNames;
 use MediaWiki\MediaWikiServices;
 use MediaWiki\Page\PageIdentity;
 use MediaWiki\Page\PageReference;
+use Wikimedia\Rdbms\SelectQueryBuilder;
 
 class CategoryViewer extends ContextSource {
 	use ProtectedHookAccessorTrait;
@@ -105,6 +107,7 @@ class CategoryViewer extends ContextSource {
 			'title',
 			'1.37',
 			function (): Title {
+				// @phan-suppress-next-line PhanTypeMismatchReturnNullable castFrom does not return null here
 				return Title::castFromPageIdentity( $this->page );
 			},
 			function ( PageIdentity $page ) {
@@ -114,11 +117,11 @@ class CategoryViewer extends ContextSource {
 
 		$this->setContext( $context );
 		$this->getOutput()->addModuleStyles( [
-			'mediawiki.action.view.categoryPage.styles'
+			'mediawiki.action.styles',
 		] );
 		$this->from = $from;
 		$this->until = $until;
-		$this->limit = $context->getConfig()->get( 'CategoryPagingLimit' );
+		$this->limit = $context->getConfig()->get( MainConfigNames::CategoryPagingLimit );
 		$this->cat = Category::newFromTitle( $page );
 		$this->query = $query;
 		$this->collation = MediaWikiServices::getInstance()->getCollationFactory()->getCategoryCollation();
@@ -133,7 +136,7 @@ class CategoryViewer extends ContextSource {
 	 * @return string HTML output
 	 */
 	public function getHTML() {
-		$this->showGallery = $this->getConfig()->get( 'CategoryMagicGallery' )
+		$this->showGallery = $this->getConfig()->get( MainConfigNames::CategoryMagicGallery )
 			&& !$this->getOutput()->mNoGallery;
 
 		$this->clearCategoryState();
@@ -184,7 +187,7 @@ class CategoryViewer extends ContextSource {
 			$mode = $this->getRequest()->getVal( 'gallerymode', null );
 			try {
 				$this->gallery = ImageGalleryBase::factory( $mode, $this->getContext() );
-			} catch ( Exception $e ) {
+			} catch ( ImageGalleryClassNotFoundException $e ) {
 				// User specified something invalid, fallback to default.
 				$this->gallery = ImageGalleryBase::factory( false, $this->getContext() );
 			}
@@ -203,9 +206,17 @@ class CategoryViewer extends ContextSource {
 	 * @param int $pageLength
 	 */
 	public function addSubcategoryObject( Category $cat, $sortkey, $pageLength ) {
+		$page = $cat->getPage();
+		if ( !$page ) {
+			return;
+		}
+
 		// Subcategory; strip the 'Category' namespace from the link text.
 		$pageRecord = MediaWikiServices::getInstance()->getPageStore()
-			->getPageByReference( $cat->getPage() );
+			->getPageByReference( $page );
+		if ( !$pageRecord ) {
+			return;
+		}
 
 		$this->children[] = $this->generateLink(
 			'subcat',
@@ -215,7 +226,7 @@ class CategoryViewer extends ContextSource {
 		);
 
 		$this->children_start_char[] =
-			$this->getSubcategorySortChar( $cat->getPage(), $sortkey );
+			$this->getSubcategorySortChar( $page, $sortkey );
 	}
 
 	/**
@@ -235,6 +246,7 @@ class CategoryViewer extends ContextSource {
 		$link = null;
 		$legacyTitle = MediaWikiServices::getInstance()->getTitleFactory()
 			->castFromPageReference( $page );
+		// @phan-suppress-next-line PhanTypeMismatchArgument castFrom does not return null here
 		$this->getHookRunner()->onCategoryViewer__generateLink( $type, $legacyTitle, $html, $link );
 		if ( $link === null ) {
 			$linkRenderer = MediaWikiServices::getInstance()->getLinkRenderer();
@@ -294,8 +306,10 @@ class CategoryViewer extends ContextSource {
 		if ( $this->showGallery ) {
 			$flip = $this->flip['file'];
 			if ( $flip ) {
+				// @phan-suppress-next-line PhanTypeMismatchArgumentNullable castFrom does not return null here
 				$this->gallery->insert( $title );
 			} else {
+				// @phan-suppress-next-line PhanTypeMismatchArgumentNullable castFrom does not return null here
 				$this->gallery->add( $title );
 			}
 		} else {
@@ -367,13 +381,10 @@ class CategoryViewer extends ContextSource {
 				$this->flip[$type] = true;
 			}
 
-			$res = $dbr->select(
-				[ 'page', 'categorylinks', 'category' ],
-				array_merge(
+			$queryBuilder = $dbr->newSelectQueryBuilder();
+			$queryBuilder->select( array_merge(
 					LinkCache::getSelectFields(),
 					[
-						'page_namespace',
-						'page_title',
 						'cl_sortkey',
 						'cat_id',
 						'cat_title',
@@ -383,22 +394,28 @@ class CategoryViewer extends ContextSource {
 						'cl_sortkey_prefix',
 						'cl_collation'
 					]
-				),
-				array_merge( [ 'cl_to' => $this->page->getDBkey() ], $extraConds ),
-				__METHOD__,
-				[
-					'USE INDEX' => [ 'categorylinks' => 'cl_sortkey' ],
-					'LIMIT' => $this->limit + 1,
-					'ORDER BY' => $this->flip[$type] ? 'cl_sortkey DESC' : 'cl_sortkey',
-				],
-				[
-					'categorylinks' => [ 'JOIN', 'cl_from = page_id' ],
-					'category' => [ 'LEFT JOIN', [
-						'cat_title = page_title',
-						'page_namespace' => NS_CATEGORY
-					] ]
-				]
-			);
+				) )
+				->from( 'page' )
+				->where( [ 'cl_to' => $this->page->getDBkey() ] )
+				->andWhere( $extraConds )
+				->useIndex( [ 'categorylinks' => 'cl_sortkey' ] );
+
+			if ( $this->flip[$type] ) {
+				$queryBuilder->orderBy( 'cl_sortkey', SelectQueryBuilder::SORT_DESC );
+			} else {
+				$queryBuilder->orderBy( 'cl_sortkey' );
+			}
+
+			$queryBuilder
+				->join( 'categorylinks', null, [ 'cl_from = page_id' ] )
+				->leftJoin( 'category', null, [
+					'cat_title = page_title',
+					'page_namespace' => NS_CATEGORY
+				] )
+				->limit( $this->limit + 1 )
+				->caller( __METHOD__ );
+
+			$res = $queryBuilder->fetchResultSet();
 
 			$this->getHookRunner()->onCategoryViewer__doCategoryQuery( $type, $res );
 			$linkCache = MediaWikiServices::getInstance()->getLinkCache();
@@ -485,8 +502,7 @@ class CategoryViewer extends ContextSource {
 		# with this rigmarole if the entire category contents fit on one page
 		# and have already been retrieved.  We can just use $rescnt in that
 		# case and save a query and some logic.
-		$dbcnt = $this->cat->getPageCount() - $this->cat->getSubcatCount()
-			- $this->cat->getFileCount();
+		$dbcnt = $this->cat->getPageCount( Category::COUNT_CONTENT_PAGES );
 		$rescnt = count( $this->articles );
 		// This function should be called even if the result isn't used, it has side-effects
 		$countmsg = $this->getCountMessage( $rescnt, $dbcnt, 'article' );
@@ -556,7 +572,7 @@ class CategoryViewer extends ContextSource {
 			} else {
 				// If the nextPage variable is null, it means that we have reached the first page
 				// and therefore the previous link should be disabled.
-				return $this->pagingLinks( null, $this->until[$type], $type );
+				return $this->pagingLinks( '', $this->until[$type], $type );
 			}
 		} elseif ( $this->nextPage[$type] !== null || isset( $this->from[$type] ) ) {
 			return $this->pagingLinks( $this->from[$type], $this->nextPage[$type], $type );
@@ -605,20 +621,20 @@ class CategoryViewer extends ContextSource {
 	 * Format a list of articles chunked by letter in a three-column list, ordered
 	 * vertically. This is used for categories with a significant number of pages.
 	 *
-	 * TODO: Take the headers into account when creating columns, so they're
-	 * more visually equal.
-	 *
-	 * TODO: shortList and columnList are similar, need merging
-	 *
 	 * @param string[] $articles HTML links to each article
 	 * @param string[] $articles_start_char The header characters for each article
+	 * @param string $cssClasses CSS classes for the wrapper element
 	 * @return string HTML to output
 	 * @internal
 	 */
-	public static function columnList( $articles, $articles_start_char ) {
+	public static function columnList(
+		$articles,
+		$articles_start_char,
+		$cssClasses = 'mw-category mw-category-columns'
+	) {
 		$columns = array_combine( $articles, $articles_start_char );
 
-		$ret = Html::openElement( 'div', [ 'class' => 'mw-category' ] );
+		$ret = Html::openElement( 'div', [ 'class' => $cssClasses ] );
 
 		$colContents = [];
 
@@ -635,7 +651,7 @@ class CategoryViewer extends ContextSource {
 			# Change space to non-breaking space to keep headers aligned
 			$h3char = $char === ' ' ? "\u{00A0}" : htmlspecialchars( $char );
 
-			$ret .= Html::openELement( 'div', [ 'class' => 'mw-category-group' ] );
+			$ret .= Html::openElement( 'div', [ 'class' => 'mw-category-group' ] );
 			$ret .= Html::rawElement( 'h3', [], $h3char ) . "\n";
 			$ret .= Html::openElement( 'ul' );
 			$ret .= implode(
@@ -664,18 +680,7 @@ class CategoryViewer extends ContextSource {
 	 * @internal
 	 */
 	public static function shortList( $articles, $articles_start_char ) {
-		$r = '<h3>' . htmlspecialchars( $articles_start_char[0] ) . "</h3>\n";
-		$r .= '<ul><li>' . $articles[0] . '</li>';
-		$articleCount = count( $articles );
-		for ( $index = 1; $index < $articleCount; $index++ ) {
-			if ( $articles_start_char[$index] != $articles_start_char[$index - 1] ) {
-				$r .= "</ul><h3>" . htmlspecialchars( $articles_start_char[$index] ) . "</h3>\n<ul>";
-			}
-
-			$r .= "<li>{$articles[$index]}</li>";
-		}
-		$r .= '</ul>';
-		return $r;
+		return self::columnList( $articles, $articles_start_char, 'mw-category' );
 	}
 
 	/**
@@ -761,10 +766,10 @@ class CategoryViewer extends ContextSource {
 	 */
 	private function getCountMessage( $rescnt, $dbcnt, $type ) {
 		// There are three cases:
-		//   1) The category table figure seems sane.  It might be wrong, but
+		//   1) The category table figure seems good.  It might be wrong, but
 		//      we can't do anything about it if we don't recalculate it on ev-
 		//      ery category view.
-		//   2) The category table figure isn't sane, like it's smaller than the
+		//   2) The category table figure isn't good, like it's smaller than the
 		//      number of actual results, *but* the number of results is less
 		//      than $this->limit and there's no offset.  In this case we still
 		//      know the right figure.
@@ -788,10 +793,10 @@ class CategoryViewer extends ContextSource {
 		if ( $dbcnt == $rescnt ||
 			( ( $rescnt == $this->limit || $fromOrUntil ) && $dbcnt > $rescnt )
 		) {
-			// Case 1: seems sane.
+			// Case 1: seems good.
 			$totalcnt = $dbcnt;
 		} elseif ( $rescnt < $this->limit && !$fromOrUntil ) {
-			// Case 2: not sane, but salvageable.  Use the number of results.
+			// Case 2: not good, but salvageable.  Use the number of results.
 			$totalcnt = $rescnt;
 		} else {
 			// Case 3: hopeless.  Don't give a total count at all.

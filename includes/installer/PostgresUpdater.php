@@ -41,189 +41,16 @@ class PostgresUpdater extends DatabaseUpdater {
 	 */
 	protected function getCoreUpdateList() {
 		return [
+			// 1.35 but must come first
+			[ 'addPgField', 'revision', 'rev_actor', 'INTEGER NOT NULL DEFAULT 0' ],
+			[ 'addPgIndex', 'revision', 'rev_actor_timestamp', '(rev_actor,rev_timestamp,rev_id)' ],
+			[ 'addPgIndex', 'revision', 'rev_page_actor_timestamp', '(rev_page,rev_actor,rev_timestamp)' ],
+
 			// Exception to the sequential updates. Renaming pagecontent and mwuser.
 			// Introduced in 1.36.
 			[ 'renameTable', 'pagecontent', 'text' ],
 			// Introduced in 1.37.
 			[ 'renameTable', 'mwuser', 'user' ],
-
-			// 1.29
-			[ 'addPgField', 'externallinks', 'el_index_60', "BYTEA NOT NULL DEFAULT ''" ],
-			[ 'addPgIndex', 'externallinks', 'el_index_60', '( el_index_60, el_id )' ],
-			[ 'addPgIndex', 'externallinks', 'el_from_index_60', '( el_from, el_index_60, el_id )' ],
-			[ 'addPgField', 'user_groups', 'ug_expiry', "TIMESTAMPTZ NULL" ],
-			[ 'addPgIndex', 'user_groups', 'user_groups_expiry', '( ug_expiry )' ],
-
-			// 1.30
-			[ 'addPgEnumValue', 'media_type', '3D' ],
-			[ 'setDefault', 'revision', 'rev_comment', '' ],
-			[ 'changeNullableField', 'revision', 'rev_comment', 'NOT NULL', true ],
-			[ 'setDefault', 'archive', 'ar_comment', '' ],
-			[ 'changeNullableField', 'archive', 'ar_comment', 'NOT NULL', true ],
-			[ 'addPgField', 'archive', 'ar_comment_id', 'INTEGER NOT NULL DEFAULT 0' ],
-			[ 'setDefault', 'ipblocks', 'ipb_reason', '' ],
-			[ 'addPgField', 'ipblocks', 'ipb_reason_id', 'INTEGER NOT NULL DEFAULT 0' ],
-			[ 'setDefault', 'image', 'img_description', '' ],
-			[ 'setDefault', 'oldimage', 'oi_description', '' ],
-			[ 'changeNullableField', 'oldimage', 'oi_description', 'NOT NULL', true ],
-			[ 'addPgField', 'oldimage', 'oi_description_id', 'INTEGER NOT NULL DEFAULT 0' ],
-			[ 'setDefault', 'filearchive', 'fa_deleted_reason', '' ],
-			[ 'changeNullableField', 'filearchive', 'fa_deleted_reason', 'NOT NULL', true ],
-			[ 'addPgField', 'filearchive', 'fa_deleted_reason_id', 'INTEGER NOT NULL DEFAULT 0' ],
-			[ 'setDefault', 'filearchive', 'fa_description', '' ],
-			[ 'addPgField', 'filearchive', 'fa_description_id', 'INTEGER NOT NULL DEFAULT 0' ],
-			[ 'setDefault', 'recentchanges', 'rc_comment', '' ],
-			[ 'changeNullableField', 'recentchanges', 'rc_comment', 'NOT NULL', true ],
-			[ 'addPgField', 'recentchanges', 'rc_comment_id', 'INTEGER NOT NULL DEFAULT 0' ],
-			[ 'setDefault', 'logging', 'log_comment', '' ],
-			[ 'changeNullableField', 'logging', 'log_comment', 'NOT NULL', true ],
-			[ 'addPgField', 'logging', 'log_comment_id', 'INTEGER NOT NULL DEFAULT 0' ],
-			[ 'setDefault', 'protected_titles', 'pt_reason', '' ],
-			[ 'changeNullableField', 'protected_titles', 'pt_reason', 'NOT NULL', true ],
-			[ 'addPgField', 'protected_titles', 'pt_reason_id', 'INTEGER NOT NULL DEFAULT 0' ],
-			[ 'addTable', 'comment', 'patch-comment-table.sql' ],
-			[ 'addTable', 'revision_comment_temp', 'patch-revision_comment_temp-table.sql' ],
-
-			// This field was added in 1.31, but is put here so it can be used by 'migrateComments'
-			[ 'addPgField', 'image', 'img_description_id', 'INTEGER NOT NULL DEFAULT 0' ],
-
-			[ 'migrateComments' ],
-			[ 'addIndex', 'site_stats', 'site_stats_pkey', 'patch-site_stats-pk.sql' ],
-			[ 'addTable', 'ip_changes', 'patch-ip_changes.sql' ],
-
-			// 1.31
-			[ 'addTable', 'slots', 'patch-slots-table.sql' ],
-			[ 'dropPgIndex', 'slots', 'slot_role_inherited' ],
-			[ 'dropPgField', 'slots', 'slot_inherited' ],
-			[ 'addPgField', 'slots', 'slot_origin', 'INTEGER NOT NULL' ],
-			[
-				'addPgIndex',
-				'slots',
-				'slot_revision_origin_role',
-				'( slot_revision_id, slot_origin, slot_role_id )',
-			],
-			[ 'addTable', 'content', 'patch-content-table.sql' ],
-			[ 'addTable', 'content_models', 'patch-content_models-table.sql' ],
-			[ 'addTable', 'slot_roles', 'patch-slot_roles-table.sql' ],
-			[ 'migrateArchiveText' ],
-			[ 'addTable', 'actor', 'patch-actor-table.sql' ],
-			[ 'addTable', 'revision_actor_temp', 'patch-revision_actor_temp-table.sql' ],
-			[ 'setDefault', 'revision', 'rev_user', 0 ],
-			[ 'setDefault', 'revision', 'rev_user_text', '' ],
-			[ 'setDefault', 'archive', 'ar_user', 0 ],
-			[ 'changeNullableField', 'archive', 'ar_user', 'NOT NULL', true ],
-			[ 'setDefault', 'archive', 'ar_user_text', '' ],
-			[ 'addPgField', 'archive', 'ar_actor', 'INTEGER NOT NULL DEFAULT 0' ],
-			[ 'setDefault', 'ipblocks', 'ipb_by', 0 ],
-			[ 'addPgField', 'ipblocks', 'ipb_by_actor', 'INTEGER NOT NULL DEFAULT 0' ],
-			[ 'setDefault', 'image', 'img_user', 0 ],
-			[ 'changeNullableField', 'image', 'img_user', 'NOT NULL', true ],
-			[ 'setDefault', 'image', 'img_user_text', '' ],
-			[ 'addPgField', 'image', 'img_actor', 'INTEGER NOT NULL DEFAULT 0' ],
-			[ 'setDefault', 'oldimage', 'oi_user', 0 ],
-			[ 'changeNullableField', 'oldimage', 'oi_user', 'NOT NULL', true ],
-			[ 'setDefault', 'oldimage', 'oi_user_text', '' ],
-			[ 'addPgField', 'oldimage', 'oi_actor', 'INTEGER NOT NULL DEFAULT 0' ],
-			[ 'setDefault', 'filearchive', 'fa_user', 0 ],
-			[ 'changeNullableField', 'filearchive', 'fa_user', 'NOT NULL', true ],
-			[ 'setDefault', 'filearchive', 'fa_user_text', '' ],
-			[ 'addPgField', 'filearchive', 'fa_actor', 'INTEGER NOT NULL DEFAULT 0' ],
-			[ 'setDefault', 'recentchanges', 'rc_user', 0 ],
-			[ 'changeNullableField', 'recentchanges', 'rc_user', 'NOT NULL', true ],
-			[ 'setDefault', 'recentchanges', 'rc_user_text', '' ],
-			[ 'addPgField', 'recentchanges', 'rc_actor', 'INTEGER NOT NULL DEFAULT 0' ],
-			[ 'setDefault', 'logging', 'log_user', 0 ],
-			[ 'changeNullableField', 'logging', 'log_user', 'NOT NULL', true ],
-			[ 'addPgField', 'logging', 'log_actor', 'INTEGER NOT NULL DEFAULT 0' ],
-			[ 'addPgIndex', 'logging', 'logging_actor_time_backwards', '( log_timestamp, log_actor )' ],
-			[ 'addPgIndex', 'logging', 'logging_actor_type_time', '( log_actor, log_type, log_timestamp )' ],
-			[ 'addPgIndex', 'logging', 'logging_actor_time', '( log_actor, log_timestamp )' ],
-			[ 'migrateActors' ],
-			[ 'modifyTable', 'site_stats', 'patch-site_stats-modify.sql' ],
-			[ 'populateArchiveRevId' ],
-			[ 'dropPgIndex', 'recentchanges', 'rc_namespace_title' ],
-			[
-				'addPgIndex',
-				'recentchanges',
-				'rc_namespace_title_timestamp', '( rc_namespace, rc_title, rc_timestamp )'
-			],
-			[ 'setSequenceOwner', 'user', 'user_id', 'user_user_id_seq' ],
-			[ 'setSequenceOwner', 'actor', 'actor_id', 'actor_actor_id_seq' ],
-			[ 'setSequenceOwner', 'page', 'page_id', 'page_page_id_seq' ],
-			[ 'setSequenceOwner', 'revision', 'rev_id', 'revision_rev_id_seq' ],
-			[ 'setSequenceOwner', 'ip_changes', 'ipc_rev_id', 'ip_changes_ipc_rev_id_seq' ],
-			[ 'setSequenceOwner', 'text', 'old_id', 'text_old_id_seq' ],
-			[ 'setSequenceOwner', 'comment', 'comment_id', 'comment_comment_id_seq' ],
-			[ 'setSequenceOwner', 'page_restrictions', 'pr_id', 'page_restrictions_pr_id_seq' ],
-			[ 'setSequenceOwner', 'archive', 'ar_id', 'archive_ar_id_seq' ],
-			[ 'setSequenceOwner', 'content', 'content_id', 'content_content_id_seq' ],
-			[ 'setSequenceOwner', 'slot_roles', 'role_id', 'slot_roles_role_id_seq' ],
-			[ 'setSequenceOwner', 'content_models', 'model_id', 'content_models_model_id_seq' ],
-			[ 'setSequenceOwner', 'externallinks', 'el_id', 'externallinks_el_id_seq' ],
-			[ 'setSequenceOwner', 'ipblocks', 'ipb_id', 'ipblocks_ipb_id_seq' ],
-			[ 'setSequenceOwner', 'filearchive', 'fa_id', 'filearchive_fa_id_seq' ],
-			[ 'setSequenceOwner', 'uploadstash', 'us_id', 'uploadstash_us_id_seq' ],
-			[ 'setSequenceOwner', 'recentchanges', 'rc_id', 'recentchanges_rc_id_seq' ],
-			[ 'setSequenceOwner', 'watchlist', 'wl_id', 'watchlist_wl_id_seq' ],
-			[ 'setSequenceOwner', 'logging', 'log_id', 'logging_log_id_seq' ],
-			[ 'setSequenceOwner', 'job', 'job_id', 'job_job_id_seq' ],
-			[ 'setSequenceOwner', 'category', 'cat_id', 'category_cat_id_seq' ],
-			[ 'setSequenceOwner', 'change_tag', 'ct_id', 'change_tag_ct_id_seq' ],
-			[ 'setSequenceOwner', 'sites', 'site_id', 'sites_site_id_seq' ],
-
-			// 1.32
-			[ 'addTable', 'change_tag_def', 'patch-change_tag_def.sql' ],
-			[ 'populateExternallinksIndex60' ],
-			[ 'dropDefault', 'externallinks', 'el_index_60' ],
-			[ 'runMaintenance', DeduplicateArchiveRevId::class, 'maintenance/deduplicateArchiveRevId.php' ],
-			[ 'addPgField', 'change_tag', 'ct_tag_id', 'INTEGER NULL' ],
-			[
-				'addPgIndex',
-				'change_tag',
-				'change_tag_tag_id_id',
-				'( ct_tag_id, ct_rc_id, ct_rev_id, ct_log_id )'
-			],
-			[ 'addPgIndex', 'archive', 'ar_revid_uniq', '(ar_rev_id)', 'unique' ],
-			[ 'dropPgIndex', 'archive', 'ar_revid' ], // Probably doesn't exist, but do it anyway.
-			[ 'populateContentTables' ],
-			[ 'addPgIndex', 'logging', 'log_type_action', '( log_type, log_action, log_timestamp )' ],
-			[ 'dropPgIndex', 'page_props', 'page_props_propname' ],
-			[ 'addIndex', 'interwiki', 'interwiki_pkey', 'patch-interwiki-pk.sql' ],
-			[ 'addIndex', 'protected_titles', 'protected_titles_pkey', 'patch-protected_titles-pk.sql' ],
-			[ 'addIndex', 'site_identifiers', 'site_identifiers_pkey', 'patch-site_identifiers-pk.sql' ],
-			[ 'addPgIndex', 'recentchanges', 'rc_this_oldid', '(rc_this_oldid)' ],
-			[ 'dropTable', 'transcache' ],
-			[ 'runMaintenance', PopulateChangeTagDef::class, 'maintenance/populateChangeTagDef.php' ],
-			[ 'dropIndex', 'change_tag', 'change_tag_rc_tag', 'patch-change_tag-change_tag_rc_tag_id.sql' ],
-			[ 'addPgField', 'ipblocks', 'ipb_sitewide', 'SMALLINT NOT NULL DEFAULT 1' ],
-			[ 'addTable', 'ipblocks_restrictions', 'patch-ipblocks_restrictions-table.sql' ],
-			[ 'migrateImageCommentTemp' ],
-			[ 'dropPgField', 'category', 'cat_hidden' ],
-			[ 'dropPgField', 'site_stats', 'ss_admins' ],
-			[ 'dropPgField', 'recentchanges', 'rc_cur_time' ],
-
-			// 1.33
-			[ 'dropField', 'change_tag', 'ct_tag', 'patch-drop-ct_tag.sql' ],
-			[ 'dropTable', 'valid_tag' ],
-			[ 'dropTable', 'tag_summary' ],
-			[ 'dropPgField', 'archive', 'ar_comment' ],
-			[ 'dropDefault', 'archive', 'ar_comment_id' ],
-			[ 'dropPgField', 'ipblocks', 'ipb_reason' ],
-			[ 'dropDefault', 'ipblocks', 'ipb_reason_id' ],
-			[ 'dropPgField', 'image', 'img_description' ],
-			[ 'dropDefault', 'image', 'img_description_id' ],
-			[ 'dropPgField', 'oldimage', 'oi_description' ],
-			[ 'dropDefault', 'oldimage', 'oi_description_id' ],
-			[ 'dropPgField', 'filearchive', 'fa_deleted_reason' ],
-			[ 'dropDefault', 'filearchive', 'fa_deleted_reason_id' ],
-			[ 'dropPgField', 'filearchive', 'fa_description' ],
-			[ 'dropDefault', 'filearchive', 'fa_description_id' ],
-			[ 'dropPgField', 'recentchanges', 'rc_comment' ],
-			[ 'dropDefault', 'recentchanges', 'rc_comment_id' ],
-			[ 'dropPgField', 'logging', 'log_comment' ],
-			[ 'dropDefault', 'logging', 'log_comment_id' ],
-			[ 'dropPgField', 'protected_titles', 'pt_reason' ],
-			[ 'dropDefault', 'protected_titles', 'pt_reason_id' ],
 
 			// 1.34
 			[ 'dropPgIndex', 'archive', 'archive_user_text' ],
@@ -260,9 +87,6 @@ class PostgresUpdater extends DatabaseUpdater {
 			[ 'setDefault', 'user_newtalk', 'user_ip', '' ],
 			[ 'changeNullableField', 'user_newtalk', 'user_ip', 'NOT NULL', true ],
 			[ 'setDefault', 'user_newtalk', 'user_id', 0 ],
-			[ 'renameIndex', 'revision_actor_temp', 'rev_actor_timestamp', 'revactor_actor_timestamp' ],
-			[ 'renameIndex', 'revision_actor_temp',
-				'rev_page_actor_timestamp', 'revactor_page_actor_timestamp' ],
 			[ 'dropPgIndex', 'revision', 'rev_user_idx' ],
 			[ 'dropPgIndex', 'revision', 'rev_user_text_idx' ],
 			[ 'dropPgIndex', 'revision', 'rev_text_id_idx' ],
@@ -273,9 +97,6 @@ class PostgresUpdater extends DatabaseUpdater {
 			[ 'dropPgField', 'revision', 'rev_content_model' ],
 			[ 'dropPgField', 'revision', 'rev_content_format' ],
 			[ 'addPgField', 'revision', 'rev_comment_id', 'INTEGER NOT NULL DEFAULT 0' ],
-			[ 'addPgField', 'revision', 'rev_actor', 'INTEGER NOT NULL DEFAULT 0' ],
-			[ 'addPgIndex', 'revision', 'rev_actor_timestamp', '(rev_actor,rev_timestamp,rev_id)' ],
-			[ 'addPgIndex', 'revision', 'rev_page_actor_timestamp', '(rev_page,rev_actor,rev_timestamp)' ],
 			[ 'dropPgField', 'archive', 'ar_text_id' ],
 			[ 'dropPgField', 'archive', 'ar_content_model' ],
 			[ 'dropPgField', 'archive', 'ar_content_format' ],
@@ -329,11 +150,6 @@ class PostgresUpdater extends DatabaseUpdater {
 			[ 'dropPgIndex', 'pagelinks', 'pagelink_unique' ],
 			[ 'dropPgIndex', 'pagelinks', 'pagelinks_title' ],
 			[ 'dropFkey', 'templatelinks', 'tl_from' ],
-			[ 'changeField', 'templatelinks', 'tl_namespace', 'INT', 'tl_namespace::INT DEFAULT 0' ],
-			[ 'setDefault', 'templatelinks', 'tl_title', '' ],
-			[ 'addPgIndex', 'templatelinks', 'tl_namespace', '(tl_namespace,tl_title,tl_from)' ],
-			[ 'addPgIndex', 'templatelinks', 'tl_backlinks_namespace',
-				'(tl_from_namespace,tl_namespace,tl_title,tl_from)' ],
 			[ 'dropPgIndex', 'templatelinks', 'templatelinks_unique' ],
 			[ 'dropPgIndex', 'templatelinks', 'templatelinks_from' ],
 			[ 'dropFkey', 'imagelinks', 'il_from' ],
@@ -382,7 +198,7 @@ class PostgresUpdater extends DatabaseUpdater {
 			[ 'changeNullableField', 'querycache_info', 'qci_timestamp', 'NOT NULL', true ],
 			[ 'addIndex', 'querycache_info', 'querycache_info_pkey', 'patch-querycache_info-pk.sql' ],
 			[ 'setDefault', 'watchlist', 'wl_title', '' ],
-			[ 'changeField', 'watchlist', 'wl_namespace', 'INT', 0 ],
+			[ 'changeField', 'watchlist', 'wl_namespace', 'INT', 'wl_namespace::INT DEFAULT 0' ],
 			[ 'dropFkey', 'watchlist', 'wl_user' ],
 			[ 'dropPgIndex', 'watchlist', 'wl_user_namespace_title' ],
 			[ 'addPgIndex', 'watchlist', 'namespace_title', '(wl_namespace, wl_title)' ],
@@ -421,9 +237,6 @@ class PostgresUpdater extends DatabaseUpdater {
 			[ 'changeField', 'ip_changes', 'ipc_hex', 'TEXT', "ipc_hex::TEXT DEFAULT ''" ],
 			[ 'setDefault', 'ip_changes', 'ipc_rev_id', 0 ],
 			[ 'changeField', 'revision_comment_temp', 'revcomment_comment_id', 'BIGINT', '' ],
-			[ 'dropFkey', 'revision_actor_temp', 'revactor_page' ],
-			[ 'changeField', 'revision_actor_temp', 'revactor_actor', 'BIGINT', '' ],
-			[ 'changeNullableField', 'revision_actor_temp', 'revactor_page', 'NOT NULL', true ],
 			[ 'renameIndex', 'watchlist', 'namespace_title', 'wl_namespace_title' ],
 			[ 'dropFkey', 'page_props', 'pp_page' ],
 			// page_props primary key change moved from the Schema SQL file to here in 1.36
@@ -618,8 +431,8 @@ class PostgresUpdater extends DatabaseUpdater {
 			[ 'addField', 'objectcache', 'modtoken', 'patch-objectcache-modtoken.sql' ],
 			[ 'dropFkey', 'revision', 'rev_page' ],
 			[ 'changeNullableField', 'revision', 'rev_page', 'NOT NULL', true ],
-			[ 'changeField', 'revision', 'rev_comment_id', 'BIGINT', 'DEFAULT 0' ],
-			[ 'changeField', 'revision', 'rev_actor', 'BIGINT', 'DEFAULT 0' ],
+			[ 'changeField', 'revision', 'rev_comment_id', 'BIGINT', 'rev_comment_id::BIGINT DEFAULT 0' ],
+			[ 'changeField', 'revision', 'rev_actor', 'BIGINT', 'rev_actor::BIGINT DEFAULT 0' ],
 			[ 'checkIndex', 'rev_page_id', [
 				[ 'rev_page', 'int4_ops', 'btree', 1 ],
 				[ 'rev_id', 'int4_ops', 'btree', 1 ],
@@ -632,6 +445,24 @@ class PostgresUpdater extends DatabaseUpdater {
 			[ 'renameIndex', 'change_tag', 'change_tag_log_tag_id', 'ct_log_tag_id' ],
 			[ 'renameIndex', 'change_tag', 'change_tag_rev_tag_id', 'ct_rev_tag_id' ],
 			[ 'renameIndex', 'change_tag', 'change_tag_tag_id_id', 'ct_tag_id_id' ],
+
+			// 1.38
+			[ 'doConvertDjvuMetadata' ],
+			[ 'dropPgField', 'page_restrictions', 'pr_user' ],
+			[ 'addTable', 'linktarget', 'patch-linktarget.sql' ],
+			[ 'dropIndex', 'revision', 'rev_page_id', 'patch-drop-rev_page_id.sql' ],
+			[ 'addField', 'templatelinks', 'tl_target_id', 'patch-templatelinks-target_id.sql' ],
+
+			// 1.39
+			[ 'addTable', 'user_autocreate_serial', 'patch-user_autocreate_serial.sql' ],
+			[ 'runMaintenance', MigrateRevisionActorTemp::class, 'maintenance/migrateRevisionActorTemp.php' ],
+			[ 'dropTable', 'revision_actor_temp' ],
+			[ 'runMaintenance', UpdateRestrictions::class, 'maintenance/updateRestrictions.php' ],
+			[ 'dropPgField', 'page', 'page_restrictions' ],
+			[ 'migrateTemplatelinks' ],
+			[ 'changeNullableField', 'templatelinks', 'tl_target_id', 'NOT NULL', true ],
+			[ 'changePrimaryKey', 'templatelinks', [ 'tl_from', 'tl_target_id' ], 'templatelinks_pk' ],
+			[ 'dropField', 'templatelinks', 'tl_title', 'patch-templatelinks-drop-tl_title.sql' ],
 		];
 	}
 
@@ -685,7 +516,7 @@ END;
 		if ( !$res ) {
 			return null;
 		}
-		$r = $this->db->fetchRow( $res );
+		$r = $res->fetchRow();
 		if ( !$r ) {
 			return null;
 		}
@@ -706,7 +537,7 @@ END;
 			if ( !$r2 ) {
 				return null;
 			}
-			$row2 = $this->db->fetchRow( $r2 );
+			$row2 = $r2->fetchRow();
 			if ( !$row2 ) {
 				return null;
 			}
@@ -731,7 +562,7 @@ END;
 			),
 			__METHOD__
 		);
-		$row = $this->db->fetchRow( $r );
+		$row = $r->fetchRow();
 		if ( !$row ) {
 			return null;
 		}
@@ -755,7 +586,7 @@ END;
 			),
 			__METHOD__
 		);
-		$row = $this->db->fetchRow( $r );
+		$row = $r->fetchRow();
 		if ( !$row ) {
 			return null;
 		}

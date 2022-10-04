@@ -37,7 +37,7 @@ class MWExceptionHandler {
 	/** @var string Error reported by direct logException() call */
 	public const CAUGHT_BY_OTHER = 'other';
 
-	/** @var string */
+	/** @var string|null */
 	protected static $reservedMemory;
 
 	/**
@@ -62,9 +62,33 @@ class MWExceptionHandler {
 	];
 
 	/**
-	 * Install handlers with PHP.
+	 * Whether exception data should include a backtrace.
+	 *
+	 * @var bool
 	 */
-	public static function installHandler() {
+	private static $logExceptionBacktrace = true;
+
+	/**
+	 * Whether to propagate errors to PHP's built-in handler.
+	 *
+	 * @var bool
+	 */
+	private static $propagateErrors;
+
+	/**
+	 * Install handlers with PHP.
+	 * @internal
+	 * @param bool $logExceptionBacktrace Whether error handlers should include a backtrace
+	 *        in the log.
+	 * @param bool $propagateErrors Whether errors should be propagated to PHP's built-in handler.
+	 */
+	public static function installHandler(
+		bool $logExceptionBacktrace = true,
+		bool $propagateErrors = true
+	) {
+		self::$logExceptionBacktrace = $logExceptionBacktrace;
+		self::$propagateErrors = $propagateErrors;
+
 		// This catches:
 		// * Exception objects that were explicitly thrown but not
 		//   caught anywhere in the application. This is rare given those
@@ -115,6 +139,43 @@ class MWExceptionHandler {
 	}
 
 	/**
+	 * Roll back any open database transactions
+	 *
+	 * This method is used to attempt to recover from exceptions
+	 */
+	private static function rollbackPrimaryChanges() {
+		if ( !MediaWikiServices::hasInstance() ) {
+			// MediaWiki isn't fully initialized yet, it's not safe to access services.
+			// This also means that there's nothing to roll back yet.
+			return;
+		}
+
+		$services = MediaWikiServices::getInstance();
+		if ( $services->isServiceDisabled( 'DBLoadBalancerFactory' ) ) {
+			// The DBLoadBalancerFactory is disabled, possibly because we are in the installer,
+			// or we are in the process of shutting MediaWiki. At this point, any DB transactions
+			// would already have been committed or rolled back.
+			return;
+		}
+
+		// Roll back DBs to avoid transaction notices. This might fail
+		// to roll back some databases due to connection issues or exceptions.
+		// However, any sensible DB driver will roll back implicitly anyway.
+		try {
+			$lbFactory = $services->getDBLoadBalancerFactory();
+			$lbFactory->rollbackPrimaryChanges( __METHOD__ );
+			$lbFactory->flushPrimarySessions( __METHOD__ );
+		} catch ( DBError $e ) {
+			// If the DB is unreachable, rollback() will throw an error
+			// and the error report() method might need messages from the DB,
+			// which would result in an exception loop. PHP may escalate such
+			// errors to "Exception thrown without a stack frame" fatals, but
+			// it's better to be explicit here.
+			self::logException( $e, self::CAUGHT_BY_HANDLER );
+		}
+	}
+
+	/**
 	 * Roll back any open database transactions and log the stack trace of the throwable
 	 *
 	 * This method is used to attempt to recover from exceptions
@@ -127,22 +188,7 @@ class MWExceptionHandler {
 		Throwable $e,
 		$catcher = self::CAUGHT_BY_OTHER
 	) {
-		$services = MediaWikiServices::getInstance();
-		if ( !$services->isServiceDisabled( 'DBLoadBalancerFactory' ) ) {
-			// Rollback DBs to avoid transaction notices. This might fail
-			// to rollback some databases due to connection issues or exceptions.
-			// However, any sane DB driver will rollback implicitly anyway.
-			try {
-				$services->getDBLoadBalancerFactory()->rollbackPrimaryChanges( __METHOD__ );
-			} catch ( DBError $e2 ) {
-				// If the DB is unreacheable, rollback() will throw an error
-				// and the error report() method might need messages from the DB,
-				// which would result in an exception loop. PHP may escalate such
-				// errors to "Exception thrown without a stack frame" fatals, but
-				// it's better to be explicit here.
-				self::logException( $e2, $catcher );
-			}
-		}
+		self::rollbackPrimaryChanges();
 
 		self::logException( $e, $catcher );
 	}
@@ -222,8 +268,6 @@ class MWExceptionHandler {
 		$file = null,
 		$line = null
 	) {
-		global $wgPropagateErrors;
-
 		// Map PHP error constant to a PSR-3 severity level.
 		// Avoid use of "DEBUG" or "INFO" levels, unless the
 		// error should evade error monitoring and alerts.
@@ -287,13 +331,14 @@ class MWExceptionHandler {
 				break;
 		}
 
+		// @phan-suppress-next-line PhanTypeMismatchArgumentNullableInternal False positive
 		$e = new ErrorException( $prefix . $message, 0, $level, $file, $line );
 		self::logError( $e, 'error', $severity, self::CAUGHT_BY_HANDLER );
 
-		// If $wgPropagateErrors is true return false so PHP shows/logs the error normally.
-		// Ignore $wgPropagateErrors if track_errors is set
+		// If $propagateErrors is true return false so PHP shows/logs the error normally.
+		// Ignore $propagateErrors if track_errors is set
 		// (which means someone is counting on regular PHP error handling behavior).
-		return !( $wgPropagateErrors || ini_get( 'track_errors' ) );
+		return !( self::$propagateErrors || ini_get( 'track_errors' ) );
 	}
 
 	/**
@@ -331,7 +376,6 @@ class MWExceptionHandler {
 			return false;
 		}
 
-		$url = WebRequest::getGlobalRequestURL();
 		$msgParts = [
 			'[{reqId}] {exception_url}   PHP Fatal Error',
 			( $line || $file ) ? ' from' : '',
@@ -402,10 +446,8 @@ TXT;
 
 			if ( isset( $frame['class'] ) && isset( $frame['type'] ) && isset( $frame['function'] ) ) {
 				$text .= $frame['class'] . $frame['type'] . $frame['function'];
-			} elseif ( isset( $frame['function'] ) ) {
-				$text .= $frame['function'];
 			} else {
-				$text .= 'NO_FUNCTION_GIVEN';
+				$text .= $frame['function'] ?? 'NO_FUNCTION_GIVEN';
 			}
 
 			if ( isset( $frame['args'] ) ) {
@@ -444,7 +486,7 @@ TXT;
 	 *
 	 * @since 1.26
 	 * @param array $trace Stacktrace
-	 * @return array Stacktrace with arugment values converted to data types
+	 * @return array Stacktrace with argument values converted to data types
 	 */
 	public static function redactTrace( array $trace ) {
 		return array_map( static function ( $frame ) {
@@ -578,17 +620,15 @@ TXT;
 	 * backtrace) derived from the given throwable. The backtrace information
 	 * will be redacted as per getRedactedTraceAsArray().
 	 *
-	 * @since 1.26
 	 * @param Throwable $e
 	 * @param string $catcher CAUGHT_BY_* class constant indicating what caught the error
 	 * @return array
+	 * @since 1.26
 	 */
 	public static function getStructuredExceptionData(
 		Throwable $e,
 		$catcher = self::CAUGHT_BY_OTHER
 	) {
-		global $wgLogExceptionBacktrace;
-
 		$data = [
 			'id' => WebRequest::getRequestId(),
 			'type' => get_class( $e ),
@@ -603,11 +643,11 @@ TXT;
 		if ( $e instanceof ErrorException &&
 			( error_reporting() & $e->getSeverity() ) === 0
 		) {
-			// Flag surpressed errors
+			// Flag suppressed errors
 			$data['suppressed'] = true;
 		}
 
-		if ( $wgLogExceptionBacktrace ) {
+		if ( self::$logExceptionBacktrace ) {
 			$data['backtrace'] = self::getRedactedTrace( $e );
 		}
 
@@ -638,10 +678,10 @@ TXT;
 	 * @code
 	 *  {
 	 *    "id": "c41fb419",
-	 *    "type": "MWException",
+	 *    "type": "Exception",
 	 *    "file": "/var/www/mediawiki/includes/cache/MessageCache.php",
 	 *    "line": 704,
-	 *    "message": "Non-string key given",
+	 *    "message": "Example message",
 	 *    "url": "/wiki/Main_Page"
 	 *  }
 	 * @endcode
@@ -650,13 +690,13 @@ TXT;
 	 * @code
 	 *  {
 	 *    "id": "dc457938",
-	 *    "type": "MWException",
-	 *    "file": "/vagrant/mediawiki/includes/cache/MessageCache.php",
+	 *    "type": "Exception",
+	 *    "file": "/var/www/mediawiki/includes/cache/MessageCache.php",
 	 *    "line": 704,
-	 *    "message": "Non-string key given",
+	 *    "message": "Example message",
 	 *    "url": "/wiki/Main_Page",
 	 *    "backtrace": [{
-	 *      "file": "/vagrant/mediawiki/extensions/VisualEditor/VisualEditor.hooks.php",
+	 *      "file": "/var/www/mediawiki/includes/OutputPage.php",
 	 *      "line": 80,
 	 *      "function": "get",
 	 *      "class": "MessageCache",
@@ -739,7 +779,7 @@ TXT;
 	) {
 		// The set_error_handler callback is independent from error_reporting.
 		// Filter out unwanted errors manually (e.g. when
-		// Wikimedia\suppressWarnings is active).
+		// AtEase::suppressWarnings is active).
 		$suppressed = ( error_reporting() & $e->getSeverity() ) === 0;
 		if ( !$suppressed ) {
 			$logger = LoggerFactory::getInstance( $channel );
@@ -750,7 +790,7 @@ TXT;
 			);
 		}
 
-		// Include all errors in the json log (surpressed errors will be flagged)
+		// Include all errors in the json log (suppressed errors will be flagged)
 		$json = self::jsonSerializeException( $e, false, FormatJson::ALL_OK, $catcher );
 		if ( $json !== false ) {
 			$logger = LoggerFactory::getInstance( "{$channel}-json" );
@@ -758,7 +798,7 @@ TXT;
 			// and emits messages even if wikimedia/at-ease was used to suppress the
 			// error. To avoid clobbering Logstash dashboards with these, make sure
 			// those have their level casted to DEBUG so that they are excluded by
-			// level-based filteres automatically instead of requiring a dedicated filter
+			// level-based filters automatically instead of requiring a dedicated filter
 			// for this channel. To be improved: T193472.
 			$unfilteredLevel = $suppressed ? LogLevel::DEBUG : $level;
 			$logger->log( $unfilteredLevel, $json, [ 'private' => true ] );

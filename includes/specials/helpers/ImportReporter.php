@@ -34,7 +34,7 @@ class ImportReporter extends ContextSource {
 	private $mOriginalLogCallback;
 	private $mOriginalPageOutCallback;
 	private $mLogItemCount = 0;
-	private $mPageCount;
+	private $mPageCount = 0;
 	private $mIsUpload;
 	private $mInterwiki;
 
@@ -44,16 +44,15 @@ class ImportReporter extends ContextSource {
 	 * @param string $interwiki
 	 * @param string|bool $reason
 	 */
-	public function __construct( $importer, $upload, $interwiki, $reason = false ) {
+	public function __construct( $importer, $upload, $interwiki, $reason = "" ) {
 		$this->mOriginalPageOutCallback =
 			$importer->setPageOutCallback( [ $this, 'reportPage' ] );
 		$this->mOriginalLogCallback =
 			$importer->setLogItemCallback( [ $this, 'reportLogItem' ] );
 		$importer->setNoticeCallback( [ $this, 'reportNotice' ] );
-		$this->mPageCount = 0;
 		$this->mIsUpload = $upload;
 		$this->mInterwiki = $interwiki;
-		$this->reason = $reason;
+		$this->reason = is_string( $reason ) ? $reason : "";
 	}
 
 	/**
@@ -166,11 +165,12 @@ class ImportReporter extends ContextSource {
 
 			// Create the import log entry
 			$logEntry = new ManualLogEntry( 'import', $action );
-			$logEntry->setTarget( TitleValue::castPageToLinkTarget( $pageIdentity ) );
+			$logEntry->setTarget( $pageIdentity );
 			$logEntry->setComment( $this->reason );
 			$logEntry->setPerformer( $this->getUser() );
 			$logEntry->setParameters( $logParams );
 			// Make sure the null revision will be tagged as well
+			// @phan-suppress-next-line PhanTypeMismatchArgumentNullable T303637
 			$logEntry->setAssociatedRevId( $nullRevId );
 			if ( count( $this->logTags ) ) {
 				$logEntry->addTags( $this->logTags );

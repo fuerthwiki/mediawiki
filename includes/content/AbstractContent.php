@@ -30,6 +30,7 @@ use MediaWiki\Content\IContentHandlerFactory;
 use MediaWiki\Content\Renderer\ContentParseParams;
 use MediaWiki\Content\Transform\PreloadTransformParamsValue;
 use MediaWiki\Content\Transform\PreSaveTransformParamsValue;
+use MediaWiki\Content\ValidationParams;
 use MediaWiki\MediaWikiServices;
 
 /**
@@ -174,6 +175,27 @@ abstract class AbstractContent implements Content {
 	}
 
 	/**
+	 * Returns native representation of the data. Interpretation depends on
+	 * the data model used, as given by getDataModel().
+	 *
+	 * @stable to override
+	 * @since 1.21
+	 *
+	 * @deprecated since 1.33 use getText() for TextContent instances.
+	 *             For other content models, use specialized getters.
+	 *
+	 * @return mixed The native representation of the content. Could be a
+	 *    string, a nested array structure, an object, a binary blob...
+	 *    anything, really.
+	 * @throws LogicException
+	 *
+	 * @note Caller must be aware of content model!
+	 */
+	public function getNativeData() {
+		throw new LogicException( __METHOD__ . ': not implemented' );
+	}
+
+	/**
 	 * @stable to override
 	 * @since 1.21
 	 *
@@ -204,7 +226,7 @@ abstract class AbstractContent implements Content {
 	 * Two Content objects MUST not be considered equal if they do not share the same content model.
 	 * Two Content objects that are equal SHOULD have the same serialization.
 	 *
-	 * This default implementation relies on equalsInternal() to determin whether the
+	 * This default implementation relies on equalsInternal() to determine whether the
 	 * Content objects are logically equivalent. Subclasses that need to implement a custom
 	 * equality check should consider overriding equalsInternal(). Subclasses that override
 	 * equals() itself MUST make sure that the implementation returns false for $that === null,
@@ -267,40 +289,23 @@ abstract class AbstractContent implements Content {
 
 	/**
 	 * @since 1.21
+	 * @deprecated since 1.38, use getRedirectTarget() instead.
+	 *   Emitting deprecation warnings since 1.39.
+	 *   Support for redirect chains has been removed.
 	 *
 	 * @return Title[]|null
 	 *
 	 * @see Content::getRedirectChain
 	 */
 	public function getRedirectChain() {
-		global $wgMaxRedirects;
+		wfDeprecated( __METHOD__, '1.38' );
+
 		$title = $this->getRedirectTarget();
 		if ( $title === null ) {
 			return null;
+		} else {
+			return [ $title ];
 		}
-		$wikiPageFactory = MediaWikiServices::getInstance()->getWikiPageFactory();
-		// recursive check to follow double redirects
-		$recurse = $wgMaxRedirects;
-		$titles = [ $title ];
-		while ( --$recurse > 0 ) {
-			if ( $title->isRedirect() ) {
-				$page = $wikiPageFactory->newFromTitle( $title );
-				$newtitle = $page->getRedirectTarget();
-			} else {
-				break;
-			}
-			// Redirects to some special pages are not permitted
-			if ( $newtitle instanceof Title && $newtitle->isValidRedirectTarget() ) {
-				// The new title passes the checks, so make that our current
-				// title so that further recursion can be checked
-				$title = $newtitle;
-				$titles[] = $newtitle;
-			} else {
-				break;
-			}
-		}
-
-		return $titles;
 	}
 
 	/**
@@ -321,15 +326,18 @@ abstract class AbstractContent implements Content {
 	 * @note Migrated here from Title::newFromRedirectRecurse.
 	 *
 	 * @since 1.21
+	 * @deprecated since 1.38, use getRedirectTarget() instead.
+	 *   Emitting deprecation warnings since 1.39.
+	 *   Support for redirect chains has been removed.
 	 *
 	 * @return Title|null
 	 *
 	 * @see Content::getUltimateRedirectTarget
 	 */
 	public function getUltimateRedirectTarget() {
-		$titles = $this->getRedirectChain();
+		wfDeprecated( __METHOD__, '1.38' );
 
-		return $titles ? array_pop( $titles ) : null;
+		return $this->getRedirectTarget();
 	}
 
 	/**
@@ -444,8 +452,9 @@ abstract class AbstractContent implements Content {
 	}
 
 	/**
-	 * @stable to override
 	 * @since 1.21
+	 * @deprecated since 1.38. Hard-deprecated since 1.38.
+	 * Use ContentHandler::validateSave instead.
 	 *
 	 * @param WikiPage $page
 	 * @param int $flags
@@ -456,11 +465,29 @@ abstract class AbstractContent implements Content {
 	 * @see Content::prepareSave
 	 */
 	public function prepareSave( WikiPage $page, $flags, $parentRevId, User $user ) {
-		if ( $this->isValid() ) {
-			return Status::newGood();
-		} else {
-			return Status::newFatal( "invalid-content-data" );
+		wfDeprecated( __METHOD__, '1.38' );
+		$detectPSDeprecatedOverride = MWDebug::detectDeprecatedOverride(
+			$this,
+			self::class,
+			'prepareSave',
+			'1.38'
+		);
+
+		if ( $detectPSDeprecatedOverride ) {
+			if ( $this->isValid() ) {
+				return Status::newGood();
+			} else {
+				return Status::newFatal( "invalid-content-data" );
+			}
 		}
+
+		$validationParams = new ValidationParams( $page, $flags, $parentRevId );
+		$statusValue = $this->getContentHandler()->validateSave(
+			$this,
+			$validationParams
+		);
+
+		return Status::wrap( $statusValue );
 	}
 
 	/**
@@ -519,7 +546,7 @@ abstract class AbstractContent implements Content {
 	 * ContentGetParserOutput hook.
 	 *
 	 * @since 1.24
-	 * @deprecated since 1.38. Use ContentRenderer::getParserOutput instead.
+	 * @deprecated since 1.38. Hard-deprecated since 1.38. Use ContentRenderer::getParserOutput instead.
 	 * Extensions defining a content model should override ContentHandler::fillParserOutput.
 	 * @param Title $title Context title for parsing
 	 * @param int|null $revId Revision ID being rendered
@@ -531,20 +558,23 @@ abstract class AbstractContent implements Content {
 	public function getParserOutput( Title $title, $revId = null,
 		ParserOptions $options = null, $generateHtml = true
 	) {
+		wfDeprecated( __METHOD__, '1.38' );
 		$detectGPODeprecatedOverride = MWDebug::detectDeprecatedOverride(
 			$this,
 			self::class,
-			'getParserOutput'
+			'getParserOutput',
+			'1.38'
 		);
 		$detectFPODeprecatedOverride = MWDebug::detectDeprecatedOverride(
 			$this,
 			self::class,
-			'fillParserOutput'
+			'fillParserOutput',
+			'1.38'
 		);
 
 		if ( $detectGPODeprecatedOverride || $detectFPODeprecatedOverride ) {
 			if ( $options === null ) {
-				$options = ParserOptions::newCanonical( 'canonical' );
+				$options = ParserOptions::newFromAnon();
 			}
 
 			$po = new ParserOutput();
@@ -585,7 +615,7 @@ abstract class AbstractContent implements Content {
 	 * This placeholder implementation always throws an exception.
 	 *
 	 * @since 1.24
-	 * @deprecated since 1.37. Use ContentHandler::fillParserOutput instead.
+	 * @deprecated since 1.38. Hard-deprecated since 1.38. Use ContentHandler::fillParserOutput instead.
 	 * @param Title $title Context title for parsing
 	 * @param int|null $revId ID of the revision being rendered.
 	 *  See Parser::parse() for the ramifications.
@@ -598,6 +628,7 @@ abstract class AbstractContent implements Content {
 	protected function fillParserOutput( Title $title, $revId,
 		ParserOptions $options, $generateHtml, ParserOutput &$output
 	) {
+		wfDeprecated( __METHOD__, '1.38' );
 		$cpoParams = new ContentParseParams( $title, $revId, $options, $generateHtml );
 		return $this->getContentHandler()->fillParserOutputInternal( $this, $cpoParams, $output );
 	}

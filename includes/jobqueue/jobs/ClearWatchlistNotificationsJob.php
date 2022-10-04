@@ -16,9 +16,9 @@
  * http://www.gnu.org/copyleft/gpl.html
  *
  * @file
- * @ingroup JobQueue
  */
 
+use MediaWiki\MainConfigNames;
 use MediaWiki\MediaWikiServices;
 
 /**
@@ -30,8 +30,8 @@ use MediaWiki\MediaWikiServices;
  *   - casTime: UNIX timestamp of the event that triggered this job [required]
  *   - timestamp: value to set all of the "last viewed" timestamps to [optional, defaults to null]
  *
- * @ingroup JobQueue
  * @since 1.31
+ * @ingroup JobQueue
  */
 class ClearWatchlistNotificationsJob extends Job implements GenericParameterJob {
 	public function __construct( array $params ) {
@@ -49,7 +49,7 @@ class ClearWatchlistNotificationsJob extends Job implements GenericParameterJob 
 	public function run() {
 		$services = MediaWikiServices::getInstance();
 		$lbFactory = $services->getDBLoadBalancerFactory();
-		$rowsPerQuery = $services->getMainConfig()->get( 'UpdateRowsPerQuery' );
+		$rowsPerQuery = $services->getMainConfig()->get( MainConfigNames::UpdateRowsPerQuery );
 
 		$dbw = $lbFactory->getMainLB()->getConnectionRef( DB_PRIMARY );
 		$ticket = $lbFactory->getEmptyTransactionTicket( __METHOD__ );

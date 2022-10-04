@@ -1,5 +1,7 @@
 <?php
 
+use MediaWiki\MainConfigNames;
+
 /**
  * Test class for Export methods.
  *
@@ -11,9 +13,7 @@ class ExportTest extends MediaWikiLangTestCase {
 
 	protected function setUp(): void {
 		parent::setUp();
-		$this->setMwGlobals( [
-			'wgCapitalLinks' => true,
-		] );
+		$this->overrideConfigValue( MainConfigNames::CapitalLinks, true );
 	}
 
 	/**
@@ -35,12 +35,14 @@ class ExportTest extends MediaWikiLangTestCase {
 		$exporter->pageByTitle( $title );
 		$exporter->closeStream();
 
-		$oldDisable = libxml_disable_entity_loader( true );
+		// phpcs:ignore Generic.PHP.NoSilencedErrors -- suppress deprecation per T268847
+		$oldDisable = @libxml_disable_entity_loader( true );
 
 		// This throws error if invalid xml output
 		$xmlObject = simplexml_load_string( $sink );
 
-		libxml_disable_entity_loader( $oldDisable );
+		// phpcs:ignore Generic.PHP.NoSilencedErrors
+		@libxml_disable_entity_loader( $oldDisable );
 
 		/**
 		 * Check namespaces match xml

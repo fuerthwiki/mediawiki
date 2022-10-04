@@ -1,7 +1,7 @@
 <?php
 
 use MediaWiki\HookContainer\HookContainer;
-use Wikimedia\ObjectFactory;
+use Wikimedia\ObjectFactory\ObjectFactory;
 use Wikimedia\Rdbms\IDatabase;
 use Wikimedia\Rdbms\ILoadBalancer;
 
@@ -57,12 +57,8 @@ class SearchEngineFactory {
 
 		$mappings = $this->config->getSearchMappings();
 
-		if ( isset( $mappings[$class] ) ) {
-			$spec = $mappings[$class];
-		} else {
-			// Convert non mapped classes to ObjectFactory spec
-			$spec = [ 'class' => $class ];
-		}
+		// Convert non mapped classes to ObjectFactory spec
+		$spec = $mappings[$class] ?? [ 'class' => $class ];
 
 		$args = [];
 

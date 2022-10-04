@@ -1,7 +1,5 @@
 <?php
 /**
- * Old Church Slavonic (Ѩзыкъ словѣньскъ) specific code.
- *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
@@ -18,13 +16,15 @@
  * http://www.gnu.org/copyleft/gpl.html
  *
  * @file
- * @ingroup Language
  */
+
+use MediaWiki\MainConfigNames;
+use MediaWiki\MediaWikiServices;
 
 /**
  * Old Church Slavonic (Ѩзыкъ словѣньскъ)
  *
- * @ingroup Language
+ * @ingroup Languages
  */
 class LanguageCu extends Language {
 	/**
@@ -36,10 +36,11 @@ class LanguageCu extends Language {
 	 * @return string
 	 */
 	public function convertGrammar( $word, $case ) {
-		global $wgGrammarForms;
+		$grammarForms =
+			MediaWikiServices::getInstance()->getMainConfig()->get( MainConfigNames::GrammarForms );
 
-		if ( isset( $wgGrammarForms['сu'][$case][$word] ) ) {
-			return $wgGrammarForms['сu'][$case][$word];
+		if ( isset( $grammarForms['сu'][$case][$word] ) ) {
+			return $grammarForms['сu'][$case][$word];
 		}
 
 		# These rules are not perfect, but they are currently only used for

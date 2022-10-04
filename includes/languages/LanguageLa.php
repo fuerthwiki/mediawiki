@@ -1,7 +1,5 @@
 <?php
 /**
- * Latin (lingua Latina) specific code.
- *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
@@ -18,13 +16,15 @@
  * http://www.gnu.org/copyleft/gpl.html
  *
  * @file
- * @ingroup Language
  */
+
+use MediaWiki\MainConfigNames;
+use MediaWiki\MediaWikiServices;
 
 /**
  * Latin (lingua Latina)
  *
- * @ingroup Language
+ * @ingroup Languages
  */
 class LanguageLa extends Language {
 	/**
@@ -41,9 +41,10 @@ class LanguageLa extends Language {
 	 * @return string
 	 */
 	public function convertGrammar( $word, $case ) {
-		global $wgGrammarForms;
-		if ( isset( $wgGrammarForms['la'][$case][$word] ) ) {
-			return $wgGrammarForms['la'][$case][$word];
+		$grammarForms =
+			MediaWikiServices::getInstance()->getMainConfig()->get( MainConfigNames::GrammarForms );
+		if ( isset( $grammarForms['la'][$case][$word] ) ) {
+			return $grammarForms['la'][$case][$word];
 		}
 
 		switch ( $case ) {

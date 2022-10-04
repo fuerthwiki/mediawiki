@@ -4,12 +4,13 @@ namespace MediaWiki\Tests\Maintenance;
 
 use Benchmarker;
 use MediaWikiCoversValidator;
+use PHPUnit\Framework\TestCase;
 use Wikimedia\TestingAccessWrapper;
 
 /**
- * @covers Benchmarker
+ * @covers \Benchmarker
  */
-class BenchmarkerTest extends \PHPUnit\Framework\TestCase {
+class BenchmarkerTest extends TestCase {
 
 	use MediaWikiCoversValidator;
 
@@ -23,7 +24,7 @@ class BenchmarkerTest extends \PHPUnit\Framework\TestCase {
 		$count = 0;
 		$bench->bench( [
 			'test' => static function () use ( &$count ) {
-					$count++;
+				$count++;
 			}
 		] );
 
@@ -41,10 +42,10 @@ class BenchmarkerTest extends \PHPUnit\Framework\TestCase {
 		$bench->bench( [
 			'test' => [
 				'setup' => static function () use ( &$buffer ) {
-						$buffer[] = 'setup';
+					$buffer[] = 'setup';
 				},
 				'function' => static function () use ( &$buffer ) {
-						$buffer[] = 'run';
+					$buffer[] = 'run';
 				}
 			]
 		] );
@@ -59,11 +60,10 @@ class BenchmarkerTest extends \PHPUnit\Framework\TestCase {
 		$benchProxy = TestingAccessWrapper::newFromObject( $bench );
 		$benchProxy->defaultCount = 1;
 
-		$bench->expects( $this->exactly( 2 ) )->method( 'hasOption' )
-			->will( $this->returnValueMap( [
-					[ 'verbose', true ],
-					[ 'count', false ],
-				] ) );
+		$bench->expects( $this->once() )->method( 'hasOption' )
+			->willReturnMap( [
+				[ 'verbose', true ],
+			] );
 
 		$bench->expects( $this->once() )->method( 'verboseRun' )
 			->with( 0 )
@@ -104,7 +104,7 @@ class BenchmarkerTest extends \PHPUnit\Framework\TestCase {
 
 		$bench->expects( $this->once() )->method( 'addResult' )
 			->with( $this->callback( static function ( $res ) {
-				return $res['name'] === 'strtolower(A)';
+				return $res['name'] === "strtolower('A')";
 			} ) );
 
 		$bench->bench( [ [
@@ -113,9 +113,6 @@ class BenchmarkerTest extends \PHPUnit\Framework\TestCase {
 		] ] );
 	}
 
-	/**
-	 * @covers Benchmarker::verboseRun
-	 */
 	public function testVerboseRun() {
 		$bench = $this->getMockBuilder( Benchmarker::class )
 			->onlyMethods( [ 'execute', 'output', 'hasOption', 'startBench', 'addResult' ] )
@@ -123,11 +120,10 @@ class BenchmarkerTest extends \PHPUnit\Framework\TestCase {
 		$benchProxy = TestingAccessWrapper::newFromObject( $bench );
 		$benchProxy->defaultCount = 1;
 
-		$bench->expects( $this->exactly( 2 ) )->method( 'hasOption' )
-			->will( $this->returnValueMap( [
-					[ 'verbose', true ],
-					[ 'count', false ],
-				] ) );
+		$bench->expects( $this->once() )->method( 'hasOption' )
+			->willReturnMap( [
+				[ 'verbose', true ],
+			] );
 
 		$bench->expects( $this->once() )->method( 'output' )
 			->with( $this->callback( static function ( $out ) {

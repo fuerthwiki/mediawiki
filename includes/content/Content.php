@@ -1,8 +1,5 @@
 <?php
 /**
- * A content object represents page content, e.g. the text to show on a page.
- * Content objects have no knowledge about how they relate to wiki pages.
- *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
@@ -18,19 +15,21 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
  * http://www.gnu.org/copyleft/gpl.html
  *
- * @since 1.21
- *
  * @file
- * @ingroup Content
- *
- * @author Daniel Kinzler
  */
 
 /**
- * Base interface for content objects.
+ * Base interface for representing page content.
  *
+ * A content object represents page content, e.g. the text to show on a page.
+ * Content objects have no knowledge about how they relate to wiki pages.
+ *
+ * Must not be implemented directly by extensions, extend AbstractContent instead.
+ *
+ * @stable to type
+ * @since 1.21
  * @ingroup Content
- * @unstable for implementation, extensions should extend AbstractContent instead.
+ * @author Daniel Kinzler
  */
 interface Content {
 
@@ -66,7 +65,8 @@ interface Content {
 	 *
 	 * @since 1.21
 	 *
-	 * @param int $maxLength Maximum length of the summary text.
+	 * @param int $maxLength Maximum length of the summary text, in bytes.
+	 * Usually implemented using {@link Language::truncateForDatabase()}.
 	 *
 	 * @return string The summary text.
 	 */
@@ -268,7 +268,7 @@ interface Content {
 	 * @note To control which options are used in the cache key for the
 	 *       generated parser output, implementations of this method
 	 *       may call ParserOutput::recordOption() on the output object.
-	 * @deprecated since 1.38. Use ContentRenderer::getParserOutput
+	 * @deprecated since 1.38. Hard-deprecated since 1.38. Use ContentRenderer::getParserOutput
 	 * and override ContentHandler::fillParserOutput.
 	 * @param Title $title The page title to use as a context for rendering.
 	 * @param int|null $revId ID of the revision being rendered.
@@ -288,45 +288,14 @@ interface Content {
 	// TODO: make RenderOutput and RenderOptions base classes
 
 	/**
-	 * Construct the redirect destination from this content and return an
-	 * array of Titles, or null if this content doesn't represent a redirect.
-	 * The last element in the array is the final destination after all redirects
-	 * have been resolved (up to $wgMaxRedirects times).
-	 *
-	 * @since 1.21
-	 *
-	 * @return Title[]|null List of Titles, with the destination last.
-	 */
-	public function getRedirectChain();
-
-	/**
 	 * Construct the redirect destination from this content and return a Title,
 	 * or null if this content doesn't represent a redirect.
-	 * This will only return the immediate redirect target, useful for
-	 * the redirect table and other checks that don't need full recursion.
 	 *
 	 * @since 1.21
 	 *
 	 * @return Title|null
 	 */
 	public function getRedirectTarget();
-
-	/**
-	 * Construct the redirect destination from this content and return the
-	 * Title, or null if this content doesn't represent a redirect.
-	 *
-	 * This will recurse down $wgMaxRedirects times or until a non-redirect
-	 * target is hit in order to provide (hopefully) the Title of the final
-	 * destination instead of another redirect.
-	 *
-	 * There is usually no need to override the default behavior, subclasses that
-	 * want to implement redirects should override getRedirectTarget().
-	 *
-	 * @since 1.21
-	 *
-	 * @return Title|null
-	 */
-	public function getUltimateRedirectTarget();
 
 	/**
 	 * Returns whether this Content represents a redirect.
@@ -440,6 +409,7 @@ interface Content {
 	 * performed. This means that $page may not yet know a page ID.
 	 *
 	 * @since 1.21
+	 * @deprecated since 1.38. Hard-deprecated since 1.38. Use ContentHandler::validateSave instead.
 	 *
 	 * @param WikiPage $page The page to be saved.
 	 * @param int $flags Bitfield for use with EDIT_XXX constants, see WikiPage::doUserEditContent()
@@ -480,7 +450,7 @@ interface Content {
 	public function convert( $toModel, $lossy = '' );
 
 	// @todo ImagePage and CategoryPage interfere with per-content action handlers
-	// @todo nice&sane integration of GeSHi syntax highlighting
+	// @todo nice integration of GeSHi syntax highlighting
 	//   [11:59] <vvv> Hooks are ugly; make CodeHighlighter interface and a
 	//   config to set the class which handles syntax highlighting
 	//   [12:00] <vvv> And default it to a DummyHighlighter

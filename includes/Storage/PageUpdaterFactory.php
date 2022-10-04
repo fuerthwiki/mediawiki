@@ -28,6 +28,10 @@ use MediaWiki\Config\ServiceOptions;
 use MediaWiki\Content\IContentHandlerFactory;
 use MediaWiki\Content\Transform\ContentTransformer;
 use MediaWiki\HookContainer\HookContainer;
+use MediaWiki\MainConfigNames;
+use MediaWiki\Page\PageIdentity;
+use MediaWiki\Page\WikiPageFactory;
+use MediaWiki\Parser\Parsoid\ParsoidOutputAccess;
 use MediaWiki\Permissions\PermissionManager;
 use MediaWiki\Revision\RevisionRenderer;
 use MediaWiki\Revision\RevisionStore;
@@ -59,12 +63,13 @@ class PageUpdaterFactory {
 	 * @internal
 	 */
 	public const CONSTRUCTOR_OPTIONS = [
-		'ArticleCountMethod',
-		'RCWatchCategoryMembership',
-		'PageCreationLog',
-		'UseAutomaticEditSummaries',
-		'ManualRevertSearchRadius',
-		'UseRCPatrol',
+		MainConfigNames::ArticleCountMethod,
+		MainConfigNames::RCWatchCategoryMembership,
+		MainConfigNames::PageCreationLog,
+		MainConfigNames::UseAutomaticEditSummaries,
+		MainConfigNames::ManualRevertSearchRadius,
+		MainConfigNames::UseRCPatrol,
+		MainConfigNames::ParsoidCacheConfig,
 	];
 
 	/** @var RevisionStore */
@@ -133,14 +138,21 @@ class PageUpdaterFactory {
 	/** @var PermissionManager */
 	private $permissionManager;
 
+	/** @var WikiPageFactory */
+	private $wikiPageFactory;
+
 	/** @var string[] */
 	private $softwareTags;
+
+	/** @var ParsoidOutputAccess */
+	private $parsoidOutputAccess;
 
 	/**
 	 * @param RevisionStore $revisionStore
 	 * @param RevisionRenderer $revisionRenderer
 	 * @param SlotRoleRegistry $slotRoleRegistry
 	 * @param ParserCache $parserCache
+	 * @param ParsoidOutputAccess $parsoidOutputAccess
 	 * @param JobQueueGroup $jobQueueGroup
 	 * @param MessageCache $messageCache
 	 * @param Language $contLang
@@ -159,6 +171,7 @@ class PageUpdaterFactory {
 	 * @param TalkPageNotificationManager $talkPageNotificationManager
 	 * @param WANObjectCache $mainWANObjectCache
 	 * @param PermissionManager $permissionManager
+	 * @param WikiPageFactory $wikiPageFactory
 	 * @param string[] $softwareTags
 	 */
 	public function __construct(
@@ -166,6 +179,7 @@ class PageUpdaterFactory {
 		RevisionRenderer $revisionRenderer,
 		SlotRoleRegistry $slotRoleRegistry,
 		ParserCache $parserCache,
+		ParsoidOutputAccess $parsoidOutputAccess,
 		JobQueueGroup $jobQueueGroup,
 		MessageCache $messageCache,
 		Language $contLang,
@@ -184,6 +198,7 @@ class PageUpdaterFactory {
 		TalkPageNotificationManager $talkPageNotificationManager,
 		WANObjectCache $mainWANObjectCache,
 		PermissionManager $permissionManager,
+		WikiPageFactory $wikiPageFactory,
 		array $softwareTags
 	) {
 		$options->assertRequiredOptions( self::CONSTRUCTOR_OPTIONS );
@@ -192,6 +207,7 @@ class PageUpdaterFactory {
 		$this->revisionRenderer = $revisionRenderer;
 		$this->slotRoleRegistry = $slotRoleRegistry;
 		$this->parserCache = $parserCache;
+		$this->parsoidOutputAccess = $parsoidOutputAccess;
 		$this->jobQueueGroup = $jobQueueGroup;
 		$this->messageCache = $messageCache;
 		$this->contLang = $contLang;
@@ -211,6 +227,7 @@ class PageUpdaterFactory {
 		$this->mainWANObjectCache = $mainWANObjectCache;
 		$this->permissionManager = $permissionManager;
 		$this->softwareTags = $softwareTags;
+		$this->wikiPageFactory = $wikiPageFactory;
 	}
 
 	/**
@@ -221,16 +238,18 @@ class PageUpdaterFactory {
 	 * and WikiPage::getCurrentUpdate() have been removed. For now, the WikiPage instance is
 	 * used to make the state of an ongoing edit available to hook handlers.
 	 *
-	 * @param WikiPage $page
+	 * @param PageIdentity $page
 	 * @param UserIdentity $user
 	 *
 	 * @return PageUpdater
 	 * @since 1.37
 	 */
 	public function newPageUpdater(
-		WikiPage $page,
+		PageIdentity $page,
 		UserIdentity $user
 	): PageUpdater {
+		$page = $this->wikiPageFactory->newFromTitle( $page );
+
 		return $this->newPageUpdaterForDerivedPageDataUpdater(
 			$page,
 			$user,
@@ -272,12 +291,14 @@ class PageUpdaterFactory {
 				PageUpdater::CONSTRUCTOR_OPTIONS,
 				$this->options
 			),
-			$this->softwareTags
+			$this->softwareTags,
+			$this->logger
 		);
 
-		$pageUpdater->setUsePageCreationLog( $this->options->get( 'PageCreationLog' ) );
+		$pageUpdater->setUsePageCreationLog(
+			$this->options->get( MainConfigNames::PageCreationLog ) );
 		$pageUpdater->setUseAutomaticEditSummaries(
-			$this->options->get( 'UseAutomaticEditSummaries' )
+			$this->options->get( MainConfigNames::UseAutomaticEditSummaries )
 		);
 
 		return $pageUpdater;
@@ -293,11 +314,13 @@ class PageUpdaterFactory {
 	 */
 	public function newDerivedPageDataUpdater( WikiPage $page ): DerivedPageDataUpdater {
 		$derivedDataUpdater = new DerivedPageDataUpdater(
+			$this->options,
 			$page, // NOTE: eventually, PageUpdater should not know about WikiPage
 			$this->revisionStore,
 			$this->revisionRenderer,
 			$this->slotRoleRegistry,
 			$this->parserCache,
+			$this->parsoidOutputAccess,
 			$this->jobQueueGroup,
 			$this->messageCache,
 			$this->contLang,
@@ -314,9 +337,10 @@ class PageUpdaterFactory {
 		);
 
 		$derivedDataUpdater->setLogger( $this->logger );
-		$derivedDataUpdater->setArticleCountMethod( $this->options->get( 'ArticleCountMethod' ) );
+		$derivedDataUpdater->setArticleCountMethod(
+			$this->options->get( MainConfigNames::ArticleCountMethod ) );
 		$derivedDataUpdater->setRcWatchCategoryMembership(
-			$this->options->get( 'RCWatchCategoryMembership' )
+			$this->options->get( MainConfigNames::RCWatchCategoryMembership )
 		);
 
 		return $derivedDataUpdater;

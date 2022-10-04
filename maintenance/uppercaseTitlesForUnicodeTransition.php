@@ -470,7 +470,7 @@ class UppercaseTitlesForUnicodeTransition extends Maintenance {
 	 * are redirects to the same place, there's no point in keeping it.
 	 *
 	 * Note the caller will still rename it before deleting it, so the archive
-	 * and logging rows wind up in a sane place.
+	 * and logging rows wind up in a sensible place.
 	 *
 	 * @param IDatabase $db
 	 * @param Title $oldTitle
@@ -649,6 +649,7 @@ class UppercaseTitlesForUnicodeTransition extends Maintenance {
 					}
 
 					if ( $this->run ) {
+						// @phan-suppress-next-line PhanPossiblyUndeclaredVariable rows contains at least one item
 						$r = $cont ? json_encode( $row, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE ) : '<end>';
 						$this->output( "... $table: $count renames, $errors errors at $r\n" );
 						$lbFactory->waitForReplication(
@@ -712,6 +713,7 @@ class UppercaseTitlesForUnicodeTransition extends Maintenance {
 					$count++;
 					$cont = [ 'user_name > ' . $db->addQuotes( $row->user_name ) ];
 				}
+				// @phan-suppress-next-line PhanPossiblyUndeclaredVariable rows contains at least one item
 				$this->output( "... at $row->user_name, $count names so far\n" );
 			}
 		}

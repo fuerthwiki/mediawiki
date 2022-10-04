@@ -23,11 +23,11 @@ namespace MediaWiki\Linker;
 use Html;
 use HtmlArmor;
 use LinkCache;
+use MediaWiki\Config\ServiceOptions;
 use MediaWiki\HookContainer\HookContainer;
 use MediaWiki\HookContainer\HookRunner;
 use MediaWiki\Page\PageReference;
 use MediaWiki\SpecialPage\SpecialPageFactory;
-use NamespaceInfo;
 use Sanitizer;
 use Title;
 use TitleFormatter;
@@ -35,12 +35,16 @@ use TitleValue;
 use Wikimedia\Assert\Assert;
 
 /**
- * Class that generates HTML <a> links for pages.
+ * Class that generates HTML anchor link elements for pages.
  *
  * @see https://www.mediawiki.org/wiki/Manual:LinkRenderer
  * @since 1.28
  */
 class LinkRenderer {
+
+	public const CONSTRUCTOR_OPTIONS = [
+		'renderForComment',
+	];
 
 	/**
 	 * Whether to force the pretty article path
@@ -57,6 +61,13 @@ class LinkRenderer {
 	private $expandUrls = false;
 
 	/**
+	 * Whether links are being rendered for comments.
+	 *
+	 * @var bool
+	 */
+	private $comment = false;
+
+	/**
 	 * @var TitleFormatter
 	 */
 	private $titleFormatter;
@@ -65,14 +76,6 @@ class LinkRenderer {
 	 * @var LinkCache
 	 */
 	private $linkCache;
-
-	/**
-	 * @var NamespaceInfo
-	 */
-	private $nsInfo;
-
-	/** @var HookContainer */
-	private $hookContainer;
 
 	/** @var HookRunner */
 	private $hookRunner;
@@ -84,24 +87,26 @@ class LinkRenderer {
 
 	/**
 	 * @internal For use by LinkRendererFactory
+	 *
 	 * @param TitleFormatter $titleFormatter
 	 * @param LinkCache $linkCache
-	 * @param NamespaceInfo $nsInfo
 	 * @param SpecialPageFactory $specialPageFactory
 	 * @param HookContainer $hookContainer
+	 * @param ServiceOptions $options
 	 */
 	public function __construct(
 		TitleFormatter $titleFormatter,
 		LinkCache $linkCache,
-		NamespaceInfo $nsInfo,
 		SpecialPageFactory $specialPageFactory,
-		HookContainer $hookContainer
+		HookContainer $hookContainer,
+		ServiceOptions $options
 	) {
+		$options->assertRequiredOptions( self::CONSTRUCTOR_OPTIONS );
+		$this->comment = $options->get( 'renderForComment' );
+
 		$this->titleFormatter = $titleFormatter;
 		$this->linkCache = $linkCache;
-		$this->nsInfo = $nsInfo;
 		$this->specialPageFactory = $specialPageFactory;
-		$this->hookContainer = $hookContainer;
 		$this->hookRunner = new HookRunner( $hookContainer );
 	}
 
@@ -133,21 +138,9 @@ class LinkRenderer {
 		return $this->expandUrls;
 	}
 
-	/**
-	 * @deprecated since 1.37. Stub threshold feature was removed. See T284917
-	 * @param int $threshold
-	 */
-	public function setStubThreshold( $threshold ) {
-		wfDeprecated( __METHOD__, '1.37' );
-	}
-
-	/**
-	 * @deprecated since 1.37. Stub threshold feature was removed. See T284917
-	 * @return int
-	 */
-	public function getStubThreshold() {
-		wfDeprecated( __METHOD__, '1.37' );
-		return 0;
+	public function isForComment(): bool {
+		// This option only exists to power a hack in Wikibase's onHtmlPageLinkRendererEnd hook.
+		return $this->comment;
 	}
 
 	/**
@@ -171,6 +164,7 @@ class LinkRenderer {
 	private function runBeginHook( $target, &$text, &$extraAttribs, &$query, $isKnown ) {
 		$ret = null;
 		if ( !$this->hookRunner->onHtmlPageLinkRendererBegin(
+			// @phan-suppress-next-line PhanTypeMismatchArgument Type mismatch on pass-by-ref args
 			$this, $this->castToTitle( $target ), $text, $extraAttribs, $query, $ret )
 		) {
 			return $ret;
@@ -318,6 +312,7 @@ class LinkRenderer {
 	private function buildAElement( $target, $text, array $attribs, $isKnown ) {
 		$ret = null;
 		if ( !$this->hookRunner->onHtmlPageLinkRendererEnd(
+			// @phan-suppress-next-line PhanTypeMismatchArgument Type mismatch on pass-by-ref args
 			$this, $this->castToLinkTarget( $target ), $isKnown, $text, $attribs, $ret )
 		) {
 			return $ret;
@@ -450,6 +445,7 @@ class LinkRenderer {
 			return Title::newFromLinkTarget( $target );
 		}
 		// $target instanceof PageReference
+		// @phan-suppress-next-line PhanTypeMismatchReturnNullable castFrom does not return null here
 		return Title::castFromPageReference( $target );
 	}
 
@@ -459,6 +455,7 @@ class LinkRenderer {
 	 */
 	private function castToLinkTarget( $target ): LinkTarget {
 		if ( $target instanceof PageReference ) {
+			// @phan-suppress-next-line PhanTypeMismatchReturnNullable castFrom does not return null here
 			return Title::castFromPageReference( $target );
 		}
 		// $target instanceof LinkTarget

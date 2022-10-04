@@ -21,8 +21,11 @@
  * @ingroup Media
  */
 
+use MediaWiki\MainConfigNames;
 use MediaWiki\MediaWikiServices;
 use MediaWiki\Shell\Shell;
+use Wikimedia\AtEase\AtEase;
+use Wikimedia\RequestTimeout\TimeoutException;
 use Wikimedia\ScopedCallback;
 
 /**
@@ -32,6 +35,8 @@ use Wikimedia\ScopedCallback;
  */
 class SvgHandler extends ImageHandler {
 	public const SVG_METADATA_VERSION = 2;
+
+	private const SVG_DEFAULT_RENDER_LANG = 'en';
 
 	/** @var array A list of metadata tags that can be converted
 	 *  to the commonly used exif tags. This allows messages
@@ -45,8 +50,9 @@ class SvgHandler extends ImageHandler {
 	];
 
 	public function isEnabled() {
-		global $wgSVGConverters, $wgSVGConverter;
-		if ( !isset( $wgSVGConverters[$wgSVGConverter] ) ) {
+		$svgConverters = MediaWikiServices::getInstance()->getMainConfig()->get( MainConfigNames::SVGConverters );
+		$svgConverter = MediaWikiServices::getInstance()->getMainConfig()->get( MainConfigNames::SVGConverter );
+		if ( !isset( $svgConverters[$svgConverter] ) ) {
 			wfDebug( "\$wgSVGConverter is invalid, disabling SVG rendering." );
 
 			return false;
@@ -114,10 +120,14 @@ class SvgHandler extends ImageHandler {
 	 *
 	 * @see https://www.w3.org/TR/SVG/struct.html#SystemLanguageAttribute
 	 * @param string $userPreferredLanguage
-	 * @param array $svgLanguages
+	 * @param string[] $svgLanguages
 	 * @return string|null
 	 */
 	public function getMatchedLanguage( $userPreferredLanguage, array $svgLanguages ) {
+		// Explicitly requested undetermined language (text without svg systemLanguage attribute)
+		if ( $userPreferredLanguage === 'und' ) {
+			return 'und';
+		}
 		foreach ( $svgLanguages as $svgLang ) {
 			if ( strcasecmp( $svgLang, $userPreferredLanguage ) === 0 ) {
 				return $svgLang;
@@ -135,12 +145,13 @@ class SvgHandler extends ImageHandler {
 
 	/**
 	 * Determines render language from image parameters
+	 * This is a lowercase IETF language
 	 *
 	 * @param array $params
 	 * @return string
 	 */
 	protected function getLanguageFromParams( array $params ) {
-		return $params['lang'] ?? $params['targetlang'] ?? 'en';
+		return $params['lang'] ?? $params['targetlang'] ?? self::SVG_DEFAULT_RENDER_LANG;
 	}
 
 	/**
@@ -150,7 +161,7 @@ class SvgHandler extends ImageHandler {
 	 * @return string
 	 */
 	public function getDefaultRenderLanguage( File $file ) {
-		return 'en';
+		return self::SVG_DEFAULT_RENDER_LANG;
 	}
 
 	/**
@@ -186,21 +197,21 @@ class SvgHandler extends ImageHandler {
 	 * @return array Modified $params
 	 */
 	protected function normaliseParamsInternal( $image, $params ) {
-		global $wgSVGMaxSize;
+		$svgMaxSize = MediaWikiServices::getInstance()->getMainConfig()->get( MainConfigNames::SVGMaxSize );
 
 		# Don't make an image bigger than wgMaxSVGSize on the smaller side
 		if ( $params['physicalWidth'] <= $params['physicalHeight'] ) {
-			if ( $params['physicalWidth'] > $wgSVGMaxSize ) {
+			if ( $params['physicalWidth'] > $svgMaxSize ) {
 				$srcWidth = $image->getWidth( $params['page'] );
 				$srcHeight = $image->getHeight( $params['page'] );
-				$params['physicalWidth'] = $wgSVGMaxSize;
-				$params['physicalHeight'] = File::scaleHeight( $srcWidth, $srcHeight, $wgSVGMaxSize );
+				$params['physicalWidth'] = $svgMaxSize;
+				$params['physicalHeight'] = File::scaleHeight( $srcWidth, $srcHeight, $svgMaxSize );
 			}
-		} elseif ( $params['physicalHeight'] > $wgSVGMaxSize ) {
+		} elseif ( $params['physicalHeight'] > $svgMaxSize ) {
 			$srcWidth = $image->getWidth( $params['page'] );
 			$srcHeight = $image->getHeight( $params['page'] );
-			$params['physicalWidth'] = File::scaleHeight( $srcHeight, $srcWidth, $wgSVGMaxSize );
-			$params['physicalHeight'] = $wgSVGMaxSize;
+			$params['physicalWidth'] = File::scaleHeight( $srcHeight, $srcWidth, $svgMaxSize );
+			$params['physicalHeight'] = $svgMaxSize;
 		}
 		// To prevent the proliferation of thumbnails in languages not present in SVGs, unless
 		// explicitly forced by user.
@@ -217,7 +228,7 @@ class SvgHandler extends ImageHandler {
 	 * @param string $dstUrl
 	 * @param array $params
 	 * @param int $flags
-	 * @return bool|MediaTransformError|ThumbnailImage|TransformParameterError
+	 * @return MediaTransformError|ThumbnailImage|TransformParameterError|false
 	 */
 	public function doTransform( $image, $dstPath, $dstUrl, $params, $flags = 0 ) {
 		if ( !$this->normaliseParams( $image, $params ) ) {
@@ -234,7 +245,7 @@ class SvgHandler extends ImageHandler {
 		}
 
 		$metadata = $this->validateMetadata( $image->getMetadataArray() );
-		if ( isset( $metadata['error'] ) ) { // sanity check
+		if ( isset( $metadata['error'] ) ) {
 			$err = wfMessage( 'svg-long-error', $metadata['error']['message'] );
 
 			return new MediaTransformError( 'thumbnail_error', $clientWidth, $clientHeight, $err );
@@ -275,11 +286,15 @@ class SvgHandler extends ImageHandler {
 		$ok = symlink( $srcPath, $lnPath );
 		/** @noinspection PhpUnusedLocalVariableInspection */
 		$cleaner = new ScopedCallback( static function () use ( $tmpDir, $lnPath ) {
-			Wikimedia\suppressWarnings();
+			AtEase::suppressWarnings();
 			unlink( $lnPath );
 			rmdir( $tmpDir );
-			Wikimedia\restoreWarnings();
+			AtEase::restoreWarnings();
 		} );
+		if ( !$ok ) {
+			// Fallback because symlink often fails on Windows
+			$ok = copy( $srcPath, $lnPath );
+		}
 		if ( !$ok ) {
 			wfDebugLog( 'thumbnail',
 				sprintf( 'Thumbnail failed on %s: could not link %s to %s',
@@ -303,20 +318,23 @@ class SvgHandler extends ImageHandler {
 	 * This function can be called outside of thumbnail contexts
 	 * @param string $srcPath
 	 * @param string $dstPath
-	 * @param string $width
-	 * @param string $height
+	 * @param int $width
+	 * @param int $height
 	 * @param string|false $lang Language code of the language to render the SVG in
 	 * @throws MWException
 	 * @return bool|MediaTransformError
 	 */
 	public function rasterize( $srcPath, $dstPath, $width, $height, $lang = false ) {
-		global $wgSVGConverters, $wgSVGConverter, $wgSVGConverterPath;
+		$mainConfig = MediaWikiServices::getInstance()->getMainConfig();
+		$svgConverters = $mainConfig->get( MainConfigNames::SVGConverters );
+		$svgConverter = $mainConfig->get( MainConfigNames::SVGConverter );
+		$svgConverterPath = $mainConfig->get( MainConfigNames::SVGConverterPath );
 		$err = false;
 		$retval = '';
-		if ( isset( $wgSVGConverters[$wgSVGConverter] ) ) {
-			if ( is_array( $wgSVGConverters[$wgSVGConverter] ) ) {
+		if ( isset( $svgConverters[$svgConverter] ) ) {
+			if ( is_array( $svgConverters[$svgConverter] ) ) {
 				// This is a PHP callable
-				$func = $wgSVGConverters[$wgSVGConverter][0];
+				$func = $svgConverters[$svgConverter][0];
 				if ( !is_callable( $func ) ) {
 					throw new MWException( "$func is not callable" );
 				}
@@ -325,19 +343,19 @@ class SvgHandler extends ImageHandler {
 					$width,
 					$height,
 					$lang,
-					...array_slice( $wgSVGConverters[$wgSVGConverter], 1 )
+					...array_slice( $svgConverters[$svgConverter], 1 )
 				);
 				$retval = (bool)$err;
 			} else {
 				// External command
 				$cmd = str_replace(
 					[ '$path/', '$width', '$height', '$input', '$output' ],
-					[ $wgSVGConverterPath ? Shell::escape( "$wgSVGConverterPath/" ) : "",
+					[ $svgConverterPath ? Shell::escape( "{$svgConverterPath}/" ) : "",
 						intval( $width ),
 						intval( $height ),
 						Shell::escape( $srcPath ),
 						Shell::escape( $dstPath ) ],
-					$wgSVGConverters[$wgSVGConverter]
+					$svgConverters[$svgConverter]
 				);
 
 				$env = [];
@@ -349,8 +367,11 @@ class SvgHandler extends ImageHandler {
 				$err = wfShellExecWithStderr( $cmd, $retval, $env );
 			}
 		}
+		// @phan-suppress-next-line PhanTypeMismatchArgumentNullable False positive
 		$removed = $this->removeBadFile( $dstPath, $retval );
 		if ( $retval != 0 || $removed ) {
+			// @phan-suppress-next-next-line PhanPossiblyUndeclaredVariable cmd is set when used
+			// @phan-suppress-next-line PhanTypeMismatchArgumentNullable cmd is set when used
 			$this->logErrorForExternalProcess( $retval, $err, $cmd );
 			return new MediaTransformError( 'thumbnail_error', $width, $height, $err );
 		}
@@ -360,8 +381,9 @@ class SvgHandler extends ImageHandler {
 
 	public static function rasterizeImagickExt( $srcPath, $dstPath, $width, $height ) {
 		$im = new Imagick( $srcPath );
-		$im->setImageFormat( 'png' );
 		$im->setBackgroundColor( 'transparent' );
+		$im->readImage( $srcPath );
+		$im->setImageFormat( 'png' );
 		$im->setImageDepth( 8 );
 
 		if ( !$im->thumbnailImage( intval( $width ), intval( $height ), /* fit */ false ) ) {
@@ -411,6 +433,8 @@ class SvgHandler extends ImageHandler {
 		try {
 			$svgReader = new SVGReader( $filename );
 			$metadata += $svgReader->getMetadata();
+		} catch ( TimeoutException $e ) {
+			throw $e;
 		} catch ( Exception $e ) { // @todo SVG specific exceptions
 			// File not found, broken, etc.
 			$metadata['error'] = [
@@ -511,11 +535,11 @@ class SvgHandler extends ImageHandler {
 		if ( in_array( $name, [ 'width', 'height' ] ) ) {
 			// Reject negative heights, widths
 			return ( $value > 0 );
-		} elseif ( $name == 'lang' ) {
+		}
+		if ( $name == 'lang' ) {
 			// Validate $code
 			if ( $value === ''
-				|| !MediaWikiServices::getInstance()->getLanguageNameUtils()
-					->isValidCode( $value )
+				|| !LanguageCode::isWellFormedLanguageTag( $value )
 			) {
 				return false;
 			}
@@ -534,7 +558,7 @@ class SvgHandler extends ImageHandler {
 	public function makeParamString( $params ) {
 		$lang = '';
 		$code = $this->getLanguageFromParams( $params );
-		if ( $code !== 'en' ) {
+		if ( $code !== self::SVG_DEFAULT_RENDER_LANG ) {
 			$lang = 'lang' . strtolower( $code ) . '-';
 		}
 		if ( !isset( $params['width'] ) ) {
@@ -546,13 +570,17 @@ class SvgHandler extends ImageHandler {
 
 	public function parseParamString( $str ) {
 		$m = false;
-		if ( preg_match( '/^lang([a-z]+(?:-[a-z]+)*)-(\d+)px$/i', $str, $m ) ) {
-			return [ 'width' => array_pop( $m ), 'lang' => $m[1] ];
-		} elseif ( preg_match( '/^(\d+)px$/', $str, $m ) ) {
-			return [ 'width' => $m[1], 'lang' => 'en' ];
-		} else {
-			return false;
+		// Language codes are supposed to be lowercase
+		if ( preg_match( '/^lang([a-z]+(?:-[a-z]+)*)-(\d+)px$/', $str, $m ) ) {
+			if ( LanguageCode::isWellFormedLanguageTag( $m[1] ) ) {
+				return [ 'width' => array_pop( $m ), 'lang' => $m[1] ];
+			}
+			return [ 'width' => array_pop( $m ), 'lang' => self::SVG_DEFAULT_RENDER_LANG ];
 		}
+		if ( preg_match( '/^(\d+)px$/', $str, $m ) ) {
+			return [ 'width' => $m[1], 'lang' => self::SVG_DEFAULT_RENDER_LANG ];
+		}
+		return false;
 	}
 
 	public function getParamMap() {

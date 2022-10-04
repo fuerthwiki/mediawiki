@@ -19,6 +19,7 @@
  * @ingroup RevisionDelete
  */
 
+use MediaWiki\MediaWikiServices;
 use MediaWiki\Revision\RevisionRecord;
 
 /**
@@ -65,7 +66,7 @@ class RevDelLogItem extends RevDelItem {
 
 	public function canView() {
 		return LogEventsList::userCan(
-			$this->row, RevisionRecord::DELETED_RESTRICTED, $this->list->getUser()
+			$this->row, RevisionRecord::DELETED_RESTRICTED, $this->list->getAuthority()
 		);
 	}
 
@@ -128,20 +129,32 @@ class RevDelLogItem extends RevDelItem {
 		// User links and action text
 		$action = $formatter->getActionText();
 
-		$comment = $this->commentStore->getComment( 'log_comment', $this->row )->text;
-		$comment = $this->list->getLanguage()->getDirMark()
-			. Linker::commentBlock( $comment );
+		$commentRaw = $this->commentStore->getComment( 'log_comment', $this->row )->text;
+		$commentFormatter = MediaWikiServices::getInstance()->getCommentFormatter();
+		$dirMark = $this->list->getLanguage()->getDirMark();
+		$comment = $dirMark . $commentFormatter->formatBlock( $commentRaw );
 
 		if ( LogEventsList::isDeleted( $this->row, LogPage::DELETED_COMMENT ) ) {
 			$comment = '<span class="history-deleted">' . $comment . '</span>';
 		}
 
-		return "<li>$loglink $date $action $comment</li>";
+		$content = "$loglink $date $action $comment";
+		$attribs = [];
+		if ( $this->row->ts_tags ) {
+			list( $tagSummary, $classes ) = ChangeTags::formatSummaryRow(
+				$this->row->ts_tags,
+				'revisiondelete',
+				$this->list->getContext()
+			);
+			$content .= " $tagSummary";
+			$attribs['class'] = implode( ' ', $classes );
+		}
+		return Xml::tags( 'li', $attribs, $content );
 	}
 
 	public function getApiData( ApiResult $result ) {
 		$logEntry = DatabaseLogEntry::newFromRow( $this->row );
-		$user = $this->list->getUser();
+		$user = $this->list->getAuthority();
 		$ret = [
 			'id' => $logEntry->getId(),
 			'type' => $logEntry->getType(),

@@ -22,6 +22,7 @@
 
 use MediaWiki\Page\MergeHistoryFactory;
 use MediaWiki\Page\PageIdentity;
+use Wikimedia\ParamValidator\ParamValidator;
 
 /**
  * API Module to merge page histories
@@ -54,7 +55,7 @@ class ApiMergeHistory extends ApiBase {
 		$this->requireOnlyOneParameter( $params, 'from', 'fromid' );
 		$this->requireOnlyOneParameter( $params, 'to', 'toid' );
 
-		// Get page objects (nonexistant pages get caught in MergeHistory::isValidMerge())
+		// Get page objects (nonexistent pages get caught in MergeHistory::isValidMerge())
 		if ( isset( $params['from'] ) ) {
 			$fromTitle = Title::newFromText( $params['from'] );
 			if ( !$fromTitle || $fromTitle->isExternal() ) {
@@ -83,13 +84,16 @@ class ApiMergeHistory extends ApiBase {
 		$timestamp = $params['timestamp'];
 
 		// Merge!
+		// @phan-suppress-next-line PhanTypeMismatchArgumentNullable,PhanPossiblyUndeclaredVariable T240141
 		$status = $this->merge( $fromTitle, $toTitle, $timestamp, $reason );
 		if ( !$status->isOK() ) {
 			$this->dieStatus( $status );
 		}
 
 		$r = [
+			// @phan-suppress-next-line PhanPossiblyUndeclaredVariable T240141
 			'from' => $fromTitle->getPrefixedText(),
+			// @phan-suppress-next-line PhanPossiblyUndeclaredVariable T240141
 			'to' => $toTitle->getPrefixedText(),
 			'timestamp' => wfTimestamp( TS_ISO_8601, $params['timestamp'] ),
 			'reason' => $params['reason']
@@ -124,14 +128,14 @@ class ApiMergeHistory extends ApiBase {
 		return [
 			'from' => null,
 			'fromid' => [
-				ApiBase::PARAM_TYPE => 'integer'
+				ParamValidator::PARAM_TYPE => 'integer'
 			],
 			'to' => null,
 			'toid' => [
-				ApiBase::PARAM_TYPE => 'integer'
+				ParamValidator::PARAM_TYPE => 'integer'
 			],
 			'timestamp' => [
-				ApiBase::PARAM_TYPE => 'timestamp'
+				ParamValidator::PARAM_TYPE => 'timestamp'
 			],
 			'reason' => '',
 		];

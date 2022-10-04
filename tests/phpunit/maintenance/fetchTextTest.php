@@ -3,6 +3,7 @@
 namespace MediaWiki\Tests\Maintenance;
 
 use ContentHandler;
+use Exception;
 use FetchText;
 use MediaWiki\Revision\RevisionRecord;
 use MediaWikiIntegrationTestCase;
@@ -134,10 +135,11 @@ class FetchTextTest extends MediaWikiIntegrationTestCase {
 
 	public function addDBDataOnce() {
 		$wikitextNamespace = $this->getDefaultWikitextNS();
+		$wikiPageFactory = $this->getServiceContainer()->getWikiPageFactory();
 
 		try {
 			$title = Title::newFromText( 'FetchTextTestPage1', $wikitextNamespace );
-			$page = WikiPage::factory( $title );
+			$page = $wikiPageFactory->newFromTitle( $title );
 			self::$textId1 = $this->addRevision(
 				$page,
 				"FetchTextTestPage1Text1",
@@ -145,7 +147,7 @@ class FetchTextTest extends MediaWikiIntegrationTestCase {
 			);
 
 			$title = Title::newFromText( 'FetchTextTestPage2', $wikitextNamespace );
-			$page = WikiPage::factory( $title );
+			$page = $wikiPageFactory->newFromTitle( $title );
 			self::$textId2 = $this->addRevision(
 				$page,
 				"FetchTextTestPage2Text1",
@@ -239,15 +241,11 @@ class FetchTextTest extends MediaWikiIntegrationTestCase {
 	}
 
 	public function testNonExisting() {
-		\Wikimedia\suppressWarnings();
-		$this->assertFilter( 'tt:77889911', 'tt:77889911' . "\n-1\n" );
-		\Wikimedia\suppressWarnings( true );
+		@$this->assertFilter( 'tt:77889911', 'tt:77889911' . "\n-1\n" );
 	}
 
 	public function testNonExistingInteger() {
-		\Wikimedia\suppressWarnings();
-		$this->assertFilter( '77889911', 'tt:77889911' . "\n-1\n" );
-		\Wikimedia\suppressWarnings( true );
+		@$this->assertFilter( '77889911', 'tt:77889911' . "\n-1\n" );
 	}
 
 	public function testBadBlobAddressWithColon() {
@@ -266,10 +264,8 @@ class FetchTextTest extends MediaWikiIntegrationTestCase {
 	}
 
 	public function testFloatingPointNumberNonExisting() {
-		\Wikimedia\suppressWarnings();
 		$id = intval( preg_replace( '/^tt:/', '', self::$textId5 ) ) + 3.14159;
-		$this->assertFilter( $id, 'tt:' . intval( $id ) . "\n-1\n" );
-		\Wikimedia\suppressWarnings( true );
+		@$this->assertFilter( $id, 'tt:' . intval( $id ) . "\n-1\n" );
 	}
 
 	public function testCharacters() {

@@ -1,5 +1,6 @@
 <?php
 
+use MediaWiki\MainConfigNames;
 use MediaWiki\Revision\MutableRevisionRecord;
 use MediaWiki\Revision\RevisionRecord;
 use MediaWiki\Revision\SlotRecord;
@@ -34,7 +35,7 @@ class DifferenceEngineTest extends MediaWikiIntegrationTestCase {
 			self::$revisions = $this->doEdits();
 		}
 
-		$this->setMwGlobals( [ 'wgDiffEngine' => 'php' ] );
+		$this->overrideConfigValue( MainConfigNames::DiffEngine, 'php' );
 
 		$slotRoleRegistry = $this->getServiceContainer()->getSlotRoleRegistry();
 
@@ -53,7 +54,7 @@ class DifferenceEngineTest extends MediaWikiIntegrationTestCase {
 	 */
 	protected function getTitle() {
 		$namespace = $this->getDefaultWikitextNS();
-		return Title::newFromText( 'Kitten', $namespace );
+		return Title::makeTitle( $namespace, 'Kitten' );
 	}
 
 	/**
@@ -61,16 +62,20 @@ class DifferenceEngineTest extends MediaWikiIntegrationTestCase {
 	 */
 	protected function doEdits() {
 		$title = $this->getTitle();
-		$page = WikiPage::factory( $title );
 
 		$strings = [ "it is a kitten", "two kittens", "three kittens", "four kittens" ];
 		$revisions = [];
 
-		$user = $this->getTestSysop()->getUser();
+		$user = $this->getTestSysop()->getAuthority();
 		foreach ( $strings as $string ) {
-			$content = ContentHandler::makeContent( $string, $title );
-			$page->doUserEditContent( $content, $user, 'edit page' );
-			$revisions[] = $page->getLatest();
+			$status = $this->editPage(
+				$title,
+				$string,
+				'edit page',
+				NS_MAIN,
+				$user
+			);
+			$revisions[] = $status->value['revision-record']->getId();
 		}
 
 		return $revisions;
@@ -160,6 +165,7 @@ class DifferenceEngineTest extends MediaWikiIntegrationTestCase {
 	 */
 	public function testAddLocalisedTitleTooltips( $input, $expected ) {
 		$this->setContentLang( 'qqx' );
+		/** @var DifferenceEngine $diffEngine */
 		$diffEngine = TestingAccessWrapper::newFromObject( new DifferenceEngine() );
 		$this->assertEquals( $expected, $diffEngine->addLocalisedTitleTooltips( $input ) );
 	}
@@ -341,9 +347,9 @@ class DifferenceEngineTest extends MediaWikiIntegrationTestCase {
 		}
 
 		$page = $this->getNonExistingTestPage( 'Page1' );
-		$this->assertTrue( $this->editPage( $page, 'Edit1' )->isGood(), 'Sanity: edited a page' );
+		$this->assertTrue( $this->editPage( $page, 'Edit1' )->isGood(), 'edited a page' );
 		$rev1 = $page->getRevisionRecord();
-		$this->assertTrue( $this->editPage( $page, 'Edit2' )->isGood(), 'Sanity: edited a page' );
+		$this->assertTrue( $this->editPage( $page, 'Edit2' )->isGood(), 'edited a page' );
 		$rev2 = $page->getRevisionRecord();
 
 		$diffEngine = new DifferenceEngine( $this->context );

@@ -20,6 +20,7 @@
  * @file
  */
 
+use MediaWiki\MainConfigNames;
 use MediaWiki\MediaWikiServices;
 use MediaWiki\Revision\RevisionRecord;
 use Wikimedia\Rdbms\IResultWrapper;
@@ -48,19 +49,21 @@ class ChangesFeed {
 	 * @return ChannelFeed|bool ChannelFeed subclass or false on failure
 	 */
 	public function getFeedObject( $title, $description, $url ) {
-		global $wgSitename, $wgLanguageCode, $wgFeedClasses;
-
-		if ( !isset( $wgFeedClasses[$this->format] ) ) {
+		$mainConfig = MediaWikiServices::getInstance()->getMainConfig();
+		$sitename = $mainConfig->get( MainConfigNames::Sitename );
+		$languageCode = $mainConfig->get( MainConfigNames::LanguageCode );
+		$feedClasses = $mainConfig->get( MainConfigNames::FeedClasses );
+		if ( !isset( $feedClasses[$this->format] ) ) {
 			return false;
 		}
 
-		if ( !array_key_exists( $this->format, $wgFeedClasses ) ) {
+		if ( !array_key_exists( $this->format, $feedClasses ) ) {
 			// falling back to atom
 			$this->format = 'atom';
 		}
 
-		$feedTitle = "$wgSitename  - {$title} [$wgLanguageCode]";
-		return new $wgFeedClasses[$this->format](
+		$feedTitle = "{$sitename}  - {$title} [{$languageCode}]";
+		return new $feedClasses[$this->format](
 			$feedTitle, htmlspecialchars( $description ), $url );
 	}
 

@@ -75,11 +75,11 @@ class RevDelFileItem extends RevDelItem {
 	}
 
 	public function canView() {
-		return $this->file->userCan( File::DELETED_RESTRICTED, $this->list->getUser() );
+		return $this->file->userCan( File::DELETED_RESTRICTED, $this->list->getAuthority() );
 	}
 
 	public function canViewContent() {
-		return $this->file->userCan( File::DELETED_FILE, $this->list->getUser() );
+		return $this->file->userCan( File::DELETED_FILE, $this->list->getAuthority() );
 	}
 
 	public function getBits() {
@@ -189,7 +189,7 @@ class RevDelFileItem extends RevDelItem {
 	 * @return string HTML
 	 */
 	protected function getComment() {
-		if ( $this->file->userCan( File::DELETED_COMMENT, $this->list->getUser() ) ) {
+		if ( $this->file->userCan( File::DELETED_COMMENT, $this->list->getAuthority() ) ) {
 			$block = Linker::commentBlock( $this->file->getDescription() );
 		} else {
 			$block = ' ' . $this->list->msg( 'rev-deleted-comment' )->escaped();
@@ -204,8 +204,10 @@ class RevDelFileItem extends RevDelItem {
 	public function getHTML() {
 		$data =
 			$this->list->msg( 'widthheight' )->numParams(
-				$this->file->getWidth(), $this->file->getHeight() )->text() .
-			' (' . $this->list->msg( 'nbytes' )->numParams( $this->file->getSize() )->text() . ')';
+				$this->file->getWidth(),
+				$this->file->getHeight() )->escaped() .
+			' (' . $this->list->msg( 'nbytes' )->numParams(
+				$this->file->getSize() )->escaped() . ')';
 
 		return '<li>' . $this->getLink() . ' ' . $this->getUserTools() . ' ' .
 			$data . ' ' . $this->getComment() . '</li>';
@@ -248,7 +250,7 @@ class RevDelFileItem extends RevDelItem {
 			];
 		}
 		$comment = $file->getDescription( File::FOR_THIS_USER, $user );
-		if ( $comment ) {
+		if ( ( $comment ?? '' ) !== '' ) {
 			$ret += [
 				'comment' => $comment,
 			];

@@ -26,6 +26,7 @@ use MediaWiki\Logger\LegacyLogger;
 use MediaWiki\MediaWikiServices;
 use MediaWiki\Shell\Shell;
 use MediaWiki\Storage\SqlBlobStore;
+use Wikimedia\AtEase\AtEase;
 
 $optionsWithArgs = RecompressTracked::getOptionsWithArgs();
 require __DIR__ . '/../CommandLineInc.php';
@@ -38,7 +39,7 @@ and recompresses them in the process. Restartable.
 Options:
 	--procs <procs>       Set the number of child processes (default 1)
 	--copy-only           Copy only, do not update the text table. Restart
-	                      without this option to complete.
+                          without this option to complete.
 	--debug-log <file>    Log debugging data to the specified file
 	--info-log <file>     Log progress messages to the specified file
 	--critical-log <file> Log error messages to the specified file
@@ -232,6 +233,7 @@ class RecompressTracked {
 				continue;
 			}
 			if ( in_array( $cmdOption, self::$optionsWithArgs ) && isset( $this->$classOption ) ) {
+				// @phan-suppress-next-line PhanTypeMismatchArgument False positive
 				$cmd .= " --$cmdOption " . Shell::escape( $this->$classOption );
 			} elseif ( $this->$classOption ) {
 				$cmd .= " --$cmdOption";
@@ -249,9 +251,9 @@ class RecompressTracked {
 				[ 'file', 'php://stdout', 'w' ],
 				[ 'file', 'php://stderr', 'w' ]
 			];
-			Wikimedia\suppressWarnings();
+			AtEase::suppressWarnings();
 			$proc = proc_open( "$cmd --child-id $i", $spec, $pipes );
-			Wikimedia\restoreWarnings();
+			AtEase::restoreWarnings();
 			if ( !$proc ) {
 				$this->critical( "Error opening child process: $cmd" );
 				exit( 1 );

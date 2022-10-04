@@ -320,7 +320,7 @@ class CompressOld extends Maintenance {
 			if ( $pageRes->numRows() == 0 ) {
 				continue;
 			}
-			$pageRow = $dbr->fetchObject( $pageRes );
+			$pageRow = $pageRes->fetchObject();
 
 			# Display progress
 			$titleObj = Title::makeTitle( $pageRow->page_namespace, $pageRow->page_title );
@@ -405,6 +405,7 @@ class CompressOld extends Maintenance {
 				if ( $usedChunk ) {
 					if ( $extdb != "" ) {
 						# Move blob objects to External Storage
+						// @phan-suppress-next-line PhanPossiblyUndeclaredVariable storeObj is set when used
 						$stored = $storeObj->store( $extdb, serialize( $chunk ) );
 						if ( $stored === false ) {
 							$this->error( "Unable to store object" );

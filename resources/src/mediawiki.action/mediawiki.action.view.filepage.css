@@ -117,3 +117,11 @@
 .client-js .mw_metadata.collapsed tr.collapsable {
 	display: none;
 }
+
+/* stylelint-disable-next-line plugin/no-unsupported-browser-features */
+@supports (aspect-ratio: 16 / 9) {
+	#file img {
+		max-width: 100%;
+		height: auto;
+	}
+}

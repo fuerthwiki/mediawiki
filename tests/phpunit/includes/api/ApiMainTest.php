@@ -1,5 +1,6 @@
 <?php
 
+use MediaWiki\MainConfigNames;
 use MediaWiki\Permissions\Authority;
 use MediaWiki\Tests\Unit\Permissions\MockAuthorityTrait;
 use Wikimedia\Rdbms\DBConnRef;
@@ -313,7 +314,7 @@ class ApiMainTest extends ApiTestCase {
 		// it does fail.
 		$now = time();
 
-		$this->setMwGlobals( 'wgCacheEpoch', '20030516000000' );
+		$this->overrideConfigValue( MainConfigNames::CacheEpoch, '20030516000000' );
 
 		$mock = $this->createMock( ApiBase::class );
 		$mock->method( 'getModuleName' )->willReturn( 'testmodule' );
@@ -378,7 +379,7 @@ class ApiMainTest extends ApiTestCase {
 		$this->expectException( ApiUsageException::class );
 		$this->expectExceptionMessage( 'Waiting for a database server: 4 seconds lagged.' );
 
-		$this->setMwGlobals( 'wgShowHostnames', false );
+		$this->overrideConfigValue( MainConfigNames::ShowHostnames, false );
 
 		$this->doTestCheckMaxLag( 4 );
 	}
@@ -387,7 +388,7 @@ class ApiMainTest extends ApiTestCase {
 		$this->expectException( ApiUsageException::class );
 		$this->expectExceptionMessage( 'Waiting for somehost: 4 seconds lagged.' );
 
-		$this->setMwGlobals( 'wgShowHostnames', true );
+		$this->overrideConfigValue( MainConfigNames::ShowHostnames, true );
 
 		$this->doTestCheckMaxLag( 4 );
 	}
@@ -447,7 +448,7 @@ class ApiMainTest extends ApiTestCase {
 	 * Test that 'assert' is processed before module errors
 	 */
 	public function testAssertBeforeModule() {
-		// Sanity check that the query without assert throws too-many-titles
+		// Check that the query without assert throws too-many-titles
 		try {
 			$this->doApiRequest( [
 				'action' => 'query',
@@ -455,7 +456,7 @@ class ApiMainTest extends ApiTestCase {
 			], null, null, new User );
 			$this->fail( 'Expected exception not thrown' );
 		} catch ( ApiUsageException $e ) {
-			$this->assertTrue( self::apiExceptionHasCode( $e, 'toomanyvalues' ), 'sanity check' );
+			$this->assertTrue( self::apiExceptionHasCode( $e, 'toomanyvalues' ) );
 		}
 
 		// Now test that the assert happens first
@@ -516,20 +517,20 @@ class ApiMainTest extends ApiTestCase {
 		$priv->mInternalMode = false;
 
 		if ( !empty( $options['cdn'] ) ) {
-			$this->setMwGlobals( 'wgUseCdn', true );
+			$this->overrideConfigValue( MainConfigNames::UseCdn, true );
 		}
 
 		// Can't do this in TestSetup.php because Setup.php will override it
-		$this->setMwGlobals( 'wgCacheEpoch', '20030516000000' );
+		$this->overrideConfigValue( MainConfigNames::CacheEpoch, '20030516000000' );
 
 		$module = $this->getMockBuilder( ApiBase::class )
 			->setConstructorArgs( [ $api, 'mock' ] )
 			->onlyMethods( [ 'getConditionalRequestData' ] )
 			->getMockForAbstractClass();
 		$module->method( 'getConditionalRequestData' )
-			->will( $this->returnCallback( static function ( $condition ) use ( $conditions ) {
+			->willReturnCallback( static function ( $condition ) use ( $conditions ) {
 				return $conditions[$condition] ?? null;
-			} ) );
+			} );
 
 		$ret = $priv->checkConditionalRequestHeaders( $module );
 
@@ -657,9 +658,9 @@ class ApiMainTest extends ApiTestCase {
 			->onlyMethods( [ 'getConditionalRequestData' ] )
 			->getMockForAbstractClass();
 		$module->method( 'getConditionalRequestData' )
-			->will( $this->returnCallback( static function ( $condition ) use ( $conditions ) {
+			->willReturnCallback( static function ( $condition ) use ( $conditions ) {
 				return $conditions[$condition] ?? null;
-			} ) );
+			} );
 		$priv->mModule = $module;
 
 		$priv->sendCacheHeaders( $isError );
@@ -1118,7 +1119,6 @@ class ApiMainTest extends ApiTestCase {
 						[ 'code' => 'sv-error2', 'text' => 'Another error', 'module' => 'foo+bar' ],
 					],
 					'docref' => "See $doclink for API usage. Subscribe to the mediawiki-api-announce mailing " .
-						// phpcs:ignore Generic.Files.LineLength.TooLong
 						"list at &lt;https://lists.wikimedia.org/postorius/lists/mediawiki-api-announce.lists.wikimedia.org/&gt; " .
 						"for notice of API deprecations and breaking changes.",
 					'servedby' => wfHostname(),
@@ -1136,7 +1136,6 @@ class ApiMainTest extends ApiTestCase {
 						[ 'code' => "bad\nvalue", 'text' => 'An error' ],
 					],
 					'docref' => "See $doclink for API usage. Subscribe to the mediawiki-api-announce mailing " .
-						// phpcs:ignore Generic.Files.LineLength.TooLong
 						"list at &lt;https://lists.wikimedia.org/postorius/lists/mediawiki-api-announce.lists.wikimedia.org/&gt; " .
 						"for notice of API deprecations and breaking changes.",
 					'servedby' => wfHostname(),
@@ -1171,5 +1170,52 @@ class ApiMainTest extends ApiTestCase {
 		$this->assertTrue( $api->matchRequestedHeaders( 'accEpt, oRIGIN', $allowedHeaders ) );
 		$this->assertFalse( $api->matchRequestedHeaders( 'Accept,Foo', $allowedHeaders ) );
 		$this->assertFalse( $api->matchRequestedHeaders( 'Accept, fOO', $allowedHeaders ) );
+	}
+
+	/**
+	 * @param string $cacheMode
+	 * @param string|null $expectedVary
+	 * @param string $expectedCacheControl
+	 * @param array $requestData
+	 * @param Config|null $config
+	 * @dataProvider provideCacheHeaders
+	 */
+	public function testCacheHeaders(
+		string $cacheMode,
+		?string $expectedVary,
+		string $expectedCacheControl,
+		array $requestData = [],
+		Config $config = null
+	) {
+		$req = new FauxRequest( $requestData );
+		$ctx = new RequestContext();
+		$ctx->setRequest( $req );
+		if ( $config ) {
+			$ctx->setConfig( $config );
+		}
+		/** @var ApiMain|TestingAccessWrapper $api */
+		$api = TestingAccessWrapper::newFromObject( new ApiMain( $ctx ) );
+
+		$api->setCacheMode( $cacheMode );
+		$this->assertSame( $cacheMode, $api->mCacheMode, 'Cache mode precondition' );
+		$api->sendCacheHeaders( false );
+
+		$this->assertSame( $expectedVary, $req->response()->getHeader( 'Vary' ), 'Vary' );
+		$this->assertSame( $expectedCacheControl, $req->response()->getHeader( 'Cache-Control' ), 'Cache-Control' );
+	}
+
+	public function provideCacheHeaders(): Generator {
+		yield 'Private' => [ 'private', null, 'private, must-revalidate, max-age=0' ];
+		yield 'Public' => [
+			'public',
+			'Accept-Encoding, Treat-as-Untrusted, Cookie',
+			'private, must-revalidate, max-age=0',
+			[ 'uselang' => 'en' ]
+		];
+		yield 'Anon public, user private' => [
+			'anon-public-user-private',
+			'Accept-Encoding, Treat-as-Untrusted, Cookie',
+			'private, must-revalidate, max-age=0'
+		];
 	}
 }

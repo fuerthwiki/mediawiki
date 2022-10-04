@@ -25,8 +25,14 @@
  */
 
 use MediaWiki\MediaWikiServices;
+use MediaWiki\Parser\RemexRemoveTagHandler;
+use MediaWiki\Parser\RemexStripTagHandler;
+use MediaWiki\Tidy\RemexCompatFormatter;
 use Wikimedia\RemexHtml\HTMLData;
+use Wikimedia\RemexHtml\Serializer\Serializer as RemexSerializer;
 use Wikimedia\RemexHtml\Tokenizer\Tokenizer as RemexTokenizer;
+use Wikimedia\RemexHtml\TreeBuilder\Dispatcher as RemexDispatcher;
+use Wikimedia\RemexHtml\TreeBuilder\TreeBuilder as RemexTreeBuilder;
 
 /**
  * HTML sanitizer for MediaWiki
@@ -41,9 +47,9 @@ class Sanitizer {
 	 */
 	private const CHAR_REFS_REGEX =
 		'/&([A-Za-z0-9\x80-\xff]+;)
-		 |&\#([0-9]+);
-		 |&\#[xX]([0-9A-Fa-f]+);
-		 |(&)/x';
+		|&\#([0-9]+);
+		|&\#[xX]([0-9A-Fa-f]+);
+		|(&)/x';
 
 	/**
 	 * Acceptable tag name charset from HTML5 parsing spec
@@ -138,20 +144,26 @@ class Sanitizer {
 
 	/**
 	 * Return the various lists of recognized tags
-	 * @param array $extratags For any extra tags to include
-	 * @param array $removetags For any tags (default or extra) to exclude
+	 * @param string[] $extratags For any extra tags to include
+	 * @param string[] $removetags For any tags (default or extra) to exclude
 	 * @return array
+	 * @internal
 	 */
 	public static function getRecognizedTagData( $extratags = [], $removetags = [] ) {
 		global $wgAllowImageTag;
+		static $commonCase, $staticInitialised;
+		$isCommonCase = ( $extratags === [] && $removetags === [] );
+		if ( $staticInitialised === $wgAllowImageTag && $isCommonCase && $commonCase ) {
+			return $commonCase;
+		}
 
 		static $htmlpairsStatic, $htmlsingle, $htmlsingleonly, $htmlnest, $tabletags,
-			$htmllist, $listtags, $htmlsingleallowed, $htmlelementsStatic, $staticInitialised;
+			$htmllist, $listtags, $htmlsingleallowed, $htmlelementsStatic;
 
 		// Base our staticInitialised variable off of the global config state so that if the globals
 		// are changed (like in the screwed up test system) we will re-initialise the settings.
 		$globalContext = $wgAllowImageTag;
-		if ( !$staticInitialised || $staticInitialised != $globalContext ) {
+		if ( !$staticInitialised || $staticInitialised !== $globalContext ) {
 			$htmlpairsStatic = [ # Tags that must be closed
 				'b', 'bdi', 'del', 'i', 'ins', 'u', 'font', 'big', 'small', 'sub', 'sup', 'h1',
 				'h2', 'h3', 'h4', 'h5', 'h6', 'cite', 'code', 'em', 's',
@@ -160,6 +172,9 @@ class Sanitizer {
 				'ruby', 'rb', 'rp', 'rt', 'rtc', 'p', 'span', 'abbr', 'dfn',
 				'kbd', 'samp', 'data', 'time', 'mark'
 			];
+			# These tags can be self-closed. For tags not also on
+			# $htmlsingleonly, a self-closed tag will be emitted as
+			# an empty element (open-tag/close-tag pair).
 			$htmlsingle = [
 				'br', 'wbr', 'hr', 'li', 'dt', 'dd', 'meta', 'link'
 			];
@@ -210,10 +225,12 @@ class Sanitizer {
 		# Populate $htmlpairs and $htmlelements with the $extratags and $removetags arrays
 		$extratags = array_fill_keys( $extratags, true );
 		$removetags = array_fill_keys( $removetags, true );
+		// @phan-suppress-next-line PhanTypeMismatchArgumentNullableInternal The static var is always set
 		$htmlpairs = array_merge( $extratags, $htmlpairsStatic );
+		// @phan-suppress-next-line PhanTypeMismatchArgumentNullableInternal The static var is always set
 		$htmlelements = array_diff_key( array_merge( $extratags, $htmlelementsStatic ), $removetags );
 
-		return [
+		$result = [
 			'htmlpairs' => $htmlpairs,
 			'htmlsingle' => $htmlsingle,
 			'htmlsingleonly' => $htmlsingleonly,
@@ -224,31 +241,85 @@ class Sanitizer {
 			'htmlsingleallowed' => $htmlsingleallowed,
 			'htmlelements' => $htmlelements,
 		];
+		if ( $isCommonCase ) {
+			$commonCase = $result;
+		}
+		return $result;
 	}
 
 	/**
 	 * Cleans up HTML, removes dangerous tags and attributes, and
-	 * removes HTML comments
-	 * @param string $text
-	 * @param callable|null $processCallback Callback to do any variable or parameter
-	 *   replacements in HTML attribute values
+	 * removes HTML comments; BEWARE there may be unmatched HTML
+	 * tags in the result.
+	 *
+	 * @note Callers are recommended to use `::removeSomeTags()`
+	 * instead of this method.  `Sanitizer::removeSomeTags()` is safer
+	 * and will always return well-formed HTML; however, it is
+	 * significantly slower (especially for short strings where setup
+	 * costs predominate).  This method, although faster, should only
+	 * be used where we know the result be cleaned up in a subsequent
+	 * tidy pass.
+	 *
+	 * @param string $text Original string; see T268353 for why untainted.
+	 * @param-taint $text none
+	 * @param callable|null $processCallback Callback to do any variable or
+	 *   parameter replacements in HTML attribute values.
+	 *   This argument should be considered @internal.
+	 * @param-taint $processCallback exec_shell
 	 * @param array|bool $args Arguments for the processing callback
+	 * @param-taint $args none
 	 * @param array $extratags For any extra tags to include
+	 * @param-taint $extratags tainted
 	 * @param array $removetags For any tags (default or extra) to exclude
+	 * @param-taint $removetags none
 	 * @return string
+	 * @return-taint escaped
+	 * @deprecated since 1.38. Use ::removeSomeTags(), which always gives
+	 * balanced/tidy HTML.
 	 */
 	public static function removeHTMLtags( $text, $processCallback = null,
 		$args = [], $extratags = [], $removetags = []
 	) {
+		wfDeprecated( __METHOD__, '1.38' );
+		return self::internalRemoveHtmlTags(
+			$text, $processCallback, $args, $extratags, $removetags
+		);
+	}
+
+	/**
+	 * Cleans up HTML, removes dangerous tags and attributes, and
+	 * removes HTML comments; BEWARE there may be unmatched HTML
+	 * tags in the result.
+	 *
+	 * @note Callers are recommended to use `::removeSomeTags()` instead
+	 * of this method.  `Sanitizer::removeSomeTags()` is safer and will
+	 * always return well-formed HTML; however, it is significantly
+	 * slower (especially for short strings where setup costs
+	 * predominate).  This method is for internal use by the legacy parser
+	 * where we know the result will be cleaned up in a subsequent tidy pass.
+	 *
+	 * @param string $text Original string; see T268353 for why untainted.
+	 * @param-taint $text none
+	 * @param callable|null $processCallback Callback to do any variable or
+	 *   parameter replacements in HTML attribute values.
+	 *   This argument should be considered @internal.
+	 * @param-taint $processCallback exec_shell
+	 * @param array|bool $args Arguments for the processing callback
+	 * @param-taint $args none
+	 * @param array $extratags For any extra tags to include
+	 * @param-taint $extratags tainted
+	 * @param array $removetags For any tags (default or extra) to exclude
+	 * @param-taint $removetags none
+	 * @return string
+	 * @return-taint escaped
+	 * @internal
+	 */
+	public static function internalRemoveHtmlTags( $text, $processCallback = null,
+		$args = [], $extratags = [], $removetags = []
+	) {
 		$tagData = self::getRecognizedTagData( $extratags, $removetags );
-		$htmlpairs = $tagData['htmlpairs'];
 		$htmlsingle = $tagData['htmlsingle'];
 		$htmlsingleonly = $tagData['htmlsingleonly'];
-		$htmlnest = $tagData['htmlnest'];
-		$tabletags = $tagData['tabletags'];
-		$htmllist = $tagData['htmllist'];
-		$listtags = $tagData['listtags'];
-		$htmlsingleallowed = $tagData['htmlsingleallowed'];
 		$htmlelements = $tagData['htmlelements'];
 
 		# Remove HTML comments
@@ -295,6 +366,67 @@ class Sanitizer {
 			$text .= '&lt;' . str_replace( '>', '&gt;', $x );
 		}
 		return $text;
+	}
+
+	/**
+	 * Cleans up HTML, removes dangerous tags and attributes, and
+	 * removes HTML comments; the result will always be balanced and
+	 * tidy HTML.
+	 * @param string $text Source string; see T268353 for why untainted
+	 * @param-taint  $text none
+	 * @param array $options Options controlling the cleanup:
+	 *    string[] $options['extraTags'] Any extra tags to allow
+	 *      (This property taints the whole array.)
+	 *    string[] $options['removeTags'] Any tags (default or extra) to exclude
+	 *    callable(Attributes,...):Attributes $options['attrCallback'] Callback
+	 *      to do any variable or parameter replacements in HTML attribute
+	 *      values before further cleanup; should be considered @internal
+	 *      and not for external use.
+	 *    array $options['attrCallbackArgs'] Additional arguments for the
+	 *      attribute callback
+	 * @param-taint $options tainted
+	 * @return string The cleaned up HTML
+	 * @return-taint escaped
+	 * @since 1.38
+	 */
+	public static function removeSomeTags(
+		string $text, array $options = []
+	): string {
+		$extraTags = $options['extraTags'] ?? [];
+		$removeTags = $options['removeTags'] ?? [];
+		// These options are @internal:
+		$attrCallback = $options['attrCallback'] ?? null;
+		$attrCallbackArgs = $options['attrCallbackArgs'] ?? [];
+
+		// This disallows HTML5-style "missing trailing semicolon" attributes
+		// In wikitext "clean&copy" does *not* contain an entity.
+		$text = self::normalizeCharReferences( $text );
+
+		$tagData = self::getRecognizedTagData( $extraTags, $removeTags );
+		// Use RemexHtml to tokenize $text and remove the barred tags
+		$formatter = new RemexCompatFormatter;
+		$serializer = new RemexSerializer( $formatter );
+		$treeBuilder = new RemexTreeBuilder( $serializer, [
+			'ignoreErrors' => true,
+			'ignoreNulls' => true,
+		] );
+		$dispatcher = new RemexDispatcher( $treeBuilder );
+		$tokenHandler = $dispatcher;
+		$remover = new RemexRemoveTagHandler(
+			$tokenHandler, $text, $tagData,
+			$attrCallback, $attrCallbackArgs
+		);
+		$tokenizer = new RemexTokenizer( $remover, $text, [
+			'ignoreErrors' => true,
+			// don't ignore char refs, we want them to be decoded
+			'ignoreNulls' => true,
+			'skipPreprocess' => true,
+		] );
+		$tokenizer->execute( [
+			'fragmentNamespace' => HTMLData::NS_HTML,
+			'fragmentName' => 'body',
+		] );
+		return $serializer->getResult();
 	}
 
 	/**
@@ -351,6 +483,8 @@ class Sanitizer {
 	 * @param string $params
 	 * @param string $element
 	 * @return bool
+	 *
+	 * @see RemexRemoveTagHandler::validateTag()
 	 */
 	private static function validateTag( $params, $element ) {
 		$params = self::decodeTagAttributes( $params );
@@ -464,7 +598,6 @@ class Sanitizer {
 			}
 
 			// RDFa and microdata properties allow URLs, URIs and/or CURIs.
-			// Check them for sanity.
 			if ( $attribute === 'rel' || $attribute === 'rev'
 				# RDFa
 				|| $attribute === 'about' || $attribute === 'property'
@@ -648,7 +781,6 @@ class Sanitizer {
 				| image\s*\(
 				| image-set\s*\(
 				| attr\s*\([^)]+[\s,]+url
-				| var\s*\(
 			!ix', $value ) ) {
 			return '/* insecure input */';
 		}
@@ -1047,7 +1179,7 @@ class Sanitizer {
 	public static function safeEncodeTagAttributes( $assoc_array ) {
 		$attribs = [];
 		foreach ( $assoc_array as $attribute => $value ) {
-			$encAttribute = htmlspecialchars( $attribute );
+			$encAttribute = htmlspecialchars( $attribute, ENT_COMPAT );
 			$encValue = self::safeEncodeAttribute( $value );
 
 			$attribs[] = "$encAttribute=\"$encValue\"";
@@ -1142,7 +1274,7 @@ class Sanitizer {
 			$ret = self::hexCharReference( $matches[3] );
 		}
 		if ( $ret === null ) {
-			return htmlspecialchars( $matches[0] );
+			return htmlspecialchars( $matches[0], ENT_COMPAT );
 		} else {
 			return $ret;
 		}
@@ -1176,7 +1308,7 @@ class Sanitizer {
 	}
 
 	/**
-	 * @param int $codepoint
+	 * @param int|string $codepoint
 	 * @return null|string
 	 */
 	private static function decCharReference( $codepoint ) {
@@ -1189,7 +1321,7 @@ class Sanitizer {
 	}
 
 	/**
-	 * @param int $codepoint
+	 * @param string $codepoint
 	 * @return null|string
 	 */
 	private static function hexCharReference( $codepoint ) {
@@ -1548,7 +1680,7 @@ class Sanitizer {
 			'time' => $merge( $common, [ 'datetime' ] ),
 			'mark' => $common,
 
-			// meta and link are only permitted by removeHTMLtags when Microdata
+			// meta and link are only permitted by internalRemoveHtmlTags when Microdata
 			// is enabled so we don't bother adding a conditional to hide these
 			// Also meta and link are only valid in WikiText as Microdata elements
 			// (ie: validateTag rejects tags missing the attributes needed for Microdata)
@@ -1692,7 +1824,7 @@ class Sanitizer {
 			$host = preg_replace( $strip, '', $host );
 
 			// IPv6 host names are bracketed with [].  Url-decode these.
-			if ( substr_compare( "//%5B", $host, 0, 5 ) === 0 &&
+			if ( str_starts_with( $host, "//%5B" ) &&
 				preg_match( '!^//%5B([0-9A-Fa-f:.]+)%5D((:\d+)?)$!', $host, $matches )
 			) {
 				$host = '//[' . $matches[1] . ']' . $matches[2];

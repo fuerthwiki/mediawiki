@@ -1,8 +1,5 @@
 <?php
 /**
- * Local repository that stores files in the local filesystem and registers them
- * in the wiki's own database.
- *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
@@ -19,7 +16,6 @@
  * http://www.gnu.org/copyleft/gpl.html
  *
  * @file
- * @ingroup FileRepo
  */
 
 use MediaWiki\Linker\LinkTarget;
@@ -32,8 +28,10 @@ use Wikimedia\Rdbms\IDatabase;
 use Wikimedia\Rdbms\IResultWrapper;
 
 /**
- * A repository that stores files in the local filesystem and registers them
- * in the wiki's own database. This is the most commonly used repository class.
+ * Local repository that stores files in the local filesystem and registers them
+ * in the wiki's own database.
+ *
+ * This is the most commonly used file repository class.
  *
  * @ingroup FileRepo
  * @method LocalFile|null newFile( $title, $time = false )
@@ -61,7 +59,7 @@ class LocalRepo extends FileRepo {
 	protected $blobStore;
 
 	/** @var bool */
-	protected $useJsonMetadata = false;
+	protected $useJsonMetadata = true;
 
 	/** @var bool */
 	protected $useSplitMetadata = false;
@@ -583,20 +581,6 @@ class LocalRepo extends FileRepo {
 				__METHOD__
 			);
 		}
-	}
-
-	/**
-	 * Return information about the repository.
-	 *
-	 * @return array
-	 * @since 1.22
-	 */
-	public function getInfo() {
-		global $wgFavicon;
-
-		return array_merge( parent::getInfo(), [
-			'favicon' => wfExpandUrl( $wgFavicon ),
-		] );
 	}
 
 	public function store( $srcPath, $dstZone, $dstRel, $flags = 0 ) {

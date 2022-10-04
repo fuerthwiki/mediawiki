@@ -21,6 +21,9 @@
  */
 
 use MediaWiki\Logger\LegacyLogger;
+use MediaWiki\ResourceLoader\ResourceLoader;
+use Wikimedia\WrappedString;
+use Wikimedia\WrappedStringList;
 
 /**
  * New debugger system that outputs a toolbar on page view.
@@ -68,7 +71,7 @@ class MWDebug {
 	protected static $deprecationWarnings = [];
 
 	/**
-	 * @var string[] Deprecation filter regexes
+	 * @var array Keys are regexes, values are optional callbacks to call if the filter is hit
 	 */
 	protected static $deprecationFilters = [];
 
@@ -365,8 +368,11 @@ class MWDebug {
 	 *   caller column.
 	 */
 	public static function sendRawDeprecated( $msg, $sendToLog = true, $callerFunc = '' ) {
-		foreach ( self::$deprecationFilters as $filter ) {
+		foreach ( self::$deprecationFilters as $filter => $callback ) {
 			if ( preg_match( $filter, $msg ) ) {
+				if ( is_callable( $callback ) ) {
+					$callback();
+				}
 				return;
 			}
 		}
@@ -394,12 +400,15 @@ class MWDebug {
 	 * Use this to filter deprecation warnings when testing deprecated code.
 	 *
 	 * @param string $regex
+	 * @param ?callable $callback To call if $regex is hit
 	 */
-	public static function filterDeprecationForTest( $regex ) {
+	public static function filterDeprecationForTest(
+		string $regex, ?callable $callback = null
+	): void {
 		if ( !defined( 'MW_PHPUNIT_TEST' ) && !defined( 'MW_PARSER_TEST' ) ) {
 			throw new RuntimeException( __METHOD__ . ' can only be used in tests' );
 		}
-		self::$deprecationFilters[] = $regex;
+		self::$deprecationFilters[$regex] = $callback;
 	}
 
 	/**
@@ -604,12 +613,12 @@ class MWDebug {
 	 *
 	 * @since 1.19
 	 * @param IContextSource $context
-	 * @return string
+	 * @return WrappedStringList
 	 */
 	public static function getDebugHTML( IContextSource $context ) {
 		global $wgDebugComments;
 
-		$html = '';
+		$html = [];
 
 		if ( self::$enabled ) {
 			self::log( 'MWDebug output complete' );
@@ -617,19 +626,21 @@ class MWDebug {
 
 			// Cannot use OutputPage::addJsConfigVars because those are already outputted
 			// by the time this method is called.
-			$html = ResourceLoader::makeInlineScript(
+			$html[] = ResourceLoader::makeInlineScript(
 				ResourceLoader::makeConfigSetScript( [ 'debugInfo' => $debugInfo ] ),
 				$context->getOutput()->getCSP()->getNonce()
 			);
 		}
 
 		if ( $wgDebugComments ) {
-			$html .= "<!-- Debug output:\n" .
-				htmlspecialchars( implode( "\n", self::$debug ), ENT_NOQUOTES ) .
-				"\n\n-->";
+			$html[] = '<!-- Debug output:';
+			foreach ( self::$debug as $line ) {
+				$html[] = htmlspecialchars( $line, ENT_NOQUOTES );
+			}
+			$html[] = '-->';
 		}
 
-		return $html;
+		return WrappedString::join( "\n", $html );
 	}
 
 	/**
@@ -638,26 +649,26 @@ class MWDebug {
 	 * If $wgShowDebug is false, an empty string is always returned.
 	 *
 	 * @since 1.20
-	 * @return string HTML fragment
+	 * @return WrappedStringList HTML fragment
 	 */
 	public static function getHTMLDebugLog() {
 		global $wgShowDebug;
 
-		if ( !$wgShowDebug ) {
-			return '';
+		$html = [];
+		if ( $wgShowDebug ) {
+			$html[] = Html::openElement( 'div', [ 'id' => 'mw-html-debug-log' ] );
+			$html[] = "<hr />\n<strong>Debug data:</strong><ul id=\"mw-debug-html\">";
+
+			foreach ( self::$debug as $line ) {
+				$display = nl2br( htmlspecialchars( trim( $line ) ) );
+
+				$html[] = "<li><code>$display</code></li>";
+			}
+
+			$html[] = '</ul>';
+			$html[] = '</div>';
 		}
-
-		$ret = "\n<hr />\n<strong>Debug data:</strong><ul id=\"mw-debug-html\">\n";
-
-		foreach ( self::$debug as $line ) {
-			$display = nl2br( htmlspecialchars( trim( $line ) ) );
-
-			$ret .= "<li><code>$display</code></li>\n";
-		}
-
-		$ret .= '</ul>' . "\n";
-
-		return Html::rawElement( 'div', [ 'id' => 'mw-html-debug-log' ], $ret );
+		return WrappedString::join( "\n", $html );
 	}
 
 	/**

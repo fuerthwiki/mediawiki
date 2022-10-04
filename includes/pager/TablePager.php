@@ -1,7 +1,5 @@
 <?php
 /**
- * Efficient paging for SQL queries.
- *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
@@ -18,13 +16,13 @@
  * http://www.gnu.org/copyleft/gpl.html
  *
  * @file
- * @ingroup Pager
  */
 
 use MediaWiki\Linker\LinkRenderer;
 
 /**
  * Table-based display with a user-selectable sort order
+ *
  * @stable to extend
  * @ingroup Pager
  */
@@ -77,7 +75,6 @@ abstract class TablePager extends IndexPager {
 	 * @return string
 	 */
 	final public function getBody() {
-		$this->getOutput()->addModuleStyles( $this->getModuleStyles() );
 		return parent::getBody();
 	}
 
@@ -95,7 +92,6 @@ abstract class TablePager extends IndexPager {
 
 		$pout = new ParserOutput;
 		$pout->setText( $body );
-		$pout->addModuleStyles( $this->getModuleStyles() );
 		return $pout;
 	}
 
@@ -339,14 +335,12 @@ abstract class TablePager extends IndexPager {
 	}
 
 	/**
-	 * ResourceLoader modules that must be loaded to provide correct styling for this pager
-	 *
-	 * @stable to override
-	 * @since 1.24
-	 * @return string[]
+	 * @inheritDoc
 	 */
 	public function getModuleStyles() {
-		return [ 'mediawiki.pager.tablePager', 'oojs-ui.styles.icons-movement' ];
+		return array_merge(
+			parent::getModuleStyles(), [ 'oojs-ui.styles.icons-movement' ]
+		);
 	}
 
 	/**

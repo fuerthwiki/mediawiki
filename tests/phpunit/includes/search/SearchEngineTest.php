@@ -1,6 +1,6 @@
 <?php
 
-use MediaWiki\MediaWikiServices;
+use MediaWiki\MainConfigNames;
 use Wikimedia\Rdbms\LoadBalancerSingle;
 
 /**
@@ -34,17 +34,17 @@ class SearchEngineTest extends MediaWikiLangTestCase {
 		}
 
 		$searchType = SearchEngineFactory::getSearchEngineClass( $this->db );
-		$this->setMwGlobals( [
-			'wgSearchType' => $searchType,
-			'wgCapitalLinks' => true,
-			'wgCapitalLinkOverrides' => [
+		$this->overrideConfigValues( [
+			MainConfigNames::SearchType => $searchType,
+			MainConfigNames::CapitalLinks => true,
+			MainConfigNames::CapitalLinkOverrides => [
 				NS_CATEGORY => false // for testCompletionSearchMustRespectCapitalLinkOverrides
 			],
 		] );
 
 		$lb = LoadBalancerSingle::newFromConnection( $this->db );
 		$this->search = new $searchType( $lb );
-		$this->search->setHookContainer( MediaWikiServices::getInstance()->getHookContainer() );
+		$this->search->setHookContainer( $this->getServiceContainer()->getHookContainer() );
 	}
 
 	protected function tearDown(): void {
@@ -61,10 +61,10 @@ class SearchEngineTest extends MediaWikiLangTestCase {
 
 		// Reset the search type back to default - some extensions may have
 		// overridden it.
-		$this->setMwGlobals( [
-			'wgSearchType' => null,
-			'wgCapitalLinks' => true,
-			'wgCapitalLinkOverrides' => [
+		$this->overrideConfigValues( [
+			MainConfigNames::SearchType => null,
+			MainConfigNames::CapitalLinks => true,
+			MainConfigNames::CapitalLinkOverrides => [
 				NS_CATEGORY => false // for testCompletionSearchMustRespectCapitalLinkOverrides
 			],
 		] );
@@ -115,6 +115,8 @@ class SearchEngineTest extends MediaWikiLangTestCase {
 	}
 
 	public function testFullWidth() {
+		// T303046
+		$this->markTestSkippedIfDbType( 'sqlite' );
 		$this->assertEquals(
 			[ 'FullOneUp', 'FullTwoLow', 'HalfOneUp', 'HalfTwoLow' ],
 			$this->fetchIds( $this->search->searchText( 'AZ' ) ),
@@ -134,6 +136,8 @@ class SearchEngineTest extends MediaWikiLangTestCase {
 	}
 
 	public function testTextSearch() {
+		// T303046
+		$this->markTestSkippedIfDbType( 'sqlite' );
 		$this->assertEquals(
 			[ 'Smithee' ],
 			$this->fetchIds( $this->search->searchText( 'smithee' ) ),
@@ -141,6 +145,8 @@ class SearchEngineTest extends MediaWikiLangTestCase {
 	}
 
 	public function testWildcardSearch() {
+		// T303046
+		$this->markTestSkippedIfDbType( 'sqlite' );
 		$res = $this->search->searchText( 'smith*' );
 		$this->assertEquals(
 			[ 'Smithee' ],
@@ -167,6 +173,8 @@ class SearchEngineTest extends MediaWikiLangTestCase {
 	}
 
 	public function testPhraseSearch() {
+		// T303046
+		$this->markTestSkippedIfDbType( 'sqlite' );
 		$res = $this->search->searchText( '"smithee is one who smiths"' );
 		$this->assertEquals(
 			[ 'Smithee' ],
@@ -187,6 +195,8 @@ class SearchEngineTest extends MediaWikiLangTestCase {
 	}
 
 	public function testPhraseSearchHighlight() {
+		// T303046
+		$this->markTestSkippedIfDbType( 'sqlite' );
 		$phrase = "smithee is one who smiths";
 		$res = $this->search->searchText( "\"$phrase\"" );
 		$match = $res->getIterator()->current();
@@ -197,6 +207,8 @@ class SearchEngineTest extends MediaWikiLangTestCase {
 	}
 
 	public function testTextPowerSearch() {
+		// T303046
+		$this->markTestSkippedIfDbType( 'sqlite' );
 		$this->search->setNamespaces( [ 0, 1, 4 ] );
 		$this->assertEquals(
 			[
@@ -208,6 +220,8 @@ class SearchEngineTest extends MediaWikiLangTestCase {
 	}
 
 	public function testTitleSearch() {
+		// T303046
+		$this->markTestSkippedIfDbType( 'sqlite' );
 		$this->assertEquals(
 			[
 				'Alan Smithee',
@@ -218,6 +232,8 @@ class SearchEngineTest extends MediaWikiLangTestCase {
 	}
 
 	public function testTextTitlePowerSearch() {
+		// T303046
+		$this->markTestSkippedIfDbType( 'sqlite' );
 		$this->search->setNamespaces( [ 0, 1, 4 ] );
 		$this->assertEquals(
 			[
@@ -316,7 +332,7 @@ class SearchEngineTest extends MediaWikiLangTestCase {
 					$mockFieldBuilder( "testField", SearchIndexField::INDEX_TYPE_TEXT );
 				return true;
 			} );
-		$mockEngine->setHookContainer( MediaWikiServices::getInstance()->getHookContainer() );
+		$mockEngine->setHookContainer( $this->getServiceContainer()->getHookContainer() );
 
 		$fields = $mockEngine->getSearchIndexFields();
 		$this->assertArrayHasKey( 'language', $fields );
@@ -334,6 +350,8 @@ class SearchEngineTest extends MediaWikiLangTestCase {
 	}
 
 	public function testAugmentorSearch() {
+		// T303046
+		$this->markTestSkippedIfDbType( 'sqlite' );
 		$this->search->setNamespaces( [ 0, 1, 4 ] );
 		$resultSet = $this->search->searchText( 'smithee' );
 		// Not using mock since PHPUnit mocks do not work properly with references in params
@@ -376,19 +394,26 @@ class SearchEngineTest extends MediaWikiLangTestCase {
 
 	public function testFiltersMissing() {
 		$availableResults = [];
+		$user = $this->getTestSysop()->getAuthority();
 		foreach ( range( 0, 11 ) as $i ) {
 			$title = "Search_Result_$i";
 			$availableResults[] = $title;
 			// pages not created must be filtered
 			if ( $i % 2 == 0 ) {
-				$this->editSearchResultPage( $title );
+				$this->editPage(
+					$title,
+					new WikitextContent( 'UTContent' ),
+					'UTPageSummary',
+					NS_MAIN,
+					$user
+				);
 			}
 		}
 		MockCompletionSearchEngine::addMockResults( 'foo', $availableResults );
 
 		$engine = new MockCompletionSearchEngine();
 		$engine->setLimitOffset( 10, 0 );
-		$engine->setHookContainer( MediaWikiServices::getInstance()->getHookContainer() );
+		$engine->setHookContainer( $this->getServiceContainer()->getHookContainer() );
 		$results = $engine->completionSearch( 'foo' );
 		$this->assertEquals( 5, $results->getSize() );
 		$this->assertTrue( $results->hasMoreResults() );
@@ -397,16 +422,6 @@ class SearchEngineTest extends MediaWikiLangTestCase {
 		$results = $engine->completionSearch( 'foo' );
 		$this->assertSame( 1, $results->getSize() );
 		$this->assertFalse( $results->hasMoreResults() );
-	}
-
-	private function editSearchResultPage( $title ) {
-		$page = WikiPage::factory( Title::newFromText( $title ) );
-		$page->doUserEditContent(
-			new WikitextContent( 'UTContent' ),
-			$this->getTestSysop()->getUser(),
-			'UTPageSummary',
-			EDIT_NEW | EDIT_SUPPRESS_RC
-		);
 	}
 
 	public function provideDataForParseNamespacePrefix() {

@@ -1,7 +1,6 @@
 <?php
 
 use MediaWiki\Logger\Spi as LoggerSpi;
-use MediaWiki\MediaWikiServices;
 use MediaWiki\Revision\MutableRevisionRecord;
 use MediaWiki\Revision\RevisionRecord;
 use MediaWiki\Revision\SlotRecord;
@@ -39,7 +38,7 @@ class PoolWorkArticleViewTest extends MediaWikiIntegrationTestCase {
 		$options = null
 	) {
 		if ( !$options ) {
-			$options = ParserOptions::newCanonical( 'canonical' );
+			$options = ParserOptions::newFromAnon();
 		}
 
 		if ( !$rev ) {
@@ -67,29 +66,31 @@ class PoolWorkArticleViewTest extends MediaWikiIntegrationTestCase {
 	}
 
 	public function testDoWorkLoadRevision() {
-		$options = ParserOptions::newCanonical( 'canonical' );
+		$options = ParserOptions::newFromAnon();
 		$page = $this->getExistingTestPage( __METHOD__ );
 		$rev1 = $this->makeRevision( $page, 'First!' );
 		$rev2 = $this->makeRevision( $page, 'Second!' );
 
 		$work = $this->newPoolWorkArticleView( $page, $rev1, $options );
-		$work->execute();
-		$this->assertStringContainsString( 'First', $work->getParserOutput()->getText() );
+		/** @var Status $status */
+		$status = $work->execute();
+		$this->assertStringContainsString( 'First', $status->getValue()->getText() );
 
 		$work = $this->newPoolWorkArticleView( $page, $rev2, $options );
-		$work->execute();
-		$this->assertStringContainsString( 'Second', $work->getParserOutput()->getText() );
+		/** @var Status $status */
+		$status = $work->execute();
+		$this->assertStringContainsString( 'Second', $status->getValue()->getText() );
 	}
 
 	public function testDoWorkParserCache() {
-		$options = ParserOptions::newCanonical( 'canonical' );
+		$options = ParserOptions::newFromAnon();
 		$page = $this->getExistingTestPage( __METHOD__ );
 		$rev1 = $this->makeRevision( $page, 'First!' );
 
 		$work = $this->newPoolWorkArticleView( $page, $rev1, $options );
 		$work->execute();
 
-		$cache = MediaWikiServices::getInstance()->getParserCache();
+		$cache = $this->getServiceContainer()->getParserCache();
 		$out = $cache->get( $page, $options );
 
 		$this->assertNotNull( $out );
@@ -98,7 +99,7 @@ class PoolWorkArticleViewTest extends MediaWikiIntegrationTestCase {
 	}
 
 	public function testDoWorkWithFakeRevision() {
-		$options = ParserOptions::newCanonical( 'canonical' );
+		$options = ParserOptions::newFromAnon();
 		$page = $this->getExistingTestPage( __METHOD__ );
 		$rev = $this->makeRevision( $page, 'NOPE' );
 
@@ -108,9 +109,10 @@ class PoolWorkArticleViewTest extends MediaWikiIntegrationTestCase {
 		$fakeRev->setContent( SlotRecord::MAIN, new WikitextContent( 'YES!' ) );
 
 		$work = $this->newPoolWorkArticleView( $page, $fakeRev, $options );
-		$work->execute();
+		/** @var Status $status */
+		$status = $work->execute();
 
-		$text = $work->getParserOutput()->getText();
+		$text = $status->getValue()->getText();
 		$this->assertStringContainsString( 'YES!', $text );
 		$this->assertStringNotContainsString( 'NOPE', $text );
 	}
@@ -148,7 +150,7 @@ class PoolWorkArticleViewTest extends MediaWikiIntegrationTestCase {
 	public function testMagicWords( $wikitext, $callback ) {
 		static $counter = 1;
 
-		$options = ParserOptions::newCanonical( 'canonical' );
+		$options = ParserOptions::newFromAnon();
 		$page = $this->getNonexistingTestPage( __METHOD__ . $counter++ );
 		$this->editPage( $page, $wikitext );
 		$rev = $page->getRevisionRecord();
@@ -162,16 +164,17 @@ class PoolWorkArticleViewTest extends MediaWikiIntegrationTestCase {
 			$options,
 			false
 		);
-		$work->execute();
+		/** @var Status $status */
+		$status = $work->execute();
 
 		$expected = strval( $callback( $rev ) );
-		$output = $work->getParserOutput();
+		$output = $status->getValue();
 
 		$this->assertStringContainsString( $expected, $output->getText() );
 	}
 
 	public function testDoWorkDeletedContent() {
-		$options = ParserOptions::newCanonical( 'canonical' );
+		$options = ParserOptions::newFromAnon();
 		$page = $this->getExistingTestPage( __METHOD__ );
 		$rev1 = $page->getRevisionRecord();
 
@@ -187,7 +190,9 @@ class PoolWorkArticleViewTest extends MediaWikiIntegrationTestCase {
 
 		// rendering of a deleted revision should work, audience checks are bypassed
 		$work = $this->newPoolWorkArticleView( $page, $fakeRev, $options );
-		$this->assertTrue( $work->execute() );
+		/** @var Status $status */
+		$status = $work->execute();
+		$this->assertTrue( $status->isGood() );
 	}
 
 }

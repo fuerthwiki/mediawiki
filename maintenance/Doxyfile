@@ -56,6 +56,7 @@ ALIASES                = "type{1}=<b> \1 </b>:" \
                          "internal=\par \"Access: internal\"" \
                          "unstable=\par \"Stability: unstable\"" \
                          "stable=\par \"Stability: stable\"" \
+                         "newable=\par \"Stability: newable\"" \
                          "copyright=\note" \
                          "license=\note" \
                          "inheritDoc=\inheritdoc" \
@@ -85,7 +86,7 @@ LOOKUP_CACHE_SIZE      = 2
 # Build related configuration options
 #---------------------------------------------------------------------------
 EXTRACT_ALL            = YES
-EXTRACT_PRIVATE        = YES
+EXTRACT_PRIVATE        = NO
 EXTRACT_PACKAGE        = NO
 EXTRACT_STATIC         = YES
 EXTRACT_LOCAL_CLASSES  = YES
@@ -143,6 +144,10 @@ EXCLUDE_SYMLINKS       = YES
 EXCLUDE_PATTERNS       = LocalSettings.php \
                          .svn \
                          */.git/* \
+                         */node_modules \
+                         */resources \
+                         */tests \
+                         */vendor \
                          */includes/libs/*/README.md \
                          */maintenance/*/README.md \
                          {{EXCLUDE_PATTERNS}}
@@ -172,7 +177,6 @@ VERBATIM_HEADERS       = YES
 # Configuration options related to the alphabetical class index
 #---------------------------------------------------------------------------
 ALPHABETICAL_INDEX     = NO
-COLS_IN_ALPHA_INDEX    = 5
 IGNORE_PREFIX          =
 #---------------------------------------------------------------------------
 # Configuration options related to the HTML output
@@ -259,7 +263,6 @@ EXTERNAL_PAGES         = YES
 #---------------------------------------------------------------------------
 # Configuration options related to the dot tool
 #---------------------------------------------------------------------------
-CLASS_DIAGRAMS         = NO
 DIA_PATH               =
 HIDE_UNDOC_RELATIONS   = YES
 HAVE_DOT               = {{HAVE_DOT}}
@@ -267,7 +270,7 @@ DOT_NUM_THREADS        = 0
 DOT_FONTNAME           = Helvetica
 DOT_FONTSIZE           = 10
 DOT_FONTPATH           =
-CLASS_GRAPH            = YES
+CLASS_GRAPH            = TEXT
 COLLABORATION_GRAPH    = YES
 GROUP_GRAPHS           = YES
 UML_LOOK               = NO

@@ -3,7 +3,7 @@
 use MediaWiki\Block\DatabaseBlock;
 use MediaWiki\Block\Restriction\NamespaceRestriction;
 use MediaWiki\Block\Restriction\PageRestriction;
-use MediaWiki\MediaWikiServices;
+use MediaWiki\MainConfigNames;
 
 /**
  * @group API
@@ -38,7 +38,7 @@ class ApiQueryBlocksTest extends ApiTestCase {
 			'expiry' => 'infinity',
 		] );
 
-		MediaWikiServices::getInstance()->getDatabaseBlockStore()->insertBlock( $block );
+		$this->getServiceContainer()->getDatabaseBlockStore()->insertBlock( $block );
 
 		list( $data ) = $this->doApiRequest( [
 			'action' => 'query',
@@ -67,7 +67,7 @@ class ApiQueryBlocksTest extends ApiTestCase {
 			'ipb_sitewide' => 1,
 		] );
 
-		MediaWikiServices::getInstance()->getDatabaseBlockStore()->insertBlock( $block );
+		$this->getServiceContainer()->getDatabaseBlockStore()->insertBlock( $block );
 
 		list( $data ) = $this->doApiRequest( [
 			'action' => 'query',
@@ -86,9 +86,7 @@ class ApiQueryBlocksTest extends ApiTestCase {
 	}
 
 	public function testExecuteRestrictions() {
-		$this->setMwGlobals( [
-			'wgEnablePartialActionBlocks' => true,
-		] );
+		$this->overrideConfigValue( MainConfigNames::EnablePartialActionBlocks, true );
 		$badActor = $this->getTestUser()->getUser();
 		$sysop = $this->getTestSysop()->getUser();
 
@@ -100,7 +98,7 @@ class ApiQueryBlocksTest extends ApiTestCase {
 			'sitewide' => 0,
 		] );
 
-		MediaWikiServices::getInstance()->getDatabaseBlockStore()->insertBlock( $block );
+		$this->getServiceContainer()->getDatabaseBlockStore()->insertBlock( $block );
 
 		$subset = [
 			'id' => $block->getId(),

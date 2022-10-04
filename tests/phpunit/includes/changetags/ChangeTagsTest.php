@@ -1,6 +1,6 @@
 <?php
 
-use MediaWiki\MediaWikiServices;
+use MediaWiki\MainConfigNames;
 
 /**
  * @covers ChangeTags
@@ -23,7 +23,7 @@ class ChangeTagsTest extends MediaWikiIntegrationTestCase {
 		$this->tablesUsed[] = 'archive';
 	}
 
-	public function tearDown(): void {
+	protected function tearDown(): void {
 		ChangeTags::$avoidReopeningTablesForTesting = false;
 		parent::tearDown();
 	}
@@ -42,9 +42,10 @@ class ChangeTagsTest extends MediaWikiIntegrationTestCase {
 		$filter_tag,
 		$useTags,
 		$avoidReopeningTables,
-		$modifiedQuery
+		$modifiedQuery,
+		$exclude = false
 	) {
-		$this->setMwGlobals( 'wgUseTagFilter', $useTags );
+		$this->overrideConfigValue( MainConfigNames::UseTagFilter, $useTags );
 
 		if ( $avoidReopeningTables && $this->db->getType() !== 'mysql' ) {
 			$this->markTestSkipped( 'MySQL only' );
@@ -53,7 +54,7 @@ class ChangeTagsTest extends MediaWikiIntegrationTestCase {
 		ChangeTags::$avoidReopeningTablesForTesting = $avoidReopeningTables;
 
 		$rcId = 123;
-		ChangeTags::updateTags( [ 'foo', 'bar' ], [], $rcId );
+		ChangeTags::updateTags( [ 'foo', 'bar', '0' ], [], $rcId );
 		// HACK resolve deferred group concats (see comment in provideModifyDisplayQuery)
 		if ( isset( $modifiedQuery['fields']['ts_tags'] ) ) {
 			$modifiedQuery['fields']['ts_tags'] = wfGetDB( DB_REPLICA )
@@ -68,7 +69,8 @@ class ChangeTagsTest extends MediaWikiIntegrationTestCase {
 			$origQuery['conds'],
 			$origQuery['join_conds'],
 			$origQuery['options'],
-			$filter_tag
+			$filter_tag,
+			$exclude
 		);
 		if ( !isset( $modifiedQuery['exception'] ) ) {
 			$this->assertArrayEquals(
@@ -112,7 +114,7 @@ class ChangeTagsTest extends MediaWikiIntegrationTestCase {
 					'options' => [ 'ORDER BY' => 'rc_timestamp DESC' ],
 				]
 			],
-			'simple query with strings' => [
+			"simple query with strings, tagfilter=''" => [
 				[
 					'tables' => 'recentchanges',
 					'fields' => 'rc_id',
@@ -121,6 +123,44 @@ class ChangeTagsTest extends MediaWikiIntegrationTestCase {
 					'options' => 'ORDER BY rc_timestamp DESC',
 				],
 				'', // no tag filter
+				true, // tag filtering enabled
+				false, // not avoiding reopening tables
+				[
+					'tables' => [ 'recentchanges' ],
+					'fields' => [ 'rc_id', 'ts_tags' => $groupConcats['recentchanges'] ],
+					'conds' => [ "rc_timestamp > '20170714183203'" ],
+					'join_conds' => [],
+					'options' => [ 'ORDER BY rc_timestamp DESC' ],
+				]
+			],
+			'simple query with strings, tagfilter=false' => [
+				[
+					'tables' => 'recentchanges',
+					'fields' => 'rc_id',
+					'conds' => "rc_timestamp > '20170714183203'",
+					'join_conds' => [],
+					'options' => 'ORDER BY rc_timestamp DESC',
+				],
+				false, // no tag filter
+				true, // tag filtering enabled
+				false, // not avoiding reopening tables
+				[
+					'tables' => [ 'recentchanges' ],
+					'fields' => [ 'rc_id', 'ts_tags' => $groupConcats['recentchanges'] ],
+					'conds' => [ "rc_timestamp > '20170714183203'" ],
+					'join_conds' => [],
+					'options' => [ 'ORDER BY rc_timestamp DESC' ],
+				]
+			],
+			'simple query with strings, tagfilter=null' => [
+				[
+					'tables' => 'recentchanges',
+					'fields' => 'rc_id',
+					'conds' => "rc_timestamp > '20170714183203'",
+					'join_conds' => [],
+					'options' => 'ORDER BY rc_timestamp DESC',
+				],
+				null, // no tag filter
 				true, // tag filtering enabled
 				false, // not avoiding reopening tables
 				[
@@ -146,6 +186,25 @@ class ChangeTagsTest extends MediaWikiIntegrationTestCase {
 					'tables' => [ 'recentchanges', 'change_tag' ],
 					'fields' => [ 'rc_id', 'rc_timestamp', 'ts_tags' => $groupConcats['recentchanges'] ],
 					'conds' => [ "rc_timestamp > '20170714183203'", 'ct_tag_id' => [ 1 ] ],
+					'join_conds' => [ 'change_tag' => [ 'JOIN', 'ct_rc_id=rc_id' ] ],
+					'options' => [ 'ORDER BY' => 'rc_timestamp DESC' ],
+				]
+			],
+			'recentchanges query with "0" tag filter' => [
+				[
+					'tables' => [ 'recentchanges' ],
+					'fields' => [ 'rc_id', 'rc_timestamp' ],
+					'conds' => [ "rc_timestamp > '20170714183203'" ],
+					'join_conds' => [],
+					'options' => [ 'ORDER BY' => 'rc_timestamp DESC' ],
+				],
+				'0',
+				true, // tag filtering enabled
+				false, // not avoiding reopening tables
+				[
+					'tables' => [ 'recentchanges', 'change_tag' ],
+					'fields' => [ 'rc_id', 'rc_timestamp', 'ts_tags' => $groupConcats['recentchanges'] ],
+					'conds' => [ "rc_timestamp > '20170714183203'", 'ct_tag_id' => [ 3 ] ],
 					'join_conds' => [ 'change_tag' => [ 'JOIN', 'ct_rc_id=rc_id' ] ],
 					'options' => [ 'ORDER BY' => 'rc_timestamp DESC' ],
 				]
@@ -277,6 +336,26 @@ class ChangeTagsTest extends MediaWikiIntegrationTestCase {
 					'options' => [ 'ORDER BY' => 'rc_timestamp DESC', 'DISTINCT' ],
 				]
 			],
+			'recentchanges query with exclusive multiple tag filter' => [
+				[
+					'tables' => [ 'recentchanges' ],
+					'fields' => [ 'rc_id', 'rc_timestamp' ],
+					'conds' => [ "rc_timestamp > '20170714183203'" ],
+					'join_conds' => [],
+					'options' => [ 'ORDER BY' => 'rc_timestamp DESC' ],
+				],
+				[ 'foo', 'bar' ],
+				true, // tag filtering enabled
+				false, // not avoiding reopening tables
+				[
+					'tables' => [ 'recentchanges', 'change_tag' ],
+					'fields' => [ 'rc_id', 'rc_timestamp', 'ts_tags' => $groupConcats['recentchanges'] ],
+					'conds' => [ "rc_timestamp > '20170714183203'", 'change_tag.ct_tag_id IS NULL' ],
+					'join_conds' => [ 'change_tag' => [ 'LEFT JOIN', [ 'ct_rc_id=rc_id', 'ct_tag_id' => [ 1, 2 ] ] ] ],
+					'options' => [ 'ORDER BY' => 'rc_timestamp DESC' ],
+				],
+				true // exclude
+			],
 			'recentchanges query with multiple tag filter that already has DISTINCT' => [
 				[
 					'tables' => [ 'recentchanges' ],
@@ -346,13 +425,11 @@ class ChangeTagsTest extends MediaWikiIntegrationTestCase {
 					'mw-rollback' => true,
 					'mw-blank' => true,
 					'mw-replace' => true,
-					'mw-add-media' => true,
 				],
 				[
 					'mw-rollback',
 					'mw-replace',
 					'mw-blank',
-					'mw-add-media',
 				]
 			],
 
@@ -393,7 +470,7 @@ class ChangeTagsTest extends MediaWikiIntegrationTestCase {
 	 * @covers ChangeTags::getSoftwareTags
 	 */
 	public function testGetSoftwareTags( $softwareTags, $expected ) {
-		$this->setMwGlobals( 'wgSoftwareTags', $softwareTags );
+		$this->overrideConfigValue( MainConfigNames::SoftwareTags, $softwareTags );
 
 		$actual = ChangeTags::getSoftwareTags();
 		// Order of tags in arrays is not important
@@ -523,7 +600,7 @@ class ChangeTagsTest extends MediaWikiIntegrationTestCase {
 
 	public function testDeleteTags() {
 		$this->emptyChangeTagsTables();
-		MediaWikiServices::getInstance()->resetServiceForTesting( 'NameTableStoreFactory' );
+		$this->getServiceContainer()->resetServiceForTesting( 'NameTableStoreFactory' );
 
 		$rcId = 123;
 		ChangeTags::updateTags( [ 'tag1', 'tag2' ], [], $rcId );
@@ -611,7 +688,7 @@ class ChangeTagsTest extends MediaWikiIntegrationTestCase {
 
 	public function testTagUsageStatistics() {
 		$this->emptyChangeTagsTables();
-		MediaWikiServices::getInstance()->resetServiceForTesting( 'NameTableStoreFactory' );
+		$this->getServiceContainer()->resetServiceForTesting( 'NameTableStoreFactory' );
 
 		$rcId = 123;
 		ChangeTags::updateTags( [ 'tag1', 'tag2' ], [], $rcId );
@@ -643,4 +720,62 @@ class ChangeTagsTest extends MediaWikiIntegrationTestCase {
 			[ 'ORDER BY' => 'ctd_name' ]
 		);
 	}
+
+	public function provideFormatSummaryRow() {
+		yield 'nothing' => [ '', [ '', [] ] ];
+		yield 'valid tag' => [
+			'tag1',
+			[
+				'<span class="mw-tag-markers">(tag-list-wrapper: 1, '
+				. '<span class="mw-tag-marker mw-tag-marker-tag1">(tag-tag1)</span>'
+				. ')</span>',
+				[ 'mw-tag-tag1' ]
+			]
+		];
+		yield '0 tag' => [
+			'0',
+			[
+				'<span class="mw-tag-markers">(tag-list-wrapper: 1, '
+				. '<span class="mw-tag-marker mw-tag-marker-0">(tag-0)</span>'
+				. ')</span>',
+				[ 'mw-tag-0' ]
+			]
+		];
+		yield 'hidden tag' => [
+			'hidden-tag',
+			[
+				'',
+				[ 'mw-tag-hidden-tag' ]
+			]
+		];
+		yield 'mutliple tags' => [
+			'tag1,0,,hidden-tag',
+			[
+				'<span class="mw-tag-markers">(tag-list-wrapper: 2, '
+				. '<span class="mw-tag-marker mw-tag-marker-tag1">(tag-tag1)</span>'
+				. ' <span class="mw-tag-marker mw-tag-marker-0">(tag-0)</span>'
+				. ')</span>',
+				[ 'mw-tag-tag1', 'mw-tag-0', 'mw-tag-hidden-tag' ]
+			]
+		];
+	}
+
+	/**
+	 * @dataProvider provideFormatSummaryRow
+	 */
+	public function testFormatSummaryRow( $tags, $expected ) {
+		$qqx = new MockMessageLocalizer();
+		$localizer = $this->createMock( MessageLocalizer::class );
+		$localizer->method( 'msg' )
+			->willReturnCallback( static function ( $key, ...$params ) use ( $qqx ) {
+				if ( $key === 'tag-hidden-tag' ) {
+					return new RawMessage( '-' );
+				}
+				return $qqx->msg( $key, ...$params );
+			} );
+
+		$out = ChangeTags::formatSummaryRow( $tags, 'dummy', $localizer );
+		$this->assertSame( $expected, $out );
+	}
+
 }

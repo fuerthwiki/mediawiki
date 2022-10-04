@@ -22,7 +22,7 @@
 
 /**
  * Use this trait in classes which have properties for which public access
- * is deprecated or implementation has been move to another class.
+ * is deprecated or implementation has been moved to another class.
  * Set the list of properties in $deprecatedPublicProperties
  * and make the properties non-public. The trait will preserve public access
  * but issue deprecation warnings when it is needed.
@@ -37,11 +37,11 @@
  *                 'movedValue',
  *                 '1.35',
  *                 function () {
- *                     return MediawikiServices()::getInstance()
+ *                     return MediaWikiServices()::getInstance()
  *                         ->getNewImplementationService()->getValue();
  *                 },
  *                 function ( $value ) {
- *                     MediawikiServices()::getInstance()
+ *                     MediaWikiServices()::getInstance()
  *                         ->getNewImplementationService()->setValue( $value );
  *                 }
  *             );
@@ -112,8 +112,10 @@ trait DeprecationHelper {
 	 *
 	 * @param string $property The name of the property.
 	 * @param string $version MediaWiki version where the property became deprecated.
-	 * @param callable $getter an user provided getter that implements a `get` logic for the property
-	 * @param callable|null $setter an user provided getter that implements a `set` logic for the property
+	 * @param callable|string $getter A user provided getter that implements a `get` logic
+	 *        for the property. If a string is given, it is called as a method on $this.
+	 * @param callable|string|null $setter A user provided setter that implements a `set` logic
+	 *        for the property. If a string is given, it is called as a method on $this.
 	 * @param string|null $class The class which has the deprecated property.
 	 * @param string|null $component
 	 *
@@ -123,8 +125,8 @@ trait DeprecationHelper {
 	protected function deprecatePublicPropertyFallback(
 		string $property,
 		string $version,
-		callable $getter,
-		?callable $setter = null,
+		$getter,
+		$setter = null,
 		$class = null,
 		$component = null
 	) {
@@ -161,9 +163,9 @@ trait DeprecationHelper {
 		if ( isset( $this->deprecatedPublicProperties[$name] ) ) {
 			list( $version, $class, $component, $getter ) = $this->deprecatedPublicProperties[$name];
 			$qualifiedName = $class . '::$' . $name;
-			wfDeprecated( $qualifiedName, $version, $component, 3 );
+			wfDeprecated( $qualifiedName, $version, $component, 2 );
 			if ( $getter ) {
-				return $getter();
+				return $this->deprecationHelperCallGetter( $getter );
 			}
 			return true;
 		}
@@ -176,7 +178,7 @@ trait DeprecationHelper {
 			if ( $this->dynamicPropertiesAccessDeprecated ) {
 				[ $version, $class, $component ] = $this->dynamicPropertiesAccessDeprecated;
 				$qualifiedName = $class . '::$' . $name;
-				wfDeprecated( $qualifiedName, $version, $component, 3 );
+				wfDeprecated( $qualifiedName, $version, $component, 2 );
 			}
 			return false;
 		}
@@ -186,9 +188,9 @@ trait DeprecationHelper {
 		if ( isset( $this->deprecatedPublicProperties[$name] ) ) {
 			list( $version, $class, $component, $getter ) = $this->deprecatedPublicProperties[$name];
 			$qualifiedName = $class . '::$' . $name;
-			wfDeprecated( $qualifiedName, $version, $component, 3 );
+			wfDeprecated( $qualifiedName, $version, $component, 2 );
 			if ( $getter ) {
-				return $getter();
+				return $this->deprecationHelperCallGetter( $getter );
 			}
 			return $this->$name;
 		}
@@ -215,9 +217,9 @@ trait DeprecationHelper {
 		if ( isset( $this->deprecatedPublicProperties[$name] ) ) {
 			list( $version, $class, $component, , $setter ) = $this->deprecatedPublicProperties[$name];
 			$qualifiedName = $class . '::$' . $name;
-			wfDeprecated( $qualifiedName, $version, $component, 3 );
+			wfDeprecated( $qualifiedName, $version, $component, 2 );
 			if ( $setter ) {
-				$setter( $value );
+				$this->deprecationHelperCallSetter( $setter, $value );
 			} elseif ( property_exists( $this, $name ) ) {
 				$this->$name = $value;
 			} else {
@@ -235,7 +237,7 @@ trait DeprecationHelper {
 			if ( $this->dynamicPropertiesAccessDeprecated ) {
 				[ $version, $class, $component ] = $this->dynamicPropertiesAccessDeprecated;
 				$qualifiedName = $class . '::$' . $name;
-				wfDeprecated( $qualifiedName, $version, $component, 3 );
+				wfDeprecated( $qualifiedName, $version, $component, 2 );
 			}
 			// Non-existing property. Try to behave like PHP would.
 			$this->$name = $value;
@@ -267,5 +269,19 @@ trait DeprecationHelper {
 			}
 		}
 		return false;
+	}
+
+	private function deprecationHelperCallGetter( $getter ) {
+		if ( is_string( $getter ) ) {
+			$getter = [ $this, $getter ];
+		}
+		return $getter();
+	}
+
+	private function deprecationHelperCallSetter( $setter, $value ) {
+		if ( is_string( $setter ) ) {
+			$setter = [ $this, $setter ];
+		}
+		$setter( $value );
 	}
 }

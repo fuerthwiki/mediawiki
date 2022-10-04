@@ -6,8 +6,10 @@ use CommentStoreComment;
 use Content;
 use LogicException;
 use MediaWiki\Content\IContentHandlerFactory;
+use MediaWiki\Content\Renderer\ContentRenderer;
 use MediaWiki\HookContainer\HookContainer;
 use MediaWiki\Page\PageIdentityValue;
+use MediaWiki\Page\PageReference;
 use MediaWiki\Revision\MainSlotRoleHandler;
 use MediaWiki\Revision\MutableRevisionRecord;
 use MediaWiki\Revision\RevisionRecord;
@@ -21,7 +23,6 @@ use MediaWikiIntegrationTestCase;
 use ParserOptions;
 use ParserOutput;
 use PHPUnit\Framework\MockObject\MockObject;
-use Title;
 use TitleFactory;
 use Wikimedia\Rdbms\DBConnRef;
 use Wikimedia\Rdbms\IDatabase;
@@ -65,10 +66,16 @@ class RevisionRendererTest extends MediaWikiIntegrationTestCase {
 	/**
 	 * @param int $maxRev
 	 * @param bool $usePrimary
+	 * @param ContentRenderer|null $contentRenderer
 	 * @return RevisionRenderer
 	 */
-	private function newRevisionRenderer( $maxRev = 100, $usePrimary = false ) {
+	private function newRevisionRenderer(
+		$maxRev = 100,
+		$usePrimary = false,
+		$contentRenderer = null
+	) {
 		$dbIndex = $usePrimary ? DB_PRIMARY : DB_REPLICA;
+		$cr = $contentRenderer ?? $this->getServiceContainer()->getContentRenderer();
 
 		/** @var ILoadBalancer|MockObject $lb */
 		$lb = $this->createMock( ILoadBalancer::class );
@@ -78,14 +85,9 @@ class RevisionRendererTest extends MediaWikiIntegrationTestCase {
 		$lb->method( 'getConnectionRef' )
 			->with( $dbIndex )
 			->willReturn( $this->mockDatabaseConnection( $this->createMock( DBConnRef::class ), $maxRev ) );
-		$lb->method( 'getLazyConnectionRef' )
-			->with( $dbIndex )
-			->willReturn( $this->mockDatabaseConnection( $this->createMock( DBConnRef::class ), $maxRev ) );
 
 		/** @var NameTableStore|MockObject $slotRoles */
-		$slotRoles = $this->getMockBuilder( NameTableStore::class )
-			->disableOriginalConstructor()
-			->getMock();
+		$slotRoles = $this->createMock( NameTableStore::class );
 		$slotRoles->method( 'getMap' )
 			->willReturn( [] );
 
@@ -100,7 +102,7 @@ class RevisionRendererTest extends MediaWikiIntegrationTestCase {
 		} );
 		$roleReg->defineRoleWithModel( 'aux', CONTENT_MODEL_WIKITEXT );
 
-		return new RevisionRenderer( $lb, $roleReg, $this->getServiceContainer()->getContentRenderer() );
+		return new RevisionRenderer( $lb, $roleReg, $cr );
 	}
 
 	private function selectFieldCallback( $table, $fields, $cond, $maxRev ) {
@@ -129,7 +131,7 @@ class RevisionRendererTest extends MediaWikiIntegrationTestCase {
 
 		$rev->setContent( SlotRecord::MAIN, new WikitextContent( $text ) );
 
-		$options = ParserOptions::newCanonical( 'canonical' );
+		$options = ParserOptions::newFromAnon();
 		$rr = $renderer->getRenderedRevision( $rev, $options );
 
 		$this->assertFalse( $rr->isContentDeleted(), 'isContentDeleted' );
@@ -164,7 +166,7 @@ class RevisionRendererTest extends MediaWikiIntegrationTestCase {
 
 		$rev->setContent( SlotRecord::MAIN, new WikitextContent( $text ) );
 
-		$options = ParserOptions::newCanonical( 'canonical' );
+		$options = ParserOptions::newFromAnon();
 		$rr = $renderer->getRenderedRevision( $rev, $options );
 
 		$this->assertFalse( $rr->isContentDeleted(), 'isContentDeleted' );
@@ -199,7 +201,7 @@ class RevisionRendererTest extends MediaWikiIntegrationTestCase {
 
 		$rev->setContent( SlotRecord::MAIN, new WikitextContent( $text ) );
 
-		$options = ParserOptions::newCanonical( 'canonical' );
+		$options = ParserOptions::newFromAnon();
 		$rr = $renderer->getRenderedRevision( $rev, $options, null, [ 'use-master' => true ] );
 
 		$this->assertFalse( $rr->isContentDeleted(), 'isContentDeleted' );
@@ -225,7 +227,7 @@ class RevisionRendererTest extends MediaWikiIntegrationTestCase {
 
 		$output = new ParserOutput( 'cached text' );
 
-		$options = ParserOptions::newCanonical( 'canonical' );
+		$options = ParserOptions::newFromAnon();
 		$rr = $renderer->getRenderedRevision(
 			$rev,
 			$options,
@@ -255,7 +257,7 @@ class RevisionRendererTest extends MediaWikiIntegrationTestCase {
 
 		$rev->setContent( SlotRecord::MAIN, new WikitextContent( $text ) );
 
-		$options = ParserOptions::newCanonical( 'canonical' );
+		$options = ParserOptions::newFromAnon();
 		$rr = $renderer->getRenderedRevision( $rev, $options );
 
 		$this->assertFalse( $rr->isContentDeleted(), 'isContentDeleted' );
@@ -291,7 +293,7 @@ class RevisionRendererTest extends MediaWikiIntegrationTestCase {
 
 		$rev->setContent( SlotRecord::MAIN, new WikitextContent( $text ) );
 
-		$options = ParserOptions::newCanonical( 'canonical' );
+		$options = ParserOptions::newFromAnon();
 		$rr = $renderer->getRenderedRevision( $rev, $options );
 
 		$this->assertNull( $rr, 'getRenderedRevision' );
@@ -315,7 +317,7 @@ class RevisionRendererTest extends MediaWikiIntegrationTestCase {
 
 		$rev->setContent( SlotRecord::MAIN, new WikitextContent( $text ) );
 
-		$options = ParserOptions::newCanonical( 'canonical' );
+		$options = ParserOptions::newFromAnon();
 		$sysop = $this->mockRegisteredUltimateAuthority();
 		$rr = $renderer->getRenderedRevision( $rev, $options, $sysop );
 
@@ -354,7 +356,7 @@ class RevisionRendererTest extends MediaWikiIntegrationTestCase {
 
 		$rev->setContent( SlotRecord::MAIN, new WikitextContent( $text ) );
 
-		$options = ParserOptions::newCanonical( 'canonical' );
+		$options = ParserOptions::newFromAnon();
 		$rr = $renderer->getRenderedRevision(
 			$rev,
 			$options,
@@ -436,13 +438,15 @@ class RevisionRendererTest extends MediaWikiIntegrationTestCase {
 	}
 
 	public function testGetRenderedRevision_noHtml() {
-		/** @var MockObject|Content $mockContent */
-		$mockContent = $this->getMockBuilder( WikitextContent::class )
+		$content = new WikitextContent( 'Whatever' );
+
+		/** @var MockObject|ContentRenderer $mockContentRenderer */
+		$mockContentRenderer = $this->getMockBuilder( ContentRenderer::class )
 			->onlyMethods( [ 'getParserOutput' ] )
-			->setConstructorArgs( [ 'Whatever' ] )
+			->disableOriginalConstructor()
 			->getMock();
-		$mockContent->method( 'getParserOutput' )
-			->willReturnCallback( function ( Title $title, $revId = null,
+		$mockContentRenderer->method( 'getParserOutput' )
+			->willReturnCallback( function ( Content $content, PageReference $page, $revId = null,
 				ParserOptions $options = null, $generateHtml = true
 			) {
 				if ( !$generateHtml ) {
@@ -453,11 +457,11 @@ class RevisionRendererTest extends MediaWikiIntegrationTestCase {
 				}
 			} );
 
-		$renderer = $this->newRevisionRenderer();
+		$renderer = $this->newRevisionRenderer( 100, false, $mockContentRenderer );
 
 		$rev = new MutableRevisionRecord( $this->fakePage );
-		$rev->setContent( SlotRecord::MAIN, $mockContent );
-		$rev->setContent( 'aux', $mockContent );
+		$rev->setContent( SlotRecord::MAIN, $content );
+		$rev->setContent( 'aux', $content );
 
 		// NOTE: we are testing the private combineSlotOutput() callback here.
 		$rr = $renderer->getRenderedRevision( $rev );

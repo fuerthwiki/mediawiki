@@ -21,6 +21,8 @@
  * @ingroup SpecialPage
  */
 
+use MediaWiki\MainConfigNames;
+
 /**
  * A special page that lists tags for edits
  *
@@ -132,7 +134,7 @@ class SpecialTags extends SpecialPage {
 		// List all defined tags, even if they were never applied
 		$definedTags = array_keys( $this->explicitlyDefinedTags + $this->softwareDefinedTags );
 
-		// Show header only if there exists atleast one tag
+		// Show header only if there exists at least one tag
 		if ( !$tagStats && !$definedTags ) {
 			return;
 		}
@@ -169,7 +171,7 @@ class SpecialTags extends SpecialPage {
 
 		$out->addModuleStyles( [
 			'jquery.tablesorter.styles',
-			'mediawiki.pager.tablePager'
+			'mediawiki.pager.styles'
 		] );
 		$out->addModules( 'jquery.tablesorter' );
 		$out->addHTML( Xml::tags(
@@ -237,7 +239,7 @@ class SpecialTags extends SpecialPage {
 		$newRow .= Xml::tags( 'td', null, $this->msg( $activeMsg )->escaped() );
 
 		$hitcountLabelMsg = $this->msg( 'tags-hitcount' )->numParams( $hitcount );
-		if ( $this->getConfig()->get( 'UseTagFilter' ) ) {
+		if ( $this->getConfig()->get( MainConfigNames::UseTagFilter ) ) {
 			$hitcountLabel = $linkRenderer->makeLink(
 				SpecialPage::getTitleFor( 'Recentchanges' ),
 				$hitcountLabelMsg->text(),
@@ -293,47 +295,31 @@ class SpecialTags extends SpecialPage {
 		$tag = trim( strval( $data['Tag'] ) );
 		$ignoreWarnings = isset( $data['IgnoreWarnings'] ) && $data['IgnoreWarnings'] === '1';
 		$status = ChangeTags::createTagWithChecks( $tag, $data['Reason'],
-			$context->getUser(), $ignoreWarnings );
+			$context->getAuthority(), $ignoreWarnings );
 
 		if ( $status->isGood() ) {
 			$out->redirect( $this->getPageTitle()->getLocalURL() );
 			return true;
 		} elseif ( $status->isOK() ) {
-			// we have some warnings, so we show a confirmation form
-			$fields = [
-				'Tag' => [
-					'type' => 'hidden',
-					'default' => $data['Tag'],
-				],
-				'Reason' => [
-					'type' => 'hidden',
-					'default' => $data['Reason'],
-				],
+			// We have some warnings, so we adjust the form for confirmation.
+			// This would override the existing field and its default value.
+			$form->addFields( [
 				'IgnoreWarnings' => [
 					'type' => 'hidden',
 					'default' => '1',
 				],
-			];
-
-			// fool HTMLForm into thinking the form hasn't been submitted yet. Otherwise
-			// we get into an infinite loop!
-			$context->getRequest()->unsetVal( 'wpEditToken' );
+			] );
 
 			$headerText = $this->msg( 'tags-create-warnings-above', $tag,
 				count( $status->getWarningsArray() ) )->parseAsBlock() .
 				$out->parseAsInterface( $status->getWikiText() ) .
 				$this->msg( 'tags-create-warnings-below' )->parseAsBlock();
 
-			HTMLForm::factory( 'ooui', $fields, $this->getContext() )
-				->setAction( $this->getPageTitle( 'create' )->getLocalURL() )
-				->setWrapperLegendMsg( 'tags-create-heading' )
-				->setHeaderText( $headerText )
-				->setSubmitCallback( [ $this, 'processCreateTagForm' ] )
-				->setSubmitTextMsg( 'htmlform-yes' )
-				->show();
+			$form->setHeaderText( $headerText )
+				->setSubmitTextMsg( 'htmlform-yes' );
 
 			$out->addBacklinkSubtitle( $this->getPageTitle() );
-			return true;
+			return false;
 		} else {
 			$out->wrapWikiTextAsInterface( 'error', $status->getWikiText() );
 			return false;

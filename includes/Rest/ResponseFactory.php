@@ -22,11 +22,25 @@ class ResponseFactory {
 	/** @var ITextFormatter[] */
 	private $textFormatters;
 
+	/** @var bool Whether to send exception backtraces to the client */
+	private $showExceptionDetails = false;
+
 	/**
 	 * @param ITextFormatter[] $textFormatters
 	 */
 	public function __construct( $textFormatters ) {
 		$this->textFormatters = $textFormatters;
+	}
+
+	/**
+	 * Control whether web responses may include a exception messager and backtrace
+	 *
+	 * @see $wgShowExceptionDetails
+	 * @since 1.39
+	 * @param bool $showExceptionDetails
+	 */
+	public function setShowExceptionDetails( bool $showExceptionDetails ): void {
+		$this->showExceptionDetails = $showExceptionDetails;
 	}
 
 	/**
@@ -229,13 +243,21 @@ class ResponseFactory {
 					)
 				);
 			}
+		} elseif ( $this->showExceptionDetails ) {
+			$response = $this->createHttpError( 500, [
+				'message' => 'Error: exception of type ' . get_class( $exception ) . ': '
+					. $exception->getMessage(),
+				'exception' => MWExceptionHandler::getStructuredExceptionData(
+					$exception,
+					MWExceptionHandler::CAUGHT_BY_OTHER
+				)
+			] );
+			// XXX: should we try to do something useful with ILocalizedException?
+			// XXX: should we try to do something useful with common MediaWiki errors like ReadOnlyError?
 		} else {
 			$response = $this->createHttpError( 500, [
 				'message' => 'Error: exception of type ' . get_class( $exception ),
-				'exception' => MWExceptionHandler::getStructuredExceptionData( $exception )
 			] );
-			// FIXME should we try to do something useful with ILocalizedException?
-			// FIXME should we try to do something useful with common MediaWiki errors like ReadOnlyError?
 		}
 		return $response;
 	}
@@ -283,7 +305,7 @@ class ResponseFactory {
 	 * @return string
 	 */
 	protected function getHyperLink( $url ) {
-		$url = htmlspecialchars( $url );
+		$url = htmlspecialchars( $url, ENT_COMPAT );
 		return "<!doctype html><title>Redirect</title><a href=\"$url\">$url</a>";
 	}
 

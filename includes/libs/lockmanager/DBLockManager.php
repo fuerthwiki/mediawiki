@@ -1,7 +1,5 @@
 <?php
 /**
- * Version of LockManager based on using DB table locks.
- *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
@@ -18,7 +16,6 @@
  * http://www.gnu.org/copyleft/gpl.html
  *
  * @file
- * @ingroup LockManager
  */
 
 use Wikimedia\Rdbms\Database;
@@ -26,7 +23,7 @@ use Wikimedia\Rdbms\DBError;
 use Wikimedia\Rdbms\IDatabase;
 
 /**
- * Version of LockManager based on using named/row DB locks.
+ * Base class for lock managers that use named/row database table locks.
  *
  * This is meant for multi-wiki systems that may share files.
  *
@@ -35,6 +32,8 @@ use Wikimedia\Rdbms\IDatabase;
  * A majority of peer DBs must agree for a lock to be acquired.
  *
  * Caching is used to avoid hitting servers that are down.
+ *
+ * See MySqlLockManager and PostgreSqlLockManager.
  *
  * @stable to extend
  * @ingroup LockManager
@@ -65,8 +64,9 @@ abstract class DBLockManager extends QuorumLockManager {
 	 *                     - password    : DB user password
 	 *                     - tablePrefix : DB table prefix
 	 *                     - flags       : DB flags; bitfield of IDatabase::DBO_* constants
-	 *   - dbsByBucket : Array of 1-16 consecutive integer keys, starting from 0,
-	 *                   each having an odd-numbered list of DB names (peers) as values.
+	 *   - dbsByBucket : An array of up to 16 arrays, each containing the DB names
+	 *                   in a bucket. Each bucket should have an odd number of servers.
+	 *                   If omitted, all DBs will be in one bucket. (optional).
 	 *   - lockExpiry  : Lock timeout (seconds) for dropped connections. [optional]
 	 *                   This tells the DB server how long to wait before assuming
 	 *                   connection failure and releasing all the locks for a session.
@@ -76,15 +76,19 @@ abstract class DBLockManager extends QuorumLockManager {
 		parent::__construct( $config );
 
 		$this->dbServers = $config['dbServers'];
-		// Sanitize srvsByBucket config to prevent PHP errors
-		$this->srvsByBucket = array_filter( $config['dbsByBucket'], 'is_array' );
-		$this->srvsByBucket = array_values( $this->srvsByBucket ); // consecutive
+		if ( isset( $config['dbsByBucket'] ) ) {
+			// Sanitize srvsByBucket config to prevent PHP errors
+			$this->srvsByBucket = array_filter( $config['dbsByBucket'], 'is_array' );
+			$this->srvsByBucket = array_values( $this->srvsByBucket ); // consecutive
+		} else {
+			$this->srvsByBucket = [ array_keys( $this->dbServers ) ];
+		}
 
 		if ( isset( $config['lockExpiry'] ) ) {
 			$this->lockExpiry = $config['lockExpiry'];
 		} else {
 			$met = ini_get( 'max_execution_time' );
-			$this->lockExpiry = $met ?: 60; // use some sane amount if 0
+			$this->lockExpiry = $met ?: 60; // use some sensible amount if 0
 		}
 		$this->safeDelay = ( $this->lockExpiry <= 0 )
 			? 60 // pick a safe-ish number to match DB timeout default
@@ -229,7 +233,7 @@ abstract class DBLockManager extends QuorumLockManager {
 	}
 
 	/**
-	 * Make sure remaining locks get cleared for sanity
+	 * Make sure remaining locks get cleared
 	 */
 	public function __destruct() {
 		$this->releaseAllLocks();

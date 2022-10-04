@@ -1,7 +1,7 @@
 <?php
 
 use MediaWiki\MediaWikiServices;
-use MediaWiki\User\UserNameUtils;
+use MediaWiki\User\UserRigorOptions;
 use MediaWiki\Widget\UsersMultiselectWidget;
 use Wikimedia\IPUtils;
 
@@ -33,6 +33,7 @@ class HTMLUsersMultiselectField extends HTMLUserTextField {
 		$userNameUtils = MediaWikiServices::getInstance()->getUserNameUtils();
 		$listOfIps = [];
 		foreach ( $usersArray as $user ) {
+			$canonicalUser = false;
 			if ( IPUtils::isIPAddress( $user ) ) {
 				$parsedIPRange = IPUtils::parseRange( $user );
 				if ( !in_array( $parsedIPRange, $listOfIps ) ) {
@@ -40,9 +41,12 @@ class HTMLUsersMultiselectField extends HTMLUserTextField {
 					$listOfIps[] = $parsedIPRange;
 				}
 			} else {
-				$canonicalUser = $userNameUtils->getCanonical( $user, UserNameUtils::RIGOR_NONE );
+				$canonicalUser = $userNameUtils->getCanonical(
+					$user, UserRigorOptions::RIGOR_NONE );
 			}
-			$normalizedUsers[] = $canonicalUser;
+			if ( $canonicalUser !== false ) {
+				$normalizedUsers[] = $canonicalUser;
+			}
 		}
 		// Remove any duplicate usernames
 		$uniqueUsers = array_unique( $normalizedUsers );
@@ -97,11 +101,8 @@ class HTMLUsersMultiselectField extends HTMLUserTextField {
 			$params['default'] = $this->mParams['default'];
 		}
 
-		if ( isset( $this->mParams['placeholder'] ) ) {
-			$params['placeholder'] = $this->mParams['placeholder'];
-		} else {
-			$params['placeholder'] = $this->msg( 'mw-widgets-usersmultiselect-placeholder' )->plain();
-		}
+		$params['placeholder'] = $this->mParams['placeholder'] ??
+			$this->msg( 'mw-widgets-usersmultiselect-placeholder' )->plain();
 
 		if ( isset( $this->mParams['max'] ) ) {
 			$params['tagLimit'] = $this->mParams['max'];

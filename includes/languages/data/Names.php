@@ -1,7 +1,5 @@
 <?php
 /**
- * Language names.
- *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
@@ -18,13 +16,12 @@
  * http://www.gnu.org/copyleft/gpl.html
  *
  * @file
- * @ingroup Language
  */
 
 namespace MediaWiki\Languages\Data;
 
 /**
- * Language names in their own languages (language autonyms).
+ * Language names in their own languages (known as "language autonyms").
  *
  * These determine things like interwikis, language selectors, and so on.
  * Safe to change without running scripts on the respective sites.
@@ -43,7 +40,7 @@ class Names {
 	/** @phpcs-require-sorted-array */
 	public static $names = [
 		'aa' => 'Qafár af', # Afar
-		'ab' => 'Аҧсшәа', # Abkhaz
+		'ab' => 'аԥсшәа', # Abkhaz
 		'abs' => 'bahasa ambon', # Ambonese Malay, T193566
 		'ace' => 'Acèh', # Aceh
 		'ady' => 'адыгабзэ', # Adyghe
@@ -60,7 +57,7 @@ class Names {
 		'ami' => 'Pangcah', # Amis
 		'an' => 'aragonés', # Aragonese
 		'ang' => 'Ænglisc', # Old English, T25283
-		'anp' => 'अङ्गिका', # Angika
+		'anp' => 'अंगिका', # Angika
 		'ar' => 'العربية', # Arabic
 		'arc' => 'ܐܪܡܝܐ', # Aramaic
 		'arn' => 'mapudungun', # Mapuche, Mapudungu, Araucanian (Araucano)
@@ -96,6 +93,7 @@ class Names {
 		'bho' => 'भोजपुरी', # Bhojpuri
 		'bi' => 'Bislama', # Bislama
 		'bjn' => 'Banjar', # Banjarese
+		'blk' => 'ပအိုဝ်ႏဘာႏသာႏ', # Pa'O
 		'bm' => 'bamanankan', # Bambara
 		'bn' => 'বাংলা', # Bengali
 		'bo' => 'བོད་ཡིག', # Tibetan
@@ -114,7 +112,7 @@ class Names {
 		'ce' => 'нохчийн', # Chechen
 		'ceb' => 'Cebuano', # Cebuano
 		'ch' => 'Chamoru', # Chamorro
-		'cho' => 'Choctaw', # Choctaw
+		'cho' => 'Chahta Anumpa', # Choctaw
 		'chr' => 'ᏣᎳᎩ', # Cherokee
 		'chy' => 'Tsetsêhestâhese', # Cheyenne
 		'ckb' => 'کوردی', # Central Kurdish
@@ -127,7 +125,7 @@ class Names {
 		'cs' => 'čeština', # Czech
 		'csb' => 'kaszëbsczi', # Cassubian
 		'cu' => 'словѣньскъ / ⰔⰎⰑⰂⰡⰐⰠⰔⰍⰟ', # Old Church Slavonic (ancient language)
-		'cv' => 'Чӑвашла', # Chuvash
+		'cv' => 'чӑвашла', # Chuvash
 		'cy' => 'Cymraeg', # Welsh
 		'da' => 'dansk', # Danish
 		'dag' => 'dagbanli', # Dagbani
@@ -157,12 +155,14 @@ class Names {
 		'eu' => 'euskara', # Basque
 		'ext' => 'estremeñu', # Extremaduran
 		'fa' => 'فارسی', # Persian
+		'fat' => 'mfantse', # Fante
 		'ff' => 'Fulfulde', # Fulfulde, Maasina
 		'fi' => 'suomi', # Finnish
 		'fit' => 'meänkieli', # Tornedalen Finnish
 		'fiu-vro' => 'võro', # Võro (deprecated code, 'vro' in ISO 639-3 since 2009-01-16)
 		'fj' => 'Na Vosa Vakaviti', # Fijian
 		'fo' => 'føroyskt', # Faroese
+		'fon' => 'fɔ̀ngbè', # Fon
 		'fr' => 'français', # French
 		'frc' => 'français cadien', # Cajun French
 		'frp' => 'arpetan', # Franco-Provençal/Arpitan
@@ -170,6 +170,7 @@ class Names {
 		'fur' => 'furlan', # Friulian
 		'fy' => 'Frysk', # Frisian
 		'ga' => 'Gaeilge', # Irish
+		'gaa' => 'Ga', # Ga
 		'gag' => 'Gagauz', # Gagauz
 		'gan' => '贛語', # Gan (multiple scripts - defaults to Traditional)
 		'gan-hans' => '赣语（简体）', # Gan (Simplified Han)
@@ -177,6 +178,7 @@ class Names {
 		'gcr' => 'kriyòl gwiyannen', # Guianan Creole
 		'gd' => 'Gàidhlig', # Scots Gaelic
 		'gl' => 'galego', # Galician
+		'gld' => 'на̄ни', # Nanai
 		'glk' => 'گیلکی', # Gilaki
 		'gn' => 'Avañe\'ẽ', # Guaraní, Paraguayan
 		'gom' => 'गोंयची कोंकणी / Gõychi Konknni', # Goan Konkani
@@ -184,6 +186,7 @@ class Names {
 		'gom-latn' => 'Gõychi Konknni', # Goan Konkani (Latin script)
 		'gor' => 'Bahasa Hulontalo', # Gorontalo
 		'got' => '𐌲𐌿𐍄𐌹𐍃𐌺', # Gothic
+		'gpe' => 'Ghanaian Pidgin', # Ghanaian Pidgin
 		'grc' => 'Ἀρχαία ἑλληνικὴ', # Ancient Greek
 		'gsw' => 'Alemannisch', # Alemannic
 		'gu' => 'ગુજરાતી', # Gujarati
@@ -215,11 +218,11 @@ class Names {
 		'ie' => 'Interlingue', # Interlingue (Occidental)
 		'ig' => 'Igbo', # Igbo
 		'ii' => 'ꆇꉙ', # Sichuan Yi
-		'ik' => 'Iñupiak', # Inupiak (Inupiatun, Northwest Alaska / Inupiatun, North Alaskan)
+		'ik' => 'Iñupiatun', # Inupiaq
 		'ike-cans' => 'ᐃᓄᒃᑎᑐᑦ', # Inuktitut, Eastern Canadian (Unified Canadian Aboriginal Syllabics)
 		'ike-latn' => 'inuktitut', # Inuktitut, Eastern Canadian (Latin script)
 		'ilo' => 'Ilokano', # Ilokano
-		'inh' => 'ГӀалгӀай', # Ingush
+		'inh' => 'гӀалгӀай', # Ingush
 		'io' => 'Ido', # Ido
 		'is' => 'íslenska', # Icelandic
 		'it' => 'italiano', # Italian
@@ -232,10 +235,11 @@ class Names {
 		'ka' => 'ქართული', # Georgian
 		'kaa' => 'Qaraqalpaqsha', # Karakalpak
 		'kab' => 'Taqbaylit', # Kabyle
-		'kbd' => 'Адыгэбзэ', # Kabardian
-		'kbd-cyrl' => 'Адыгэбзэ', # Kabardian (Cyrillic)
+		'kbd' => 'адыгэбзэ', # Kabardian
+		'kbd-cyrl' => 'адыгэбзэ', # Kabardian (Cyrillic)
 		'kbp' => 'Kabɩyɛ', # Kabiyè
 		'kcg' => 'Tyap', # Tyap
+		'kea' => 'kabuverdianu', # Cape Verdean Creole
 		'kg' => 'Kongo', # Kongo, (FIXME!) should probably be KiKongo or KiKoongo
 		'khw' => 'کھوار', # Khowar
 		'ki' => 'Gĩkũyũ', # Gikuyu
@@ -255,7 +259,7 @@ class Names {
 		'ko' => '한국어', # Korean
 		'ko-kp' => '조선말', # Korean (DPRK), T190324
 		'koi' => 'перем коми', # Komi-Permyak
-		'kr' => 'Kanuri', # Kanuri, Central
+		'kr' => 'kanuri', # Kanuri
 		'krc' => 'къарачай-малкъар', # Karachay-Balkar
 		'kri' => 'Krio', # Krio
 		'krj' => 'Kinaray-a', # Kinaray-a
@@ -271,7 +275,7 @@ class Names {
 		'kum' => 'къумукъ', # Kumyk (Cyrillic, 'kum-latn' for Latin script)
 		'kv' => 'коми', # Komi-Zyrian (Cyrillic is common script but also written in Latin script)
 		'kw' => 'kernowek', # Cornish
-		'ky' => 'Кыргызча', # Kirghiz
+		'ky' => 'кыргызча', # Kirghiz
 		'la' => 'Latina', # Latin
 		'lad' => 'Ladino', # Ladino
 		'lb' => 'Lëtzebuergesch', # Luxembourgish
@@ -311,6 +315,7 @@ class Names {
 		'mni' => 'ꯃꯤꯇꯩ ꯂꯣꯟ', # Manipuri/Meitei
 		'mnw' => 'ဘာသာ မန်', # Mon, T201583
 		'mo' => 'молдовеняскэ', # Moldovan, deprecated (ISO 639-2: ro-Cyrl-MD)
+		'mos' => 'moore', # Mooré
 		'mr' => 'मराठी', # Marathi
 		'mrh' => 'Mara', # Mara
 		'mrj' => 'кырык мары', # Hill Mari
@@ -336,26 +341,30 @@ class Names {
 		'niu' => 'Niuē', # Niuean
 		'nl' => 'Nederlands', # Dutch
 		'nl-informal' => 'Nederlands (informeel)', # Dutch (informal address ("je"))
+		'nmz' => 'nawdm', # Nawdm
 		'nn' => 'norsk nynorsk', # Norwegian (Nynorsk)
 		'no' => 'norsk', # Norwegian macro language (falls back to nb).
+		'nod' => 'ᨣᩤᩴᨾᩮᩬᩥᨦ', # Northern Thai
 		'nov' => 'Novial', # Novial
 		'nqo' => 'ߒߞߏ', # N'Ko
 		'nrm' => 'Nouormand', # Norman (invalid code; 'nrf' in ISO 639 since 2014)
 		'nso' => 'Sesotho sa Leboa', # Northern Sotho
 		'nv' => 'Diné bizaad', # Navajo
 		'ny' => 'Chi-Chewa', # Chichewa
+		'nyn' => 'runyankore', # Nkore
 		'nys' => 'Nyunga', # Nyungar
 		'oc' => 'occitan', # Occitan
 		'ojb' => 'Ojibwemowin', # Ojibwe
 		'olo' => 'livvinkarjala', # Livvi-Karelian
 		'om' => 'Oromoo', # Oromo
 		'or' => 'ଓଡ଼ିଆ', # Oriya
-		'os' => 'Ирон', # Ossetic, T31091
+		'os' => 'ирон', # Ossetic, T31091
 		'pa' => 'ਪੰਜਾਬੀ', # Eastern Punjabi (Gurmukhi script) (pan)
 		'pag' => 'Pangasinan', # Pangasinan
 		'pam' => 'Kapampangan', # Pampanga
 		'pap' => 'Papiamentu', # Papiamentu
 		'pcd' => 'Picard', # Picard
+		'pcm' => 'Naijá', # Nigerian Pidgin
 		'pdc' => 'Deitsch', # Pennsylvania German
 		'pdt' => 'Plautdietsch', # Plautdietsch/Mennonite Low German
 		'pfl' => 'Pälzisch', # Palatinate German
@@ -365,7 +374,7 @@ class Names {
 		'pms' => 'Piemontèis', # Piedmontese
 		'pnb' => 'پنجابی', # Western Punjabi
 		'pnt' => 'Ποντιακά', # Pontic/Pontic Greek
-		'prg' => 'Prūsiskan', # Prussian
+		'prg' => 'prūsiskan', # Prussian
 		'ps' => 'پښتو', # Pashto
 		'pt' => 'português', # Portuguese
 		'pt-br' => 'português do Brasil', # Brazilian Portuguese
@@ -377,10 +386,11 @@ class Names {
 		'rm' => 'rumantsch', # Raeto-Romance
 		'rmc' => 'romaňi čhib', # Carpathian Romany
 		'rmy' => 'romani čhib', # Vlax Romany
-		'rn' => 'Kirundi', # Rundi/Kirundi/Urundi
+		'rn' => 'ikirundi', # Rundi (Kirundi)
 		'ro' => 'română', # Romanian
 		'roa-rup' => 'armãneashti', # Aromanian (deprecated code, 'rup' exists in ISO 639-3)
 		'roa-tara' => 'tarandíne', # Tarantino ('nap-x-tara')
+		'rsk' => 'руски', # Pannonian Rusyn
 		'ru' => 'русский', # Russian
 		'rue' => 'русиньскый', # Rusyn
 		'rup' => 'armãneashti', # Aromanian
@@ -389,6 +399,7 @@ class Names {
 		# 'ruq-grek' => 'Βλαεστε', # Megleno-Romanian (Greek script)
 		'ruq-latn' => 'Vlăheşte', # Megleno-Romanian (Latin script)
 		'rw' => 'Ikinyarwanda', # Kinyarwanda
+		'ryu' => 'うちなーぐち', # Okinawan
 		'sa' => 'संस्कृतम्', # Sanskrit
 		'sah' => 'саха тыла', # Sakha
 		'sat' => 'ᱥᱟᱱᱛᱟᱲᱤ', # Santali
@@ -399,6 +410,9 @@ class Names {
 		'sdc' => 'Sassaresu', # Sassarese
 		'sdh' => 'کوردی خوارگ', # Southern Kurdish
 		'se' => 'davvisámegiella', # Northern Sami
+		'se-fi' => 'davvisámegiella (Suoma bealde)', # Northern Sami (Finland)
+		'se-no' => 'davvisámegiella (Norgga bealde)', # Northern Sami (Norway)
+		'se-se' => 'davvisámegiella (Ruoŧa bealde)', # Northern Sami (Sweden)
 		'sei' => 'Cmique Itom', # Seri
 		'ses' => 'Koyraboro Senni', # Koyraboro Senni
 		'sg' => 'Sängö', # Sango/Sangho
@@ -422,6 +436,7 @@ class Names {
 		'sm' => 'Gagana Samoa', # Samoan
 		'sma' => 'åarjelsaemien', # Southern Sami
 		'smn' => 'anarâškielâ', # Inari Sami
+		'sms' => 'nuõrttsääʹmǩiõll', # Skolt Sami
 		'sn' => 'chiShona', # Shona
 		'so' => 'Soomaaliga', # Somali
 		'sq' => 'shqip', # Albanian
@@ -429,6 +444,7 @@ class Names {
 		'sr-ec' => 'српски (ћирилица)', # Serbian Cyrillic ekavian
 		'sr-el' => 'srpski (latinica)', # Serbian Latin ekavian
 		'srn' => 'Sranantongo', # Sranan Tongo
+		'sro' => 'sardu campidanesu', # Campidanese Sardinian
 		'ss' => 'SiSwati', # Swati
 		'st' => 'Sesotho', # Southern Sotho
 		'stq' => 'Seeltersk', # Saterland Frisian
@@ -436,11 +452,13 @@ class Names {
 		'su' => 'Sunda', # Sundanese
 		'sv' => 'svenska', # Swedish
 		'sw' => 'Kiswahili', # Swahili
+		'syl' => 'ꠍꠤꠟꠐꠤ', # Sylheti
 		'szl' => 'ślůnski', # Silesian
 		'szy' => 'Sakizaya', # Sakizaya - T174601
 		'ta' => 'தமிழ்', # Tamil
 		'tay' => 'Tayal', # Atayal
 		'tcy' => 'ತುಳು', # Tulu
+		'tdd' => 'ᥖᥭᥰᥖᥬᥳᥑᥨᥒᥰ', # Tai Nüa
 		'te' => 'తెలుగు', # Telugu
 		'tet' => 'tetun', # Tetun
 		'tg' => 'тоҷикӣ', # Tajiki (falls back to tg-cyrl)
@@ -482,6 +500,7 @@ class Names {
 		'vi' => 'Tiếng Việt', # Vietnamese
 		'vls' => 'West-Vlams', # West Flemish
 		'vmf' => 'Mainfränkisch', # Upper Franconian, Main-Franconian
+		'vmw' => 'emakhuwa', # Makhuwa
 		'vo' => 'Volapük', # Volapük
 		'vot' => 'Vaďďa', # Vod/Votian
 		'vro' => 'võro', # Võro
@@ -496,6 +515,7 @@ class Names {
 		'xsy' => 'saisiyat', # SaiSiyat - T216479
 		'yi' => 'ייִדיש', # Yiddish
 		'yo' => 'Yorùbá', # Yoruba
+		'yrl' => 'Nhẽẽgatú', # Nheengatu
 		'yue' => '粵語', # Cantonese
 		'za' => 'Vahcuengh', # Zhuang
 		'zea' => 'Zeêuws', # Zeeuws/Zeaws
@@ -510,7 +530,7 @@ class Names {
 		'zh-mo' => '中文（澳門）', # Chinese (Macau)
 		'zh-my' => '中文（马来西亚）', # Chinese (Malaysia)
 		'zh-sg' => '中文（新加坡）', # Chinese (Singapore)
-		'zh-tw' => '中文（台灣）', # Chinese (Taiwan)
+		'zh-tw' => '中文（臺灣）', # Chinese (Taiwan)
 		'zh-yue' => '粵語', # Cantonese -- (see T10217)
 		'zu' => 'isiZulu' # Zulu
 	];

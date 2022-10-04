@@ -1,16 +1,17 @@
 <?php
 
+/**
+ * @phan-file-suppress PhanCommentAbstractOnInheritedMethod T298571
+ */
+
 namespace Wikimedia\Rdbms;
 
+use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
 use Wikimedia\Timestamp\ConvertibleTimestamp;
 
-/**
- * @suppress PhanRedefinedExtendedClass
- */
-class MWPostgreSqlPlatform extends MWPostgreSqlPlatformCompat {
+class MWPostgreSqlPlatform extends PostgreSQLPlatform {
 	/**
 	 * Handles Postgres unique timestamp format
-	 * @suppress PhanRedefinedClassReference
 	 * @inheritDoc
 	 *
 	 * @param mixed[] $column The column definition array.
@@ -21,8 +22,15 @@ class MWPostgreSqlPlatform extends MWPostgreSqlPlatformCompat {
 		$default = $column['default'] ?? null;
 
 		if ( $type instanceof TimestampType && $default ) {
-			$timestamp = new ConvertibleTimestamp( $default );
-			$pgTimestamp = $timestamp->getTimestamp( TS_POSTGRES );
+			if ( isset( $column['allowInfinite'] ) &&
+				$column['allowInfinite'] &&
+				$default === 'infinity'
+			) {
+				$pgTimestamp = $default;
+			} else {
+				$timestamp = new ConvertibleTimestamp( $default );
+				$pgTimestamp = $timestamp->getTimestamp( TS_POSTGRES );
+			}
 
 			return " DEFAULT '$pgTimestamp' ";
 		}
@@ -31,7 +39,6 @@ class MWPostgreSqlPlatform extends MWPostgreSqlPlatformCompat {
 	}
 
 	/**
-	 * @suppress PhanRedefinedClassReference
 	 * @inheritDoc
 	 * phpcs:disable PSR2.Methods.MethodDeclaration.Underscore
 	 */
@@ -50,6 +57,26 @@ class MWPostgreSqlPlatform extends MWPostgreSqlPlatformCompat {
 		}
 
 		return $tableSql;
+	}
+
+	/**
+	 * @inheritDoc
+	 */
+	public function getBlobTypeDeclarationSQL( array $column ) {
+		// MySQL goes with varbinary for collation reasons, but postgres can't
+		// properly understand BYTEA type and works just fine with TEXT type
+		// FIXME: This should be fixed at some point (T257755)
+		return 'TEXT';
+	}
+
+	/**
+	 * @inheritDoc
+	 */
+	public function getBinaryTypeDeclarationSQL( array $column ) {
+		// MySQL goes with varbinary for collation reasons, but postgres can't
+		// properly understand BYTEA type and works just fine with TEXT type
+		// FIXME: This should be fixed at some point (T257755)
+		return 'TEXT';
 	}
 
 	/**

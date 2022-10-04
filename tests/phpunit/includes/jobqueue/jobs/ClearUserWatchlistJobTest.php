@@ -1,6 +1,6 @@
 <?php
 
-use MediaWiki\MediaWikiServices;
+use MediaWiki\MainConfigNames;
 
 /**
  * @covers ClearUserWatchlistJob
@@ -24,7 +24,7 @@ class ClearUserWatchlistJobTest extends MediaWikiIntegrationTestCase {
 	}
 
 	private function getWatchedItemStore() {
-		return MediaWikiServices::getInstance()->getWatchedItemStore();
+		return $this->getServiceContainer()->getWatchedItemStore();
 	}
 
 	public function testRun() {
@@ -41,24 +41,25 @@ class ClearUserWatchlistJobTest extends MediaWikiIntegrationTestCase {
 		$watchedItemStore->addWatch( $user, new TitleValue( 0, 'C' ) );
 		$watchedItemStore->addWatch( $user, new TitleValue( 1, 'C' ) );
 
-		$this->setMwGlobals( 'wgUpdateRowsPerQuery', 2 );
+		$this->overrideConfigValue( MainConfigNames::UpdateRowsPerQuery, 2 );
 
-		JobQueueGroup::singleton()->push(
+		$jobQueueGroup = $this->getServiceContainer()->getJobQueueGroup();
+		$jobQueueGroup->push(
 			new ClearUserWatchlistJob( [
 				'userId' => $user->getId(), 'maxWatchlistId' => $maxId,
 			] )
 		);
 
-		$this->assertSame( 1, JobQueueGroup::singleton()->getQueueSizes()['clearUserWatchlist'] );
+		$this->assertSame( 1, $jobQueueGroup->getQueueSizes()['clearUserWatchlist'] );
 		$this->assertEquals( 6, $watchedItemStore->countWatchedItems( $user ) );
 		$this->runJobs( [ 'complete' => false ], [ 'maxJobs' => 1 ] );
-		$this->assertSame( 1, JobQueueGroup::singleton()->getQueueSizes()['clearUserWatchlist'] );
+		$this->assertSame( 1, $jobQueueGroup->getQueueSizes()['clearUserWatchlist'] );
 		$this->assertEquals( 4, $watchedItemStore->countWatchedItems( $user ) );
 		$this->runJobs( [ 'complete' => false ], [ 'maxJobs' => 1 ] );
-		$this->assertSame( 1, JobQueueGroup::singleton()->getQueueSizes()['clearUserWatchlist'] );
+		$this->assertSame( 1, $jobQueueGroup->getQueueSizes()['clearUserWatchlist'] );
 		$this->assertEquals( 2, $watchedItemStore->countWatchedItems( $user ) );
 		$this->runJobs( [ 'complete' => false ], [ 'maxJobs' => 1 ] );
-		$this->assertSame( 0, JobQueueGroup::singleton()->getQueueSizes()['clearUserWatchlist'] );
+		$this->assertSame( 0, $jobQueueGroup->getQueueSizes()['clearUserWatchlist'] );
 		$this->assertEquals( 2, $watchedItemStore->countWatchedItems( $user ) );
 
 		$this->assertTrue( $watchedItemStore->isWatched( $user, new TitleValue( 0, 'C' ) ) );
@@ -67,7 +68,7 @@ class ClearUserWatchlistJobTest extends MediaWikiIntegrationTestCase {
 
 	public function testRunWithWatchlistExpiry() {
 		// Set up.
-		$this->setMwGlobals( 'wgWatchlistExpiry', true );
+		$this->overrideConfigValue( MainConfigNames::WatchlistExpiry, true );
 		$user = $this->getUser();
 		$watchedItemStore = $this->getWatchedItemStore();
 
@@ -88,7 +89,7 @@ class ClearUserWatchlistJobTest extends MediaWikiIntegrationTestCase {
 			'userId' => $user->getId(),
 			'maxWatchlistId' => max( $itemIds ),
 		] );
-		JobQueueGroup::singleton()->push( $job );
+		$this->getServiceContainer()->getJobQueueGroup()->push( $job );
 		$this->runJobs( [ 'complete' => false ], [ 'maxJobs' => 1 ] );
 
 		// Confirm that there are now no expiry records.

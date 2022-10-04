@@ -1,13 +1,19 @@
 <?php
 
 use MediaWiki\Block\BlockRestrictionStore;
+use MediaWiki\Block\BlockUtils;
 use MediaWiki\Block\DatabaseBlock;
 use MediaWiki\Block\Restriction\NamespaceRestriction;
 use MediaWiki\Block\Restriction\PageRestriction;
-use MediaWiki\MediaWikiServices;
+use MediaWiki\DAO\WikiAwareEntity;
+use MediaWiki\MainConfigNames;
 use MediaWiki\User\UserIdentity;
 use MediaWiki\User\UserIdentityValue;
+use MediaWiki\User\UserNameUtils;
 use Wikimedia\IPUtils;
+use Wikimedia\Rdbms\DBConnRef;
+use Wikimedia\Rdbms\ILoadBalancer;
+use Wikimedia\Rdbms\LBFactory;
 
 /**
  * @group Database
@@ -35,7 +41,7 @@ class DatabaseBlockTest extends MediaWikiLangTestCase {
 	 * @throws MWException
 	 */
 	private function addBlockForUser( UserIdentity $user ) {
-		$blockStore = MediaWikiServices::getInstance()->getDatabaseBlockStore();
+		$blockStore = $this->getServiceContainer()->getDatabaseBlockStore();
 		// Delete the last round's block if it's still there
 		$oldBlock = DatabaseBlock::newFromTarget( $user );
 		if ( $oldBlock ) {
@@ -142,7 +148,7 @@ class DatabaseBlockTest extends MediaWikiLangTestCase {
 	 * @covers ::newFromTarget
 	 */
 	public function testNewFromTargetRangeBlocks( $targets, $ip, $expectedTarget ) {
-		$blockStore = MediaWikiServices::getInstance()->getDatabaseBlockStore();
+		$blockStore = $this->getServiceContainer()->getDatabaseBlockStore();
 		$blocker = $this->getTestSysop()->getUser();
 
 		foreach ( $targets as $target ) {
@@ -218,11 +224,10 @@ class DatabaseBlockTest extends MediaWikiLangTestCase {
 		$u = User::newFromName( $username );
 		$u->addToDatabase();
 		$userId = $u->getId();
-		$this->assertNotEquals( 0, $userId, 'sanity' );
+		$this->assertNotEquals( 0, $userId, 'Check user id is not 0' );
 		TestUser::setPasswordForUser( $u, 'NotRandomPass' );
 		unset( $u );
 
-		// Sanity check
 		$this->assertNull(
 			DatabaseBlock::newFromTarget( $username ),
 			"$username should not be blocked"
@@ -249,7 +254,7 @@ class DatabaseBlockTest extends MediaWikiLangTestCase {
 			'by' => UserIdentityValue::newExternal( 'm', 'MetaWikiUser' ),
 		];
 		$block = new DatabaseBlock( $blockOptions );
-		MediaWikiServices::getInstance()->getDatabaseBlockStore()->insertBlock( $block );
+		$this->getServiceContainer()->getDatabaseBlockStore()->insertBlock( $block );
 
 		// Reload block from DB
 		$userBlock = DatabaseBlock::newFromTarget( $username );
@@ -278,7 +283,7 @@ class DatabaseBlockTest extends MediaWikiLangTestCase {
 	 * @covers ::insert
 	 */
 	public function testCrappyCrossWikiBlocks() {
-		$blockStore = MediaWikiServices::getInstance()->getDatabaseBlockStore();
+		$blockStore = $this->getServiceContainer()->getDatabaseBlockStore();
 		// Delete the last round's block if it's still there
 		$oldBlock = DatabaseBlock::newFromTarget( 'UserOnForeignWiki' );
 		if ( $oldBlock ) {
@@ -290,7 +295,7 @@ class DatabaseBlockTest extends MediaWikiLangTestCase {
 		$user = User::newFromName( 'UserOnForeignWiki' );
 		$user->addToDatabase();
 		$userId = $user->getId();
-		$this->assertNotEquals( 0, $userId, 'sanity' );
+		$this->assertNotEquals( 0, $userId, 'Check user id is not 0' );
 
 		// Foreign perspective (blockee not on current wiki)...
 		$blockOptions = [
@@ -380,7 +385,7 @@ class DatabaseBlockTest extends MediaWikiLangTestCase {
 			],
 		];
 
-		$blockStore = MediaWikiServices::getInstance()->getDatabaseBlockStore();
+		$blockStore = $this->getServiceContainer()->getDatabaseBlockStore();
 		$blocker = $this->getTestUser()->getUser();
 		foreach ( $blockList as $insBlock ) {
 			$target = $insBlock['target'];
@@ -474,7 +479,7 @@ class DatabaseBlockTest extends MediaWikiLangTestCase {
 			'by' => $sysop,
 			'expiry' => 'infinity',
 		] );
-		$blockStore = MediaWikiServices::getInstance()->getDatabaseBlockStore();
+		$blockStore = $this->getServiceContainer()->getDatabaseBlockStore();
 		$blockStore->insertBlock( $block );
 
 		$blockQuery = DatabaseBlock::getQueryInfo();
@@ -500,6 +505,78 @@ class DatabaseBlockTest extends MediaWikiLangTestCase {
 	}
 
 	/**
+	 * @covers ::getTargetName()
+	 * @covers ::getTargetUserIdentity()
+	 * @covers ::isBlocking()
+	 * @covers ::getBlocker()
+	 * @covers ::getByName()
+	 */
+	public function testCrossWikiBlocking() {
+		$this->overrideConfigValue( MainConfigNames::LocalDatabases, [ 'm' ] );
+		$dbMock = $this->createMock( DBConnRef::class );
+		$dbMock->method( 'decodeExpiry' )->willReturn( 'infinity' );
+		$lbMock = $this->createMock( ILoadBalancer::class );
+		$lbMock->method( 'getConnectionRef' )
+			->with( DB_REPLICA, [], 'm' )
+			->willReturn( $dbMock );
+		$lbFactoryMock = $this->createMock( LBFactory::class );
+		$lbFactoryMock
+			->method( 'getMainLB' )
+			->with( 'm' )
+			->willReturn( $lbMock );
+		$this->setService( 'DBLoadBalancerFactory', $lbFactoryMock );
+
+		$target = UserIdentityValue::newExternal( 'm', 'UserOnForeignWiki', 'm' );
+
+		$blockUtilsMock = $this->createMock( BlockUtils::class );
+		$blockUtilsMock
+			->method( 'parseBlockTarget' )
+			->with( $target )
+			->willReturn( [ $target, DatabaseBlock::TYPE_USER ] );
+		$this->setService( 'BlockUtils', $blockUtilsMock );
+
+		$blocker = UserIdentityValue::newExternal( 'm', 'MetaWikiUser', 'm' );
+
+		$userNameUtilsMock = $this->createMock( UserNameUtils::class );
+		$userNameUtilsMock
+			->method( 'isUsable' )
+			->with( $blocker->getName() )
+			->willReturn( false );
+		$this->setService( 'UserNameUtils', $userNameUtilsMock );
+
+		$blockOptions = [
+			'address' => $target,
+			'wiki' => 'm',
+			'reason' => 'testing crosswiki blocking',
+			'timestamp' => wfTimestampNow(),
+			'createAccount' => true,
+			'enableAutoblock' => true,
+			'hideName' => true,
+			'blockEmail' => true,
+			'by' => $blocker,
+		];
+		$block = new DatabaseBlock( $blockOptions );
+
+		$this->assertEquals(
+			'm>UserOnForeignWiki',
+			$block->getTargetName(),
+			'Correct blockee name'
+		);
+		$this->assertEquals(
+			'm>UserOnForeignWiki',
+			$block->getTargetUserIdentity()->getName(),
+			'Correct blockee name'
+		);
+		$this->assertTrue( $block->isBlocking( 'm>UserOnForeignWiki' ), 'Is blocking blockee' );
+		$this->assertEquals(
+			'm>MetaWikiUser',
+			$block->getBlocker()->getName(),
+			'Correct blocker name'
+		);
+		$this->assertEquals( 'm>MetaWikiUser', $block->getByName(), 'Correct blocker name' );
+	}
+
+	/**
 	 * @covers ::equals
 	 */
 	public function testEquals() {
@@ -511,6 +588,28 @@ class DatabaseBlockTest extends MediaWikiLangTestCase {
 			'sitewide' => false,
 		] );
 		$this->assertFalse( $block->equals( $partial ) );
+	}
+
+	/**
+	 * @covers ::getWikiId
+	 */
+	public function testGetWikiId() {
+		$this->overrideConfigValue( MainConfigNames::LocalDatabases, [ 'foo' ] );
+		$dbMock = $this->createMock( DBConnRef::class );
+		$dbMock->method( 'decodeExpiry' )->willReturn( 'infinity' );
+		$lbMock = $this->createMock( ILoadBalancer::class );
+		$lbMock->method( 'getConnectionRef' )->willReturn( $dbMock );
+		$lbFactoryMock = $this->createMock( LBFactory::class );
+		$lbFactoryMock->method( 'getMainLB' )->willReturn( $lbMock );
+		$this->setService( 'DBLoadBalancerFactory', $lbFactoryMock );
+
+		$block = new DatabaseBlock( [ 'wiki' => 'foo' ] );
+		$this->assertSame( 'foo', $block->getWikiId() );
+
+		$this->resetServices();
+
+		$localBlock = new DatabaseBlock();
+		$this->assertSame( WikiAwareEntity::LOCAL, $localBlock->getWikiId() );
 	}
 
 	/**
@@ -556,7 +655,7 @@ class DatabaseBlockTest extends MediaWikiLangTestCase {
 	 * @covers ::insert
 	 */
 	public function testRestrictionsFromDatabase() {
-		$blockStore = MediaWikiServices::getInstance()->getDatabaseBlockStore();
+		$blockStore = $this->getServiceContainer()->getDatabaseBlockStore();
 		$badActor = $this->getTestUser()->getUser();
 		$sysop = $this->getTestSysop()->getUser();
 
@@ -585,7 +684,7 @@ class DatabaseBlockTest extends MediaWikiLangTestCase {
 	 * @covers ::insert
 	 */
 	public function testInsertExistingBlock() {
-		$blockStore = MediaWikiServices::getInstance()->getDatabaseBlockStore();
+		$blockStore = $this->getServiceContainer()->getDatabaseBlockStore();
 		$badActor = $this->getTestUser()->getUser();
 		$sysop = $this->getTestSysop()->getUser();
 
@@ -621,9 +720,7 @@ class DatabaseBlockTest extends MediaWikiLangTestCase {
 	 * @covers ::appliesToTitle
 	 */
 	public function testAppliesToTitleReturnsTrueOnSitewideBlock() {
-		$this->setMwGlobals( [
-			'wgBlockDisablesLogin' => false,
-		] );
+		$this->overrideConfigValue( MainConfigNames::BlockDisablesLogin, false );
 		$user = $this->getTestUser()->getUser();
 		$block = new DatabaseBlock( [
 			'expiry' => wfTimestamp( TS_MW, wfTimestamp() + ( 40 * 60 * 60 ) ),
@@ -634,7 +731,7 @@ class DatabaseBlockTest extends MediaWikiLangTestCase {
 		$block->setTarget( new UserIdentityValue( $user->getId(), $user->getName() ) );
 		$block->setBlocker( $this->getTestSysop()->getUser() );
 
-		$blockStore = MediaWikiServices::getInstance()->getDatabaseBlockStore();
+		$blockStore = $this->getServiceContainer()->getDatabaseBlockStore();
 		$blockStore->insertBlock( $block );
 
 		$title = $this->getExistingTestPage( 'Foo' )->getTitle();
@@ -652,9 +749,7 @@ class DatabaseBlockTest extends MediaWikiLangTestCase {
 	 * @covers ::appliesToTitle
 	 */
 	public function testAppliesToTitleOnPartialBlock() {
-		$this->setMwGlobals( [
-			'wgBlockDisablesLogin' => false,
-		] );
+		$this->overrideConfigValue( MainConfigNames::BlockDisablesLogin, false );
 		$user = $this->getTestUser()->getUser();
 		$block = new DatabaseBlock( [
 			'expiry' => wfTimestamp( TS_MW, wfTimestamp() + ( 40 * 60 * 60 ) ),
@@ -665,7 +760,7 @@ class DatabaseBlockTest extends MediaWikiLangTestCase {
 		$block->setTarget( $user );
 		$block->setBlocker( $this->getTestSysop()->getUser() );
 
-		$blockStore = MediaWikiServices::getInstance()->getDatabaseBlockStore();
+		$blockStore = $this->getServiceContainer()->getDatabaseBlockStore();
 		$blockStore->insertBlock( $block );
 
 		$pageFoo = $this->getExistingTestPage( 'Foo' );
@@ -688,9 +783,7 @@ class DatabaseBlockTest extends MediaWikiLangTestCase {
 	 * @covers ::appliesToPage
 	 */
 	public function testAppliesToReturnsTrueOnSitewideBlock() {
-		$this->setMwGlobals( [
-			'wgBlockDisablesLogin' => false,
-		] );
+		$this->overrideConfigValue( MainConfigNames::BlockDisablesLogin, false );
 		$user = $this->getTestUser()->getUser();
 		$block = new DatabaseBlock( [
 			'expiry' => wfTimestamp( TS_MW, wfTimestamp() + ( 40 * 60 * 60 ) ),
@@ -701,7 +794,7 @@ class DatabaseBlockTest extends MediaWikiLangTestCase {
 		$block->setTarget( $user );
 		$block->setBlocker( $this->getTestSysop()->getUser() );
 
-		$blockStore = MediaWikiServices::getInstance()->getDatabaseBlockStore();
+		$blockStore = $this->getServiceContainer()->getDatabaseBlockStore();
 		$blockStore->insertBlock( $block );
 
 		$title = $this->getExistingTestPage()->getTitle();
@@ -717,9 +810,7 @@ class DatabaseBlockTest extends MediaWikiLangTestCase {
 	 * @covers ::appliesToPage
 	 */
 	public function testAppliesToPageOnPartialPageBlock() {
-		$this->setMwGlobals( [
-			'wgBlockDisablesLogin' => false,
-		] );
+		$this->overrideConfigValue( MainConfigNames::BlockDisablesLogin, false );
 		$user = $this->getTestUser()->getUser();
 		$block = new DatabaseBlock( [
 			'expiry' => wfTimestamp( TS_MW, wfTimestamp() + ( 40 * 60 * 60 ) ),
@@ -730,7 +821,7 @@ class DatabaseBlockTest extends MediaWikiLangTestCase {
 		$block->setTarget( $user );
 		$block->setBlocker( $this->getTestSysop()->getUser() );
 
-		$blockStore = MediaWikiServices::getInstance()->getDatabaseBlockStore();
+		$blockStore = $this->getServiceContainer()->getDatabaseBlockStore();
 		$blockStore->insertBlock( $block );
 
 		$title = $this->getExistingTestPage()->getTitle();
@@ -750,9 +841,7 @@ class DatabaseBlockTest extends MediaWikiLangTestCase {
 	 * @covers ::appliesToNamespace
 	 */
 	public function testAppliesToNamespaceOnPartialNamespaceBlock() {
-		$this->setMwGlobals( [
-			'wgBlockDisablesLogin' => false,
-		] );
+		$this->overrideConfigValue( MainConfigNames::BlockDisablesLogin, false );
 		$user = $this->getTestUser()->getUser();
 		$block = new DatabaseBlock( [
 			'expiry' => wfTimestamp( TS_MW, wfTimestamp() + ( 40 * 60 * 60 ) ),
@@ -763,7 +852,7 @@ class DatabaseBlockTest extends MediaWikiLangTestCase {
 		$block->setTarget( $user );
 		$block->setBlocker( $this->getTestSysop()->getUser() );
 
-		$blockStore = MediaWikiServices::getInstance()->getDatabaseBlockStore();
+		$blockStore = $this->getServiceContainer()->getDatabaseBlockStore();
 		$blockStore->insertBlock( $block );
 
 		$namespaceRestriction = new NamespaceRestriction( $block->getId(), NS_MAIN );
@@ -779,9 +868,7 @@ class DatabaseBlockTest extends MediaWikiLangTestCase {
 	 * @covers ::appliesToRight
 	 */
 	public function testBlockAllowsPurge() {
-		$this->setMwGlobals( [
-			'wgBlockDisablesLogin' => false,
-		] );
+		$this->overrideConfigValue( MainConfigNames::BlockDisablesLogin, false );
 		$block = new DatabaseBlock();
 		$this->assertFalse( $block->appliesToRight( 'purge' ) );
 	}
@@ -792,6 +879,6 @@ class DatabaseBlockTest extends MediaWikiLangTestCase {
 	 * @return BlockRestrictionStore
 	 */
 	protected function getBlockRestrictionStore(): BlockRestrictionStore {
-		return MediaWikiServices::getInstance()->getBlockRestrictionStore();
+		return $this->getServiceContainer()->getBlockRestrictionStore();
 	}
 }

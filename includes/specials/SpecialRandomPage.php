@@ -125,6 +125,7 @@ class SpecialRandomPage extends SpecialPage {
 
 		if ( !$this->getHookRunner()->onSpecialRandomGetRandomTitle(
 			$randstr, $this->isRedir, $this->namespaces,
+			// @phan-suppress-next-line PhanTypeMismatchArgument Type mismatch on pass-by-ref args
 			$this->extra, $title )
 		) {
 			return $title;
@@ -188,7 +189,7 @@ class SpecialRandomPage extends SpecialPage {
 			$query['join_conds']
 		);
 
-		return $dbr->fetchObject( $res );
+		return $res->fetchObject();
 	}
 
 	protected function getGroupName() {

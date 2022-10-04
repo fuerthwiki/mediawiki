@@ -6,13 +6,11 @@ use ExternalStoreAccess;
 use ExternalStoreFactory;
 use HashBagOStuff;
 use InvalidArgumentException;
-use MediaWiki\MediaWikiServices;
 use MediaWiki\Storage\BlobAccessException;
 use MediaWiki\Storage\SqlBlobStore;
 use MediaWikiIntegrationTestCase;
 use TitleValue;
 use WANObjectCache;
-use Wikimedia\AtEase\AtEase;
 use Wikimedia\Rdbms\LoadBalancer;
 
 /**
@@ -31,7 +29,7 @@ class SqlBlobStoreTest extends MediaWikiIntegrationTestCase {
 		WANObjectCache $cache = null,
 		ExternalStoreAccess $extStore = null
 	) {
-		$services = MediaWikiServices::getInstance();
+		$services = $this->getServiceContainer();
 
 		$store = new SqlBlobStore(
 			$services->getDBLoadBalancer(),
@@ -55,7 +53,6 @@ class SqlBlobStoreTest extends MediaWikiIntegrationTestCase {
 
 	/**
 	 * @covers \MediaWiki\Storage\SqlBlobStore::getLegacyEncoding()
-	 * @covers \MediaWiki\Storage\SqlBlobStore::getLegacyEncodingConversionLang()
 	 * @covers \MediaWiki\Storage\SqlBlobStore::setLegacyEncoding()
 	 */
 	public function testGetSetLegacyEncoding() {
@@ -63,9 +60,6 @@ class SqlBlobStoreTest extends MediaWikiIntegrationTestCase {
 		$this->assertFalse( $store->getLegacyEncoding() );
 		$store->setLegacyEncoding( 'foo' );
 		$this->assertSame( 'foo', $store->getLegacyEncoding() );
-
-		$this->hideDeprecated( SqlBlobStore::class . '::getLegacyEncodingConversionLang' );
-		$this->assertNull( $store->getLegacyEncodingConversionLang() );
 	}
 
 	/**
@@ -425,7 +419,7 @@ class SqlBlobStoreTest extends MediaWikiIntegrationTestCase {
 	 * @covers \MediaWiki\Storage\SqlBlobStore::getBlob
 	 */
 	public function testSimpleStoreGetBlobSimpleRoundtripWindowsLegacyEncodingGzip( $blob ) {
-		// FIXME: fails under postgres
+		// FIXME: fails under postgres - T298692
 		$this->markTestSkippedIfDbType( 'postgres' );
 		$store = $this->getBlobStore();
 		$store->setLegacyEncoding( 'windows-1252' );
@@ -538,11 +532,9 @@ class SqlBlobStoreTest extends MediaWikiIntegrationTestCase {
 		$this->checkPHPExtension( 'zlib' );
 		$blobStore = $this->getBlobStore();
 
-		AtEase::suppressWarnings();
 		$this->assertFalse(
-			$blobStore->expandBlob( $raw, explode( ',', $flags ) )
+			@$blobStore->expandBlob( $raw, explode( ',', $flags ) )
 		);
-		AtEase::restoreWarnings();
 	}
 
 	public function provideExpandBlobWithLegacyEncoding() {
@@ -692,10 +684,8 @@ class SqlBlobStoreTest extends MediaWikiIntegrationTestCase {
 			new ExternalStoreFactory( [ 'ForTesting' ], [ 'ForTesting://cluster1' ], 'test-id' )
 		);
 
-		$lb = $this->getMockBuilder( LoadBalancer::class )
-			->disableOriginalConstructor()
-			->getMock();
-		$access = MediaWikiServices::getInstance()->getExternalStoreAccess();
+		$lb = $this->createMock( LoadBalancer::class );
+		$access = $this->getServiceContainer()->getExternalStoreAccess();
 
 		$blobStore = new SqlBlobStore( $lb, $access, $cache );
 

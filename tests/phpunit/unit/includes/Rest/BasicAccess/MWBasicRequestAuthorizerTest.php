@@ -7,13 +7,9 @@ use MediaWiki\Permissions\SimpleAuthority;
 use MediaWiki\Rest\BasicAccess\MWBasicAuthorizer;
 use MediaWiki\Rest\Handler;
 use MediaWiki\Rest\RequestData;
-use MediaWiki\Rest\ResponseFactory;
-use MediaWiki\Rest\Router;
-use MediaWiki\Rest\Validator\Validator;
+use MediaWiki\Tests\Rest\RestTestTrait;
 use MediaWiki\User\UserIdentityValue;
 use MediaWikiUnitTestCase;
-use Psr\Container\ContainerInterface;
-use Wikimedia\ObjectFactory;
 
 /**
  * @covers \MediaWiki\Rest\BasicAccess\BasicAuthorizerBase
@@ -22,27 +18,16 @@ use Wikimedia\ObjectFactory;
  * @covers \MediaWiki\Rest\BasicAccess\MWBasicRequestAuthorizer
  */
 class MWBasicRequestAuthorizerTest extends MediaWikiUnitTestCase {
+	use RestTestTrait;
+
 	private function createRouter( $userRights, $request ) {
-		$objectFactory = new ObjectFactory(
-			$this->getMockForAbstractClass( ContainerInterface::class )
-		);
 		$authority = new SimpleAuthority( new UserIdentityValue( 0, 'Test user' ), $userRights );
 
-		global $IP;
-
-		return new Router(
-			[ "$IP/tests/phpunit/unit/includes/Rest/testRoutes.json" ],
-			[],
-			'http://wiki.example.com',
-			'/rest',
-			new \EmptyBagOStuff(),
-			new ResponseFactory( [] ),
-			new MWBasicAuthorizer( $authority ),
-			$authority,
-			$objectFactory,
-			new Validator( $objectFactory, $request, $authority ),
-			$this->createHookContainer()
-		);
+		return $this->newRouter( [
+			'basicAuth' => new MWBasicAuthorizer( $authority ),
+			'authority' => $authority,
+			'request' => $request
+		] );
 	}
 
 	public function testReadDenied() {

@@ -59,7 +59,7 @@ class JavaScriptContent extends TextContent {
 			return $this;
 		}
 
-		// @phan-suppress-next-line PhanTypeMismatchReturnSuperType
+		// @phan-suppress-next-line PhanTypeMismatchReturnSuperType False positive
 		return $this->getContentHandler()->makeRedirectContent( $target );
 	}
 

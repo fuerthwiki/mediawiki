@@ -1,15 +1,15 @@
 <?php
 
+use MediaWiki\MainConfigNames;
 use MediaWiki\MediaWikiServices;
 use MediaWiki\User\UserIdentity;
 
 /**
  * Job to clear a users watchlist in batches.
  *
- * @author Addshore
- *
- * @ingroup JobQueue
  * @since 1.31
+ * @ingroup JobQueue
+ * @author Addshore
  */
 class ClearUserWatchlistJob extends Job implements GenericParameterJob {
 	/**
@@ -34,14 +34,15 @@ class ClearUserWatchlistJob extends Job implements GenericParameterJob {
 	}
 
 	public function run() {
-		global $wgUpdateRowsPerQuery;
+		$updateRowsPerQuery = MediaWikiServices::getInstance()->getMainConfig()->get(
+			MainConfigNames::UpdateRowsPerQuery );
 		$userId = $this->params['userId'];
 		$maxWatchlistId = $this->params['maxWatchlistId'];
-		$batchSize = $wgUpdateRowsPerQuery;
+		$batchSize = $updateRowsPerQuery;
 
 		$loadBalancer = MediaWikiServices::getInstance()->getDBLoadBalancer();
 		$dbw = $loadBalancer->getConnectionRef( DB_PRIMARY );
-		$dbr = $loadBalancer->getConnectionRef( DB_REPLICA, [ 'watchlist' ] );
+		$dbr = $loadBalancer->getConnectionRef( DB_REPLICA );
 
 		// Wait before lock to try to reduce time waiting in the lock.
 		if ( !$loadBalancer->waitForPrimaryPos( $dbr ) ) {
@@ -83,7 +84,8 @@ class ClearUserWatchlistJob extends Job implements GenericParameterJob {
 		}
 
 		$dbw->delete( 'watchlist', [ 'wl_id' => $watchlistIds ], __METHOD__ );
-		if ( MediaWikiServices::getInstance()->getMainConfig()->get( 'WatchlistExpiry' ) ) {
+		if ( MediaWikiServices::getInstance()->getMainConfig()->get(
+		MainConfigNames::WatchlistExpiry ) ) {
 			$dbw->delete( 'watchlist_expiry', [ 'we_item' => $watchlistIds ], __METHOD__ );
 		}
 
@@ -95,7 +97,7 @@ class ClearUserWatchlistJob extends Job implements GenericParameterJob {
 		if ( count( $watchlistIds ) === (int)$batchSize ) {
 			// Until we get less results than the limit, recursively push
 			// the same job again.
-			JobQueueGroup::singleton()->push( new self( $this->getParams() ) );
+			MediaWikiServices::getInstance()->getJobQueueGroup()->push( new self( $this->getParams() ) );
 		}
 
 		return true;

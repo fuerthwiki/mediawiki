@@ -1,5 +1,4 @@
 <?php
-
 /**
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -35,6 +34,8 @@ use MediaWiki\Content\IContentHandlerFactory;
 use MediaWiki\EditPage\SpamChecker;
 use MediaWiki\HookContainer\HookContainer;
 use MediaWiki\Permissions\Authority;
+use MediaWiki\Permissions\RestrictionStore;
+use MediaWiki\Revision\ArchivedRevisionLookup;
 use MediaWiki\Revision\RevisionStore;
 use MediaWiki\Storage\PageUpdaterFactory;
 use MediaWiki\User\ActorNormalization;
@@ -51,13 +52,14 @@ use Title;
 use TitleFactory;
 use TitleFormatter;
 use WatchedItemStoreInterface;
+use Wikimedia\Message\ITextFormatter;
 use Wikimedia\Rdbms\LBFactory;
 use WikiPage;
 
 /**
- * Common factory to construct page handling classes.
+ * Implementation of various page action services.
  *
- * @since 1.35
+ * @internal
  */
 class PageCommandFactory implements
 	ContentModelChangeFactory,
@@ -129,7 +131,7 @@ class PageCommandFactory implements
 	private $commentStore;
 
 	/** @var BagOStuff */
-	private $dbReplicatedCache;
+	private $mainStash;
 
 	/** @var string */
 	private $localWikiID;
@@ -145,6 +147,15 @@ class PageCommandFactory implements
 
 	/** @var PageUpdaterFactory */
 	private $pageUpdaterFactory;
+
+	/** @var ITextFormatter */
+	private $contLangMsgTextFormatter;
+
+	/** @var ArchivedRevisionLookup */
+	private $archivedRevisionLookup;
+
+	/** @var RestrictionStore */
+	private $restrictionStore;
 
 	public function __construct(
 		Config $config,
@@ -167,12 +178,15 @@ class PageCommandFactory implements
 		CollationFactory $collationFactory,
 		JobQueueGroup $jobQueueGroup,
 		CommentStore $commentStore,
-		BagOStuff $dbReplicatedCache,
+		BagOStuff $mainStash,
 		string $localWikiID,
 		string $webRequestID,
 		BacklinkCacheFactory $backlinkCacheFactory,
 		LoggerInterface $undeletePageLogger,
-		PageUpdaterFactory $pageUpdaterFactory
+		PageUpdaterFactory $pageUpdaterFactory,
+		ITextFormatter $contLangMsgTextFormatter,
+		ArchivedRevisionLookup $archivedRevisionLookup,
+		RestrictionStore $restrictionStore
 	) {
 		$this->config = $config;
 		$this->lbFactory = $lbFactory;
@@ -194,12 +208,15 @@ class PageCommandFactory implements
 		$this->collationFactory = $collationFactory;
 		$this->jobQueueGroup = $jobQueueGroup;
 		$this->commentStore = $commentStore;
-		$this->dbReplicatedCache = $dbReplicatedCache;
+		$this->mainStash = $mainStash;
 		$this->localWikiID = $localWikiID;
 		$this->webRequestID = $webRequestID;
 		$this->backlinkCacheFactory = $backlinkCacheFactory;
 		$this->undeletePageLogger = $undeletePageLogger;
 		$this->pageUpdaterFactory = $pageUpdaterFactory;
+		$this->contLangMsgTextFormatter = $contLangMsgTextFormatter;
+		$this->archivedRevisionLookup = $archivedRevisionLookup;
+		$this->restrictionStore = $restrictionStore;
 	}
 
 	/**
@@ -235,14 +252,16 @@ class PageCommandFactory implements
 			$this->jobQueueGroup,
 			$this->commentStore,
 			new ServiceOptions( DeletePage::CONSTRUCTOR_OPTIONS, $this->config ),
-			$this->dbReplicatedCache,
+			$this->mainStash,
 			$this->localWikiID,
 			$this->webRequestID,
 			$this->wikiPageFactory,
 			$this->userFactory,
+			$this->backlinkCacheFactory,
+			$this->namespaceInfo,
+			$this->contLangMsgTextFormatter,
 			$page,
-			$deleter,
-			$this->backlinkCacheFactory
+			$deleter
 		);
 	}
 
@@ -296,7 +315,8 @@ class PageCommandFactory implements
 			$this->userEditTracker,
 			$this,
 			$this->collationFactory,
-			$this->pageUpdaterFactory
+			$this->pageUpdaterFactory,
+			$this->restrictionStore
 		);
 	}
 
@@ -342,11 +362,14 @@ class PageCommandFactory implements
 			$this->repoGroup,
 			$this->undeletePageLogger,
 			$this->revisionStore,
-			$this->userFactory,
 			$this->wikiPageFactory,
+			$this->pageUpdaterFactory,
+			$this->contentHandlerFactory,
+			$this->archivedRevisionLookup,
+			$this->namespaceInfo,
+			$this->contLangMsgTextFormatter,
 			$page,
-			$authority,
-			$this->pageUpdaterFactory
+			$authority
 		);
 	}
 }

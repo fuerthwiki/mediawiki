@@ -468,18 +468,11 @@ Controller.prototype.areDefaultsEmpty = function () {
  * Empty all selected filters
  */
 Controller.prototype.emptyFilters = function () {
-	var highlightedFilterNames = this.filtersModel.getHighlightedItems()
-		.map( function ( filterItem ) { return { name: filterItem.getName() }; } );
-
 	if ( this.applyParamChange( {} ) ) {
 		// Only update the changes list if there was a change to actual filters
 		this.updateChangesList();
 	} else {
 		this.uriProcessor.updateURL();
-	}
-
-	if ( highlightedFilterNames ) {
-		this._trackHighlight( 'clearAll', highlightedFilterNames );
 	}
 };
 
@@ -531,13 +524,6 @@ Controller.prototype.clearFilter = function ( filterName ) {
 		}
 
 		this.filtersModel.reassessFilterInteractions( filterItem );
-
-		// Log filter grouping
-		this.trackFilterGroupings( 'removefilter' );
-	}
-
-	if ( isHighlighted ) {
-		this._trackHighlight( 'clear', filterName );
 	}
 };
 
@@ -608,7 +594,6 @@ Controller.prototype.setTargetPage = function ( page ) {
 Controller.prototype.setHighlightColor = function ( filterName, color ) {
 	this.filtersModel.setHighlightColor( filterName, color );
 	this.uriProcessor.updateURL();
-	this._trackHighlight( 'set', { name: filterName, color: color } );
 };
 
 /**
@@ -619,7 +604,6 @@ Controller.prototype.setHighlightColor = function ( filterName, color ) {
 Controller.prototype.clearHighlightColor = function ( filterName ) {
 	this.filtersModel.clearHighlightColor( filterName );
 	this.uriProcessor.updateURL();
-	this._trackHighlight( 'clear', filterName );
 };
 
 /**
@@ -812,9 +796,6 @@ Controller.prototype.applySavedQuery = function ( queryID ) {
 	} else {
 		this.uriProcessor.updateURL( params );
 	}
-
-	// Log filter grouping
-	this.trackFilterGroupings( 'savedfilters' );
 };
 
 /**
@@ -842,7 +823,7 @@ Controller.prototype._saveSavedQueries = function () {
 	stringified = JSON.stringify( state );
 
 	if ( byteLength( stringified ) > 65535 ) {
-		// Sanity check, since the preference can only hold that.
+		// Double check, since the preference can only hold that.
 		return;
 	}
 
@@ -928,9 +909,7 @@ Controller.prototype.updateNumericPreference = function ( prefName, newValue ) {
 		return;
 	}
 
-	newValue = Number( newValue );
-
-	if ( mw.user.options.get( prefName ) !== newValue ) {
+	if ( String( mw.user.options.get( prefName ) ) !== String( newValue ) ) {
 		// Save the preference
 		new mw.Api().saveOption( prefName, newValue );
 		// Update the preference for this session
@@ -1056,7 +1035,7 @@ Controller.prototype._queryChangesList = function ( counterId, params ) {
 	// current/default values
 	uri.extend( stickyParams );
 
-	return $.ajax( uri.toString(), { contentType: 'html' } )
+	return $.ajax( uri.toString() )
 		.then(
 			function ( content, message, jqXHR ) {
 				if ( !latestRequest() ) {
@@ -1113,73 +1092,6 @@ Controller.prototype._fetchChangesList = function () {
 				return this._extractChangesListInfo( $parsed, data.status );
 			}.bind( this )
 		);
-};
-
-/**
- * Track usage of highlight feature
- *
- * @param {string} action
- * @param {Array|Object|string} filters
- */
-Controller.prototype._trackHighlight = function ( action, filters ) {
-	filters = typeof filters === 'string' ? { name: filters } : filters;
-	filters = !Array.isArray( filters ) ? [ filters ] : filters;
-	mw.track(
-		'event.ChangesListHighlights',
-		{
-			action: action,
-			filters: filters,
-			userId: mw.user.getId()
-		}
-	);
-};
-
-/**
- * Track filter grouping usage
- *
- * @param {string} action Action taken
- */
-Controller.prototype.trackFilterGroupings = function ( action ) {
-	var controller = this,
-		rightNow = new Date().getTime(),
-		randomIdentifier = String( mw.user.sessionId() ) + String( rightNow ) + String( Math.random() ),
-		// Get all current filters
-		filters = this.filtersModel.findSelectedItems().map( function ( item ) {
-			return item.getName();
-		} );
-
-	action = action || 'filtermenu';
-
-	// Check if these filters were the ones we just logged previously
-	// (Don't log the same grouping twice, in case the user opens/closes)
-	// the menu without action, or with the same result
-	if (
-		// Only log if the two arrays are different in size
-		filters.length !== this.prevLoggedItems.length ||
-		// Or if any filters are not the same as the cached filters
-		filters.some( function ( filterName ) {
-			return controller.prevLoggedItems.indexOf( filterName ) === -1;
-		} ) ||
-		// Or if any cached filters are not the same as given filters
-		this.prevLoggedItems.some( function ( filterName ) {
-			return filters.indexOf( filterName ) === -1;
-		} )
-	) {
-		filters.forEach( function ( filterName ) {
-			mw.track(
-				'event.ChangesListFilterGrouping',
-				{
-					action: action,
-					groupIdentifier: randomIdentifier,
-					filter: filterName,
-					userId: mw.user.getId()
-				}
-			);
-		} );
-
-		// Cache the filter names
-		this.prevLoggedItems = filters;
-	}
 };
 
 /**

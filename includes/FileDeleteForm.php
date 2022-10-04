@@ -23,6 +23,7 @@
  */
 
 use MediaWiki\MediaWikiServices;
+use MediaWiki\Page\DeletePage;
 use MediaWiki\User\UserIdentity;
 
 /**
@@ -41,11 +42,13 @@ class FileDeleteForm {
 	 * @param bool $suppress Whether to mark all deleted versions as restricted
 	 * @param UserIdentity $user
 	 * @param string[] $tags Tags to apply to the deletion action
+	 * @param bool $deleteTalk
+	 * @return Status The value can be an integer with the log ID of the deletion, or false in case of
+	 *   scheduled deletion.
 	 * @throws MWException
-	 * @return Status
 	 */
 	public static function doDelete( Title $title, LocalFile $file, ?string $oldimage, $reason,
-		$suppress, UserIdentity $user, $tags = []
+		$suppress, UserIdentity $user, $tags = [], bool $deleteTalk = false
 	): Status {
 		if ( $oldimage ) {
 			$page = null;
@@ -53,7 +56,7 @@ class FileDeleteForm {
 			if ( $status->isOK() ) {
 				// Need to do a log item
 				$logComment = wfMessage( 'deletedrevision', $oldimage )->inContentLanguage()->text();
-				if ( trim( $reason ) != '' ) {
+				if ( trim( $reason ) !== '' ) {
 					$logComment .= wfMessage( 'colon-separator' )
 						->inContentLanguage()->text() . $reason;
 				}
@@ -74,52 +77,59 @@ class FileDeleteForm {
 			$status = Status::newFatal( 'cannotdelete',
 				wfEscapeWikiText( $title->getPrefixedText() )
 			);
-			$page = MediaWikiServices::getInstance()->getWikiPageFactory()->newFromTitle( $title );
+			$services = MediaWikiServices::getInstance();
+			$page = $services->getWikiPageFactory()->newFromTitle( $title );
 			'@phan-var WikiFilePage $page';
+			$deleter = $services->getUserFactory()->newFromUserIdentity( $user );
+			$deletePage = $services->getDeletePageFactory()->newDeletePage( $page, $deleter );
+			if ( $deleteTalk ) {
+				$checkStatus = $deletePage->canProbablyDeleteAssociatedTalk();
+				if ( !$checkStatus->isGood() ) {
+					return Status::wrap( $checkStatus );
+				}
+				$deletePage->setDeleteAssociatedTalk( true );
+			}
 			$dbw = wfGetDB( DB_PRIMARY );
-			$dbw->startAtomic( __METHOD__ );
+			$dbw->startAtomic( __METHOD__, $dbw::ATOMIC_CANCELABLE );
 			// delete the associated article first
-			$error = '';
-			$deleteStatus = $page->doDeleteArticleReal(
-				$reason,
-				$user,
-				$suppress,
-				null,
-				$error,
-				null,
-				$tags
-			);
-			// doDeleteArticleReal() returns a non-fatal error status if the page
-			// or revision is missing, so check for isOK() rather than isGood()
+			$deleteStatus = $deletePage
+				->setSuppress( $suppress )
+				->setTags( $tags ?: [] )
+				->deleteIfAllowed( $reason );
+
+			// DeletePage returns a non-fatal error status if the page
+			// or revision is missing, so check for isOK() rather than isGood().
 			if ( $deleteStatus->isOK() ) {
 				$status = $file->deleteFile( $reason, $user, $suppress );
 				if ( $status->isOK() ) {
-					if ( $deleteStatus->value === null ) {
-						// No log ID from doDeleteArticleReal(), probably
-						// because the page/revision didn't exist, so create
-						// one here.
-						$logtype = $suppress ? 'suppress' : 'delete';
-						$logEntry = new ManualLogEntry( $logtype, 'delete' );
-						$logEntry->setPerformer( $user );
-						$logEntry->setTarget( $title );
-						$logEntry->setComment( $reason );
-						$logEntry->addTags( $tags );
-						$logid = $logEntry->insert();
-						$dbw->onTransactionPreCommitOrIdle(
-							static function () use ( $logEntry, $logid ) {
-								$logEntry->publish( $logid );
-							},
-							__METHOD__
-						);
-						$status->value = $logid;
+					if ( $deletePage->deletionsWereScheduled()[DeletePage::PAGE_BASE] ) {
+						$status->value = false;
 					} else {
-						$status->value = $deleteStatus->value; // log id
+						$deletedID = $deletePage->getSuccessfulDeletionsIDs()[DeletePage::PAGE_BASE];
+						if ( $deletedID !== null ) {
+							$status->value = $deletedID;
+						} else {
+							// Means that the page/revision didn't exist, so create a log entry here.
+							$logtype = $suppress ? 'suppress' : 'delete';
+							$logEntry = new ManualLogEntry( $logtype, 'delete' );
+							$logEntry->setPerformer( $user );
+							$logEntry->setTarget( $title );
+							$logEntry->setComment( $reason );
+							$logEntry->addTags( $tags );
+							$logid = $logEntry->insert();
+							$dbw->onTransactionPreCommitOrIdle(
+								static function () use ( $logEntry, $logid ) {
+									$logEntry->publish( $logid );
+								},
+								__METHOD__
+							);
+							$status->value = $logid;
+						}
 					}
 					$dbw->endAtomic( __METHOD__ );
 				} else {
 					// Page deleted but file still there? rollback page delete
-					$lbFactory = MediaWikiServices::getInstance()->getDBLoadBalancerFactory();
-					$lbFactory->rollbackPrimaryChanges( __METHOD__ );
+					$dbw->cancelAtomic( __METHOD__ );
 				}
 			} else {
 				$dbw->endAtomic( __METHOD__ );

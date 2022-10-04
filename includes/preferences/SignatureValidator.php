@@ -22,13 +22,13 @@ namespace MediaWiki\Preferences;
 
 use Html;
 use MediaWiki\Config\ServiceOptions;
-use MediaWiki\MediaWikiServices;
+use MediaWiki\MainConfigNames;
 use MediaWiki\Parser\ParserOutputFlags;
 use MediaWiki\SpecialPage\SpecialPageFactory;
 use MediaWiki\User\UserIdentity;
 use MessageLocalizer;
 use MultiHttpClient;
-use Parser;
+use ParserFactory;
 use ParserOptions;
 use ParsoidVirtualRESTService;
 use SpecialPage;
@@ -40,10 +40,10 @@ use VirtualRESTServiceClient;
  */
 class SignatureValidator {
 
-	/** @var array */
-	private const CONSTRUCTOR_OPTIONS = [
-		'SignatureAllowedLintErrors',
-		'VirtualRestConfig',
+	/** @var array Made public for use in services */
+	public const CONSTRUCTOR_OPTIONS = [
+		MainConfigNames::SignatureAllowedLintErrors,
+		MainConfigNames::VirtualRestConfig,
 	];
 
 	/** @var UserIdentity */
@@ -52,8 +52,8 @@ class SignatureValidator {
 	private $localizer;
 	/** @var ParserOptions */
 	private $popts;
-	/** @var Parser */
-	private $parser;
+	/** @var ParserFactory */
+	private $parserFactory;
 	/** @var ServiceOptions */
 	private $serviceOptions;
 	/** @var SpecialPageFactory */
@@ -62,30 +62,33 @@ class SignatureValidator {
 	private $titleFactory;
 
 	/**
+	 * @param ServiceOptions $options
 	 * @param UserIdentity $user
 	 * @param ?MessageLocalizer $localizer
 	 * @param ParserOptions $popts
+	 * @param ParserFactory $parserFactory
+	 * @param SpecialPageFactory $specialPageFactory
+	 * @param TitleFactory $titleFactory
 	 */
-	public function __construct( UserIdentity $user, ?MessageLocalizer $localizer, ParserOptions $popts ) {
+	public function __construct(
+		ServiceOptions $options,
+		UserIdentity $user,
+		?MessageLocalizer $localizer,
+		ParserOptions $popts,
+		ParserFactory $parserFactory,
+		SpecialPageFactory $specialPageFactory,
+		TitleFactory $titleFactory
+	) {
 		$this->user = $user;
 		$this->localizer = $localizer;
 		$this->popts = $popts;
-
-		// TODO inject these
-		$services = MediaWikiServices::getInstance();
-		// Fetch the parser, will be used to create a new parser via getFreshParser() when needed
-		$this->parser = $services->getParser();
+		$this->parserFactory = $parserFactory;
 		// Configuration
-		$this->serviceOptions = new ServiceOptions(
-			self::CONSTRUCTOR_OPTIONS,
-			$services->getMainConfig()
-		);
+		$this->serviceOptions = $options;
 		$this->serviceOptions->assertRequiredOptions( self::CONSTRUCTOR_OPTIONS );
-		// Services
-		$this->specialPageFactory = $services->getSpecialPageFactory();
-		$this->titleFactory = $services->getTitleFactory();
-
 		// TODO SpecialPage::getTitleFor should also be available via SpecialPageFactory
+		$this->specialPageFactory = $specialPageFactory;
+		$this->titleFactory = $titleFactory;
 	}
 
 	/**
@@ -115,7 +118,8 @@ class SignatureValidator {
 
 		$lintErrors = $this->checkLintErrors( $signature );
 		if ( $lintErrors ) {
-			$allowedLintErrors = $this->serviceOptions->get( 'SignatureAllowedLintErrors' );
+			$allowedLintErrors = $this->serviceOptions->get(
+				MainConfigNames::SignatureAllowedLintErrors );
 			$messages = '';
 
 			foreach ( $lintErrors as $error ) {
@@ -205,7 +209,7 @@ class SignatureValidator {
 	 */
 	protected function applyPreSaveTransform( string $signature ) {
 		// This may be called by the Parser when it's displaying a signature, so we need a new instance
-		$parser = $this->parser->getFreshParser();
+		$parser = $this->parserFactory->getInstance();
 
 		$pstSignature = $parser->preSaveTransform(
 			$signature,
@@ -245,7 +249,7 @@ class SignatureValidator {
 		// This request is not cached, but that's okay, because $signature is short (other code checks
 		// the length against $wgMaxSigChars).
 
-		$vrsConfig = $this->serviceOptions->get( 'VirtualRestConfig' );
+		$vrsConfig = $this->serviceOptions->get( MainConfigNames::VirtualRestConfig );
 		if ( isset( $vrsConfig['modules']['parsoid'] ) ) {
 			$params = $vrsConfig['modules']['parsoid'];
 			if ( isset( $vrsConfig['global'] ) ) {
@@ -288,7 +292,7 @@ class SignatureValidator {
 	 */
 	protected function checkUserLinks( string $signature ): bool {
 		// This may be called by the Parser when it's displaying a signature, so we need a new instance
-		$parser = $this->parser->getFreshParser();
+		$parser = $this->parserFactory->getInstance();
 
 		// Check for required links. This one's easier to do with the PHP Parser.
 		$pout = $parser->parse(

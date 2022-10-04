@@ -1,6 +1,6 @@
 <?php
 
-use MediaWiki\MediaWikiServices;
+use MediaWiki\MainConfigNames;
 use MediaWiki\Revision\MutableRevisionRecord;
 use MediaWiki\Revision\RevisionRecord;
 use MediaWiki\Revision\SlotRecord;
@@ -14,17 +14,13 @@ class LinkerTest extends MediaWikiLangTestCase {
 	 * @covers Linker::userLink
 	 */
 	public function testUserLink( $expected, $userId, $userName, $altUserName = false, $msg = '' ) {
-		$this->setMwGlobals( [
-			'wgArticlePath' => '/wiki/$1',
-		] );
+		$this->overrideConfigValue( MainConfigNames::ArticlePath, '/wiki/$1' );
 
 		// We'd also test the warning, but injecting a mock logger into a static method is tricky.
 		if ( !$userName ) {
-			Wikimedia\suppressWarnings();
-		}
-		$actual = Linker::userLink( $userId, $userName, $altUserName );
-		if ( !$userName ) {
-			Wikimedia\restoreWarnings();
+			$actual = @Linker::userLink( $userId, $userName, $altUserName );
+		} else {
+			$actual = Linker::userLink( $userId, $userName, $altUserName );
 		}
 
 		$this->assertEquals( $expected, $actual, $msg );
@@ -162,11 +158,9 @@ class LinkerTest extends MediaWikiLangTestCase {
 	public function testUserToolLinks( $expected, $userId, $userText ) {
 		// We'd also test the warning, but injecting a mock logger into a static method is tricky.
 		if ( $userText === '' ) {
-			Wikimedia\suppressWarnings();
-		}
-		$actual = Linker::userToolLinks( $userId, $userText );
-		if ( $userText === '' ) {
-			Wikimedia\restoreWarnings();
+			$actual = @Linker::userToolLinks( $userId, $userText );
+		} else {
+			$actual = Linker::userToolLinks( $userId, $userText );
 		}
 
 		$this->assertSame( $expected, $actual );
@@ -190,11 +184,9 @@ class LinkerTest extends MediaWikiLangTestCase {
 	public function testUserTalkLink( $expected, $userId, $userText ) {
 		// We'd also test the warning, but injecting a mock logger into a static method is tricky.
 		if ( $userText === '' ) {
-			Wikimedia\suppressWarnings();
-		}
-		$actual = Linker::userTalkLink( $userId, $userText );
-		if ( $userText === '' ) {
-			Wikimedia\restoreWarnings();
+			$actual = @Linker::userTalkLink( $userId, $userText );
+		} else {
+			$actual = Linker::userTalkLink( $userId, $userText );
 		}
 
 		$this->assertSame( $expected, $actual );
@@ -218,11 +210,9 @@ class LinkerTest extends MediaWikiLangTestCase {
 	public function testBlockLink( $expected, $userId, $userText ) {
 		// We'd also test the warning, but injecting a mock logger into a static method is tricky.
 		if ( $userText === '' ) {
-			Wikimedia\suppressWarnings();
-		}
-		$actual = Linker::blockLink( $userId, $userText );
-		if ( $userText === '' ) {
-			Wikimedia\restoreWarnings();
+			$actual = @Linker::blockLink( $userId, $userText );
+		} else {
+			$actual = Linker::blockLink( $userId, $userText );
 		}
 
 		$this->assertSame( $expected, $actual );
@@ -246,11 +236,9 @@ class LinkerTest extends MediaWikiLangTestCase {
 	public function testEmailLink( $expected, $userId, $userText ) {
 		// We'd also test the warning, but injecting a mock logger into a static method is tricky.
 		if ( $userText === '' ) {
-			Wikimedia\suppressWarnings();
-		}
-		$actual = Linker::emailLink( $userId, $userText );
-		if ( $userText === '' ) {
-			Wikimedia\restoreWarnings();
+			$actual = @Linker::emailLink( $userId, $userText );
+		} else {
+			$actual = Linker::emailLink( $userId, $userText );
 		}
 
 		$this->assertSame( $expected, $actual );
@@ -286,14 +274,14 @@ class LinkerTest extends MediaWikiLangTestCase {
 			],
 		];
 		$conf->suffixes = [ 'wiki' ];
+		$this->setMwGlobals( 'wgConf', $conf );
 
-		$this->setMwGlobals( [
-			'wgScript' => '/wiki/index.php',
-			'wgArticlePath' => '/wiki/$1',
-			'wgCapitalLinks' => true,
-			'wgConf' => $conf,
+		$this->overrideConfigValues( [
+			MainConfigNames::Script => '/wiki/index.php',
+			MainConfigNames::ArticlePath => '/wiki/$1',
+			MainConfigNames::CapitalLinks => true,
 			// TODO: update tests when the default changes
-			'wgFragmentMode' => [ 'legacy' ],
+			MainConfigNames::FragmentMode => [ 'legacy' ],
 		] );
 
 		if ( $title === false ) {
@@ -309,8 +297,6 @@ class LinkerTest extends MediaWikiLangTestCase {
 
 	public function provideCasesForFormatComment() {
 		$wikiId = 'enwiki'; // $wgConf has a fake entry for this
-
-		// phpcs:disable Generic.Files.LineLength
 		return [
 			// Linker::formatComment
 			[
@@ -506,11 +492,11 @@ class LinkerTest extends MediaWikiLangTestCase {
 			],
 		];
 		$conf->suffixes = [ 'wiki' ];
-		$this->setMwGlobals( [
-			'wgScript' => '/wiki/index.php',
-			'wgArticlePath' => '/wiki/$1',
-			'wgCapitalLinks' => true,
-			'wgConf' => $conf,
+		$this->setMwGlobals( 'wgConf', $conf );
+		$this->overrideConfigValues( [
+			MainConfigNames::Script => '/wiki/index.php',
+			MainConfigNames::ArticlePath => '/wiki/$1',
+			MainConfigNames::CapitalLinks => true,
 		] );
 
 		$this->assertEquals(
@@ -524,8 +510,6 @@ class LinkerTest extends MediaWikiLangTestCase {
 	 * @dataProvider provideCasesForRollbackGeneration
 	 */
 	public function testGenerateRollback( $rollbackEnabled, $expectedModules, $title ) {
-		$this->markTestSkippedIfDbType( 'postgres' );
-
 		$context = RequestContext::getMain();
 		$user = $context->getUser();
 		$this->getServiceContainer()->getUserOptionsManager()->setOption(
@@ -536,7 +520,7 @@ class LinkerTest extends MediaWikiLangTestCase {
 
 		$this->assertSame( 0, Title::newFromText( $title )->getArticleID() );
 		$pageData = $this->insertPage( $title );
-		$page = WikiPage::factory( $pageData['title'] );
+		$page = $this->getServiceContainer()->getWikiPageFactory()->newFromTitle( $pageData['title'] );
 
 		$summary = CommentStoreComment::newUnsavedComment( 'Some comment!' );
 		$page->newPageUpdater( $user )
@@ -549,7 +533,7 @@ class LinkerTest extends MediaWikiLangTestCase {
 		$rollbackOutput = Linker::generateRollback( $page->getRevisionRecord(), $context );
 		$modules = $context->getOutput()->getModules();
 		$currentRev = $page->getRevisionRecord();
-		$revisionLookup = MediaWikiServices::getInstance()->getRevisionLookup();
+		$revisionLookup = $this->getServiceContainer()->getRevisionLookup();
 		$oldestRev = $revisionLookup->getFirstRevision( $page->getTitle() );
 
 		$this->assertEquals( $expectedModules, $modules );
@@ -588,7 +572,6 @@ class LinkerTest extends MediaWikiLangTestCase {
 	}
 
 	public static function provideCasesForFormatLinksInComment() {
-		// phpcs:disable Generic.Files.LineLength
 		return [
 			[
 				'foo bar <a href="/wiki/Special:BlankPage" title="Special:BlankPage">Special:BlankPage</a>',
@@ -649,12 +632,9 @@ class LinkerTest extends MediaWikiLangTestCase {
 	 * @dataProvider provideTooltipAndAccesskeyAttribs
 	 */
 	public function testTooltipAndAccesskeyAttribs( $name, $msgParams, $options, $expected ) {
-		$this->setMwGlobals( [
-			'wgWatchlistExpiry' => true,
-		] );
+		$this->overrideConfigValue( MainConfigNames::WatchlistExpiry, true );
 		$user = $this->createMock( User::class );
 		$user->method( 'isRegistered' )->willReturn( true );
-		$user->method( 'isLoggedIn' )->willReturn( true );
 
 		$title = SpecialPage::getTitleFor( 'Blankpage' );
 
@@ -686,18 +666,17 @@ class LinkerTest extends MediaWikiLangTestCase {
 			],
 		];
 		$conf->suffixes = [ 'wiki' ];
-		$this->setMwGlobals( [
-			'wgScript' => '/wiki/index.php',
-			'wgArticlePath' => '/wiki/$1',
-			'wgCapitalLinks' => true,
-			'wgConf' => $conf,
+		$this->setMwGlobals( 'wgConf', $conf );
+		$this->overrideConfigValues( [
+			MainConfigNames::Script => '/wiki/index.php',
+			MainConfigNames::ArticlePath => '/wiki/$1',
+			MainConfigNames::CapitalLinks => true,
 		] );
 
 		$this->assertEquals( $expected, Linker::commentBlock( $comment, $title, $local, $wikiId, $useParentheses ) );
 	}
 
 	public static function provideCommentBlock() {
-		// phpcs:disable Generic.Files.LineLength
 		return [
 			[
 				' <span class="comment">(Test)</span>',
@@ -774,7 +753,6 @@ class LinkerTest extends MediaWikiLangTestCase {
 	}
 
 	public static function provideRevComment() {
-		// phpcs:disable Generic.Files.LineLength
 		return [
 			'Should be visible' => [
 				' <span class="comment">(Some comment!)</span>'

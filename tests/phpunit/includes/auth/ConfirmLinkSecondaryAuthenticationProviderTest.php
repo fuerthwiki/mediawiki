@@ -2,10 +2,10 @@
 
 namespace MediaWiki\Auth;
 
-use MediaWiki\MediaWikiServices;
 use MediaWiki\Tests\Unit\Auth\AuthenticationProviderTestTrait;
 use MediaWiki\User\UserNameUtils;
 use Psr\Container\ContainerInterface;
+use Wikimedia\ObjectFactory\ObjectFactory;
 use Wikimedia\TestingAccessWrapper;
 
 /**
@@ -116,11 +116,11 @@ class ConfirmLinkSecondaryAuthenticationProviderTest extends \MediaWikiIntegrati
 		$mb = $this->getMockBuilder( AuthenticationRequest::class )
 			->onlyMethods( [ 'getUniqueId' ] );
 		for ( $i = 1; $i <= 3; $i++ ) {
+			$uid = "Request$i";
 			$req = $mb->getMockForAbstractClass();
-			$req->method( 'getUniqueId' )
-				->willReturn( "Request$i" );
+			$req->method( 'getUniqueId' )->willReturn( $uid );
 			$req->id = $i - 1;
-			$reqs[$req->getUniqueId()] = $req;
+			$reqs[$uid] = $req;
 		}
 
 		return $reqs;
@@ -137,12 +137,13 @@ class ConfirmLinkSecondaryAuthenticationProviderTest extends \MediaWikiIntegrati
 		$provider = new ConfirmLinkSecondaryAuthenticationProvider;
 		$providerPriv = TestingAccessWrapper::newFromObject( $provider );
 		$request = new \FauxRequest();
-		$mwServices = MediaWikiServices::getInstance();
+		$mwServices = $this->getServiceContainer();
+
 		$manager = $this->getMockBuilder( AuthManager::class )
 			->onlyMethods( [ 'allowsAuthenticationDataChange' ] )
 			->setConstructorArgs( [
 				$request,
-				\RequestContext::getMain()->getConfig(),
+				$mwServices->getMainConfig(),
 				$mwServices->getObjectFactory(),
 				$mwServices->getHookContainer(),
 				$mwServices->getReadOnlyMode(),
@@ -159,11 +160,11 @@ class ConfirmLinkSecondaryAuthenticationProviderTest extends \MediaWikiIntegrati
 			] )
 			->getMock();
 		$manager->method( 'allowsAuthenticationDataChange' )
-			->will( $this->returnCallback( static function ( $req ) {
+			->willReturnCallback( static function ( $req ) {
 				return $req->getUniqueId() !== 'BadReq'
 					? \StatusValue::newGood()
 					: \StatusValue::newFatal( 'no' );
-			} ) );
+			} );
 		$this->initProvider( $provider, null, null, $manager );
 
 		$this->assertEquals(
@@ -226,14 +227,14 @@ class ConfirmLinkSecondaryAuthenticationProviderTest extends \MediaWikiIntegrati
 			->getMock();
 		$provider->expects( $this->never() )->method( 'beginLinkAttempt' );
 		$provider->method( 'providerAllowsAuthenticationDataChange' )
-			->will( $this->returnCallback( static function ( $req ) {
+			->willReturnCallback( static function ( $req ) {
 				return $req->getUniqueId() === 'Request3'
 					? \StatusValue::newFatal( 'foo' ) : \StatusValue::newGood();
-			} ) );
+			} );
 		$provider->method( 'providerChangeAuthenticationData' )
-			->will( $this->returnCallback( static function ( $req ) use ( &$done ) {
+			->willReturnCallback( static function ( $req ) use ( &$done ) {
 				$done[$req->id] = true;
-			} ) );
+			} );
 		$config = new \HashConfig( [
 			'AuthManagerConfig' => [
 				'preauth' => [],
@@ -246,19 +247,14 @@ class ConfirmLinkSecondaryAuthenticationProviderTest extends \MediaWikiIntegrati
 			],
 		] );
 		$request = new \FauxRequest();
-		$services = $this->createNoOpMock( ContainerInterface::class );
-		$objectFactory = new \Wikimedia\ObjectFactory( $services );
-		$mwServices = MediaWikiServices::getInstance();
-		$hookContainer = $mwServices->getHookContainer();
-		$readOnlyMode = $mwServices->getReadOnlyMode();
-		$userNameUtils = $mwServices->getUserNameUtils();
+		$mwServices = $this->getServiceContainer();
 		$manager = new AuthManager(
 			$request,
 			$config,
-			$objectFactory,
-			$hookContainer,
-			$readOnlyMode,
-			$userNameUtils,
+			new ObjectFactory( $this->createNoOpMock( ContainerInterface::class ) ),
+			$mwServices->getHookContainer(),
+			$mwServices->getReadOnlyMode(),
+			$mwServices->getUserNameUtils(),
 			$mwServices->getBlockManager(),
 			$mwServices->getWatchlistManager(),
 			$mwServices->getDBLoadBalancer(),

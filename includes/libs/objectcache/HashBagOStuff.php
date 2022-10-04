@@ -50,7 +50,7 @@ class HashBagOStuff extends MediumSpecificBagOStuff {
 	 * @param array $params Additional parameters include:
 	 *   - maxKeys : only allow this many keys (using oldest-first eviction)
 	 * @phpcs:ignore Generic.Files.LineLength
-	 * @phan-param array{logger?:Psr\Log\LoggerInterface,asyncHandler?:callable,keyspace?:string,reportDupes?:bool,syncTimeout?:int,segmentationSize?:int,segmentedValueMaxSize?:int,maxKeys?:int} $params
+	 * @phan-param array{logger?:Psr\Log\LoggerInterface,asyncHandler?:callable,keyspace?:string,reportDupes?:bool,segmentationSize?:int,segmentedValueMaxSize?:int,maxKeys?:int} $params
 	 */
 	public function __construct( $params = [] ) {
 		$params['segmentationSize'] = $params['segmentationSize'] ?? INF;
@@ -79,11 +79,12 @@ class HashBagOStuff extends MediumSpecificBagOStuff {
 		unset( $this->bag[$key] );
 		$this->bag[$key] = $temp;
 
-		if ( $getToken ) {
+		$value = $this->bag[$key][self::KEY_VAL];
+		if ( $getToken && $value !== false ) {
 			$casToken = $this->bag[$key][self::KEY_CAS];
 		}
 
-		return $this->bag[$key][self::KEY_VAL];
+		return $value;
 	}
 
 	protected function doSet( $key, $value, $exptime = 0, $flags = 0 ) {
@@ -106,7 +107,8 @@ class HashBagOStuff extends MediumSpecificBagOStuff {
 
 	protected function doAdd( $key, $value, $exptime = 0, $flags = 0 ) {
 		if ( $this->hasKey( $key ) && !$this->expire( $key ) ) {
-			return false; // key already set
+			// key already set
+			return false;
 		}
 
 		return $this->doSet( $key, $value, $exptime, $flags );
@@ -119,7 +121,15 @@ class HashBagOStuff extends MediumSpecificBagOStuff {
 	}
 
 	public function incr( $key, $value = 1, $flags = 0 ) {
-		$n = $this->get( $key );
+		return $this->doIncr( $key, $value, $flags );
+	}
+
+	public function decr( $key, $value = 1, $flags = 0 ) {
+		return $this->doIncr( $key, -$value, $flags );
+	}
+
+	private function doIncr( $key, $value = 1, $flags = 0 ) {
+		$n = $this->doGet( $key );
 		if ( $this->isInteger( $n ) ) {
 			$n = max( $n + (int)$value, 0 );
 			$this->bag[$key][self::KEY_VAL] = $n;
@@ -130,8 +140,18 @@ class HashBagOStuff extends MediumSpecificBagOStuff {
 		return false;
 	}
 
-	public function decr( $key, $value = 1, $flags = 0 ) {
-		return $this->incr( $key, -$value, $flags );
+	protected function doIncrWithInit( $key, $exptime, $step, $init, $flags ) {
+		$curValue = $this->doGet( $key );
+		if ( $curValue === false ) {
+			$newValue = $this->doSet( $key, $init, $exptime ) ? $init : false;
+		} elseif ( $this->isInteger( $curValue ) ) {
+			$newValue = max( $curValue + $step, 0 );
+			$this->bag[$key][self::KEY_VAL] = $newValue;
+		} else {
+			$newValue = false;
+		}
+
+		return $newValue;
 	}
 
 	/**
@@ -156,16 +176,6 @@ class HashBagOStuff extends MediumSpecificBagOStuff {
 		return true;
 	}
 
-	public function setNewPreparedValues( array $valueByKey ) {
-		// Do not bother with serialization as this class does not serialize values
-		$sizes = [];
-		foreach ( $valueByKey as $value ) {
-			$sizes[] = $this->guessSerialValueSize( $value );
-		}
-
-		return $sizes;
-	}
-
 	/**
 	 * Does this bag have a non-null value for the given key?
 	 *
@@ -182,6 +192,7 @@ class HashBagOStuff extends MediumSpecificBagOStuff {
 	}
 
 	protected function convertGenericKey( $key ) {
-		return $key; // short-circuit; already uses "generic" keys
+		// short-circuit; already uses "generic" keys
+		return $key;
 	}
 }

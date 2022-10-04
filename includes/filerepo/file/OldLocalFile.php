@@ -1,7 +1,5 @@
 <?php
 /**
- * Old file in the oldimage table.
- *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
@@ -18,7 +16,6 @@
  * http://www.gnu.org/copyleft/gpl.html
  *
  * @file
- * @ingroup FileAbstraction
  */
 
 use MediaWiki\MediaWikiServices;
@@ -27,7 +24,7 @@ use MediaWiki\Revision\RevisionRecord;
 use MediaWiki\User\UserIdentity;
 
 /**
- * Class to represent a file in the oldimage table
+ * Old file in the oldimage table.
  *
  * @stable to extend
  * @ingroup FileAbstraction
@@ -44,7 +41,7 @@ class OldLocalFile extends LocalFile {
 	/**
 	 * @stable to override
 	 * @param Title $title
-	 * @param FileRepo $repo
+	 * @param LocalRepo $repo
 	 * @param string|int|null $time
 	 * @return static
 	 * @throws MWException
@@ -62,7 +59,7 @@ class OldLocalFile extends LocalFile {
 	 * @stable to override
 	 *
 	 * @param Title $title
-	 * @param FileRepo $repo
+	 * @param LocalRepo $repo
 	 * @param string $archiveName
 	 * @return static
 	 */
@@ -74,7 +71,7 @@ class OldLocalFile extends LocalFile {
 	 * @stable to override
 	 *
 	 * @param stdClass $row
-	 * @param FileRepo $repo
+	 * @param LocalRepo $repo
 	 * @return static
 	 */
 	public static function newFromRow( $row, $repo ) {
@@ -130,9 +127,10 @@ class OldLocalFile extends LocalFile {
 	 * @param string[] $options
 	 *   - omit-lazy: Omit fields that are lazily cached.
 	 * @return array[] With three keys:
-	 *   - tables: (string[]) to include in the `$table` to `IDatabase->select()`
-	 *   - fields: (string[]) to include in the `$vars` to `IDatabase->select()`
-	 *   - joins: (array) to include in the `$join_conds` to `IDatabase->select()`
+	 *   - tables: (string[]) to include in the `$table` to `IDatabase->select()` or `SelectQueryBuilder::tables`
+	 *   - fields: (string[]) to include in the `$vars` to `IDatabase->select()` or `SelectQueryBuilder::fields`
+	 *   - joins: (array) to include in the `$join_conds` to `IDatabase->select()` or `SelectQueryBuilder::joinConds`
+	 * @phan-return array{tables:string[],fields:string[],joins:array}
 	 */
 	public static function getQueryInfo( array $options = [] ) {
 		$commentQuery = MediaWikiServices::getInstance()->getCommentStore()->getJoin( 'oi_description' );
@@ -179,7 +177,7 @@ class OldLocalFile extends LocalFile {
 	 * @stable to call
 	 *
 	 * @param Title $title
-	 * @param FileRepo $repo
+	 * @param LocalRepo $repo
 	 * @param string|int|null $time Timestamp or null to load by archive name
 	 * @param string|null $archiveName Archive name or null to load by timestamp
 	 * @throws MWException
@@ -361,7 +359,7 @@ class OldLocalFile extends LocalFile {
 		wfDebug( __METHOD__ . ': upgrading ' . $this->archive_name . " to the current schema" );
 		$dbw->update( 'oldimage',
 			[
-				'oi_size' => $this->size, // sanity
+				'oi_size' => $this->size,
 				'oi_width' => $this->width,
 				'oi_height' => $this->height,
 				'oi_bits' => $this->bits,
@@ -432,8 +430,6 @@ class OldLocalFile extends LocalFile {
 	 * @return Status
 	 */
 	public function uploadOld( $srcPath, $timestamp, $comment, UserIdentity $user ) {
-		$this->lock();
-
 		$archiveName = $this->getArchiveName();
 		$dstRel = $this->getArchiveRel( $archiveName );
 		$status = $this->publishTo( $srcPath, $dstRel );
@@ -443,8 +439,6 @@ class OldLocalFile extends LocalFile {
 		) {
 			$status->fatal( 'filenotfound', $srcPath );
 		}
-
-		$this->unlock();
 
 		return $status;
 	}
@@ -471,6 +465,7 @@ class OldLocalFile extends LocalFile {
 		}
 		$this->setProps( $props );
 
+		$dbw->startAtomic( __METHOD__ );
 		$commentFields = $services->getCommentStore()
 			->insert( $dbw, 'oi_description', $comment );
 		$actorId = $services->getActorNormalization()
@@ -492,6 +487,7 @@ class OldLocalFile extends LocalFile {
 				'oi_sha1' => $props['sha1'],
 			] + $commentFields, __METHOD__
 		);
+		$dbw->endAtomic( __METHOD__ );
 
 		return true;
 	}

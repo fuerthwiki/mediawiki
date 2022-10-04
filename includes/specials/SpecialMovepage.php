@@ -23,9 +23,11 @@
 
 use MediaWiki\Cache\LinkBatchFactory;
 use MediaWiki\Content\IContentHandlerFactory;
+use MediaWiki\MainConfigNames;
 use MediaWiki\Page\MovePageFactory;
 use MediaWiki\Page\WikiPageFactory;
 use MediaWiki\Permissions\PermissionManager;
+use MediaWiki\Permissions\RestrictionStore;
 use MediaWiki\User\UserOptionsLookup;
 use MediaWiki\Watchlist\WatchlistManager;
 use Wikimedia\Rdbms\ILoadBalancer;
@@ -100,6 +102,9 @@ class MovePageForm extends UnlistedSpecialPage {
 	/** @var WatchlistManager */
 	private $watchlistManager;
 
+	/** @var RestrictionStore */
+	private $restrictionStore;
+
 	/**
 	 * @param MovePageFactory $movePageFactory
 	 * @param PermissionManager $permManager
@@ -112,6 +117,7 @@ class MovePageForm extends UnlistedSpecialPage {
 	 * @param WikiPageFactory $wikiPageFactory
 	 * @param SearchEngineFactory $searchEngineFactory
 	 * @param WatchlistManager $watchlistManager
+	 * @param RestrictionStore $restrictionStore
 	 */
 	public function __construct(
 		MovePageFactory $movePageFactory,
@@ -124,7 +130,8 @@ class MovePageForm extends UnlistedSpecialPage {
 		RepoGroup $repoGroup,
 		WikiPageFactory $wikiPageFactory,
 		SearchEngineFactory $searchEngineFactory,
-		WatchlistManager $watchlistManager
+		WatchlistManager $watchlistManager,
+		RestrictionStore $restrictionStore
 	) {
 		parent::__construct( 'Movepage' );
 		$this->movePageFactory = $movePageFactory;
@@ -138,6 +145,7 @@ class MovePageForm extends UnlistedSpecialPage {
 		$this->wikiPageFactory = $wikiPageFactory;
 		$this->searchEngineFactory = $searchEngineFactory;
 		$this->watchlistManager = $watchlistManager;
+		$this->restrictionStore = $restrictionStore;
 	}
 
 	public function doesWrites() {
@@ -196,7 +204,8 @@ class MovePageForm extends UnlistedSpecialPage {
 		$this->moveTalk = $request->getBool( 'wpMovetalk', $def );
 		$this->fixRedirects = $request->getBool( 'wpFixRedirects', $def );
 		$this->leaveRedirect = $request->getBool( 'wpLeaveRedirect', $def );
-		$this->moveSubpages = $request->getBool( 'wpMovesubpages' );
+		// T222953: Tick the "move subpages" box by default
+		$this->moveSubpages = $request->getBool( 'wpMovesubpages', $def );
 		$this->deleteAndMove = $request->getBool( 'wpDeleteAndMove' );
 		$this->moveOverShared = $request->getBool( 'wpMoveOverSharedFile' );
 		$this->watch = $request->getCheck( 'wpWatch' ) && $user->isRegistered();
@@ -234,7 +243,7 @@ class MovePageForm extends UnlistedSpecialPage {
 			->getContentHandler( $this->oldTitle->getContentModel() )
 			->supportsRedirects();
 
-		if ( $this->getConfig()->get( 'FixDoubleRedirects' ) ) {
+		if ( $this->getConfig()->get( MainConfigNames::FixDoubleRedirects ) ) {
 			$out->addWikiMsg( 'movepagetext' );
 		} else {
 			$out->addWikiMsg( $handlerSupportsRedirects ?
@@ -243,14 +252,18 @@ class MovePageForm extends UnlistedSpecialPage {
 		}
 
 		if ( $this->oldTitle->getNamespace() === NS_USER && !$this->oldTitle->isSubpage() ) {
-			$out->wrapWikiMsg(
-				"<div class=\"warningbox mw-moveuserpage-warning\">\n$1\n</div>",
-				'moveuserpage-warning'
+			$out->addHTML(
+				Html::warningBox(
+					$out->msg( 'moveuserpage-warning' )->parse(),
+					'mw-moveuserpage-warning'
+				)
 			);
 		} elseif ( $this->oldTitle->getNamespace() === NS_CATEGORY ) {
-			$out->wrapWikiMsg(
-				"<div class=\"warningbox mw-movecategorypage-warning\">\n$1\n</div>",
-				'movecategorypage-warning'
+			$out->addHTML(
+				Html::warningBox(
+					$out->msg( 'movecategorypage-warning' )->parse(),
+					'mw-movecategorypage-warning'
+				)
 			);
 		}
 
@@ -281,9 +294,10 @@ class MovePageForm extends UnlistedSpecialPage {
 			if ( $err[0][0] == 'articleexists'
 				&& $this->permManager->quickUserCan( 'delete', $user, $newTitle )
 			) {
-				$out->wrapWikiMsg(
-					"<div class='warningbox'>\n$1\n</div>\n",
-					[ 'delete_and_move_text', $newTitle->getPrefixedText() ]
+				$out->addHTML(
+					Html::warningBox(
+						$out->msg( 'delete_and_move_text', $newTitle->getPrefixedText() )->parse()
+					)
 				);
 				$deleteAndMove = true;
 				$err = [];
@@ -292,18 +306,20 @@ class MovePageForm extends UnlistedSpecialPage {
 				$this->permManager->quickUserCan( 'delete-redirect', $user, $newTitle ) ||
 				$this->permManager->quickUserCan( 'delete', $user, $newTitle ) )
 			) {
-				$out->wrapWikiMsg(
-					"<div class='warningbox'>\n$1\n</div>\n",
-					[ 'delete_redirect_and_move_text', $newTitle->getPrefixedText() ]
+				$out->addHTML(
+					Html::warningBox(
+						$out->msg( 'delete_redirect_and_move_text', $newTitle->getPrefixedText() )->parse()
+					)
 				);
 				$deleteAndMove = true;
 				$err = [];
 			} elseif ( $err[0][0] == 'file-exists-sharedrepo'
 				&& $this->permManager->userHasRight( $user, 'reupload-shared' )
 			) {
-				$out->wrapWikiMsg(
-					"<div class='warningbox'>\n$1\n</div>\n",
-					[ 'move-over-sharedrepo', $newTitle->getPrefixedText() ]
+				$out->addHTML(
+					Html::warningBox(
+						$out->msg( 'move-over-sharedrepo', $newTitle->getPrefixedText() )->parse()
+					)
 				);
 				$moveOverShared = true;
 				$err = [];
@@ -328,7 +344,7 @@ class MovePageForm extends UnlistedSpecialPage {
 				|| ( $oldTitleTalkSubpages && $canMoveSubpage ) );
 
 		$dbr = $this->loadBalancer->getConnectionRef( ILoadBalancer::DB_REPLICA );
-		if ( $this->getConfig()->get( 'FixDoubleRedirects' ) ) {
+		if ( $this->getConfig()->get( MainConfigNames::FixDoubleRedirects ) ) {
 			$hasRedirects = (bool)$dbr->selectField( 'redirect', '1',
 				[
 					'rd_namespace' => $this->oldTitle->getNamespace(),
@@ -374,24 +390,21 @@ class MovePageForm extends UnlistedSpecialPage {
 			$out->addHTML( Html::errorBox( $errMsgHtml ) );
 		}
 
-		if ( $this->oldTitle->isProtected( 'move' ) ) {
+		if ( $this->restrictionStore->isProtected( $this->oldTitle, 'move' ) ) {
 			# Is the title semi-protected?
-			if ( $this->oldTitle->isSemiProtected( 'move' ) ) {
+			if ( $this->restrictionStore->isSemiProtected( $this->oldTitle, 'move' ) ) {
 				$noticeMsg = 'semiprotectedpagemovewarning';
 			} else {
 				# Then it must be protected based on static groups (regular)
 				$noticeMsg = 'protectedpagemovewarning';
 			}
-			$out->addHTML( "<div class='warningbox mw-warning-with-logexcerpt'>\n" );
-			$out->addWikiMsg( $noticeMsg );
 			LogEventsList::showLogExtract(
 				$out,
 				'protect',
 				$this->oldTitle,
 				'',
-				[ 'lim' => 1 ]
+				[ 'lim' => 1, 'msgKey' => $noticeMsg ]
 			);
-			$out->addHTML( "</div>\n" );
 		}
 
 		// Length limit for wpReason and wpNewTitleMain is enforced in the
@@ -505,13 +518,13 @@ class MovePageForm extends UnlistedSpecialPage {
 		}
 
 		if ( $canMoveSubpage ) {
-			$maximumMovedPages = $this->getConfig()->get( 'MaximumMovedPages' );
+			$maximumMovedPages = $this->getConfig()->get( MainConfigNames::MaximumMovedPages );
 			$fields[] = new OOUI\FieldLayout(
 				new OOUI\CheckboxInputWidget( [
 					'name' => 'wpMovesubpages',
 					'id' => 'wpMovesubpages',
 					'value' => '1',
-					'selected' => true, // T222953 Always check the box
+					'selected' => $this->moveSubpages,
 				] ),
 				[
 					'label' => new OOUI\HtmlSnippet(
@@ -727,7 +740,8 @@ class MovePageForm extends UnlistedSpecialPage {
 			return;
 		}
 
-		if ( $this->getConfig()->get( 'FixDoubleRedirects' ) && $this->fixRedirects ) {
+		if ( $this->getConfig()->get( MainConfigNames::FixDoubleRedirects ) &&
+		$this->fixRedirects ) {
 			DoubleRedirectJob::fixRedirects( 'move', $ot );
 		}
 
@@ -749,12 +763,7 @@ class MovePageForm extends UnlistedSpecialPage {
 		$oldText = $ot->getPrefixedText();
 		$newText = $nt->getPrefixedText();
 
-		if ( $ot->exists() ) {
-			// NOTE: we assume that if the old title exists, it's because it was re-created as
-			// a redirect to the new title. This is not safe, but what we did before was
-			// even worse: we just determined whether a redirect should have been created,
-			// and reported that it was created if it should have, without any checks.
-			// Also note that isRedirect() is unreliable because of T39209.
+		if ( $status->getValue()['redirectRevision'] !== null ) {
 			$msgName = 'movepage-moved-redirect';
 		} else {
 			$msgName = 'movepage-moved-noredirect';
@@ -879,7 +888,8 @@ class MovePageForm extends UnlistedSpecialPage {
 						->rawParams( $oldLink, $newLink )->escaped();
 					++$count;
 
-					$maximumMovedPages = $this->getConfig()->get( 'MaximumMovedPages' );
+					$maximumMovedPages =
+						$this->getConfig()->get( MainConfigNames::MaximumMovedPages );
 					if ( $count >= $maximumMovedPages ) {
 						$extraOutput[] = $this->msg( 'movepage-max-pages' )
 							->numParams( $maximumMovedPages )->escaped();

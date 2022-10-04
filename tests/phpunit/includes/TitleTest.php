@@ -2,7 +2,7 @@
 
 use MediaWiki\Cache\CacheKeyHelper;
 use MediaWiki\Linker\LinkTarget;
-use MediaWiki\MediaWikiServices;
+use MediaWiki\MainConfigNames;
 use MediaWiki\Page\PageIdentity;
 use MediaWiki\Page\PageIdentityValue;
 use MediaWiki\Permissions\RestrictionStore;
@@ -16,6 +16,7 @@ use Wikimedia\TestingAccessWrapper;
  */
 class TitleTest extends MediaWikiIntegrationTestCase {
 	use DummyServicesTrait;
+	use LinkCacheTestTrait;
 
 	protected function setUp(): void {
 		parent::setUp();
@@ -34,21 +35,21 @@ class TitleTest extends MediaWikiIntegrationTestCase {
 			]
 		);
 
-		$this->setMwGlobals( [
-			'wgAllowUserJs' => false,
-			'wgDefaultLanguageVariant' => false,
-			'wgMetaNamespace' => 'Project',
-			'wgServer' => 'https://example.org',
-			'wgCanonicalServer' => 'https://example.org',
-			'wgScriptPath' => '/w',
-			'wgScript' => '/w/index.php',
-			'wgArticlePath' => '/wiki/$1',
+		$this->overrideConfigValues( [
+			MainConfigNames::AllowUserJs => false,
+			MainConfigNames::DefaultLanguageVariant => false,
+			MainConfigNames::MetaNamespace => 'Project',
+			MainConfigNames::Server => 'https://example.org',
+			MainConfigNames::CanonicalServer => 'https://example.org',
+			MainConfigNames::ScriptPath => '/w',
+			MainConfigNames::Script => '/w/index.php',
+			MainConfigNames::ArticlePath => '/wiki/$1',
 		] );
 		$this->setUserLang( 'en' );
-		$this->setMwGlobals( 'wgLanguageCode', 'en' );
+		$this->overrideConfigValue( MainConfigNames::LanguageCode, 'en' );
 
 		// For testSecureAndSplitValid, testSecureAndSplitInvalid
-		$this->setMwGlobals( 'wgLocalInterwikis', [ 'localtestiw' ] );
+		$this->overrideConfigValue( MainConfigNames::LocalInterwikis, [ 'localtestiw' ] );
 
 		// Define valid interwiki prefixes and their configuration
 		// DummyServicesTrait::getDummyInterwikiLookup
@@ -367,16 +368,29 @@ class TitleTest extends MediaWikiIntegrationTestCase {
 	 * @covers Title::clearCaches
 	 */
 	public function testClearCaches() {
-		$linkCache = MediaWikiServices::getInstance()->getLinkCache();
+		$linkCache = $this->getServiceContainer()->getLinkCache();
 
 		$title1 = Title::newFromText( 'Foo' );
-		$linkCache->addGoodLinkObj( 23, $title1 );
+		$this->addGoodLinkObject( 23, $title1 );
 
 		Title::clearCaches();
 
 		$title2 = Title::newFromText( 'Foo' );
 		$this->assertNotSame( $title1, $title2, 'title cache should be empty' );
 		$this->assertSame( 0, $linkCache->getGoodLinkID( 'Foo' ), 'link cache should be empty' );
+	}
+
+	/**
+	 * @covers Title::getFieldFromPageStore
+	 */
+	public function testUseCaches() {
+		$title1 = Title::makeTitle( NS_MAIN, __METHOD__ . '998724352' );
+		$this->addGoodLinkObject( 23, $title1, 7, 0, 42 );
+
+		// Ensure that getLatestRevID uses the LinkCache even after
+		// the article ID is known (T296063#7520023).
+		$this->assertSame( 23, $title1->getArticleID() );
+		$this->assertSame( 42, $title1->getLatestRevID() );
 	}
 
 	public function provideGetLinkURL() {
@@ -459,11 +473,11 @@ class TitleTest extends MediaWikiIntegrationTestCase {
 		$query2 = false,
 		$proto = false
 	) {
-		$this->setMwGlobals( [
-			'wgServer' => 'https://xx.wiki.test',
-			'wgArticlePath' => '/wiki/$1',
-			'wgExternalInterwikiFragmentMode' => 'legacy',
-			'wgFragmentMode' => [ 'html5', 'legacy' ]
+		$this->overrideConfigValues( [
+			MainConfigNames::Server => 'https://xx.wiki.test',
+			MainConfigNames::ArticlePath => '/wiki/$1',
+			MainConfigNames::ExternalInterwikiFragmentMode => 'legacy',
+			MainConfigNames::FragmentMode => [ 'html5', 'legacy' ]
 		] );
 
 		$title = Title::makeTitle( $ns, $title, $fragment, $interwiki );
@@ -515,6 +529,7 @@ class TitleTest extends MediaWikiIntegrationTestCase {
 		$this->assertSame( MWTimestamp::convert( TS_MW, $title->getTouched() ), $record->getTouched() );
 		$this->assertSame( $title->isNewPage(), $record->isNew() );
 		$this->assertSame( $title->isRedirect(), $record->isRedirect() );
+		$this->assertSame( $title->getTouched(), $record->getTouched() );
 	}
 
 	/**
@@ -610,7 +625,7 @@ class TitleTest extends MediaWikiIntegrationTestCase {
 		yield 'lower case' => [ 'User:foo', NS_USER, 'foo' ];
 		yield 'empty' => [ '', NS_MAIN, '' ];
 		yield 'bad character' => [ 'Foo|Bar', NS_MAIN, 'Foo|Bar' ];
-		yield 'bad interwiki' => [ 'qwerty:Foo', NS_MAIN, 'Foo', null, 'qwerty' ];
+		yield 'bad interwiki' => [ 'qwerty:Foo', NS_MAIN, 'Foo', '', 'qwerty' ];
 	}
 
 	/**
@@ -694,7 +709,7 @@ class TitleTest extends MediaWikiIntegrationTestCase {
 		$existingTitle1 = $existingPage1->getTitle();
 		$existingId1 = $existingTitle1->getId();
 
-		$this->assertGreaterThan( 0, $existingId1, 'Sanity: Existing test page should have a positive id' );
+		$this->assertGreaterThan( 0, $existingId1, 'Existing test page should have a positive id' );
 
 		$newFromId1 = Title::newFromID( $existingId1 );
 		$this->assertInstanceOf( Title::class, $newFromId1, 'newFromID returns a title for an existing id' );
@@ -708,7 +723,7 @@ class TitleTest extends MediaWikiIntegrationTestCase {
 		$existingTitle2 = $existingPage2->getTitle();
 		$existingId2 = $existingTitle2->getId();
 
-		$this->assertGreaterThan( 0, $existingId2, 'Sanity: Existing test page should have a positive id' );
+		$this->assertGreaterThan( 0, $existingId2, 'Existing test page should have a positive id' );
 
 		$newFromId2 = Title::newFromID( $existingId2 );
 		$this->assertInstanceOf( Title::class, $newFromId2, 'newFromID returns a title for an existing id' );
@@ -717,6 +732,7 @@ class TitleTest extends MediaWikiIntegrationTestCase {
 			'newFromID returns the correct title'
 		);
 
+		$this->filterDeprecated( '/newFromIDs/' );
 		// newFromIDs using both
 		$titles = Title::newFromIDs( [ $existingId1, $existingId2 ] );
 		$this->assertCount( 2, $titles );
@@ -806,8 +822,6 @@ class TitleTest extends MediaWikiIntegrationTestCase {
 			// Note: Commented out because they are not marked invalid by the PHP test as
 			// Title::newFromText runs Sanitizer::decodeCharReferencesAndNormalize first.
 			// 'A &eacute; B',
-			// 'A &#233; B',
-			// 'A &#x00E9; B',
 			// Subject of NS_TALK does not roundtrip to NS_MAIN
 			[ 'Talk:File:Example.svg', 'title-invalid-talk-namespace' ],
 			// Directory navigation
@@ -943,13 +957,13 @@ class TitleTest extends MediaWikiIntegrationTestCase {
 	public function testGetPageViewLanguage( $expected, $titleText, $contLang,
 		$lang, $variant, $msg = ''
 	) {
-		// Setup environnement for this test
-		$this->setMwGlobals( [
-			'wgDefaultLanguageVariant' => $variant,
-			'wgAllowUserJs' => true,
+		// Setup environment for this test
+		$this->overrideConfigValues( [
+			MainConfigNames::DefaultLanguageVariant => $variant,
+			MainConfigNames::AllowUserJs => true,
 		] );
 		$this->setUserLang( $lang );
-		$this->setMwGlobals( 'wgLanguageCode', $contLang );
+		$this->overrideConfigValue( MainConfigNames::LanguageCode, $contLang );
 
 		$title = Title::newFromText( $titleText );
 		$this->assertInstanceOf( Title::class, $title,
@@ -1340,7 +1354,7 @@ class TitleTest extends MediaWikiIntegrationTestCase {
 	 */
 	public function testExists() {
 		$title = Title::makeTitle( NS_PROJECT, 'New page' );
-		$linkCache = MediaWikiServices::getInstance()->getLinkCache();
+		$linkCache = $this->getServiceContainer()->getLinkCache();
 
 		$article = new Article( $title );
 		$page = $article->getPage();
@@ -1511,16 +1525,12 @@ class TitleTest extends MediaWikiIntegrationTestCase {
 	 * @covers Title::getTalkPageIfDefined
 	 */
 	public function testGetTalkPage_broken( Title $title, Title $expected, $valid ) {
-		$errorLevel = error_reporting( E_ERROR );
-
 		// NOTE: Eventually we want to throw in this case. But while there is still code that
 		// calls this method without checking, we want to avoid fatal errors.
 		// See discussion on T227817.
-		$result = $title->getTalkPage();
+		$result = @$title->getTalkPage();
 		$this->assertTrue( $expected->equals( $result ) );
 		$this->assertSame( $valid, $result->isValid() );
-
-		error_reporting( $errorLevel );
 	}
 
 	/**
@@ -1710,9 +1720,9 @@ class TitleTest extends MediaWikiIntegrationTestCase {
 	 * @param string $expected
 	 */
 	public function testGetFragmentForURL( $titleStr, $expected ) {
-		$this->setMwGlobals( [
-			'wgFragmentMode' => [ 'html5' ],
-			'wgExternalInterwikiFragmentMode' => 'legacy',
+		$this->overrideConfigValues( [
+			MainConfigNames::FragmentMode => [ 'html5' ],
+			MainConfigNames::ExternalInterwikiFragmentMode => 'legacy',
 		] );
 		// InterwikiLookup is configured in setUp()
 
@@ -1738,11 +1748,14 @@ class TitleTest extends MediaWikiIntegrationTestCase {
 	 * @dataProvider provideIsRawHtmlMessage
 	 */
 	public function testIsRawHtmlMessage( $textForm, $expected ) {
-		$this->setMwGlobals( 'wgRawHtmlMessages', [
-			'foobar',
-			'foo_bar',
-			'foo-bar',
-		] );
+		$this->overrideConfigValue(
+			MainConfigNames::RawHtmlMessages,
+			[
+				'foobar',
+				'foo_bar',
+				'foo-bar',
+			]
+		);
 
 		$title = Title::newFromText( $textForm );
 		$this->assertSame( $expected, $title->isRawHtmlMessage() );
@@ -1761,6 +1774,23 @@ class TitleTest extends MediaWikiIntegrationTestCase {
 		$this->assertSame(
 			'Foresheet',
 			Title::newMainPage()->getText()
+		);
+	}
+
+	/**
+	 * Regression test for T297571
+	 *
+	 * @covers Title::newMainPage
+	 */
+	public function testNewMainPageNoRecursion() {
+		$mock = $this->createMock( MessageCache::class );
+		$mock->method( 'get' )->willReturn( 'localtestiw:' );
+		$mock->method( 'transform' )->willReturn( 'localtestiw:' );
+		$this->setService( 'MessageCache', $mock );
+
+		$this->assertSame(
+			'Main Page',
+			Title::newMainPage()->getPrefixedText()
 		);
 	}
 
@@ -1804,8 +1834,8 @@ class TitleTest extends MediaWikiIntegrationTestCase {
 		$title->flushRestrictions();
 		$title->loadRestrictions();
 		$this->assertSame(
-			$title->getRestrictionExpiry( 'create' ),
-			$protectExpiry
+			$protectExpiry,
+			$title->getRestrictionExpiry( 'create' )
 		);
 	}
 
@@ -1816,7 +1846,6 @@ class TitleTest extends MediaWikiIntegrationTestCase {
 			'pr_type' => 'edit',
 			'pr_level' => 'sysop',
 			'pr_cascade' => 0,
-			'pr_user' => null,
 			'pr_expiry' => 'infinity'
 		] ] ];
 		yield [ [ (object)[
@@ -1825,7 +1854,6 @@ class TitleTest extends MediaWikiIntegrationTestCase {
 			'pr_type' => 'edit',
 			'pr_level' => 'sysop',
 			'pr_cascade' => 0,
-			'pr_user' => null,
 			'pr_expiry' => 'infinity'
 		] ] ];
 		yield [ [ (object)[
@@ -1834,7 +1862,6 @@ class TitleTest extends MediaWikiIntegrationTestCase {
 			'pr_type' => 'move',
 			'pr_level' => 'sysop',
 			'pr_cascade' => 0,
-			'pr_user' => null,
 			'pr_expiry' => wfTimestamp( TS_MW, time() + 10000 )
 		] ] ];
 	}
@@ -1888,12 +1915,8 @@ class TitleTest extends MediaWikiIntegrationTestCase {
 			$expectedParams = array_merge( [ $callee ], $expectedParams );
 		}
 
-		$mockRestrictionStore = $this->createMock( RestrictionStore::class );
-
 		$expectedMethod = $options['expectedMethod'] ?? $method;
-
-		// Don't try to forward to a method that doesn't exist!
-		$this->assertIsCallable( [ $mockRestrictionStore, $expectedMethod ] );
+		$mockRestrictionStore = $this->createNoOpMock( RestrictionStore::class, [ $expectedMethod ] );
 
 		$expectedCall = $mockRestrictionStore->expects( $this->once() )
 			->method( $expectedMethod )
@@ -1901,9 +1924,6 @@ class TitleTest extends MediaWikiIntegrationTestCase {
 		if ( !isset( $options['void'] ) ) {
 			$expectedCall->willReturn( $return );
 		}
-
-		$mockRestrictionStore->expects( $this->never() )
-			->method( $this->anythingBut( $expectedMethod ) );
 
 		$this->setService( 'RestrictionStore', $mockRestrictionStore );
 
@@ -1962,9 +1982,9 @@ class TitleTest extends MediaWikiIntegrationTestCase {
 			[ 'getRestrictionExpiry', [ 'hij' ], null, [ 'expectedReturn' => false ] ],
 			[ 'areRestrictionsCascading', [], true ],
 			[ 'areRestrictionsCascading', [], false ],
-			[ 'loadRestrictionsFromRows', [ [ 'hij' ], 'klm' ], null, [ 'void' => true ] ],
-			[ 'loadRestrictions', [ 'nop', 123 ], null,
-				[ 'void' => true, 'expectedParams' => [ 123, 'nop' ] ] ],
+			[ 'loadRestrictionsFromRows', [ [ 'hij' ] ], null, [ 'void' => true ] ],
+			[ 'loadRestrictions', [ 123 ], null,
+				[ 'void' => true, 'expectedParams' => [ 123 ] ] ],
 			[ 'flushRestrictions', [], null, [ 'void' => true ] ],
 		];
 	}
@@ -1974,7 +1994,7 @@ class TitleTest extends MediaWikiIntegrationTestCase {
 	 */
 	public function testGetRestrictions() {
 		$title = $this->getExistingTestPage( 'UTest1' )->getTitle();
-		$rs = MediaWikiServices::getInstance()->getRestrictionStore();
+		$rs = $this->getServiceContainer()->getRestrictionStore();
 		$wrapper = TestingAccessWrapper::newFromObject( $rs );
 		$wrapper->cache = [ CacheKeyHelper::getKeyForPage( $title ) => [
 			'restrictions' => [
@@ -1998,7 +2018,7 @@ class TitleTest extends MediaWikiIntegrationTestCase {
 			'c' => [ 'sysop' ],
 		];
 		$title = $this->getExistingTestPage( 'UTest1' )->getTitle();
-		$rs = MediaWikiServices::getInstance()->getRestrictionStore();
+		$rs = $this->getServiceContainer()->getRestrictionStore();
 		$wrapper = TestingAccessWrapper::newFromObject( $rs );
 		$wrapper->cache = [ CacheKeyHelper::getKeyForPage( $title ) => [
 			'restrictions' => $restrictions
@@ -2014,7 +2034,7 @@ class TitleTest extends MediaWikiIntegrationTestCase {
 	 */
 	public function testGetRestrictionExpiry() {
 		$title = $this->getExistingTestPage( 'UTest1' )->getTitle();
-		$rs = MediaWikiServices::getInstance()->getRestrictionStore();
+		$rs = $this->getServiceContainer()->getRestrictionStore();
 		$wrapper = TestingAccessWrapper::newFromObject( $rs );
 		$wrapper->cache = [ CacheKeyHelper::getKeyForPage( $title ) => [
 			'expiry' => [
@@ -2040,11 +2060,11 @@ class TitleTest extends MediaWikiIntegrationTestCase {
 	 */
 	public function testIsSemiProtected() {
 		$title = $this->getExistingTestPage( 'UTest1' )->getTitle();
-		$this->setMwGlobals( [
-			'wgSemiprotectedRestrictionLevels' => [ 'autoconfirmed' ],
-			'wgRestrictionLevels' => [ '', 'autoconfirmed', 'sysop' ]
+		$this->overrideConfigValues( [
+			MainConfigNames::SemiprotectedRestrictionLevels => [ 'autoconfirmed' ],
+			MainConfigNames::RestrictionLevels => [ '', 'autoconfirmed', 'sysop' ]
 		] );
-		$rs = MediaWikiServices::getInstance()->getRestrictionStore();
+		$rs = $this->getServiceContainer()->getRestrictionStore();
 		$wrapper = TestingAccessWrapper::newFromObject( $rs );
 		$wrapper->cache = [ CacheKeyHelper::getKeyForPage( $title ) => [
 			'restrictions' => [ 'edit' => [ 'sysop' ] ],
@@ -2069,11 +2089,11 @@ class TitleTest extends MediaWikiIntegrationTestCase {
 	 */
 	public function testIsProtected() {
 		$title = $this->getExistingTestPage( 'UTest1' )->getTitle();
-		$this->setMwGlobals( [
-			'wgRestrictionLevels' => [ '', 'autoconfirmed', 'sysop' ],
-			'wgRestrictionTypes' => [ 'create', 'edit', 'move', 'upload' ]
+		$this->overrideConfigValues( [
+			MainConfigNames::RestrictionLevels => [ '', 'autoconfirmed', 'sysop' ],
+			MainConfigNames::RestrictionTypes => [ 'create', 'edit', 'move', 'upload' ]
 		] );
-		$rs = MediaWikiServices::getInstance()->getRestrictionStore();
+		$rs = $this->getServiceContainer()->getRestrictionStore();
 		$wrapper = TestingAccessWrapper::newFromObject( $rs );
 		$wrapper->cache = [ CacheKeyHelper::getKeyForPage( $title ) => [
 			'restrictions' => [ 'edit' => [ 'sysop' ] ],
@@ -2086,34 +2106,12 @@ class TitleTest extends MediaWikiIntegrationTestCase {
 	}
 
 	/**
-	 * @covers Title::isNamespaceProtected
-	 */
-	public function testIsNamespaceProtected() {
-		$this->hideDeprecated( 'Title::isNamespaceProtected' );
-		$title = $this->getExistingTestPage( 'UTest1' )->getTitle();
-		$this->setMwGlobals( [
-			'wgNamespaceProtection' => []
-		] );
-		$this->assertFalse(
-			$title->isNamespaceProtected( $this->getTestUser()->getUser() )
-		);
-		$this->setMwGlobals( [
-			'wgNamespaceProtection' => [
-				NS_MAIN => [ 'edit-main' ]
-			]
-		] );
-		$this->assertTrue(
-			$title->isNamespaceProtected( $this->getTestUser()->getUser() )
-		);
-	}
-
-	/**
 	 * @covers Title::isCascadeProtected
 	 */
 	public function testIsCascadeProtected() {
 		$page = $this->getExistingTestPage( 'UTest1' );
 		$title = $page->getTitle();
-		$rs = MediaWikiServices::getInstance()->getRestrictionStore();
+		$rs = $this->getServiceContainer()->getRestrictionStore();
 		$wrapper = TestingAccessWrapper::newFromObject( $rs );
 		$wrapper->cache = [ CacheKeyHelper::getKeyForPage( $title ) => [
 			'has_cascading' => true,
@@ -2230,7 +2228,10 @@ class TitleTest extends MediaWikiIntegrationTestCase {
 		$existingPage = $this->getExistingTestPage();
 		$title = $existingPage->getTitle();
 
-		$this->setMwGlobals( 'wgNamespacesWithSubpages', [ $title->getNamespace() => true ] );
+		$this->overrideConfigValue(
+			MainConfigNames::NamespacesWithSubpages,
+			[ $title->getNamespace() => true ]
+		);
 
 		$this->getExistingTestPage( $title->getSubpage( 'A' ) );
 		$this->getExistingTestPage( $title->getSubpage( 'B' ) );
@@ -2248,7 +2249,7 @@ class TitleTest extends MediaWikiIntegrationTestCase {
 	 * @covers \MediaWiki\Page\PageStore::getSubpages
 	 */
 	public function testGetSubpages_disabled() {
-		$this->setMwGlobals( 'wgNamespacesWithSubpages', [] );
+		$this->overrideConfigValue( MainConfigNames::NamespacesWithSubpages, [] );
 
 		$existingPage = $this->getExistingTestPage();
 		$title = $existingPage->getTitle();
@@ -2428,7 +2429,7 @@ class TitleTest extends MediaWikiIntegrationTestCase {
 	 * @dataProvider provideTitleEditURLsWithActionPaths
 	 */
 	public function testGetEditUrlWithActionPaths( Title $title, $expected ) {
-		$this->setMwGlobals( 'wgActionPaths', [ 'edit' => '/wiki/edit/$1' ] );
+		$this->overrideConfigValue( MainConfigNames::ActionPaths, [ 'edit' => '/wiki/edit/$1' ] );
 		$actual = $title->getEditURL();
 		$this->assertSame( $expected, $actual );
 	}
@@ -2447,7 +2448,7 @@ class TitleTest extends MediaWikiIntegrationTestCase {
 	 * @dataProvider provideMainPageTitles
 	 */
 	public function testIsNotMainPage( Title $title, $expected ) {
-		$this->assertSame( $title->isMainPage(), $expected );
+		$this->assertSame( $expected, $title->isMainPage() );
 	}
 
 	public function provideMainPageTitles() {
@@ -2567,6 +2568,32 @@ class TitleTest extends MediaWikiIntegrationTestCase {
 			$expectedSame,
 			$firstValue->isSamePageAs( $secondValue )
 		);
+	}
+
+	/**
+	 * @covers Title::getArticleID
+	 * @covers Title::getId
+	 * @covers Title::getLength
+	 * @covers Title::getLatestRevID
+	 * @covers Title::exists
+	 * @covers Title::isNewPage
+	 * @covers Title::isRedirect
+	 * @covers Title::getTouched
+	 * @covers Title::getContentModel
+	 * @covers Title::getFieldFromPageStore
+	 */
+	public function testGetFieldsOfNonExistingPage() {
+		$title = Title::makeTitle( NS_MAIN, 'ThisDoesNotExist-92347852349' );
+
+		$this->assertSame( 0, $title->getArticleID() );
+		$this->assertSame( 0, $title->getId() );
+		$this->assertSame( 0, $title->getLength() );
+		$this->assertSame( 0, $title->getLatestRevID() );
+		$this->assertFalse( $title->exists() );
+		$this->assertFalse( $title->isNewPage() );
+		$this->assertFalse( $title->isRedirect() );
+		$this->assertFalse( $title->getTouched() );
+		$this->assertNotEmpty( $title->getContentModel() );
 	}
 
 }

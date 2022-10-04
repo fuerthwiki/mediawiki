@@ -152,6 +152,7 @@ class HashRing implements Serializable {
 					break; // all nodes visited
 				}
 			}
+			// @phan-suppress-next-line PhanTypeMismatchDimFetchNullable False positive
 			$nodeLocation = $ring[$currentIndex][self::KEY_LOCATION];
 			if ( !in_array( $nodeLocation, $locations, true ) ) {
 				// Ignore other nodes for the same locations already added
@@ -303,7 +304,7 @@ class HashRing implements Serializable {
 					$node = ( $qi * self::SECTORS_PER_HASH + $gi ) . "@$location";
 					$posKey = (string)$position; // large integer
 					if ( isset( $claimed[$posKey] ) ) {
-						// Disallow duplicates for sanity (name decides precedence)
+						// Disallow duplicates  (name decides precedence)
 						if ( $claimed[$posKey]['node'] > $node ) {
 							continue;
 						} else {
@@ -399,7 +400,7 @@ class HashRing implements Serializable {
 		$now = $this->getCurrentTime();
 
 		if ( $this->liveRing === null || min( $this->ejectExpiryByLocation ) <= $now ) {
-			// Live ring needs to be regerenated...
+			// Live ring needs to be regenerated...
 			$this->ejectExpiryByLocation = array_filter(
 				$this->ejectExpiryByLocation,
 				static function ( $expiry ) use ( $now ) {
@@ -410,7 +411,7 @@ class HashRing implements Serializable {
 			if ( count( $this->ejectExpiryByLocation ) ) {
 				// Some locations are still ejected from the ring
 				$liveRing = [];
-				foreach ( $this->baseRing as $i => $nodeInfo ) {
+				foreach ( $this->baseRing as $nodeInfo ) {
 					$location = $nodeInfo[self::KEY_LOCATION];
 					if ( !isset( $this->ejectExpiryByLocation[$location] ) ) {
 						$liveRing[] = $nodeInfo;
@@ -437,16 +438,23 @@ class HashRing implements Serializable {
 		return time();
 	}
 
-	public function serialize() {
-		return serialize( [
+	public function serialize(): string {
+		return serialize( $this->__serialize() );
+	}
+
+	public function __serialize() {
+		return [
 			'algorithm' => $this->algo,
 			'locations' => $this->weightByLocation,
 			'ejections' => $this->ejectExpiryByLocation
-		] );
+		];
 	}
 
-	public function unserialize( $serialized ) {
-		$data = unserialize( $serialized );
+	public function unserialize( $serialized ): void {
+		$this->__unserialize( unserialize( $serialized ) );
+	}
+
+	public function __unserialize( $data ) {
 		if ( is_array( $data ) ) {
 			$this->init( $data['locations'], $data['algorithm'], $data['ejections'] );
 		} else {

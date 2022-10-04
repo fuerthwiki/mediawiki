@@ -19,7 +19,14 @@
  */
 
 /**
- * @defgroup Language Language
+ * @defgroup Language Internationalisation
+ *
+ * See https://www.mediawiki.org/wiki/Special:MyLanguage/Localisation for more information.
+ */
+
+/**
+ * @defgroup Languages Languages
+ * @ingroup Language
  */
 
 use CLDRPluralRuleParser\Evaluator;
@@ -29,24 +36,21 @@ use MediaWiki\Languages\LanguageConverterFactory;
 use MediaWiki\Languages\LanguageFallback;
 use MediaWiki\Languages\LanguageNameUtils;
 use MediaWiki\Logger\LoggerFactory;
+use MediaWiki\MainConfigNames;
 use MediaWiki\MediaWikiServices;
 use MediaWiki\User\UserIdentity;
 use Wikimedia\Assert\Assert;
+use Wikimedia\AtEase\AtEase;
+use Wikimedia\RequestTimeout\TimeoutException;
 
 /**
- * Internationalisation code
+ * Base class for language-specific code.
+ *
  * See https://www.mediawiki.org/wiki/Special:MyLanguage/Localisation for more information.
  *
  * @ingroup Language
  */
 class Language {
-	/**
-	 * Return autonyms in fetchLanguageName(s).
-	 * @since 1.32
-	 * @deprecated since 1.34, LanguageNameUtils::AUTONYMS
-	 */
-	public const AS_AUTONYMS = LanguageNameUtils::AUTONYMS;
-
 	/**
 	 * Return all known languages in fetchLanguageName(s).
 	 * @since 1.32
@@ -62,6 +66,7 @@ class Language {
 	 */
 	public const SUPPORTED = LanguageNameUtils::SUPPORTED;
 
+	/** @var string */
 	public $mCode;
 
 	/**
@@ -69,29 +74,37 @@ class Language {
 	 */
 	public $mMagicExtensions = [];
 
+	/** @var string|null */
 	private $mHtmlCode = null;
 
 	/**
 	 * memoize
+	 * @var string[][]
 	 * @deprecated since 1.35, must be private
 	 */
 	public $dateFormatStrings = [];
 
 	/**
 	 * memoize
-	 * @var array[]
+	 * @var string[][]|null
 	 * @deprecated since 1.35, must be protected
 	 */
 	public $mExtendedSpecialPageAliases;
 
-	/** @var array|null */
+	/** @var array<int,string>|null Indexed by numeric namespace ID */
 	protected $namespaceNames;
-	protected $mNamespaceIds, $namespaceAliases;
+	/** @var array<string,int>|null Indexed by localized lower-cased namespace name */
+	protected $mNamespaceIds;
+	/** @var array<string,int>|null Map from alias to namespace ID */
+	protected $namespaceAliases;
 
 	/**
 	 * @var ReplacementArray[]
 	 */
 	private $transformData = [];
+
+	/** @var NamespaceInfo */
+	private $namespaceInfo;
 
 	/** @var LocalisationCache */
 	private $localisationCache;
@@ -120,6 +133,9 @@ class Language {
 	 */
 	private $hookRunner;
 
+	/** @var Config */
+	private $config;
+
 	/**
 	 * Return a fallback chain for messages in getFallbacksFor
 	 * @since 1.32
@@ -143,21 +159,11 @@ class Language {
 	];
 
 	/**
-	 * @deprecated since 1.35, use the WEEKDAY_MESSAGES constant
-	 */
-	public static $mWeekdayMsgs = self::WEEKDAY_MESSAGES;
-
-	/**
 	 * @since 1.35
 	 */
 	public const WEEKDAY_ABBREVIATED_MESSAGES = [
 		'sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'
 	];
-
-	/**
-	 * @deprecated since 1.35, use the WEEKDAY_ABBREVIATED_MESSAGES constant
-	 */
-	public static $mWeekdayAbbrevMsgs = self::WEEKDAY_ABBREVIATED_MESSAGES;
 
 	/**
 	 * @since 1.35
@@ -183,11 +189,6 @@ class Language {
 	];
 
 	/**
-	 * @deprecated since 1.35, use the MONTH_GENITIVE_MESSAGES constant
-	 */
-	public static $mMonthGenMsgs = self::MONTH_GENITIVE_MESSAGES;
-
-	/**
 	 * @since 1.35
 	 */
 	public const MONTH_ABBREVIATED_MESSAGES = [
@@ -211,11 +212,6 @@ class Language {
 	];
 
 	/**
-	 * @deprecated since 1.35, use the IRANIAN_CALENDAR_MONTHS_MESSAGES constant
-	 */
-	public static $mIranianCalendarMonthMsgs = self::IRANIAN_CALENDAR_MONTHS_MESSAGES;
-
-	/**
 	 * @since 1.35
 	 */
 	public const HEBREW_CALENDAR_MONTHS_MESSAGES = [
@@ -225,11 +221,6 @@ class Language {
 		'hebrew-calendar-m10', 'hebrew-calendar-m11', 'hebrew-calendar-m12',
 		'hebrew-calendar-m6a', 'hebrew-calendar-m6b'
 	];
-
-	/**
-	 * @deprecated since 1.35, use the HEBREW_CALENDAR_MONTHS_MESSAGES constant
-	 */
-	public static $mHebrewCalendarMonthMsgs = self::HEBREW_CALENDAR_MONTHS_MESSAGES;
 
 	/**
 	 * @since 1.35
@@ -243,11 +234,6 @@ class Language {
 	];
 
 	/**
-	 * @deprecated since 1.35, use the HEBREW_CALENDAR_MONTH_GENITIVE_MESSAGES constant
-	 */
-	public static $mHebrewCalendarMonthGenMsgs = self::HEBREW_CALENDAR_MONTH_GENITIVE_MESSAGES;
-
-	/**
 	 * @since 1.35
 	 */
 	public const HIJRI_CALENDAR_MONTH_MESSAGES = [
@@ -256,11 +242,6 @@ class Language {
 		'hijri-calendar-m7', 'hijri-calendar-m8', 'hijri-calendar-m9',
 		'hijri-calendar-m10', 'hijri-calendar-m11', 'hijri-calendar-m12'
 	];
-
-	/**
-	 * @deprecated since 1.35, use the HIJRI_CALENDAR_MONTH_MESSAGES constant
-	 */
-	public static $mHijriCalendarMonthMsgs = self::HIJRI_CALENDAR_MONTH_MESSAGES;
 
 	/**
 	 * @since 1.35
@@ -280,7 +261,7 @@ class Language {
 	/**
 	 * @deprecated since 1.35, use the DURATION_INTERVALS constant
 	 * @since 1.20
-	 * @var array
+	 * @var int[]
 	 */
 	public static $durationIntervals = self::DURATION_INTERVALS;
 
@@ -339,57 +320,17 @@ class Language {
 	 * language, script or variant codes actually exist in the repositories.
 	 *
 	 * Based on regexes by Mark Davis of the Unicode Consortium:
-	 * https://www.unicode.org/repos/cldr/trunk/tools/java/org/unicode/cldr/util/data/langtagRegex.txt
+	 * https://github.com/unicode-org/icu/blob/37e295627156bc334e1f1e88807025fac984da0e/icu4j/main/tests/translit/src/com/ibm/icu/dev/test/translit/langtagRegex.txt
 	 *
 	 * @param string $code
 	 * @param bool $lenient Whether to allow '_' as separator. The default is only '-'.
 	 *
 	 * @return bool
 	 * @since 1.21
+	 * @deprecated since 1.39, use LanguageCode::isWellFormedLanguageTag
 	 */
 	public static function isWellFormedLanguageTag( $code, $lenient = false ) {
-		$alpha = '[a-z]';
-		$digit = '[0-9]';
-		$alphanum = '[a-z0-9]';
-		$x = 'x'; # private use singleton
-		$singleton = '[a-wy-z]'; # other singleton
-		$s = $lenient ? '[-_]' : '-';
-
-		$language = "$alpha{2,8}|$alpha{2,3}$s$alpha{3}";
-		$script = "$alpha{4}"; # ISO 15924
-		$region = "(?:$alpha{2}|$digit{3})"; # ISO 3166-1 alpha-2 or UN M.49
-		$variant = "(?:$alphanum{5,8}|$digit$alphanum{3})";
-		$extension = "$singleton(?:$s$alphanum{2,8})+";
-		$privateUse = "$x(?:$s$alphanum{1,8})+";
-
-		# Define certain grandfathered codes, since otherwise the regex is pretty useless.
-		# Since these are limited, this is safe even later changes to the registry --
-		# the only oddity is that it might change the type of the tag, and thus
-		# the results from the capturing groups.
-		# https://www.iana.org/assignments/language-subtag-registry
-
-		$grandfathered = "en{$s}GB{$s}oed"
-			. "|i{$s}(?:ami|bnn|default|enochian|hak|klingon|lux|mingo|navajo|pwn|tao|tay|tsu)"
-			. "|no{$s}(?:bok|nyn)"
-			. "|sgn{$s}(?:BE{$s}(?:fr|nl)|CH{$s}de)"
-			. "|zh{$s}min{$s}nan";
-
-		$variantList = "$variant(?:$s$variant)*";
-		$extensionList = "$extension(?:$s$extension)*";
-
-		$langtag = "(?:($language)"
-			. "(?:$s$script)?"
-			. "(?:$s$region)?"
-			. "(?:$s$variantList)?"
-			. "(?:$s$extensionList)?"
-			. "(?:$s$privateUse)?)";
-
-		# The final breakdown, with capturing groups for each of these components
-		# The variants, extensions, grandfathered, and private-use may have interior '-'
-
-		$root = "^(?:$langtag|$privateUse|$grandfathered)$";
-
-		return (bool)preg_match( "/$root/", strtolower( $code ) );
+		return LanguageCode::isWellFormedLanguageTag( $code, $lenient );
 	}
 
 	/**
@@ -451,19 +392,23 @@ class Language {
 	 * @internal Calling this directly is deprecated. Use LanguageFactory instead.
 	 *
 	 * @param string|null $code Which code to use. Passing null is deprecated in 1.35.
+	 * @param NamespaceInfo|null $namespaceInfo
 	 * @param LocalisationCache|null $localisationCache
 	 * @param LanguageNameUtils|null $langNameUtils
 	 * @param LanguageFallback|null $langFallback
 	 * @param LanguageConverterFactory|null $converterFactory
 	 * @param HookContainer|null $hookContainer
+	 * @param Config|null $config
 	 */
 	public function __construct(
 		$code = null,
+		NamespaceInfo $namespaceInfo = null,
 		LocalisationCache $localisationCache = null,
 		LanguageNameUtils $langNameUtils = null,
 		LanguageFallback $langFallback = null,
 		LanguageConverterFactory $converterFactory = null,
-		HookContainer $hookContainer = null
+		HookContainer $hookContainer = null,
+		Config $config = null
 	) {
 		if ( !func_num_args() ) {
 			// Old calling convention, deprecated
@@ -474,16 +419,20 @@ class Language {
 			}
 
 			$services = MediaWikiServices::getInstance();
+			$this->namespaceInfo = $services->getNamespaceInfo();
 			$this->localisationCache = $services->getLocalisationCache();
 			$this->langNameUtils = $services->getLanguageNameUtils();
 			$this->langFallback = $services->getLanguageFallback();
 			$this->converterFactory = $services->getLanguageConverterFactory();
 			$this->hookContainer = $services->getHookContainer();
 			$this->hookRunner = new HookRunner( $this->hookContainer );
+			$this->config = $services->getMainConfig();
 			return;
 		}
 
 		Assert::parameter( $code !== null, '$code',
+			'Parameters cannot be null unless all are omitted' );
+		Assert::parameter( $namespaceInfo !== null, '$namespaceInfo',
 			'Parameters cannot be null unless all are omitted' );
 		Assert::parameter( $localisationCache !== null, '$localisationCache',
 			'Parameters cannot be null unless all are omitted' );
@@ -495,24 +444,18 @@ class Language {
 			'Parameters cannot be null unless all are omitted' );
 		Assert::parameter( $hookContainer !== null, '$hookContainer',
 			'Parameters cannot be null unless all are omitted' );
+		Assert::parameter( $config !== null, '$config',
+			'Parameters cannot be null unless all are omitted' );
 
 		$this->mCode = $code;
+		$this->namespaceInfo = $namespaceInfo;
 		$this->localisationCache = $localisationCache;
 		$this->langNameUtils = $langNameUtils;
 		$this->langFallback = $langFallback;
 		$this->converterFactory = $converterFactory;
 		$this->hookContainer = $hookContainer;
 		$this->hookRunner = new HookRunner( $hookContainer );
-	}
-
-	/**
-	 * Reduce memory usage
-	 * @suppress PhanTypeSuspiciousNonTraversableForeach
-	 */
-	public function __destruct() {
-		foreach ( $this as $name => $value ) {
-			unset( $this->$name );
-		}
+		$this->config = $config;
 	}
 
 	/**
@@ -535,22 +478,24 @@ class Language {
 	 * Returns an array of localised namespaces indexed by their numbers. If the namespace is not
 	 * available in localised form, it will be included in English.
 	 *
-	 * @return string[] List of localized namespace names, indexed by numeric namespace ID.
+	 * @return array<int,string> List of localized namespace names, indexed by numeric namespace ID.
 	 */
 	public function getNamespaces() {
 		if ( $this->namespaceNames === null ) {
-			global $wgMetaNamespace, $wgMetaNamespaceTalk, $wgExtraNamespaces;
+			$metaNamespace = $this->config->get( MainConfigNames::MetaNamespace );
+			$metaNamespaceTalk = $this->config->get( MainConfigNames::MetaNamespaceTalk );
+			$extraNamespaces = $this->config->get( MainConfigNames::ExtraNamespaces );
+			$validNamespaces = $this->namespaceInfo->getCanonicalNamespaces();
 
-			$validNamespaces = MediaWikiServices::getInstance()->getNamespaceInfo()->
-				getCanonicalNamespaces();
-
-			$this->namespaceNames = $wgExtraNamespaces +
+			// @phan-suppress-next-line PhanTypeMismatchProperty
+			$this->namespaceNames = $extraNamespaces +
 				$this->localisationCache->getItem( $this->mCode, 'namespaceNames' );
+			// @phan-suppress-next-line PhanTypeInvalidLeftOperand
 			$this->namespaceNames += $validNamespaces;
 
-			$this->namespaceNames[NS_PROJECT] = $wgMetaNamespace;
-			if ( $wgMetaNamespaceTalk ) {
-				$this->namespaceNames[NS_PROJECT_TALK] = $wgMetaNamespaceTalk;
+			$this->namespaceNames[NS_PROJECT] = $metaNamespace;
+			if ( $metaNamespaceTalk ) {
+				$this->namespaceNames[NS_PROJECT_TALK] = $metaNamespaceTalk;
 			} else {
 				$talk = $this->namespaceNames[NS_PROJECT_TALK];
 				$this->namespaceNames[NS_PROJECT_TALK] =
@@ -576,7 +521,7 @@ class Language {
 
 	/**
 	 * Arbitrarily set all of the namespace names at once. Mainly used for testing
-	 * @param array $namespaces Array of namespaces (id => name)
+	 * @param string[] $namespaces Array of namespaces (id => name)
 	 */
 	public function setNamespaces( array $namespaces ) {
 		$this->namespaceNames = $namespaces;
@@ -585,6 +530,7 @@ class Language {
 
 	/**
 	 * Resets all of the namespace caches. Mainly used for testing
+	 * @deprecated since 1.39 Use MediaWikiServices::resetServiceForTesting() instead.
 	 */
 	public function resetNamespaces() {
 		$this->namespaceNames = null;
@@ -596,7 +542,7 @@ class Language {
 	 * A convenience function that returns getNamespaces() with spaces instead of underscores
 	 * in values. Useful for producing output to be displayed e.g. in `<select>` forms.
 	 *
-	 * @return array
+	 * @return string[]
 	 */
 	public function getFormattedNamespaces() {
 		$ns = $this->getNamespaces();
@@ -609,13 +555,15 @@ class Language {
 	/**
 	 * Get a namespace value by key
 	 *
+	 * Namespace name uses underscores (not spaces), e.g. 'MediaWiki_talk'.
+	 *
 	 * <code>
-	 * $mw_ns = $lang->getNsText( NS_MEDIAWIKI );
-	 * echo $mw_ns; // prints 'MediaWiki'
+	 * $mw_ns = $lang->getNsText( NS_MEDIAWIKI_TALK );
+	 * echo $mw_ns; // prints 'MediaWiki_talk'
 	 * </code>
 	 *
 	 * @param int $index The array key of the namespace to return
-	 * @return string|bool String if the namespace value exists, otherwise false
+	 * @return string|false String if the namespace value exists, otherwise false
 	 */
 	public function getNsText( $index ) {
 		$ns = $this->getNamespaces();
@@ -637,7 +585,7 @@ class Language {
 	 */
 	public function getFormattedNsText( $index ) {
 		$ns = $this->getNsText( $index );
-		return strtr( $ns, '_', ' ' );
+		return strtr( (string)$ns, '_', ' ' );
 	}
 
 	/**
@@ -645,13 +593,13 @@ class Language {
 	 * See https://www.mediawiki.org/wiki/Manual:$wgExtraGenderNamespaces
 	 * @param int $index Namespace index
 	 * @param string $gender Gender key (male, female... )
-	 * @return string
+	 * @return string|false
 	 * @since 1.18
 	 */
 	public function getGenderNsText( $index, $gender ) {
-		global $wgExtraGenderNamespaces;
+		$extraGenderNamespaces = $this->config->get( MainConfigNames::ExtraGenderNamespaces );
 
-		$ns = $wgExtraGenderNamespaces +
+		$ns = $extraGenderNamespaces +
 			(array)$this->localisationCache->getItem( $this->mCode, 'namespaceGenderAliases' );
 
 		return $ns[$index][$gender] ?? $this->getNsText( $index );
@@ -664,11 +612,12 @@ class Language {
 	 * @since 1.18
 	 */
 	public function needsGenderDistinction() {
-		global $wgExtraGenderNamespaces, $wgExtraNamespaces;
-		if ( count( $wgExtraGenderNamespaces ) > 0 ) {
+		$extraGenderNamespaces = $this->config->get( MainConfigNames::ExtraGenderNamespaces );
+		$extraNamespaces = $this->config->get( MainConfigNames::ExtraNamespaces );
+		if ( count( $extraGenderNamespaces ) > 0 ) {
 			// $wgExtraGenderNamespaces overrides everything
 			return true;
-		} elseif ( isset( $wgExtraNamespaces[NS_USER] ) && isset( $wgExtraNamespaces[NS_USER_TALK] ) ) {
+		} elseif ( isset( $extraNamespaces[NS_USER] ) && isset( $extraNamespaces[NS_USER_TALK] ) ) {
 			// @todo There may be other gender namespace than NS_USER & NS_USER_TALK in the future
 			// $wgExtraNamespaces overrides any gender aliases specified in i18n files
 			return false;
@@ -695,7 +644,7 @@ class Language {
 
 	/**
 	 * @return array<string,int> Map from names to namespace IDs. Note that each
-	 * namepace ID can have multiple alias.
+	 * namespace ID can have multiple alias.
 	 */
 	public function getNamespaceAliases() {
 		if ( $this->namespaceAliases === null ) {
@@ -712,8 +661,8 @@ class Language {
 				}
 			}
 
-			global $wgExtraGenderNamespaces;
-			$genders = $wgExtraGenderNamespaces + (array)$this->localisationCache
+			$extraGenderNamespaces = $this->config->get( MainConfigNames::ExtraGenderNamespaces );
+			$genders = $extraGenderNamespaces + (array)$this->localisationCache
 				->getItem( $this->mCode, 'namespaceGenderAliases' );
 			foreach ( $genders as $index => $forms ) {
 				foreach ( $forms as $alias ) {
@@ -736,8 +685,8 @@ class Language {
 
 			// In the case of conflicts between $wgNamespaceAliases and other sources
 			// of aliasing, $wgNamespaceAliases wins.
-			global $wgNamespaceAliases;
-			$this->namespaceAliases = $wgNamespaceAliases + $this->namespaceAliases;
+			$this->namespaceAliases = $this->config->get( MainConfigNames::NamespaceAliases ) +
+				$this->namespaceAliases;
 
 			# Filter out aliases to namespaces that don't exist, e.g. from extensions
 			# that aren't loaded here but are included in the l10n cache.
@@ -752,7 +701,7 @@ class Language {
 	}
 
 	/**
-	 * @return array
+	 * @return array<string,int> indexed by localized lower-cased namespace name
 	 */
 	public function getNamespaceIds() {
 		if ( $this->mNamespaceIds === null ) {
@@ -776,12 +725,11 @@ class Language {
 	 * names override custom ones defined for the current language.
 	 *
 	 * @param string $text
-	 * @return int|bool An integer if $text is a valid value otherwise false
+	 * @return int|false An integer if $text is a valid value otherwise false
 	 */
 	public function getNsIndex( $text ) {
 		$lctext = $this->lc( $text );
-		$ns = MediaWikiServices::getInstance()->getNamespaceInfo()->
-			getCanonicalIndex( $lctext );
+		$ns = $this->namespaceInfo->getCanonicalIndex( $lctext );
 		if ( $ns !== null ) {
 			return $ns;
 		}
@@ -811,34 +759,33 @@ class Language {
 	}
 
 	/**
-	 * @return string[]|bool List of date format preference keys, or false if disabled.
+	 * @return string[]|false List of date format preference keys, or false if disabled.
 	 */
 	public function getDatePreferences() {
 		return $this->localisationCache->getItem( $this->mCode, 'datePreferences' );
 	}
 
 	/**
-	 * @return array
+	 * @return string[]
 	 */
 	public function getDateFormats() {
 		return $this->localisationCache->getItem( $this->mCode, 'dateFormats' );
 	}
 
 	/**
-	 * @return array|string
+	 * @return string
 	 */
 	public function getDefaultDateFormat() {
 		$df = $this->localisationCache->getItem( $this->mCode, 'defaultDateFormat' );
 		if ( $df === 'dmy or mdy' ) {
-			global $wgAmericanDates;
-			return $wgAmericanDates ? 'mdy' : 'dmy';
+			return $this->config->get( MainConfigNames::AmericanDates ) ? 'mdy' : 'dmy';
 		} else {
 			return $df;
 		}
 	}
 
 	/**
-	 * @return array
+	 * @return string[]
 	 */
 	public function getDatePreferenceMigrationMap() {
 		return $this->localisationCache->getItem( $this->mCode, 'datePreferenceMigrationMap' );
@@ -852,16 +799,16 @@ class Language {
 	 * 		Use LanguageNameUtils::AUTONYMS for autonyms (native names)
 	 * @param string $include One of:
 	 * 		LanguageNameUtils::AUTONYMS all available languages
-	 * 		'mw' only if the language is defined in MediaWiki
-	 * 		 or wgExtraLanguageNames (default)
-	 * 		LanguageNameUtils::SUPPORTED only if the language is in 'mw' *and*
-	 * 		 has a message file
-	 * @return array Language code => language name (sorted by key)
+	 * 		LanguageNameUtils::DEFINED only if the language is defined in
+	 *               MediaWiki or wgExtraLanguageNames (default)
+	 * 		LanguageNameUtils::SUPPORTED only if the language is in
+	 *               LanguageNameUtils::DEFINED *and* has a message file
+	 * @return string[] Language code => language name (sorted by key)
 	 * @since 1.20
 	 */
 	public static function fetchLanguageNames(
 		$inLanguage = LanguageNameUtils::AUTONYMS,
-		$include = 'mw'
+		$include = LanguageNameUtils::DEFINED
 	) {
 		return MediaWikiServices::getInstance()->getLanguageNameUtils()
 			->getLanguageNames( $inLanguage, $include );
@@ -899,14 +846,15 @@ class Language {
 	 * Get message object in this language. Only for use inside this class.
 	 *
 	 * @param string $msg Message name
+	 * @param mixed ...$params Message parameters
 	 * @return Message
 	 */
-	protected function msg( $msg ) {
-		return wfMessage( $msg )->inLanguage( $this );
+	protected function msg( $msg, ...$params ) {
+		return wfMessage( $msg, ...$params )->inLanguage( $this );
 	}
 
 	/**
-	 * @param int $key
+	 * @param int $key Number from 1 to 12
 	 * @return string
 	 */
 	public function getMonthName( $key ) {
@@ -914,18 +862,18 @@ class Language {
 	}
 
 	/**
-	 * @return array
+	 * @return string[] Indexed from 0 to 11
 	 */
 	public function getMonthNamesArray() {
 		$monthNames = [ '' ];
-		for ( $i = 1; $i < 13; $i++ ) {
+		for ( $i = 1; $i <= 12; $i++ ) {
 			$monthNames[] = $this->getMonthName( $i );
 		}
 		return $monthNames;
 	}
 
 	/**
-	 * @param int $key
+	 * @param int $key Number from 1 to 12
 	 * @return string
 	 */
 	public function getMonthNameGen( $key ) {
@@ -933,7 +881,7 @@ class Language {
 	}
 
 	/**
-	 * @param int $key
+	 * @param int $key Number from 1 to 12
 	 * @return string
 	 */
 	public function getMonthAbbreviation( $key ) {
@@ -941,18 +889,18 @@ class Language {
 	}
 
 	/**
-	 * @return array
+	 * @return string[] Indexed from 0 to 11
 	 */
 	public function getMonthAbbreviationsArray() {
 		$monthNames = [ '' ];
-		for ( $i = 1; $i < 13; $i++ ) {
+		for ( $i = 1; $i <= 12; $i++ ) {
 			$monthNames[] = $this->getMonthAbbreviation( $i );
 		}
 		return $monthNames;
 	}
 
 	/**
-	 * @param int $key
+	 * @param int $key Number from 1 to 7
 	 * @return string
 	 */
 	public function getWeekdayName( $key ) {
@@ -960,7 +908,7 @@ class Language {
 	}
 
 	/**
-	 * @param int $key
+	 * @param int $key Number from 1 to 7
 	 * @return string
 	 */
 	public function getWeekdayAbbreviation( $key ) {
@@ -968,7 +916,7 @@ class Language {
 	}
 
 	/**
-	 * @param int $key
+	 * @param int $key Number from 1 to 12
 	 * @return string
 	 */
 	private function getIranianCalendarMonthName( $key ) {
@@ -976,7 +924,7 @@ class Language {
 	}
 
 	/**
-	 * @param int $key
+	 * @param int $key Number from 1 to 14
 	 * @return string
 	 */
 	private function getHebrewCalendarMonthName( $key ) {
@@ -984,7 +932,7 @@ class Language {
 	}
 
 	/**
-	 * @param int $key
+	 * @param int $key Number from 1 to 14
 	 * @return string
 	 */
 	private function getHebrewCalendarMonthNameGen( $key ) {
@@ -992,7 +940,7 @@ class Language {
 	}
 
 	/**
-	 * @param int $key
+	 * @param int $key Number from 1 to 12
 	 * @return string
 	 */
 	private function getHijriCalendarMonthName( $key ) {
@@ -1001,9 +949,9 @@ class Language {
 
 	/**
 	 * Pass through result from $dateTimeObj->format()
-	 * @param DateTime|bool|null &$dateTimeObj
+	 * @param DateTime|false|null &$dateTimeObj
 	 * @param string $ts
-	 * @param DateTimeZone|bool|null $zone
+	 * @param DateTimeZone|false|null $zone
 	 * @param string $code
 	 * @return string
 	 */
@@ -1087,6 +1035,7 @@ class Language {
 	 * @return-taint tainted
 	 */
 	public function sprintfDate( $format, $ts, DateTimeZone $zone = null, &$ttl = 'unused' ) {
+		// @phan-suppress-previous-line PhanTypeMismatchDefault Type mismatch on pass-by-ref args
 		$s = '';
 		$raw = false;
 		$roman = false;
@@ -1163,7 +1112,7 @@ class Language {
 					break;
 				case 'xg':
 					$usedMonth = true;
-					$s .= $this->getMonthNameGen( substr( $ts, 4, 2 ) );
+					$s .= $this->getMonthNameGen( (int)substr( $ts, 4, 2 ) );
 					break;
 				case 'xjx':
 					$usedHebrewMonth = true;
@@ -1179,7 +1128,7 @@ class Language {
 				case 'D':
 					$usedDay = true;
 					$s .= $this->getWeekdayAbbreviation(
-						self::dateTimeObjFormat( $dateTimeObj, $ts, $zone, 'w' ) + 1
+						(int)self::dateTimeObjFormat( $dateTimeObj, $ts, $zone, 'w' ) + 1
 					);
 					break;
 				case 'j':
@@ -1210,12 +1159,12 @@ class Language {
 				case 'l':
 					$usedDay = true;
 					$s .= $this->getWeekdayName(
-						self::dateTimeObjFormat( $dateTimeObj, $ts, $zone, 'w' ) + 1
+						(int)self::dateTimeObjFormat( $dateTimeObj, $ts, $zone, 'w' ) + 1
 					);
 					break;
 				case 'F':
 					$usedMonth = true;
-					$s .= $this->getMonthName( substr( $ts, 4, 2 ) );
+					$s .= $this->getMonthName( (int)substr( $ts, 4, 2 ) );
 					break;
 				case 'xiF':
 					$usedIranianMonth = true;
@@ -1244,7 +1193,7 @@ class Language {
 					break;
 				case 'M':
 					$usedMonth = true;
-					$s .= $this->getMonthAbbreviation( substr( $ts, 4, 2 ) );
+					$s .= $this->getMonthAbbreviation( (int)substr( $ts, 4, 2 ) );
 					break;
 				case 'n':
 					$usedMonth = true;
@@ -1333,7 +1282,7 @@ class Language {
 					if ( !$iranian ) {
 						$iranian = self::tsToIranian( $ts );
 					}
-					$num = substr( $iranian[0], -2 );
+					$num = substr( (string)$iranian[0], -2 );
 					break;
 				case 'xit':
 					$usedIranianYear = true;
@@ -1359,7 +1308,7 @@ class Language {
 					break;
 				case 'g':
 					$usedHour = true;
-					$h = substr( $ts, 8, 2 );
+					$h = (int)substr( $ts, 8, 2 );
 					$num = $h % 12 ?: 12;
 					break;
 				case 'G':
@@ -1368,7 +1317,7 @@ class Language {
 					break;
 				case 'h':
 					$usedHour = true;
-					$h = substr( $ts, 8, 2 );
+					$h = (int)substr( $ts, 8, 2 );
 					$num = sprintf( '%02d', $h % 12 ?: 12 );
 					break;
 				case 'H':
@@ -1472,12 +1421,12 @@ class Language {
 		} elseif ( $usedSecond ) {
 			$ttl = 1;
 		} elseif ( $usedMinute ) {
-			$ttl = 60 - substr( $ts, 12, 2 );
+			$ttl = 60 - (int)substr( $ts, 12, 2 );
 		} elseif ( $usedHour ) {
-			$ttl = 3600 - substr( $ts, 10, 2 ) * 60 - substr( $ts, 12, 2 );
+			$ttl = 3600 - (int)substr( $ts, 10, 2 ) * 60 - (int)substr( $ts, 12, 2 );
 		} elseif ( $usedAMPM ) {
-			$ttl = 43200 - ( substr( $ts, 8, 2 ) % 12 ) * 3600 -
-				substr( $ts, 10, 2 ) * 60 - substr( $ts, 12, 2 );
+			$ttl = 43200 - ( (int)substr( $ts, 8, 2 ) % 12 ) * 3600 -
+				(int)substr( $ts, 10, 2 ) * 60 - (int)substr( $ts, 12, 2 );
 		} elseif (
 			$usedDay ||
 			$usedHebrewMonth ||
@@ -1490,47 +1439,47 @@ class Language {
 		) {
 			// @todo Someone who understands the non-Gregorian calendars
 			// should write proper logic for them so that they don't need purged every day.
-			$ttl = 86400 - substr( $ts, 8, 2 ) * 3600 -
-				substr( $ts, 10, 2 ) * 60 - substr( $ts, 12, 2 );
+			$ttl = 86400 - (int)substr( $ts, 8, 2 ) * 3600 -
+				(int)substr( $ts, 10, 2 ) * 60 - (int)substr( $ts, 12, 2 );
 		} else {
 			$possibleTtls = [];
-			$timeRemainingInDay = 86400 - substr( $ts, 8, 2 ) * 3600 -
-				substr( $ts, 10, 2 ) * 60 - substr( $ts, 12, 2 );
+			$timeRemainingInDay = 86400 - (int)substr( $ts, 8, 2 ) * 3600 -
+				(int)substr( $ts, 10, 2 ) * 60 - (int)substr( $ts, 12, 2 );
 			if ( $usedWeek ) {
 				$possibleTtls[] =
-					( 7 - self::dateTimeObjFormat( $dateTimeObj, $ts, $zone, 'N' ) ) * 86400 +
+					( 7 - (int)self::dateTimeObjFormat( $dateTimeObj, $ts, $zone, 'N' ) ) * 86400 +
 					$timeRemainingInDay;
 			} elseif ( $usedISOYear ) {
 				// December 28th falls on the last ISO week of the year, every year.
 				// The last ISO week of a year can be 52 or 53.
-				$lastWeekOfISOYear = DateTime::createFromFormat(
+				$lastWeekOfISOYear = (int)DateTime::createFromFormat(
 					'Ymd',
-					substr( $ts, 0, 4 ) . '1228',
+					(int)substr( $ts, 0, 4 ) . '1228',
 					$zone ?: new DateTimeZone( 'UTC' )
 				)->format( 'W' );
-				$currentISOWeek = self::dateTimeObjFormat( $dateTimeObj, $ts, $zone, 'W' );
+				$currentISOWeek = (int)self::dateTimeObjFormat( $dateTimeObj, $ts, $zone, 'W' );
 				$weeksRemaining = $lastWeekOfISOYear - $currentISOWeek;
 				$timeRemainingInWeek =
-					( 7 - self::dateTimeObjFormat( $dateTimeObj, $ts, $zone, 'N' ) ) * 86400
+					( 7 - (int)self::dateTimeObjFormat( $dateTimeObj, $ts, $zone, 'N' ) ) * 86400
 					+ $timeRemainingInDay;
 				$possibleTtls[] = $weeksRemaining * 604800 + $timeRemainingInWeek;
 			}
 
 			if ( $usedMonth ) {
 				$possibleTtls[] =
-					( self::dateTimeObjFormat( $dateTimeObj, $ts, $zone, 't' ) -
-						substr( $ts, 6, 2 ) ) * 86400
+					( (int)self::dateTimeObjFormat( $dateTimeObj, $ts, $zone, 't' ) -
+						(int)substr( $ts, 6, 2 ) ) * 86400
 					+ $timeRemainingInDay;
 			} elseif ( $usedYear ) {
 				$possibleTtls[] =
-					( self::dateTimeObjFormat( $dateTimeObj, $ts, $zone, 'L' ) + 364 -
-						self::dateTimeObjFormat( $dateTimeObj, $ts, $zone, 'z' ) ) * 86400
+					( (int)self::dateTimeObjFormat( $dateTimeObj, $ts, $zone, 'L' ) + 364 -
+						(int)self::dateTimeObjFormat( $dateTimeObj, $ts, $zone, 'z' ) ) * 86400
 					+ $timeRemainingInDay;
 			} elseif ( $usedIsLeapYear ) {
-				$year = substr( $ts, 0, 4 );
+				$year = (int)substr( $ts, 0, 4 );
 				$timeRemainingInYear =
-					( self::dateTimeObjFormat( $dateTimeObj, $ts, $zone, 'L' ) + 364 -
-						self::dateTimeObjFormat( $dateTimeObj, $ts, $zone, 'z' ) ) * 86400
+					( (int)self::dateTimeObjFormat( $dateTimeObj, $ts, $zone, 'L' ) + 364 -
+						(int)self::dateTimeObjFormat( $dateTimeObj, $ts, $zone, 'z' ) ) * 86400
 					+ $timeRemainingInDay;
 				$mod = $year % 4;
 				if ( $mod || ( !( $year % 100 ) && $year % 400 ) ) {
@@ -1573,9 +1522,9 @@ class Language {
 	 * @return int[]
 	 */
 	private static function tsToIranian( $ts ) {
-		$gy = substr( $ts, 0, 4 ) - 1600;
-		$gm = substr( $ts, 4, 2 ) - 1;
-		$gd = substr( $ts, 6, 2 ) - 1;
+		$gy = (int)substr( $ts, 0, 4 ) - 1600;
+		$gm = (int)substr( $ts, 4, 2 ) - 1;
+		$gd = (int)substr( $ts, 6, 2 ) - 1;
 
 		# Days passed from the beginning (including leap years)
 		$gDayNo = 365 * $gy
@@ -1594,19 +1543,19 @@ class Language {
 		}
 
 		// Days passed in current month
-		$gDayNo += (int)$gd;
+		$gDayNo += $gd;
 
 		$jDayNo = $gDayNo - 79;
 
-		$jNp = floor( $jDayNo / 12053 );
+		$jNp = (int)floor( $jDayNo / 12053 );
 		$jDayNo %= 12053;
 
-		$jy = 979 + 33 * $jNp + 4 * floor( $jDayNo / 1461 );
+		$jy = 979 + 33 * $jNp + 4 * (int)floor( $jDayNo / 1461 );
 		$jDayNo %= 1461;
 
 		if ( $jDayNo >= 366 ) {
-			$jy += floor( ( $jDayNo - 1 ) / 365 );
-			$jDayNo = floor( ( $jDayNo - 1 ) % 365 );
+			$jy += (int)floor( ( $jDayNo - 1 ) / 365 );
+			$jDayNo = (int)floor( ( $jDayNo - 1 ) % 365 );
 		}
 
 		$jz = $jDayNo;
@@ -1633,9 +1582,9 @@ class Language {
 	 * @return int[]
 	 */
 	private static function tsToHijri( $ts ) {
-		$year = substr( $ts, 0, 4 );
-		$month = substr( $ts, 4, 2 );
-		$day = substr( $ts, 6, 2 );
+		$year = (int)substr( $ts, 0, 4 );
+		$month = (int)substr( $ts, 4, 2 );
+		$day = (int)substr( $ts, 6, 2 );
 
 		$zyr = $year;
 		$zd = $day;
@@ -1686,9 +1635,9 @@ class Language {
 	 */
 	private static function tsToHebrew( $ts ) {
 		# Parse date
-		$year = substr( $ts, 0, 4 );
-		$month = substr( $ts, 4, 2 );
-		$day = substr( $ts, 6, 2 );
+		$year = (int)substr( $ts, 0, 4 );
+		$month = (int)substr( $ts, 4, 2 );
+		$day = (int)substr( $ts, 6, 2 );
 
 		# Calculate Hebrew year
 		$hebrewYear = $year + 3760;
@@ -1820,7 +1769,7 @@ class Language {
 	 *
 	 * @param int $year
 	 *
-	 * @return string
+	 * @return int
 	 */
 	private static function hebrewYearStart( $year ) {
 		$a = ( 12 * ( $year - 1 ) + 17 ) % 19;
@@ -1861,9 +1810,9 @@ class Language {
 	 * @return array Converted year, month, day
 	 */
 	private static function tsToYear( $ts, $cName ) {
-		$gy = substr( $ts, 0, 4 );
-		$gm = substr( $ts, 4, 2 );
-		$gd = substr( $ts, 6, 2 );
+		$gy = (int)substr( $ts, 0, 4 );
+		$gm = (int)substr( $ts, 4, 2 );
+		$gd = (int)substr( $ts, 6, 2 );
 
 		if ( !strcmp( $cName, 'thai' ) ) {
 			# Thai solar dates
@@ -1994,7 +1943,7 @@ class Language {
 
 		$num = intval( $num );
 		if ( $num > 10000 || $num <= 0 ) {
-			return $num;
+			return (string)$num;
 		}
 
 		$s = '';
@@ -2035,7 +1984,7 @@ class Language {
 
 		$num = intval( $num );
 		if ( $num > 9999 || $num <= 0 ) {
-			return $num;
+			return (string)$num;
 		}
 
 		// Round thousands have special notations
@@ -2097,13 +2046,12 @@ class Language {
 	 * Used by date() and time() to adjust the time output.
 	 *
 	 * @param string $ts The time in date('YmdHis') format
-	 * @param mixed $tz Adjust the time by this amount (default false, mean we
+	 * @param string|false $tz Adjust the time by this amount (default false, mean we
 	 *   get user timecorrection setting)
-	 * @return int
+	 * @return string
 	 */
 	public function userAdjust( $ts, $tz = false ) {
-		global $wgLocalTZoffset;
-
+		$localTZoffset = $this->config->get( MainConfigNames::LocalTZoffset );
 		if ( $tz === false ) {
 			$optionsLookup = MediaWikiServices::getInstance()->getUserOptionsLookup();
 			$tz = $optionsLookup->getOption(
@@ -2120,6 +2068,8 @@ class Language {
 				$date = new DateTime( $ts, new DateTimeZone( 'UTC' ) );
 				$date->setTimezone( $userTZ );
 				return $date->format( 'YmdHis' );
+			} catch ( TimeoutException $e ) {
+				throw $e;
 			} catch ( Exception $e ) {
 				// Unrecognized timezone, default to 'Offset' with the stored offset.
 				$data[0] = 'Offset';
@@ -2128,7 +2078,7 @@ class Language {
 
 		if ( $data[0] == 'System' || $tz == '' ) {
 			# Global offset in minutes.
-			$minDiff = $wgLocalTZoffset;
+			$minDiff = $localTZoffset;
 		} elseif ( $data[0] == 'Offset' ) {
 			$minDiff = intval( $data[1] );
 		} else {
@@ -2150,7 +2100,8 @@ class Language {
 			return $ts;
 		}
 
-		Wikimedia\suppressWarnings(); // E_STRICT system time bitching
+		// E_STRICT system time bitching
+		AtEase::suppressWarnings();
 		# Generate an adjusted date; take advantage of the fact that mktime
 		# will normalize out-of-range values so we don't have to split $minDiff
 		# into hours and minutes.
@@ -2163,7 +2114,7 @@ class Language {
 			(int)substr( $ts, 0, 4 ) ); # Year
 
 		$date = date( 'YmdHis', $t );
-		Wikimedia\restoreWarnings();
+		AtEase::restoreWarnings();
 
 		return $date;
 	}
@@ -2247,7 +2198,7 @@ class Language {
 	 * @param bool $adj Whether to adjust the time output according to the
 	 *   user configured offset ($timecorrection)
 	 * @param mixed $format True to use user's date format preference
-	 * @param string|bool $timecorrection The time offset as returned by
+	 * @param string|false $timecorrection The time offset as returned by
 	 *   validateTimeZone() in Special:Preferences
 	 * @return string
 	 */
@@ -2266,7 +2217,7 @@ class Language {
 	 * @param bool $adj Whether to adjust the time output according to the
 	 *   user configured offset ($timecorrection)
 	 * @param mixed $format True to use user's date format preference
-	 * @param string|bool $timecorrection The time offset as returned by
+	 * @param string|false $timecorrection The time offset as returned by
 	 *   validateTimeZone() in Special:Preferences
 	 * @return string
 	 */
@@ -2286,7 +2237,7 @@ class Language {
 	 *   user configured offset ($timecorrection)
 	 * @param mixed $format What format to return, if it's false output the
 	 *   default one (default true)
-	 * @param string|bool $timecorrection The time offset as returned by
+	 * @param string|false $timecorrection The time offset as returned by
 	 *   validateTimeZone() in Special:Preferences
 	 * @return string
 	 */
@@ -2333,7 +2284,7 @@ class Language {
 	 * @param int $seconds The amount of seconds.
 	 * @param array $chosenIntervals The intervals to enable.
 	 *
-	 * @return array
+	 * @return int[]
 	 */
 	public function getDurationIntervals( $seconds, array $chosenIntervals = [] ) {
 		if ( empty( $chosenIntervals ) ) {
@@ -2545,26 +2496,31 @@ class Language {
 		$diffDay = (bool)( (int)$ts->timestamp->format( 'w' ) -
 			(int)$relativeTo->timestamp->format( 'w' ) );
 		$days = $diff->days ?: (int)$diffDay;
-		if ( $diff->invert || $days > 5
-			&& $ts->timestamp->format( 'Y' ) !== $relativeTo->timestamp->format( 'Y' )
-		) {
-			// Timestamps are in different years: use full timestamp
-			// Also do full timestamp for future dates
+
+		if ( $diff->invert ) {
+			// Future dates: Use full timestamp
 			/**
 			 * @todo FIXME: Add better handling of future timestamps.
 			 */
 			$format = $this->getDateFormatString( 'both', $user->getDatePreference() ?: 'default' );
 			$ts = $this->sprintfDate( $format, $ts->getTimestamp( TS_MW ) );
+		} elseif (
+			$days > 5 &&
+			$ts->timestamp->format( 'Y' ) !== $relativeTo->timestamp->format( 'Y' )
+		) {
+			// Timestamps are in different years and more than 5 days apart: use full date
+			$format = $this->getDateFormatString( 'date', $user->getDatePreference() ?: 'default' );
+			$ts = $this->sprintfDate( $format, $ts->getTimestamp( TS_MW ) );
 		} elseif ( $days > 5 ) {
-			// Timestamps are in same year,  but more than 5 days ago: show day and month only.
+			// Timestamps are in same year and more than 5 days ago: show day and month only.
 			$format = $this->getDateFormatString( 'pretty', $user->getDatePreference() ?: 'default' );
 			$ts = $this->sprintfDate( $format, $ts->getTimestamp( TS_MW ) );
 		} elseif ( $days > 1 ) {
-			// Timestamp within the past week: show the day of the week and time
+			// Timestamp within the past 5 days: show the day of the week and time
 			$format = $this->getDateFormatString( 'time', $user->getDatePreference() ?: 'default' );
-			$weekday = self::WEEKDAY_MESSAGES[$ts->timestamp->format( 'w' )];
-			// Messages:
-			// sunday-at, monday-at, tuesday-at, wednesday-at, thursday-at, friday-at, saturday-at
+			$weekday = self::WEEKDAY_MESSAGES[(int)$ts->timestamp->format( 'w' )];
+			// The following messages are used here:
+			// * sunday-at, monday-at, tuesday-at, wednesday-at, thursday-at, friday-at, saturday-at
 			$ts = wfMessage( "$weekday-at" )
 				->inLanguage( $this )
 				->params( $this->sprintfDate( $format, $ts->getTimestamp( TS_MW ) ) )
@@ -2616,6 +2572,22 @@ class Language {
 	}
 
 	/**
+	 * Gets the localized name for a member of a group, if it exists. For example,
+	 * "administrator" or "bureaucrat"
+	 *
+	 * @param string $group Internal group name
+	 * @param string|UserIdentity $member
+	 * @return string Localized name for group member
+	 */
+	public function getGroupMemberName( string $group, $member ) {
+		if ( $member instanceof UserIdentity ) {
+			$member = $member->getName();
+		}
+		$msg = $this->msg( "group-$group-member", $member );
+		return $msg->isBlank() ? $group : $msg->text();
+	}
+
+	/**
 	 * @param string $key
 	 * @return string|null
 	 */
@@ -2624,7 +2596,7 @@ class Language {
 	}
 
 	/**
-	 * @return array
+	 * @return string[]
 	 */
 	public function getAllMessages() {
 		return $this->localisationCache->getItem( $this->mCode, 'messages' );
@@ -2641,9 +2613,9 @@ class Language {
 		# *input* string. We just ignore those too.
 		# REF: https://bugs.php.net/bug.php?id=37166
 		# REF: https://phabricator.wikimedia.org/T18885
-		Wikimedia\suppressWarnings();
+		AtEase::suppressWarnings();
 		$text = iconv( $in, $out . '//IGNORE', $string );
-		Wikimedia\restoreWarnings();
+		AtEase::restoreWarnings();
 		return $text;
 	}
 
@@ -2697,9 +2669,9 @@ class Language {
 	 * @return string
 	 */
 	protected function mbUpperChar( $char ) {
-		global $wgOverrideUcfirstCharacters;
-
-		return $wgOverrideUcfirstCharacters[$char] ?? mb_strtoupper( $char );
+		$overrideUcfirstCharacters =
+			$this->config->get( MainConfigNames::OverrideUcfirstCharacters );
+		return $overrideUcfirstCharacters[$char] ?? mb_strtoupper( $char );
 	}
 
 	/**
@@ -2779,7 +2751,7 @@ class Language {
 		if ( $this->isMultibyte( $str ) ) {
 			$str = $this->lc( $str );
 
-			// since \b doesn't work for UTF-8, we explicitely define word break chars
+			// since \b doesn't work for UTF-8, we explicitly define word break chars
 			$breaks = "[ \-\(\)\}\{\.,\?!]";
 
 			// find first letter after word break
@@ -2982,11 +2954,11 @@ class Language {
 	 * @return string
 	 */
 	public function normalize( $s ) {
-		global $wgAllUnicodeFixes;
+		$allUnicodeFixes = $this->config->get( MainConfigNames::AllUnicodeFixes );
 
 		$s = UtfNormal\Validator::cleanUp( $s );
 		// Optimization: This is disabled by default to avoid negative performance impact.
-		if ( $wgAllUnicodeFixes ) {
+		if ( $allUnicodeFixes ) {
 			$s = $this->transformUsingPairFile( MediaWiki\Languages\Data\NormalizeAr::class, $s );
 			$s = $this->transformUsingPairFile( MediaWiki\Languages\Data\NormalizeMl::class, $s );
 		}
@@ -3126,7 +3098,7 @@ class Language {
 
 	/**
 	 * Get all magic words from cache.
-	 * @return array
+	 * @return string[][]
 	 */
 	public function getMagicWords() {
 		return $this->localisationCache->getItem( $this->mCode, 'magicWords' );
@@ -3152,7 +3124,7 @@ class Language {
 	/**
 	 * Get special page names, as an associative array
 	 *   canonical name => array of valid names, including aliases
-	 * @return array
+	 * @return string[][]
 	 */
 	public function getSpecialPageAliases() {
 		// Cache aliases because it may be slow to load them
@@ -3219,7 +3191,7 @@ class Language {
 	private function formatNumInternal(
 		string $number, bool $noTranslate, bool $noSeparators
 	): string {
-		global $wgTranslateNumerals;
+		$translateNumerals = $this->config->get( MainConfigNames::TranslateNumerals );
 
 		if ( $number === '' ) {
 			return $number;
@@ -3255,7 +3227,7 @@ class Language {
 			$separatorTransformTable = $this->separatorTransformTable();
 			$digitGroupingPattern = $this->digitGroupingPattern();
 			$code = $this->getCode();
-			if ( !( $wgTranslateNumerals && $this->langNameUtils->isValidCode( $code ) ) ) {
+			if ( !( $translateNumerals && $this->langNameUtils->isValidCode( $code ) ) ) {
 				$code = 'C'; // POSIX system default locale
 			}
 
@@ -3321,16 +3293,16 @@ class Language {
 				if ( preg_match( '/^-?(\d*)(\.(\d*))?$/', $number, $m ) ) {
 					$fmt->setAttribute( NumberFormatter::MIN_INTEGER_DIGITS, strlen( $m[1] ) );
 					if ( isset( $m[2] ) ) {
-						$fmt->setAttribute( NumberFormatter::DECIMAL_ALWAYS_SHOWN, true );
+						$fmt->setAttribute( NumberFormatter::DECIMAL_ALWAYS_SHOWN, 1 );
 					}
 					$fmt->setAttribute( NumberFormatter::FRACTION_DIGITS, strlen( $m[3] ?? '' ) );
 				}
-				$number = $fmt->format( $number );
+				$number = $fmt->format( (float)$number );
 			}
 		}
 
 		if ( !$noTranslate ) {
-			if ( $wgTranslateNumerals ) {
+			if ( $translateNumerals ) {
 				// This is often unnecessary: PHP's NumberFormatter will often
 				// do the digit transform itself (T267614)
 				$s = $this->digitTransformTable();
@@ -3433,14 +3405,14 @@ class Language {
 	}
 
 	/**
-	 * @return array
+	 * @return string[]
 	 */
 	public function digitTransformTable() {
 		return $this->localisationCache->getItem( $this->mCode, 'digitTransformTable' );
 	}
 
 	/**
-	 * @return array
+	 * @return string[]
 	 */
 	public function separatorTransformTable() {
 		return $this->localisationCache->getItem( $this->mCode, 'separatorTransformTable' );
@@ -3476,6 +3448,7 @@ class Language {
 			}
 			$text = implode( $comma, $list ) . $and . $space . $text;
 		}
+		// @phan-suppress-next-line PhanTypeMismatchReturnNullable False positive
 		return $text;
 	}
 
@@ -3545,6 +3518,13 @@ class Language {
 	 * This provides multibyte version of truncateForDatabase() method of this class,
 	 * suitable for truncation based on number of characters, instead of number of bytes.
 	 *
+	 * The input should be a raw UTF-8 string and *NOT* be HTML
+	 * escaped. It is not safe to truncate HTML-escaped strings,
+	 * because the entity can be truncated! Use ::truncateHtml() if you
+	 * need a specific number of HTML-encoded bytes, or
+	 * ::truncateForDatabase() if you need a specific number of PHP
+	 * bytes.
+	 *
 	 * If $length is negative, the string will be truncated from the beginning.
 	 *
 	 * @since 1.31
@@ -3592,7 +3572,7 @@ class Language {
 
 		# Use the localized ellipsis character
 		if ( $ellipsis == '...' ) {
-			$ellipsis = wfMessage( 'ellipsis' )->inLanguage( $this )->escaped();
+			$ellipsis = wfMessage( 'ellipsis' )->inLanguage( $this )->text();
 		}
 		if ( $length == 0 ) {
 			return $ellipsis; // convention
@@ -3699,7 +3679,7 @@ class Language {
 			return $text; // string short enough even *with* HTML (short-circuit)
 		}
 
-		$dispLen = 0; // innerHTML legth so far
+		$dispLen = 0; // innerHTML length so far
 		$testingEllipsis = false; // checking if ellipses will make string longer/equal?
 		$tagType = 0; // 0-open, 1-close
 		$bracketState = 0; // 1-tag start, 2-tag name, 0-neither
@@ -3711,7 +3691,7 @@ class Language {
 		$textLen = strlen( $text );
 		$neLength = max( 0, $length - strlen( $ellipsis ) ); // non-ellipsis len if truncated
 		for ( $pos = 0; true; ++$pos ) {
-			# Consider truncation once the display length has reached the maximim.
+			# Consider truncation once the display length has reached the maximum.
 			# We check if $dispLen > 0 to grab tags for the $neLength = 0 case.
 			# Check that we're not in the middle of a bracket/entity...
 			if ( $dispLen && $dispLen >= $neLength && $bracketState == 0 && !$entityState ) {
@@ -3788,7 +3768,7 @@ class Language {
 			}
 		}
 		// Close the last tag if left unclosed by bad HTML
-		$this->truncate_endBracket( $tag, $text[$textLen - 1], $tagType, $openTags );
+		$this->truncate_endBracket( $tag, $tagType, $text[$textLen - 1], $openTags );
 		while ( count( $openTags ) > 0 ) {
 			$ret .= '</' . array_pop( $openTags ) . '>'; // close open tags
 		}
@@ -3808,9 +3788,10 @@ class Language {
 	 */
 	private function truncate_skip( &$ret, $text, $search, $start, $len = null ) {
 		if ( $len === null ) {
-			$len = -1; // -1 means "no limit" for strcspn
+			// -1 means "no limit" for strcspn
+			$len = -1;
 		} elseif ( $len < 0 ) {
-			$len = 0; // sanity
+			$len = 0;
 		}
 		$skipCount = 0;
 		if ( $start < strlen( $text ) ) {
@@ -3852,9 +3833,9 @@ class Language {
 	 * @return string
 	 */
 	public function convertGrammar( $word, $case ) {
-		global $wgGrammarForms;
-		if ( isset( $wgGrammarForms[$this->getCode()][$case][$word] ) ) {
-			return $wgGrammarForms[$this->getCode()][$case][$word];
+		$grammarForms = $this->config->get( MainConfigNames::GrammarForms );
+		if ( isset( $grammarForms[$this->getCode()][$case][$word] ) ) {
+			return $grammarForms[$this->getCode()][$case][$word];
 		}
 
 		$grammarTransformations = $this->getGrammarTransformations();
@@ -3903,11 +3884,11 @@ class Language {
 	 * @since 1.20
 	 */
 	public function getGrammarForms() {
-		global $wgGrammarForms;
-		if ( isset( $wgGrammarForms[$this->getCode()] )
-			&& is_array( $wgGrammarForms[$this->getCode()] )
+		$grammarForms = $this->config->get( MainConfigNames::GrammarForms );
+		if ( isset( $grammarForms[$this->getCode()] )
+			&& is_array( $grammarForms[$this->getCode()] )
 		) {
-			return $wgGrammarForms[$this->getCode()];
+			return $grammarForms[$this->getCode()];
 		}
 
 		return [];
@@ -4014,9 +3995,9 @@ class Language {
 	 * @since 1.23
 	 *
 	 * @param int $count Non-localized number
-	 * @param array $forms Different plural forms
+	 * @param string[] $forms Different plural forms
 	 *
-	 * @return array|string
+	 * @return string[]|string
 	 */
 	protected function handleExplicitPluralForms( $count, array $forms ) {
 		foreach ( $forms as $index => $form ) {
@@ -4162,7 +4143,7 @@ class Language {
 	 * @deprecated since 1.35 use LanguageConverter::autoConvert
 	 *
 	 * @param string $text text to convert
-	 * @param string|bool $variant variant to convert to, or false to use the user's preferred
+	 * @param string|false $variant variant to convert to, or false to use the user's preferred
 	 *      variant (if logged in), or the project default variant
 	 * @return string the converted string
 	 */
@@ -4248,7 +4229,7 @@ class Language {
 	 *
 	 * @param string $text Text to be converted
 	 * @return string
-	 * @todo this should get integrated somewhere sane
+	 * @todo this should get integrated somewhere sensible
 	 */
 	public function convertHtml( $text ) {
 		return htmlspecialchars( $this->convert( $text ) );
@@ -4390,7 +4371,7 @@ class Language {
 	 * @param string $filename $prefix . $languageCode . $suffix
 	 * @param string $prefix Prefix before the language code
 	 * @param string $suffix Suffix after the language code
-	 * @return string Language code, or false if $prefix or $suffix isn't found
+	 * @return string|false Language code, or false if $prefix or $suffix isn't found
 	 */
 	public static function getCodeFromFileName( $filename, $prefix = 'Language', $suffix = '.php' ) {
 		$m = null;
@@ -4462,7 +4443,7 @@ class Language {
 	 * @param int $mode Fallback mode, either MESSAGES_FALLBACKS (which always falls back to 'en'),
 	 *   or STRICT_FALLBACKS (which only falls back to 'en' when explicitly defined)
 	 * @throws InvalidArgumentException
-	 * @return array List of language codes
+	 * @return string[] List of language codes
 	 */
 	public static function getFallbacksFor( $code, $mode = LanguageFallback::MESSAGES ) {
 		return MediaWikiServices::getInstance()->getLanguageFallback()->getAll( $code, $mode );
@@ -4476,7 +4457,7 @@ class Language {
 	 *
 	 * @since 1.22
 	 * @param string $code Language code
-	 * @return array [ fallbacks, site fallbacks ]
+	 * @return string[][] [ fallbacks, site fallbacks ]
 	 */
 	public static function getFallbacksIncludingSiteLanguage( $code ) {
 		return MediaWikiServices::getInstance()->getLanguageFallback()
@@ -4520,7 +4501,7 @@ class Language {
 	 *
 	 * @since 1.19
 	 * @param string $code Language code
-	 * @return array Array of message keys (strings)
+	 * @return string[] Array of message keys (strings)
 	 */
 	public static function getMessageKeysFor( $code ) {
 		return self::getLocalisationCache()->getSubitemList( $code, 'messages' );
@@ -4535,8 +4516,7 @@ class Language {
 			return $talk;
 		}
 
-		global $wgMetaNamespace;
-		$talk = str_replace( '$1', $wgMetaNamespace, $talk );
+		$talk = str_replace( '$1', $this->config->get( MainConfigNames::MetaNamespace ), $talk );
 
 		# Allow grammar transformations
 		# Allowing full message-style parsing would make simple requests
@@ -4556,7 +4536,7 @@ class Language {
 	 * Decode an expiry (block, protection, etc) which has come from the DB
 	 *
 	 * @param string $expiry Database expiry String
-	 * @param bool|int $format True to process using language functions, or TS_ constant
+	 * @param true|int $format True to process using language functions, or TS_ constant
 	 *     to return the expiry in a given timestamp
 	 * @param string $infinity If $format is not true, use this string for infinite expiry
 	 * @param UserIdentity|null $user If $format is true, use this user for date format
@@ -4706,6 +4686,8 @@ class Language {
 	 * @return string
 	 */
 	public function formatBitrate( $bps ) {
+		// messages used: bitrate-bits, bitrate-kilobits, bitrate-megabits, bitrate-gigabits, bitrate-terabits,
+		// bitrate-petabits, bitrate-exabits, bitrate-zettabits, bitrate-yottabits
 		return $this->formatComputingNumbers( $bps, 1000, "bitrate-$1bits" );
 	}
 
@@ -4754,6 +4736,8 @@ class Language {
 	 * @return string Plain text (not HTML)
 	 */
 	public function formatSize( $size ) {
+		// messages used: size-bytes, size-kilobytes, size-megabytes, size-gigabytes, size-terabytes,
+		// size-petabytes, size-exabytes, size-zettabytes, size-yottabytes
 		return $this->formatComputingNumbers( $size, 1024, "size-$1bytes" );
 	}
 
@@ -4783,7 +4767,7 @@ class Language {
 	 *
 	 * @deprecated since 1.35 use LanguageConverter::getConvRuleTitle instead
 	 *
-	 * @return string
+	 * @return string|false
 	 */
 	public function getConvRuleTitle() {
 		return $this->getConverter()->getConvRuleTitle();

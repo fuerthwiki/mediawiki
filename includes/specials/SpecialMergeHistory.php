@@ -61,10 +61,10 @@ class SpecialMergeHistory extends SpecialPage {
 	/** @var bool Was submitted? */
 	protected $mSubmitted;
 
-	/** @var Title */
+	/** @var Title|null */
 	protected $mTargetObj;
 
-	/** @var Title */
+	/** @var Title|null */
 	protected $mDestObj;
 
 	/** @var int[] */
@@ -111,14 +111,14 @@ class SpecialMergeHistory extends SpecialPage {
 	private function loadRequestParams() {
 		$request = $this->getRequest();
 		$this->mAction = $request->getRawVal( 'action' );
-		$this->mTarget = $request->getVal( 'target' );
-		$this->mDest = $request->getVal( 'dest' );
+		$this->mTarget = $request->getVal( 'target', '' );
+		$this->mDest = $request->getVal( 'dest', '' );
 		$this->mSubmitted = $request->getBool( 'submitted' );
 
 		$this->mTargetID = intval( $request->getVal( 'targetID' ) );
 		$this->mDestID = intval( $request->getVal( 'destID' ) );
 		$this->mTimestamp = $request->getVal( 'mergepoint' );
-		if ( !preg_match( '/[0-9]{14}/', $this->mTimestamp ) ) {
+		if ( $this->mTimestamp === null || !preg_match( '/[0-9]{14}/', $this->mTimestamp ) ) {
 			$this->mTimestamp = '';
 		}
 		$this->mComment = $request->getText( 'wpComment' );
@@ -226,16 +226,17 @@ class SpecialMergeHistory extends SpecialPage {
 		# List all stored revisions
 		$revisions = new MergeHistoryPager(
 			$this,
-			[],
-			$this->mTargetObj,
-			$this->mDestObj,
 			$this->linkBatchFactory,
 			$this->loadBalancer,
-			$this->revisionStore
+			$this->revisionStore,
+			[],
+			$this->mTargetObj,
+			$this->mDestObj
 		);
 		$haveRevisions = $revisions->getNumRows() > 0;
 
 		$out = $this->getOutput();
+		$out->addModuleStyles( [ 'mediawiki.interface.helpers.styles' ] );
 		$titleObj = $this->getPageTitle();
 		$action = $titleObj->getLocalURL( [ 'action' => 'submit' ] );
 		# Start the form here
@@ -287,9 +288,7 @@ class SpecialMergeHistory extends SpecialPage {
 
 		if ( $haveRevisions ) {
 			$out->addHTML( $revisions->getNavigationBar() );
-			$out->addHTML( '<ul>' );
 			$out->addHTML( $revisions->getBody() );
-			$out->addHTML( '</ul>' );
 			$out->addHTML( $revisions->getNavigationBar() );
 		} else {
 			$out->addWikiMsg( 'mergehistory-empty' );
@@ -360,9 +359,16 @@ class SpecialMergeHistory extends SpecialPage {
 		}
 		$comment = Linker::revComment( $revRecord );
 
-		return Html::rawElement( 'li', [],
+		// Tags, if any.
+		list( $tagSummary, $classes ) = ChangeTags::formatSummaryRow(
+			$row->ts_tags,
+			'mergehistory',
+			$this->getContext()
+		);
+
+		return Html::rawElement( 'li', $classes,
 			$this->msg( 'mergehistory-revisionrow' )
-				->rawParams( $checkBox, $last, $pageLink, $userLink, $stxt, $comment )->escaped() );
+				->rawParams( $checkBox, $last, $pageLink, $userLink, $stxt, $comment, $tagSummary )->escaped() );
 	}
 
 	/**
@@ -394,7 +400,7 @@ class SpecialMergeHistory extends SpecialPage {
 		$mh = $this->mergeHistoryFactory->newMergeHistory( $targetTitle, $destTitle, $this->mTimestamp );
 
 		// Merge!
-		$mergeStatus = $mh->merge( $this->getUser(), $this->mComment );
+		$mergeStatus = $mh->merge( $this->getAuthority(), $this->mComment );
 		if ( !$mergeStatus->isOK() ) {
 			// Failed merge
 			$this->getOutput()->addWikiMsg( $mergeStatus->getMessage() );

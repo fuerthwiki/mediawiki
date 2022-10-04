@@ -24,11 +24,12 @@ if ( !defined( 'MEDIAWIKI' ) ) {
 	die( "This file is part of MediaWiki, it is not a valid entry point" );
 }
 
-use MediaWiki\Linker\LinkTarget;
 use MediaWiki\Logger\LoggerFactory;
 use MediaWiki\MediaWikiServices;
 use MediaWiki\ProcOpenError;
+use MediaWiki\ResourceLoader\ResourceLoader;
 use MediaWiki\Shell\Shell;
+use MediaWiki\Utils\UrlUtils;
 use Wikimedia\AtEase\AtEase;
 use Wikimedia\ParamValidator\TypeDef\ExpiryDef;
 use Wikimedia\RequestTimeout\RequestTimeout;
@@ -105,40 +106,44 @@ function wfLoadSkins( array $skins ) {
 }
 
 /**
- * Like array_diff( $a, $b ) except that it works with two-dimensional arrays.
- * @param array $a
- * @param array $b
+ * Like array_diff( $arr1, $arr2 ) except that it works with two-dimensional arrays.
+ * @param string[]|array[] $arr1
+ * @param string[]|array[] $arr2
  * @return array
  */
-function wfArrayDiff2( $a, $b ) {
-	return array_udiff( $a, $b, 'wfArrayDiff2_cmp' );
-}
-
-/**
- * @param array|string $a
- * @param array|string $b
- * @return int
- */
-function wfArrayDiff2_cmp( $a, $b ) {
-	if ( is_string( $a ) && is_string( $b ) ) {
-		return strcmp( $a, $b );
-	} elseif ( count( $a ) !== count( $b ) ) {
-		return count( $a ) <=> count( $b );
-	} else {
-		reset( $a );
-		reset( $b );
-		while ( key( $a ) !== null && key( $b ) !== null ) {
-			$valueA = current( $a );
-			$valueB = current( $b );
-			$cmp = strcmp( $valueA, $valueB );
-			if ( $cmp !== 0 ) {
-				return $cmp;
-			}
-			next( $a );
-			next( $b );
+function wfArrayDiff2( $arr1, $arr2 ) {
+	/**
+	 * @param string|array $a
+	 * @param string|array $b
+	 */
+	$comparator = static function ( $a, $b ): int {
+		if ( is_string( $a ) && is_string( $b ) ) {
+			return strcmp( $a, $b );
 		}
-		return 0;
-	}
+		if ( !is_array( $a ) && !is_array( $b ) ) {
+			throw new InvalidArgumentException(
+				'This function assumes that array elements are all strings or all arrays'
+			);
+		}
+		if ( count( $a ) !== count( $b ) ) {
+			return count( $a ) <=> count( $b );
+		} else {
+			reset( $a );
+			reset( $b );
+			while ( key( $a ) !== null && key( $b ) !== null ) {
+				$valueA = current( $a );
+				$valueB = current( $b );
+				$cmp = strcmp( $valueA, $valueB );
+				if ( $cmp !== 0 ) {
+					return $cmp;
+				}
+				next( $a );
+				next( $b );
+			}
+			return 0;
+		}
+	};
+	return array_udiff( $arr1, $arr2, $comparator );
 }
 
 /**
@@ -179,11 +184,12 @@ function wfMergeErrorArrays( ...$args ) {
 }
 
 /**
- * Insert array into another array after the specified *KEY*
+ * Insert an array into another array after the specified key. If the key is
+ * not present in the input array, it is returned without modification.
  *
  * @param array $array
  * @param array $insert The array to insert.
- * @param mixed $after The key to insert after. Callers need to make sure the key is set.
+ * @param mixed $after The key to insert after.
  * @return array
  */
 function wfArrayInsertAfter( array $array, array $insert, $after ) {
@@ -191,6 +197,9 @@ function wfArrayInsertAfter( array $array, array $insert, $after ) {
 	$keys = array_keys( $array );
 	$offsetByKey = array_flip( $keys );
 
+	if ( !\array_key_exists( $after, $offsetByKey ) ) {
+		return $array;
+	}
 	$offset = $offsetByKey[$after];
 
 	// Insert at the specified offset
@@ -399,7 +408,7 @@ function wfCgiToArray( $query ) {
 				$k = substr( $k, 0, -1 );
 				$temp = [ $k => $temp ];
 			}
-			if ( isset( $ret[$key] ) ) {
+			if ( isset( $ret[$key] ) && is_array( $ret[$key] ) ) {
 				$ret[$key] = array_merge( $ret[$key], $temp );
 			} else {
 				$ret[$key] = $temp;
@@ -449,6 +458,36 @@ function wfAppendQuery( $url, $query ) {
 }
 
 /**
+ * @deprecated Get a UrlUtils from services, or construct your own
+ * @internal
+ * @return UrlUtils from services if initialized, otherwise make one from globals
+ */
+function wfGetUrlUtils(): UrlUtils {
+	global $wgServer, $wgCanonicalServer, $wgInternalServer, $wgRequest, $wgHttpsPort,
+		$wgUrlProtocols;
+
+	if ( MediaWikiServices::hasInstance() ) {
+		$services = MediaWikiServices::getInstance();
+		if ( $services->hasService( 'UrlUtils' ) ) {
+			return $services->getUrlUtils();
+		}
+	}
+
+	return new UrlUtils( [
+		// UrlUtils throws if the relevant $wg(|Canonical|Internal) variable is null, but the old
+		// implementations implicitly converted it to an empty string (presumably by mistake).
+		// Preserve the old behavior for compatibility.
+		UrlUtils::SERVER => $wgServer ?? '',
+		UrlUtils::CANONICAL_SERVER => $wgCanonicalServer ?? '',
+		UrlUtils::INTERNAL_SERVER => $wgInternalServer ?? '',
+		UrlUtils::FALLBACK_PROTOCOL => $wgRequest ? $wgRequest->getProtocol()
+			: WebRequest::detectProtocol(),
+		UrlUtils::HTTPS_PORT => $wgHttpsPort,
+		UrlUtils::VALID_PROTOCOLS => $wgUrlProtocols,
+	] );
+}
+
+/**
  * Expand a potentially local URL to a fully-qualified URL. Assumes $wgServer
  * is correct.
  *
@@ -462,9 +501,7 @@ function wfAppendQuery( $url, $query ) {
  *    For protocol-relative URLs, use the protocol of $wgCanonicalServer
  * PROTO_INTERNAL: Like PROTO_CANONICAL, but uses $wgInternalServer instead of $wgCanonicalServer
  *
- * @todo this won't work with current-path-relative URLs
- * like "subdir/foo.html", etc.
- *
+ * @deprecated since 1.39, use UrlUtils::expand()
  * @param string $url Either fully-qualified or a local path + query
  * @param string|int|null $defaultProto One of the PROTO_* constants. Determines the
  *    protocol to use if $url or $wgServer is protocol-relative
@@ -472,86 +509,20 @@ function wfAppendQuery( $url, $query ) {
  *    no valid URL can be constructed
  */
 function wfExpandUrl( $url, $defaultProto = PROTO_CURRENT ) {
-	global $wgServer, $wgCanonicalServer, $wgInternalServer, $wgRequest,
-		$wgHttpsPort;
-	if ( $defaultProto === PROTO_CANONICAL ) {
-		$serverUrl = $wgCanonicalServer;
-	} elseif ( $defaultProto === PROTO_INTERNAL && $wgInternalServer !== false ) {
-		// Make $wgInternalServer fall back to $wgServer if not set
-		$serverUrl = $wgInternalServer;
-	} else {
-		$serverUrl = $wgServer;
-		if ( $defaultProto === PROTO_CURRENT ) {
-			$defaultProto = $wgRequest->getProtocol() . '://';
-		}
-	}
-
-	// Analyze $serverUrl to obtain its protocol
-	$bits = wfParseUrl( $serverUrl );
-	$serverHasProto = $bits && $bits['scheme'] != '';
-
-	if ( $defaultProto === PROTO_CANONICAL || $defaultProto === PROTO_INTERNAL ) {
-		if ( $serverHasProto ) {
-			$defaultProto = $bits['scheme'] . '://';
-		} else {
-			// $wgCanonicalServer or $wgInternalServer doesn't have a protocol.
-			// This really isn't supposed to happen. Fall back to HTTP in this
-			// ridiculous case.
-			$defaultProto = PROTO_HTTP;
-		}
-	}
-
-	$defaultProtoWithoutSlashes = $defaultProto !== null ? substr( $defaultProto, 0, -2 ) : '';
-
-	if ( substr( $url, 0, 2 ) == '//' ) {
-		$url = $defaultProtoWithoutSlashes . $url;
-	} elseif ( substr( $url, 0, 1 ) == '/' ) {
-		// If $serverUrl is protocol-relative, prepend $defaultProtoWithoutSlashes,
-		// otherwise leave it alone.
-		if ( $serverHasProto ) {
-			$url = $serverUrl . $url;
-		} else {
-			// If an HTTPS URL is synthesized from a protocol-relative $wgServer, allow the
-			// user to override the port number (T67184)
-			if ( $defaultProto === PROTO_HTTPS && $wgHttpsPort != 443 ) {
-				if ( isset( $bits['port'] ) ) {
-					throw new Exception( 'A protocol-relative $wgServer may not contain a port number' );
-				}
-				$url = $defaultProtoWithoutSlashes . $serverUrl . ':' . $wgHttpsPort . $url;
-			} else {
-				$url = $defaultProtoWithoutSlashes . $serverUrl . $url;
-			}
-		}
-	}
-
-	$bits = wfParseUrl( $url );
-
-	if ( $bits && isset( $bits['path'] ) ) {
-		$bits['path'] = wfRemoveDotSegments( $bits['path'] );
-		return wfAssembleUrl( $bits );
-	} elseif ( $bits ) {
-		# No path to expand
-		return $url;
-	} elseif ( substr( $url, 0, 1 ) != '/' ) {
-		# URL is a relative path
-		return wfRemoveDotSegments( $url );
-	}
-
-	# Expanded URL is not valid.
-	return false;
+	return wfGetUrlUtils()->expand( (string)$url, $defaultProto ) ?? false;
 }
 
 /**
  * Get the wiki's "server", i.e. the protocol and host part of the URL, with a
  * protocol specified using a PROTO_* constant as in wfExpandUrl()
  *
+ * @deprecated since 1.39, use UrlUtils::getServer()
  * @since 1.32
  * @param string|int|null $proto One of the PROTO_* constants.
  * @return string The URL
  */
 function wfGetServerUrl( $proto ) {
-	$url = wfExpandUrl( '/', $proto );
-	return substr( $url, 0, -1 );
+	return wfGetUrlUtils()->getServer( $proto ) ?? '';
 }
 
 /**
@@ -561,52 +532,13 @@ function wfGetServerUrl( $proto ) {
  * This is the basic structure used (brackets contain keys for $urlParts):
  * [scheme][delimiter][user]:[pass]@[host]:[port][path]?[query]#[fragment]
  *
- * @todo Need to integrate this into wfExpandUrl (see T34168)
- *
+ * @deprecated since 1.39, use UrlUtils::assemble()
  * @since 1.19
  * @param array $urlParts URL parts, as output from wfParseUrl
  * @return string URL assembled from its component parts
  */
 function wfAssembleUrl( $urlParts ) {
-	$result = '';
-
-	if ( isset( $urlParts['delimiter'] ) ) {
-		if ( isset( $urlParts['scheme'] ) ) {
-			$result .= $urlParts['scheme'];
-		}
-
-		$result .= $urlParts['delimiter'];
-	}
-
-	if ( isset( $urlParts['host'] ) ) {
-		if ( isset( $urlParts['user'] ) ) {
-			$result .= $urlParts['user'];
-			if ( isset( $urlParts['pass'] ) ) {
-				$result .= ':' . $urlParts['pass'];
-			}
-			$result .= '@';
-		}
-
-		$result .= $urlParts['host'];
-
-		if ( isset( $urlParts['port'] ) ) {
-			$result .= ':' . $urlParts['port'];
-		}
-	}
-
-	if ( isset( $urlParts['path'] ) ) {
-		$result .= $urlParts['path'];
-	}
-
-	if ( isset( $urlParts['query'] ) && $urlParts['query'] !== '' ) {
-		$result .= '?' . $urlParts['query'];
-	}
-
-	if ( isset( $urlParts['fragment'] ) ) {
-		$result .= '#' . $urlParts['fragment'];
-	}
-
-	return $result;
+	return wfGetUrlUtils()->assemble( (array)$urlParts );
 }
 
 /**
@@ -614,138 +546,38 @@ function wfAssembleUrl( $urlParts ) {
  * '/a/./b/../c/' becomes '/a/c/'.  For details on the algorithm, please see
  * RFC3986 section 5.2.4.
  *
- * @todo Need to integrate this into wfExpandUrl (see T34168)
- *
  * @since 1.19
  *
+ * @deprecated since 1.39, use UrlUtils::removeDotSegments()
  * @param string $urlPath URL path, potentially containing dot-segments
  * @return string URL path with all dot-segments removed
  */
 function wfRemoveDotSegments( $urlPath ) {
-	$output = '';
-	$inputOffset = 0;
-	$inputLength = strlen( $urlPath );
-
-	while ( $inputOffset < $inputLength ) {
-		$prefixLengthOne = substr( $urlPath, $inputOffset, 1 );
-		$prefixLengthTwo = substr( $urlPath, $inputOffset, 2 );
-		$prefixLengthThree = substr( $urlPath, $inputOffset, 3 );
-		$prefixLengthFour = substr( $urlPath, $inputOffset, 4 );
-		$trimOutput = false;
-
-		if ( $prefixLengthTwo == './' ) {
-			# Step A, remove leading "./"
-			$inputOffset += 2;
-		} elseif ( $prefixLengthThree == '../' ) {
-			# Step A, remove leading "../"
-			$inputOffset += 3;
-		} elseif ( ( $prefixLengthTwo == '/.' ) && ( $inputOffset + 2 == $inputLength ) ) {
-			# Step B, replace leading "/.$" with "/"
-			$inputOffset += 1;
-			$urlPath[$inputOffset] = '/';
-		} elseif ( $prefixLengthThree == '/./' ) {
-			# Step B, replace leading "/./" with "/"
-			$inputOffset += 2;
-		} elseif ( $prefixLengthThree == '/..' && ( $inputOffset + 3 == $inputLength ) ) {
-			# Step C, replace leading "/..$" with "/" and
-			# remove last path component in output
-			$inputOffset += 2;
-			$urlPath[$inputOffset] = '/';
-			$trimOutput = true;
-		} elseif ( $prefixLengthFour == '/../' ) {
-			# Step C, replace leading "/../" with "/" and
-			# remove last path component in output
-			$inputOffset += 3;
-			$trimOutput = true;
-		} elseif ( ( $prefixLengthOne == '.' ) && ( $inputOffset + 1 == $inputLength ) ) {
-			# Step D, remove "^.$"
-			$inputOffset += 1;
-		} elseif ( ( $prefixLengthTwo == '..' ) && ( $inputOffset + 2 == $inputLength ) ) {
-			# Step D, remove "^..$"
-			$inputOffset += 2;
-		} else {
-			# Step E, move leading path segment to output
-			if ( $prefixLengthOne == '/' ) {
-				$slashPos = strpos( $urlPath, '/', $inputOffset + 1 );
-			} else {
-				$slashPos = strpos( $urlPath, '/', $inputOffset );
-			}
-			if ( $slashPos === false ) {
-				$output .= substr( $urlPath, $inputOffset );
-				$inputOffset = $inputLength;
-			} else {
-				$output .= substr( $urlPath, $inputOffset, $slashPos - $inputOffset );
-				$inputOffset += $slashPos - $inputOffset;
-			}
-		}
-
-		if ( $trimOutput ) {
-			$slashPos = strrpos( $output, '/' );
-			if ( $slashPos === false ) {
-				$output = '';
-			} else {
-				$output = substr( $output, 0, $slashPos );
-			}
-		}
-	}
-
-	return $output;
+	return wfGetUrlUtils()->removeDotSegments( (string)$urlPath );
 }
 
 /**
  * Returns a regular expression of url protocols
  *
+ * @deprecated since 1.39, use UrlUtils::validProtocols()
  * @param bool $includeProtocolRelative If false, remove '//' from the returned protocol list.
  *        DO NOT USE this directly, use wfUrlProtocolsWithoutProtRel() instead
  * @return string
  */
 function wfUrlProtocols( $includeProtocolRelative = true ) {
-	global $wgUrlProtocols;
-
-	// Cache return values separately based on $includeProtocolRelative
-	static $withProtRel = null, $withoutProtRel = null;
-	$cachedValue = $includeProtocolRelative ? $withProtRel : $withoutProtRel;
-	if ( $cachedValue !== null ) {
-		return $cachedValue;
-	}
-
-	// Support old-style $wgUrlProtocols strings, for backwards compatibility
-	// with LocalSettings files from 1.5
-	if ( is_array( $wgUrlProtocols ) ) {
-		$protocols = [];
-		foreach ( $wgUrlProtocols as $protocol ) {
-			// Filter out '//' if !$includeProtocolRelative
-			if ( $includeProtocolRelative || $protocol !== '//' ) {
-				$protocols[] = preg_quote( $protocol, '/' );
-			}
-		}
-
-		$retval = implode( '|', $protocols );
-	} else {
-		// Ignore $includeProtocolRelative in this case
-		// This case exists for pre-1.6 compatibility, and we can safely assume
-		// that '//' won't appear in a pre-1.6 config because protocol-relative
-		// URLs weren't supported until 1.18
-		$retval = $wgUrlProtocols;
-	}
-
-	// Cache return value
-	if ( $includeProtocolRelative ) {
-		$withProtRel = $retval;
-	} else {
-		$withoutProtRel = $retval;
-	}
-	return $retval;
+	$method = $includeProtocolRelative ? 'validProtocols' : 'validAbsoluteProtocols';
+	return wfGetUrlUtils()->$method();
 }
 
 /**
  * Like wfUrlProtocols(), but excludes '//' from the protocol list. Use this if
  * you need a regex that matches all URL protocols but does not match protocol-
  * relative URLs
+ * @deprecated since 1.39, use UrlUtils::validAbsoluteProtocols()
  * @return string
  */
 function wfUrlProtocolsWithoutProtRel() {
-	return wfUrlProtocols( false );
+	return wfGetUrlUtils()->validAbsoluteProtocols();
 }
 
 /**
@@ -758,6 +590,7 @@ function wfUrlProtocolsWithoutProtRel() {
  * 4) Rejects some invalid URLs that parse_url doesn't, e.g. the empty string or URLs starting with
  *    a line feed character.
  *
+ * @deprecated since 1.39, use UrlUtils::parse()
  * @param string $url A URL to parse
  * @return string[]|bool Bits of the URL in an associative array, or false on failure.
  *   Possible fields:
@@ -774,53 +607,7 @@ function wfUrlProtocolsWithoutProtRel() {
  *   - fragment: the part after #, can be missing.
  */
 function wfParseUrl( $url ) {
-	global $wgUrlProtocols; // Allow all protocols defined in DefaultSettings/LocalSettings.php
-
-	$bits = parse_url( $url );
-	if ( !$bits ) {
-		return false;
-	}
-
-	// parse_url() incorrectly handles schemes case-sensitively. Convert it to lowercase.
-	$bits['scheme'] = strtolower( $bits['scheme'] ?? '' );
-
-	// most of the protocols are followed by ://, but mailto: and sometimes news: not, check for it
-	if ( in_array( $bits['scheme'] . '://', $wgUrlProtocols ) ) {
-		$bits['delimiter'] = '://';
-	} elseif ( in_array( $bits['scheme'] . ':', $wgUrlProtocols ) ) {
-		$bits['delimiter'] = ':';
-		// parse_url detects for news: and mailto: the host part of an url as path
-		// We have to correct this wrong detection
-		if ( isset( $bits['path'] ) ) {
-			$bits['host'] = $bits['path'];
-			$bits['path'] = '';
-		}
-	} elseif ( !strlen( $bits['scheme'] ) && isset( $bits['host'] ) ) {
-		// This means $url was protocol-relative, e.g. //example.com
-		$bits['delimiter'] = '//';
-	} else {
-		// Option 1: scheme is not in $wgUrlProtocols
-		// Option 2: parse_url() returns an array without scheme or host for some invalid URLs,
-		// e.g. parse_url("%0Ahttp://example.com") == [ 'path' => '%0Ahttp://example.com' ]
-		return false;
-	}
-
-	/* Provide an empty host for eg. file:/// urls (see T30627) */
-	if ( !isset( $bits['host'] ) ) {
-		$bits['host'] = '';
-
-		// See T47069
-		if ( isset( $bits['path'] ) ) {
-			/* parse_url loses the third / for file:///c:/ urls (but not on variants) */
-			if ( substr( $bits['path'], 0, 1 ) !== '/' ) {
-				$bits['path'] = '/' . $bits['path'];
-			}
-		} else {
-			$bits['path'] = '';
-		}
-	}
-
-	return $bits;
+	return wfGetUrlUtils()->parse( (string)$url ) ?? false;
 }
 
 /**
@@ -828,39 +615,24 @@ function wfParseUrl( $url ) {
  * encoded non-ASCII Unicode characters with their UTF-8 original forms
  * for more compact display and legibility for local audiences.
  *
- * @todo handle punycode domains too
- *
+ * @deprecated since 1.39, use UrlUtils::expandIRI()
  * @param string $url
  * @return string
  */
 function wfExpandIRI( $url ) {
-	return preg_replace_callback(
-		'/((?:%[89A-F][0-9A-F])+)/i',
-		static function ( array $matches ) {
-			return urldecode( $matches[1] );
-		},
-		wfExpandUrl( $url )
-	);
+	return wfGetUrlUtils()->expandIRI( (string)$url ) ?? '';
 }
 
 /**
  * Check whether a given URL has a domain that occurs in a given set of domains
+ *
+ * @deprecated since 1.39, use UrlUtils::expandIRI()
  * @param string $url
  * @param array $domains Array of domains (strings)
  * @return bool True if the host part of $url ends in one of the strings in $domains
  */
 function wfMatchesDomainList( $url, $domains ) {
-	$bits = wfParseUrl( $url );
-	if ( is_array( $bits ) && isset( $bits['host'] ) ) {
-		$host = '.' . $bits['host'];
-		foreach ( (array)$domains as $domain ) {
-			$domain = '.' . $domain;
-			if ( substr( $host, -strlen( $domain ) ) === $domain ) {
-				return true;
-			}
-		}
-	}
-	return false;
+	return wfGetUrlUtils()->matchesDomainList( (string)$url, (array)$domains );
 }
 
 /**
@@ -1050,10 +822,10 @@ function wfLogWarning( $msg, $callerOffset = 1, $level = E_USER_WARNING ) {
 }
 
 /**
- * @todo document
- * @todo Move logic to MediaWiki.php
+ * @deprecated since 1.38
  */
 function wfLogProfilingData() {
+	wfDeprecated( __FUNCTION__, '1.38' );
 	$profiler = Profiler::instance();
 	$profiler->logData();
 
@@ -1062,49 +834,6 @@ function wfLogProfilingData() {
 		MediaWikiServices::getInstance()->getStatsdDataFactory(),
 		MediaWikiServices::getInstance()->getMainConfig()
 	);
-}
-
-/**
- * Increment a statistics counter
- *
- * @param string $key
- * @param int $count
- * @return void
- *
- * @deprecated since 1.36 (emits deprecation warnings since 1.37),
- * use MediaWikiServices::getInstance()->getStatsdDataFactory()->updateCount() instead
- */
-function wfIncrStats( $key, $count = 1 ) {
-	wfDeprecated( __FUNCTION__, '1.36' );
-	$stats = MediaWikiServices::getInstance()->getStatsdDataFactory();
-	$stats->updateCount( $key, $count );
-}
-
-/**
- * Check whether the wiki is in read-only mode.
- *
- * @deprecated since 1.38, use ReadOnlyMode::isReadOnly() instead
- *
- * @return bool
- */
-function wfReadOnly() {
-	return MediaWikiServices::getInstance()->getReadOnlyMode()
-		->isReadOnly();
-}
-
-/**
- * Check if the site is in read-only mode and return the message if so
- *
- * This checks wfConfiguredReadOnlyReason() and the main load balancer
- * for replica DB lag. This may result in DB connection being made.
- *
- * @deprecated since 1.38, use ReadOnlyMode::getReason() instead
- *
- * @return string|bool String when in read-only mode; false otherwise
- */
-function wfReadOnlyReason() {
-	return MediaWikiServices::getInstance()->getReadOnlyMode()
-		->getReason();
 }
 
 /**
@@ -1164,6 +893,11 @@ function wfGetLangObj( $langcode = false ) {
  *
  * This function replaces all old wfMsg* functions.
  *
+ * When the MessageSpecifier object is an instance of Message, a clone of the object is returned.
+ * This is unlike the `new Message( … )` constructor, which returns a new object constructed from
+ * scratch with the same key. This difference is mostly relevant when the passed object is an
+ * instance of a subclass like RawMessage or ApiMessage.
+ *
  * @param string|string[]|MessageSpecifier $key Message key, or array of keys, or a MessageSpecifier
  * @param mixed ...$params Normal message parameters
  * @return Message
@@ -1173,7 +907,12 @@ function wfGetLangObj( $langcode = false ) {
  * @see Message::__construct
  */
 function wfMessage( $key, ...$params ) {
-	$message = new Message( $key );
+	if ( is_array( $key ) ) {
+		// Fallback keys are not allowed in message specifiers
+		$message = wfMessageFallback( ...$key );
+	} else {
+		$message = Message::newFromSpecifier( $key );
+	}
 
 	// We call Message::params() to reduce code duplication
 	if ( $params ) {
@@ -1186,7 +925,7 @@ function wfMessage( $key, ...$params ) {
 /**
  * This function accepts multiple message keys and returns a message instance
  * for the first message which is non-empty. If all messages are empty then an
- * instance of the first message key is returned.
+ * instance of the last message key is returned.
  *
  * @param string ...$keys Message keys
  * @return Message
@@ -1487,6 +1226,7 @@ function wfEscapeWikiText( $text ) {
 		$repl2 = $repl2 ? '/\b(' . implode( '|', $repl2 ) . '):/i' : '/^(?!)/';
 	}
 	$text = substr( strtr( "\n$text", $repl ), 1 );
+	// @phan-suppress-next-line PhanTypeMismatchArgumentNullableInternal False positive
 	$text = preg_replace( $repl2, '$1&#58;', $text );
 	return $text;
 }
@@ -1649,10 +1389,12 @@ function wfClearOutputBuffers() {
 /**
  * Get a timestamp string in one of various formats
  *
- * @param mixed $outputtype A timestamp in one of the supported formats, the
- *   function will autodetect which format is supplied and act accordingly.
- * @param mixed $ts Optional timestamp to convert, default 0 for the current time
- * @return string|false The same date in the format specified in $outputtype or false
+ * @param mixed $outputtype Output format, one of the TS_* constants. Defaults to
+ *   Unix timestamp.
+ * @param mixed $ts A timestamp in any supported format. The
+ *   function will autodetect which format is supplied and act accordingly. Use 0 or
+ *   omit to use current time
+ * @return string|false The date in the specified format, or false on error.
  */
 function wfTimestamp( $outputtype = TS_UNIX, $ts = 0 ) {
 	$ret = MWTimestamp::convert( $outputtype, $ts );
@@ -1739,7 +1481,7 @@ function wfTempDir() {
 function wfMkdirParents( $dir, $mode = null, $caller = null ) {
 	global $wgDirectoryMode;
 
-	if ( FileBackend::isStoragePath( $dir ) ) { // sanity
+	if ( FileBackend::isStoragePath( $dir ) ) {
 		throw new MWException( __FUNCTION__ . " given storage path '$dir'." );
 	}
 
@@ -1806,7 +1548,7 @@ function wfRecursiveRemoveDir( $dir ) {
  */
 function wfPercent( $nr, int $acc = 2, bool $round = true ) {
 	$accForFormat = $acc >= 0 ? $acc : 0;
-	$ret = sprintf( "%.${accForFormat}f", $nr );
+	$ret = sprintf( "%.{$accForFormat}f", $nr );
 	return $round ? round( (float)$ret, $acc ) . '%' : "$ret%";
 }
 
@@ -2142,23 +1884,6 @@ function wfRelativePath( $path, $from ) {
 }
 
 /**
- * Get an ASCII string identifying this wiki
- * This is used as a prefix in memcached keys
- *
- * @deprecated since 1.35 Use WikiMap::getCurrentWikiId()
- * @return string
- */
-function wfWikiID() {
-	global $wgDBprefix, $wgDBname;
-
-	if ( $wgDBprefix ) {
-		return "$wgDBname-$wgDBprefix";
-	} else {
-		return $wgDBname;
-	}
-}
-
-/**
  * Get a Database object.
  *
  * @param int $db Index of the connection to get. May be DB_PRIMARY for the
@@ -2179,13 +1904,13 @@ function wfWikiID() {
  * updater to ensure that a proper database is being updated.
  *
  * Note 3: When replacing calls to this with calls to methods on an injected
- * LoadBalancer, LoadBalancer::getConnectionRef is more commonly needed than
+ * LoadBalancer, LoadBalancer::getConnection is more commonly needed than
  * LoadBalancer::getMaintenanceConnectionRef, which is needed for more advanced
  * administrative tasks. See the IMaintainableDatabase and IDatabase interfaces
  * for details.
  *
- * @todo Replace calls to wfGetDB with calls to LoadBalancer::getConnection()
- *       on an injected instance of LoadBalancer.
+ * @deprecated since 1.39, use LoadBalancer::getConnection() on an injected
+ * instance of LoadBalancer instead.
  *
  * @return \Wikimedia\Rdbms\DBConnRef
  */
@@ -2203,67 +1928,6 @@ function wfGetDB( $db, $groups = [], $wiki = false ) {
 }
 
 /**
- * Get a load balancer object.
- *
- * @deprecated since 1.27, hard deprecated since 1.37
- * Use MediaWikiServices::getInstance()->getDBLoadBalancer()
- * or MediaWikiServices::getInstance()->getDBLoadBalancerFactory() instead.
- *
- * @param string|bool $wiki Wiki ID, or false for the current wiki
- * @return \Wikimedia\Rdbms\LoadBalancer
- */
-function wfGetLB( $wiki = false ) {
-	wfDeprecated( __FUNCTION__, '1.27' );
-	if ( $wiki === false ) {
-		// @phan-suppress-next-line PhanTypeMismatchReturnSuperType
-		return MediaWikiServices::getInstance()->getDBLoadBalancer();
-	} else {
-		$factory = MediaWikiServices::getInstance()->getDBLoadBalancerFactory();
-		// @phan-suppress-next-line PhanTypeMismatchReturnSuperType
-		return $factory->getMainLB( $wiki );
-	}
-}
-
-/**
- * Find a file.
- * @deprecated since 1.34, use MediaWikiServices
- * @param string|LinkTarget $title
- * @param array $options Associative array of options (see RepoGroup::findFile)
- * @return File|bool File, or false if the file does not exist
- */
-function wfFindFile( $title, $options = [] ) {
-	wfDeprecated( __FUNCTION__, '1.34' );
-	return MediaWikiServices::getInstance()->getRepoGroup()->findFile( $title, $options );
-}
-
-/**
- * Get an object referring to a locally registered file.
- * Returns a valid placeholder object if the file does not exist.
- *
- * @deprecated since 1.34, hard deprecated since 1.37, use MediaWikiServices
- * @param Title|string $title
- * @return LocalFile|null A File, or null if passed an invalid Title
- */
-function wfLocalFile( $title ) {
-	wfDeprecated( __FUNCTION__, '1.34' );
-	return MediaWikiServices::getInstance()->getRepoGroup()->getLocalRepo()->newFile( $title );
-}
-
-/**
- * Should low-performance queries be disabled?
- *
- * @return bool
- * @codeCoverageIgnore
- */
-function wfQueriesMustScale() {
-	global $wgMiserMode;
-	return $wgMiserMode
-		|| ( SiteStats::pages() > 100000
-		&& SiteStats::edits() > 1000000
-		&& SiteStats::users() > 10000 );
-}
-
-/**
  * Get the path to a specified script file, respecting file
  * extensions; this is a wrapper around $wgScriptPath etc.
  * except for 'index' and 'load' which use $wgScript/$wgLoadScript
@@ -2274,36 +1938,12 @@ function wfQueriesMustScale() {
 function wfScript( $script = 'index' ) {
 	global $wgScriptPath, $wgScript, $wgLoadScript;
 	if ( $script === 'index' ) {
+		// @phan-suppress-next-line PhanPossiblyUndeclaredVariable False positive
 		return $wgScript;
 	} elseif ( $script === 'load' ) {
 		return $wgLoadScript;
 	} else {
 		return "{$wgScriptPath}/{$script}.php";
-	}
-}
-
-/**
- * Get the script URL.
- *
- * @deprecated since 1.35. Use wfScript() to obtain an entry point URL.
- * @return string Script URL
- */
-function wfGetScriptUrl() {
-	wfDeprecated( __FUNCTION__, '1.35' );
-	if ( isset( $_SERVER['SCRIPT_NAME'] ) ) {
-		/* as it was called, minus the query string.
-		 *
-		 * Some sites use Apache rewrite rules to handle subdomains,
-		 * and have PHP set up in a weird way that causes PHP_SELF
-		 * to contain the rewritten URL instead of the one that the
-		 * outside world sees.
-		 *
-		 * If in this mode, use SCRIPT_URL instead, which mod_rewrite
-		 * provides containing the "before" URL.
-		 */
-		return $_SERVER['SCRIPT_NAME'];
-	} else {
-		return $_SERVER['URL'];
 	}
 }
 
@@ -2358,17 +1998,19 @@ function wfMemoryLimit( $newLimit ) {
 	$oldLimit = wfShorthandToInteger( ini_get( 'memory_limit' ) );
 	// If the INI config is already unlimited, there is nothing larger
 	if ( $oldLimit != -1 ) {
-		$newLimit = wfShorthandToInteger( $newLimit );
+		$newLimit = wfShorthandToInteger( (string)$newLimit );
 		if ( $newLimit == -1 ) {
 			wfDebug( "Removing PHP's memory limit" );
-			Wikimedia\suppressWarnings();
+			AtEase::suppressWarnings();
+			// @phan-suppress-next-line PhanTypeMismatchArgumentInternal Scalar okay with php8.1
 			ini_set( 'memory_limit', $newLimit );
-			Wikimedia\restoreWarnings();
+			AtEase::restoreWarnings();
 		} elseif ( $newLimit > $oldLimit ) {
 			wfDebug( "Raising PHP's memory limit to $newLimit bytes" );
-			Wikimedia\suppressWarnings();
+			AtEase::suppressWarnings();
+			// @phan-suppress-next-line PhanTypeMismatchArgumentInternal Scalar okay with php8.1
 			ini_set( 'memory_limit', $newLimit );
-			Wikimedia\restoreWarnings();
+			AtEase::restoreWarnings();
 		}
 	}
 }
@@ -2405,12 +2047,12 @@ function wfTransactionalTimeLimit() {
 /**
  * Converts shorthand byte notation to integer form
  *
- * @param string $string
+ * @param null|string $string
  * @param int $default Returned if $string is empty
  * @return int
  */
-function wfShorthandToInteger( $string = '', $default = -1 ) {
-	$string = trim( $string );
+function wfShorthandToInteger( ?string $string = '', int $default = -1 ): int {
+	$string = trim( $string ?? '' );
 	if ( $string === '' ) {
 		return $default;
 	}
@@ -2431,27 +2073,6 @@ function wfShorthandToInteger( $string = '', $default = -1 ) {
 	}
 
 	return $val;
-}
-
-/**
- * Get a specific cache object.
- *
- * @deprecated since 1.32, use ObjectCache::getInstance() instead
- * @param int|string $cacheType A CACHE_* constants, or other key in $wgObjectCaches
- * @return BagOStuff
- */
-function wfGetCache( $cacheType ) {
-	return ObjectCache::getInstance( $cacheType );
-}
-
-/**
- * Get the main cache object
- *
- * @deprecated since 1.32, use ObjectCache::getLocalClusterInstance() instead
- * @return BagOStuff
- */
-function wfGetMainCache() {
-	return ObjectCache::getLocalClusterInstance();
 }
 
 /**
@@ -2479,29 +2100,15 @@ function wfUnpack( $format, $data, $length = false ) {
 		}
 	}
 
-	Wikimedia\suppressWarnings();
+	AtEase::suppressWarnings();
 	$result = unpack( $format, $data );
-	Wikimedia\restoreWarnings();
+	AtEase::restoreWarnings();
 
 	if ( $result === false ) {
 		// If it cannot extract the packed data.
 		throw new MWException( "unpack could not unpack binary data" );
 	}
 	return $result;
-}
-
-/**
- * Determine whether the client at a given source IP is likely to be able to
- * access the wiki via HTTPS.
- *
- * @deprecated since 1.37, always returns true
- *
- * @param string $ip The IPv4/6 address in the normal human-readable form
- * @return bool
- */
-function wfCanIPUseHTTPS( $ip ) {
-	wfDeprecated( __FUNCTION__, '1.37' );
-	return true;
 }
 
 /**
@@ -2523,7 +2130,7 @@ function wfIsInfinity( $str ) {
  * $params is considered non-standard if they involve a non-standard
  * width or any non-default parameters aside from width and page number.
  * The number of possible files with standard parameters is far less than
- * that of all combinations; rate-limiting for them can thus be more generious.
+ * that of all combinations; rate-limiting for them can thus be more generous.
  *
  * @param File $file
  * @param array $params
@@ -2576,7 +2183,7 @@ function wfThumbIsStandard( File $file, array $params ) {
 		// Append any default values to the map (e.g. "lossy", "lossless", ...)
 		$handler->normaliseParams( $file, $normalParams );
 	} else {
-		// If not, then check if the width matchs one of $wgImageLimits
+		// If not, then check if the width matches one of $wgImageLimits
 		$match = false;
 		foreach ( $imageLimits as $pair ) {
 			$normalParams = $basicParams + [ 'width' => $pair[0], 'height' => $pair[1] ];

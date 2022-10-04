@@ -87,7 +87,6 @@ class MarkpatrolledAction extends FormAction {
 			'diff' => $revId,
 			'oldid' => $rc->getAttribute( 'rc_last_oldid' )
 		];
-		// @phan-suppress-next-line SecurityCheck-DoubleEscaped Triggered by RecentChange::getAttribute
 		$revlink = $this->linkRenderer->makeLink( $title, $revId, [], $query );
 		$pagelink = $this->linkRenderer->makeLink( $title, $title->getPrefixedText() );
 
@@ -110,9 +109,8 @@ class MarkpatrolledAction extends FormAction {
 	 * @return bool|array True for success, false for didn't-try, array of errors on failure
 	 */
 	public function onSubmit( $data ) {
-		$user = $this->getUser();
 		$rc = $this->getRecentChange( $data );
-		$errors = $rc->doMarkPatrolled( $user );
+		$errors = $rc->doMarkPatrolled( $this->getAuthority() );
 
 		if ( in_array( [ 'rcpatroldisabled' ], $errors ) ) {
 			throw new ErrorPageError( 'rcpatroldisabled', 'rcpatroldisabledtext' );

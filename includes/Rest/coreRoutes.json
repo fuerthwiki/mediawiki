@@ -33,6 +33,45 @@
 		]
 	},
 	{
+		"path": "/v1/revision/{id}",
+		"class": "MediaWiki\\Rest\\Handler\\RevisionSourceHandler",
+		"services": [
+			"MainConfig",
+			"RevisionLookup",
+			"TitleFormatter",
+			"PageStore"
+		],
+		"format": "source"
+	},
+	{
+		"path": "/v1/revision/{id}/html",
+		"class": "MediaWiki\\Rest\\Handler\\RevisionHTMLHandler",
+		"services": [
+			"MainConfig",
+			"RevisionLookup",
+			"TitleFormatter",
+			"PageStore",
+			"ParsoidOutputStash",
+			"StatsdDataFactory",
+			"ParsoidOutputAccess"
+		],
+		"format": "html"
+	},
+	{
+		"path": "/v1/revision/{id}/with_html",
+		"class": "MediaWiki\\Rest\\Handler\\RevisionHTMLHandler",
+		"services": [
+			"MainConfig",
+			"RevisionLookup",
+			"TitleFormatter",
+			"PageStore",
+			"ParsoidOutputStash",
+			"StatsdDataFactory",
+			"ParsoidOutputAccess"
+		],
+		"format": "with_html"
+	},
+	{
 		"path": "/v1/revision/{id}/bare",
 		"class": "MediaWiki\\Rest\\Handler\\RevisionSourceHandler",
 		"services": [
@@ -49,7 +88,12 @@
 		"services": [
 			"MainConfig",
 			"SearchEngineFactory",
-			"SearchEngineConfig"
+			"SearchEngineConfig",
+			"SearchResultThumbnailProvider",
+			"PermissionManager",
+			"RedirectLookup",
+			"PageStore",
+			"TitleFormatter"
 		],
 		"mode": "fulltext"
 	},
@@ -59,7 +103,12 @@
 		"services": [
 			"MainConfig",
 			"SearchEngineFactory",
-			"SearchEngineConfig"
+			"SearchEngineConfig",
+			"SearchResultThumbnailProvider",
+			"PermissionManager",
+			"RedirectLookup",
+			"PageStore",
+			"TitleFormatter"
 		],
 		"mode": "completion"
 	},
@@ -103,9 +152,10 @@
 			"MainConfig",
 			"RevisionLookup",
 			"TitleFormatter",
-			"ParserCacheFactory",
-			"GlobalIdGenerator",
-			"PageStore"
+			"PageStore",
+			"ParsoidOutputStash",
+			"StatsdDataFactory",
+			"ParsoidOutputAccess"
 		],
 		"format": "html"
 	},
@@ -116,9 +166,10 @@
 			"MainConfig",
 			"RevisionLookup",
 			"TitleFormatter",
-			"ParserCacheFactory",
-			"GlobalIdGenerator",
-			"PageStore"
+			"PageStore",
+			"ParsoidOutputStash",
+			"StatsdDataFactory",
+			"ParsoidOutputAccess"
 		],
 		"format": "with_html"
 	},

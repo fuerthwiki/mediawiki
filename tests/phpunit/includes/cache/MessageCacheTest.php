@@ -1,6 +1,7 @@
 <?php
 
-use MediaWiki\MediaWikiServices;
+use MediaWiki\MainConfigNames;
+use MediaWiki\MainConfigSchema;
 use MediaWiki\Revision\RevisionRecord;
 use MediaWiki\Revision\SlotRecord;
 use Wikimedia\TestingAccessWrapper;
@@ -15,7 +16,7 @@ class MessageCacheTest extends MediaWikiLangTestCase {
 	protected function setUp(): void {
 		parent::setUp();
 		$this->configureLanguages();
-		MediaWikiServices::getInstance()->getMessageCache()->enable();
+		$this->getServiceContainer()->getMessageCache()->enable();
 	}
 
 	/**
@@ -43,9 +44,6 @@ class MessageCacheTest extends MediaWikiLangTestCase {
 		// Fallback to the content language
 		$this->makePage( 'FallbackLanguageTest-ContLang', 'de' );
 
-		// Add customizations for an existing message.
-		$this->makePage( 'sunday', 'ru' );
-
 		// Full key tests -- always want russian
 		$this->makePage( 'MessageCacheTest-FullKeyTest', 'ab' );
 		$this->makePage( 'MessageCacheTest-FullKeyTest', 'ru' );
@@ -67,12 +65,12 @@ class MessageCacheTest extends MediaWikiLangTestCase {
 		if ( $content === null ) {
 			$content = $lang;
 		}
-		if ( $lang !== MediaWikiServices::getInstance()->getContentLanguage()->getCode() ) {
+		if ( $lang !== $this->getServiceContainer()->getContentLanguage()->getCode() ) {
 			$title = "$title/$lang";
 		}
 
-		$title = Title::newFromText( $title, NS_MEDIAWIKI );
-		$wikiPage = new WikiPage( $title );
+		$title = Title::makeTitle( NS_MEDIAWIKI, $title );
+		$wikiPage = $this->getServiceContainer()->getWikiPageFactory()->newFromTitle( $title );
 		$content = ContentHandler::makeContent( $content, $title );
 		$summary = CommentStoreComment::newUnsavedComment( "$lang translation test case" );
 
@@ -80,7 +78,6 @@ class MessageCacheTest extends MediaWikiLangTestCase {
 			->setContent( SlotRecord::MAIN, $content )
 			->saveRevision( $summary );
 
-		// sanity
 		$this->assertNotNull( $newRevision, 'Create page ' . $title->getPrefixedDBkey() );
 		return $newRevision;
 	}
@@ -91,7 +88,7 @@ class MessageCacheTest extends MediaWikiLangTestCase {
 	 * @dataProvider provideMessagesForFallback
 	 */
 	public function testMessageFallbacks( $message, $lang, $expectedContent ) {
-		$result = MediaWikiServices::getInstance()->getMessageCache()->get( $message, true, $lang );
+		$result = $this->getServiceContainer()->getMessageCache()->get( $message, true, $lang );
 		$this->assertEquals( $expectedContent, $result, "Message fallback failed." );
 	}
 
@@ -102,9 +99,6 @@ class MessageCacheTest extends MediaWikiLangTestCase {
 			[ 'FallbackLanguageTest-ContLang', 'ab', 'de' ],
 			[ 'FallbackLanguageTest-None', 'ab', false ],
 
-			// Existing message with customizations on the fallbacks
-			[ 'sunday', 'ab', 'амҽыш' ],
-
 			// T48579
 			[ 'FallbackLanguageTest-NoDervContLang', 'de', 'de/none' ],
 			// UI language different from content language should only use de/none as last option
@@ -113,9 +107,9 @@ class MessageCacheTest extends MediaWikiLangTestCase {
 	}
 
 	public function testReplaceMsg() {
-		$messageCache = MediaWikiServices::getInstance()->getMessageCache();
+		$messageCache = $this->getServiceContainer()->getMessageCache();
 		$message = 'go';
-		$uckey = MediaWikiServices::getInstance()->getContentLanguage()->ucfirst( $message );
+		$uckey = $this->getServiceContainer()->getContentLanguage()->ucfirst( $message );
 		$oldText = $messageCache->get( $message ); // "Ausführen"
 
 		$dbw = wfGetDB( DB_PRIMARY );
@@ -142,21 +136,20 @@ class MessageCacheTest extends MediaWikiLangTestCase {
 	}
 
 	public function testReplaceCache() {
-		global $wgWANObjectCaches;
-
 		// We need a WAN cache for this.
-		$this->setMwGlobals( [
-			'wgMainWANCache' => 'hash',
-			'wgWANObjectCaches' => $wgWANObjectCaches + [
+		$this->overrideConfigValues( [
+			MainConfigNames::MainWANCache => CACHE_HASH,
+			MainConfigNames::WANObjectCaches =>
+				MainConfigSchema::getDefaultValue( MainConfigNames::WANObjectCaches ) + [
 				'hash' => [
 					'class'    => WANObjectCache::class,
-					'cacheId'  => 'hash',
+					'cacheId'  => CACHE_HASH,
 					'channels' => []
 				]
 			]
 		] );
 
-		$messageCache = MediaWikiServices::getInstance()->getMessageCache();
+		$messageCache = $this->getServiceContainer()->getMessageCache();
 		$messageCache->enable();
 
 		// Populate one key
@@ -212,7 +205,7 @@ class MessageCacheTest extends MediaWikiLangTestCase {
 
 		$dbr = wfGetDB( DB_REPLICA );
 
-		$messageCache = MediaWikiServices::getInstance()->getMessageCache();
+		$messageCache = $this->getServiceContainer()->getMessageCache();
 		$messageCache->getMsgFromNamespace( 'allpages', $wgLanguageCode );
 
 		$this->assertSame( 0, $dbr->trxLevel() );
@@ -228,7 +221,7 @@ class MessageCacheTest extends MediaWikiLangTestCase {
 	public function testNoDBAccessNonContentLanguage() {
 		$dbr = wfGetDB( DB_REPLICA );
 
-		$messageCache = MediaWikiServices::getInstance()->getMessageCache();
+		$messageCache = $this->getServiceContainer()->getMessageCache();
 		$messageCache->getMsgFromNamespace( 'allpages/nl', 'nl' );
 
 		$this->assertSame( 0, $dbr->trxLevel() );
@@ -263,11 +256,11 @@ class MessageCacheTest extends MediaWikiLangTestCase {
 		$importRevision->setContent( SlotRecord::MAIN, $content );
 		$importRevision->setUsername( 'ext>Alan Smithee' );
 
-		$importer = MediaWikiServices::getInstance()->getWikiRevisionOldRevisionImporterNoUpdates();
+		$importer = $this->getServiceContainer()->getWikiRevisionOldRevisionImporterNoUpdates();
 		$importer->import( $importRevision );
 
 		// Now, load the message from the wiki page
-		$messageCache = MediaWikiServices::getInstance()->getMessageCache();
+		$messageCache = $this->getServiceContainer()->getMessageCache();
 		$messageCache->enable();
 		$messageCache = TestingAccessWrapper::newFromObject( $messageCache );
 
@@ -287,7 +280,7 @@ class MessageCacheTest extends MediaWikiLangTestCase {
 	 */
 	public function testIsMainCacheable( $code, $message, $expected ) {
 		$messageCache = TestingAccessWrapper::newFromObject(
-			MediaWikiServices::getInstance()->getMessageCache() );
+			$this->getServiceContainer()->getMessageCache() );
 		$this->assertSame( $expected, $messageCache->isMainCacheable( $message, $code ) );
 	}
 

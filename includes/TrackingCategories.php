@@ -21,6 +21,7 @@
 
 use MediaWiki\Config\ServiceOptions;
 use MediaWiki\Linker\LinkTarget;
+use MediaWiki\MainConfigNames;
 use MediaWiki\Page\PageReference;
 use Psr\Log\LoggerInterface;
 
@@ -35,8 +36,8 @@ class TrackingCategories {
 	 * @internal For use by ServiceWiring
 	 */
 	public const CONSTRUCTOR_OPTIONS = [
-		'TrackingCategories',
-		'EnableMagicLinks',
+		MainConfigNames::TrackingCategories,
+		MainConfigNames::EnableMagicLinks,
 	];
 
 	/** @var ServiceOptions */
@@ -72,8 +73,13 @@ class TrackingCategories {
 		'post-expand-template-argument-category',
 		'post-expand-template-inclusion-category',
 		'restricted-displaytitle-ignored',
+		# template-equals-category is unused in MW>=1.39, but the category
+		# can be left around for a major release or so for an easier
+		# transition for anyone who didn't do the cleanup. T91154
 		'template-equals-category',
 		'template-loop-category',
+		'unstrip-depth-category',
+		'unstrip-size-category',
 	];
 
 	/**
@@ -111,12 +117,12 @@ class TrackingCategories {
 	public function getTrackingCategories() {
 		$categories = array_merge(
 			self::CORE_TRACKING_CATEGORIES,
-			$this->extensionRegistry->getAttribute( 'TrackingCategories' ),
-			$this->options->get( 'TrackingCategories' ) // deprecated
+			$this->extensionRegistry->getAttribute( MainConfigNames::TrackingCategories ),
+			$this->options->get( MainConfigNames::TrackingCategories ) // deprecated
 		);
 
 		// Only show magic link tracking categories if they are enabled
-		$enableMagicLinks = $this->options->get( 'EnableMagicLinks' );
+		$enableMagicLinks = $this->options->get( MainConfigNames::EnableMagicLinks );
 		if ( $enableMagicLinks['ISBN'] ) {
 			$categories[] = 'magiclink-tracking-isbn';
 		}
@@ -154,7 +160,7 @@ class TrackingCategories {
 					}
 					// XXX: should be a better way to convert a TitleValue
 					// to a PageReference!
-					$tempTitle = Title::newFromTitleValue( $tempTitle );
+					$tempTitle = Title::newFromLinkTarget( $tempTitle );
 					$catName = $msgObj->page( $tempTitle )->text();
 					# Allow tracking categories to be disabled by setting them to "-"
 					if ( $catName !== '-' ) {
@@ -237,7 +243,7 @@ class TrackingCategories {
 		}
 		$parserOutput->addCategory(
 			$categoryPage->getDBkey(),
-			$parserOutput->getPageProperty( 'defaultsort' ) ?: ''
+			$parserOutput->getPageProperty( 'defaultsort' ) ?? ''
 		);
 		return true;
 	}

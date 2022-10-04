@@ -29,6 +29,8 @@
 
 use MediaWiki\HookContainer\HookContainer;
 use MediaWiki\HookContainer\HookRunner;
+use MediaWiki\MainConfigNames;
+use MediaWiki\MediaWikiServices;
 use MediaWiki\Page\PageIdentity;
 use MediaWiki\Revision\RevisionAccessException;
 use MediaWiki\Revision\RevisionRecord;
@@ -91,12 +93,12 @@ class WikiExporter {
 	private $hookRunner;
 
 	/**
-	 * Returns the default export schema version, as defined by $wgXmlDumpSchemaVersion.
+	 * Returns the default export schema version, as defined by the XmlDumpSchemaVersion setting.
 	 * @return string
 	 */
 	public static function schemaVersion() {
-		global $wgXmlDumpSchemaVersion;
-		return $wgXmlDumpSchemaVersion;
+		return MediaWikiServices::getInstance()->getMainConfig()->get(
+			MainConfigNames::XmlDumpSchemaVersion );
 	}
 
 	/**
@@ -110,8 +112,7 @@ class WikiExporter {
 	 *   - limit: maximum number of rows to return
 	 *   - dir: "asc" or "desc" timestamp order
 	 * @param int $text One of WikiExporter::TEXT or WikiExporter::STUB
-	 * @param null|array $limitNamespaces Comma-separated list of namespace numbers
-	 *   to limit results
+	 * @param null|array $limitNamespaces List of namespace numbers to limit results
 	 */
 	public function __construct(
 		$db,
@@ -308,7 +309,7 @@ class WikiExporter {
 	 * @throws Exception
 	 */
 	protected function dumpFrom( $cond = '', $orderRevs = false ) {
-		if ( $this->history & self::LOGS ) {
+		if ( is_int( $this->history ) && ( $this->history & self::LOGS ) ) {
 			$this->dumpLogs( $cond );
 		} else {
 			$this->dumpPages( $cond, $orderRevs );
@@ -330,7 +331,6 @@ class WikiExporter {
 		if ( $cond ) {
 			$where[] = $cond;
 		}
-		$result = null; // Assuring $result is not undefined, if exception occurs early
 
 		$commentQuery = CommentStore::getStore()->getJoin( 'log_comment' );
 
@@ -366,6 +366,7 @@ class WikiExporter {
 			}
 
 			$lastLogId = $this->outputLogStream( $result );
+			$this->reloadDBConfig();
 		}
 	}
 
@@ -394,7 +395,6 @@ class WikiExporter {
 		unset( $join['page'] );
 
 		$fields = array_merge( $revQuery['fields'], $slotQuery['fields'] );
-		$fields[] = 'page_restrictions';
 
 		if ( $this->text != self::STUB ) {
 			$fields['_load_content'] = '1';
@@ -431,7 +431,6 @@ class WikiExporter {
 			# query optimization for history stub dumps
 			if ( $this->text == self::STUB ) {
 				$opts[] = 'STRAIGHT_JOIN';
-				$opts['USE INDEX']['revision'] = 'rev_page_id';
 				unset( $join['revision'] );
 				$join['page'] = [ 'JOIN', 'rev_page=page_id' ];
 			}
@@ -457,7 +456,6 @@ class WikiExporter {
 			throw new MWException( __METHOD__ . " given invalid history dump type." );
 		}
 
-		$result = null; // Assuring $result is not undefined, if exception occurs early
 		$done = false;
 		$lastRow = null;
 		$revPage = 0;
@@ -502,6 +500,10 @@ class WikiExporter {
 			if ( $done && $lastRow ) {
 				$this->finishPageStreamOutput( $lastRow );
 			}
+
+			if ( !$done ) {
+				$this->reloadDBConfig();
+			}
 		}
 	}
 
@@ -511,7 +513,7 @@ class WikiExporter {
 	 * and be sorted/grouped by page and revision to avoid duplicate page records in the output.
 	 *
 	 * @param IResultWrapper $results
-	 * @param stdClass $lastRow the last row output from the previous call (or null if none)
+	 * @param stdClass|null $lastRow the last row output from the previous call (or null if none)
 	 * @return stdClass the last row processed
 	 */
 	protected function outputPageStreamBatch( $results, $lastRow ) {
@@ -555,12 +557,14 @@ class WikiExporter {
 					. ' revision ' . $revRow->rev_id . ': ' . $ex->getMessage() );
 			}
 			$lastRow = $revRow;
+			$this->reloadDBConfig();
 		}
 
 		if ( $rowCarry ) {
 			throw new LogicException( 'Error while processing a stream of slot rows' );
 		}
 
+		// @phan-suppress-next-line PhanTypeMismatchReturnNullable False positive
 		return $lastRow;
 	}
 
@@ -620,5 +624,16 @@ class WikiExporter {
 			$this->sink->writeLogItem( $row, $output );
 		}
 		return $row->log_id ?? null;
+	}
+
+	/**
+	 * Attempt to reload the database configuration, so any changes can take effect.
+	 * Dynamic reloading can be enabled by setting $wgLBFactoryConf['configCallback']
+	 * to a function that returns an array of any keys that should be updated
+	 * in LBFactoryConf.
+	 */
+	private function reloadDBConfig() {
+		MediaWikiServices::getInstance()->getDBLoadBalancerFactory()
+			->autoReconfigure();
 	}
 }

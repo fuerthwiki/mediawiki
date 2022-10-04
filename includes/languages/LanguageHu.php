@@ -1,7 +1,5 @@
 <?php
 /**
- * Hungarian (magyar) specific code.
- *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
@@ -18,13 +16,15 @@
  * http://www.gnu.org/copyleft/gpl.html
  *
  * @file
- * @ingroup Language
  */
+
+use MediaWiki\MainConfigNames;
+use MediaWiki\MediaWikiServices;
 
 /**
  * Hungarian localisation for MediaWiki
  *
- * @ingroup Language
+ * @ingroup Languages
  */
 class LanguageHu extends Language {
 
@@ -34,9 +34,10 @@ class LanguageHu extends Language {
 	 * @return string
 	 */
 	public function convertGrammar( $word, $case ) {
-		global $wgGrammarForms;
-		if ( isset( $wgGrammarForms[$this->getCode()][$case][$word] ) ) {
-			return $wgGrammarForms[$this->getCode()][$case][$word];
+		$grammarForms = MediaWikiServices::getInstance()->getMainConfig()
+			->get( MainConfigNames::GrammarForms );
+		if ( isset( $grammarForms[$this->getCode()][$case][$word] ) ) {
+			return $grammarForms[$this->getCode()][$case][$word];
 		}
 
 		switch ( $case ) {

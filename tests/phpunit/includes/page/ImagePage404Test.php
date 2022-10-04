@@ -1,4 +1,7 @@
 <?php
+
+use MediaWiki\MainConfigNames;
+
 /**
  * For doing Image Page tests that rely on 404 thumb handling
  */
@@ -9,13 +12,16 @@ class ImagePage404Test extends MediaWikiMediaTestCase {
 	}
 
 	protected function setUp(): void {
-		$this->setMwGlobals( 'wgImageLimits', [
-			[ 320, 240 ],
-			[ 640, 480 ],
-			[ 800, 600 ],
-			[ 1024, 768 ],
-			[ 1280, 1024 ]
-		] );
+		$this->overrideConfigValue(
+			MainConfigNames::ImageLimits,
+			[
+				[ 320, 240 ],
+				[ 640, 480 ],
+				[ 800, 600 ],
+				[ 1024, 768 ],
+				[ 1280, 1024 ]
+			]
+		);
 		parent::setUp();
 	}
 
@@ -40,7 +46,7 @@ class ImagePage404Test extends MediaWikiMediaTestCase {
 		$reflMethod->setAccessible( true );
 
 		$actual = $reflMethod->invoke( $iPage, 545, 700 );
-		$this->assertEquals( count( $actual ), $expectedNumberThumbs );
+		$this->assertCount( $expectedNumberThumbs, $actual );
 	}
 
 	public function providerGetThumbSizes() {

@@ -22,8 +22,10 @@
  * @license GPL-2.0-or-later
  * @since 1.19
  */
+
 use MediaWiki\Linker\LinkRenderer;
 use MediaWiki\Linker\LinkTarget;
+use MediaWiki\MainConfigNames;
 use MediaWiki\MediaWikiServices;
 use MediaWiki\User\UserIdentity;
 
@@ -52,10 +54,11 @@ class LogFormatter {
 	 * @return LogFormatter
 	 */
 	public static function newFromEntry( LogEntry $entry ) {
-		global $wgLogActionsHandlers;
+		$logActionsHandlers = MediaWikiServices::getInstance()->getMainConfig()
+			->get( MainConfigNames::LogActionsHandlers );
 		$fulltype = $entry->getFullType();
 		$wildcard = $entry->getType() . '/*';
-		$handler = $wgLogActionsHandlers[$fulltype] ?? $wgLogActionsHandlers[$wildcard] ?? '';
+		$handler = $logActionsHandlers[$fulltype] ?? $logActionsHandlers[$wildcard] ?? '';
 
 		if ( $handler !== '' && is_string( $handler ) && class_exists( $handler ) ) {
 			return new $handler( $entry );
@@ -169,7 +172,7 @@ class LogFormatter {
 	public function canViewLogType() {
 		// If the user doesn't have the right permission to view the specific
 		// log type, return false
-		$logRestrictions = $this->context->getConfig()->get( 'LogRestrictions' );
+		$logRestrictions = $this->context->getConfig()->get( MainConfigNames::LogRestrictions );
 		$type = $this->entry->getType();
 		return !isset( $logRestrictions[$type] )
 			|| $this->context->getAuthority()->isAllowed( $logRestrictions[$type] );
@@ -183,7 +186,7 @@ class LogFormatter {
 	protected function canView( $field ) {
 		if ( $this->audience == self::FOR_THIS_USER ) {
 			return LogEventsList::userCanBitfield(
-				$this->entry->getDeleted(), $field, $this->context->getUser() ) &&
+				$this->entry->getDeleted(), $field, $this->context->getAuthority() ) &&
 				self::canViewLogType();
 		} else {
 			return !$this->entry->isDeleted( $field ) && self::canViewLogType();
@@ -404,7 +407,7 @@ class LogFormatter {
 						$duration = $contLang->translateBlockExpiry(
 							$rawDuration,
 							null,
-							wfTimestamp( TS_UNIX, $entry->getTimestamp() )
+							(int)wfTimestamp( TS_UNIX, $entry->getTimestamp() )
 						);
 						$flags = BlockLogFormatter::formatBlockFlags( $rawFlags, $contLang );
 						$text = wfMessage( 'blocklogentry' )
@@ -418,7 +421,7 @@ class LogFormatter {
 						$duration = $contLang->translateBlockExpiry(
 							$parameters['5::duration'],
 							null,
-							wfTimestamp( TS_UNIX, $entry->getTimestamp() )
+							(int)wfTimestamp( TS_UNIX, $entry->getTimestamp() )
 						);
 						$flags = BlockLogFormatter::formatBlockFlags( $parameters['6::flags'],
 							$contLang );
@@ -540,7 +543,7 @@ class LogFormatter {
 			}
 			list( $index, $type, ) = explode( ':', $key, 3 );
 			if ( ctype_digit( $index ) ) {
-				$params[$index - 1] = $this->formatParameterValue( $type, $value );
+				$params[(int)$index - 1] = $this->formatParameterValue( $type, $value );
 			}
 		}
 
@@ -562,7 +565,7 @@ class LogFormatter {
 	}
 
 	/**
-	 * Formats parameters intented for action message from
+	 * Formats parameters intended for action message from
 	 * array of all parameters. There are three hardcoded
 	 * parameters (array is zero-indexed, this list not):
 	 *  - 1: user name with premade link
@@ -612,7 +615,7 @@ class LogFormatter {
 	 *     * number: Format value as number
 	 *     * list: Format value as a comma-separated list
 	 * @param mixed $value The parameter value that should be formatted
-	 * @return string|array Formated value
+	 * @return string|array Formatted value
 	 * @since 1.21
 	 */
 	protected function formatParameterValue( $type, $value ) {
@@ -769,17 +772,6 @@ class LogFormatter {
 	}
 
 	/**
-	 * Helper method for styling restricted element.
-	 * @deprecated since 1.37, use ::styleRestrictedElement instead
-	 * @param string $content
-	 * @return string HTML or wiki text
-	 */
-	protected function styleRestricedElement( $content ) {
-		wfDeprecated( __METHOD__, '1.37' );
-		return $this->styleRestrictedElement( $content );
-	}
-
-	/**
 	 * Shortcut for wfMessage which honors local context.
 	 * @param string $key
 	 * @param mixed ...$params
@@ -814,7 +806,7 @@ class LogFormatter {
 					true, // redContribsWhenNoEdits
 					$toolFlags,
 					$editCount,
-					// do not render parenthesises in the HTML markup (CSS will provide)
+					// do not render parentheses in the HTML markup (CSS will provide)
 					false
 				);
 			}
@@ -904,7 +896,7 @@ class LogFormatter {
 				break;
 
 			case 'number':
-				if ( ctype_digit( $value ) || is_int( $value ) ) {
+				if ( is_int( $value ) || ctype_digit( (string)$value ) ) {
 					$value = (int)$value;
 				} else {
 					$value = (float)$value;
@@ -941,7 +933,6 @@ class LogFormatter {
 			case 'title-link':
 				$title = Title::newFromText( $value );
 				if ( !$title ) {
-					// Huh? Do something halfway sane.
 					$title = SpecialPage::getTitleFor( 'Badtitle', $value );
 				}
 				$value = [];

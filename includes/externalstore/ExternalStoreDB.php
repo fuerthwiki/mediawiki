@@ -1,7 +1,5 @@
 <?php
 /**
- * External storage in SQL database.
- *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
@@ -26,15 +24,15 @@ use Wikimedia\Rdbms\DBUnexpectedError;
 use Wikimedia\Rdbms\IDatabase;
 use Wikimedia\Rdbms\ILoadBalancer;
 use Wikimedia\Rdbms\LBFactory;
-use Wikimedia\Rdbms\MaintainableDBConnRef;
 use Wikimedia\ScopedCallback;
 
 /**
- * DB accessible external objects.
+ * External storage in a SQL database.
  *
  * In this system, each store "location" maps to a database "cluster".
  * The clusters must be defined in the normal LBFactory configuration.
  *
+ * @see ExternalStoreAccess
  * @ingroup ExternalStorage
  */
 class ExternalStoreDB extends ExternalStoreMedium {
@@ -55,11 +53,13 @@ class ExternalStoreDB extends ExternalStoreMedium {
 	}
 
 	/**
-	 * The provided URL is in the form of DB://cluster/id
-	 * or DB://cluster/id/itemid for concatened storage.
+	 * Fetch data from given external store URL.
+	 *
+	 * The provided URL is in the form of `DB://cluster/id` or `DB://cluster/id/itemid`
+	 * for concatenated storage if ConcatenatedGzipHistoryBlob was used.
 	 *
 	 * @param string $url
-	 * @return string|bool False if missing
+	 * @return string|false False if missing
 	 * @see ExternalStoreMedium::fetchFromURL()
 	 */
 	public function fetchFromURL( $url ) {
@@ -74,9 +74,10 @@ class ExternalStoreDB extends ExternalStoreMedium {
 	}
 
 	/**
-	 * Fetch data from given external store URLs.
-	 * The provided URLs are in the form of DB://cluster/id
-	 * or DB://cluster/id/itemid for concatened storage.
+	 * Fetch multiple URLs from given external store.
+	 *
+	 * The provided URLs are in the form of `DB://cluster/id`, or `DB://cluster/id/itemid`
+	 * for concatenated storage if ConcatenatedGzipHistoryBlob was used.
 	 *
 	 * @param array $urls An array of external store URLs
 	 * @return array A map from url to stored content. Failed results
@@ -171,22 +172,10 @@ class ExternalStoreDB extends ExternalStoreMedium {
 	}
 
 	/**
-	 * Get a replica DB connection for the specified cluster
-	 *
-	 * @param string $cluster Cluster name
-	 * @return DBConnRef
-	 * @deprecated since 1.34
-	 */
-	public function getSlave( $cluster ) {
-		wfDeprecated( __METHOD__, '1.34' );
-		return $this->getReplica( $cluster );
-	}
-
-	/**
 	 * Get a primary database connection for the specified cluster
 	 *
 	 * @param string $cluster Cluster name
-	 * @return MaintainableDBConnRef
+	 * @return \Wikimedia\Rdbms\IMaintainableDatabase
 	 * @since 1.37
 	 */
 	public function getPrimary( $cluster ) {
@@ -203,7 +192,7 @@ class ExternalStoreDB extends ExternalStoreMedium {
 	/**
 	 * @deprecated since 1.37; please use getPrimary() instead.
 	 * @param string $cluster Cluster name
-	 * @return MaintainableDBConnRef
+	 * @return \Wikimedia\Rdbms\IMaintainableDatabase
 	 */
 	public function getMaster( $cluster ) {
 		wfDeprecated( __METHOD__, '1.37' );
@@ -212,7 +201,7 @@ class ExternalStoreDB extends ExternalStoreMedium {
 
 	/**
 	 * @param array $server Primary DB server configuration array for LoadBalancer
-	 * @return string|bool Database domain ID or false
+	 * @return string|false Database domain ID or false
 	 */
 	private function getDomainId( array $server ) {
 		if ( $this->isDbDomainExplicit ) {
@@ -299,7 +288,7 @@ class ExternalStoreDB extends ExternalStoreMedium {
 	 * @param string $cluster
 	 * @param string $id
 	 * @param string $itemID
-	 * @return HistoryBlob|bool Returns false if missing
+	 * @return HistoryBlob|false Returns false if missing
 	 */
 	private function fetchBlob( $cluster, $id, $itemID ) {
 		/**
@@ -364,12 +353,12 @@ class ExternalStoreDB extends ExternalStoreMedium {
 	 */
 	private function batchFetchBlobs( $cluster, array $ids ) {
 		$dbr = $this->getReplica( $cluster );
-		$res = $dbr->select(
-			$this->getTable( $dbr, $cluster ),
-			[ 'blob_id', 'blob_text' ],
-			[ 'blob_id' => array_keys( $ids ) ],
-			__METHOD__
-		);
+		$res = $dbr->newSelectQueryBuilder()
+			->select( [ 'blob_id', 'blob_text' ] )
+			->from( $this->getTable( $dbr, $cluster ) )
+			->where( [ 'blob_id' => array_keys( $ids ) ] )
+			->caller( __METHOD__ )
+			->fetchResultSet();
 
 		$ret = [];
 		if ( $res !== false ) {
@@ -383,11 +372,12 @@ class ExternalStoreDB extends ExternalStoreMedium {
 			);
 			$scope = $this->lbFactory->getTransactionProfiler()->silenceForScope();
 			$dbw = $this->getPrimary( $cluster );
-			$res = $dbw->select(
-				$this->getTable( $dbr, $cluster ),
-				[ 'blob_id', 'blob_text' ],
-				[ 'blob_id' => array_keys( $ids ) ],
-				__METHOD__ );
+			$res = $dbw->newSelectQueryBuilder()
+				->select( [ 'blob_id', 'blob_text' ] )
+				->from( $this->getTable( $dbr, $cluster ) )
+				->where( [ 'blob_id' => array_keys( $ids ) ] )
+				->caller( __METHOD__ )
+				->fetchResultSet();
 			ScopedCallback::consume( $scope );
 			if ( $res === false ) {
 				$this->logger->error( __METHOD__ . ": primary failed on '$cluster'" );

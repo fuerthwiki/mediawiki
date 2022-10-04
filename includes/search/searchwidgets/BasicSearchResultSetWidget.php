@@ -56,9 +56,11 @@ class BasicSearchResultSetWidget {
 			return '';
 		}
 
-		$out = '';
+		$out = '<div class="mw-search-results-container">';
+
 		if ( $hasTitle ) {
 			$out .= $this->header( $this->specialPage->msg( 'titlematches' ) )
+				// @phan-suppress-next-line PhanTypeMismatchArgumentNullable titleResultSet is set when used here
 				. $this->renderResultSet( $titleResultSet, $offset );
 		}
 
@@ -67,6 +69,7 @@ class BasicSearchResultSetWidget {
 				$out .= "<div class='mw-search-visualclear'></div>" .
 					$this->header( $this->specialPage->msg( 'textmatches' ) );
 			}
+			// @phan-suppress-next-line PhanTypeMismatchArgumentNullable textResultSet is set when used
 			$out .= $this->renderResultSet( $textResultSet, $offset );
 		}
 
@@ -81,9 +84,15 @@ class BasicSearchResultSetWidget {
 					"<h2 class='mw-search-interwiki-header mw-search-visualclear'>" .
 						$this->specialPage->msg( "search-interwiki-results-{$interwiki}" )->parse() .
 					"</h2>";
-				$out .= $this->renderResultSet( $results, $offset );
+				$out .=
+					"<div class='mw-search-interwiki-results'>" .
+						$this->renderResultSet( $results, $offset ) .
+					"</div>";
 			}
 		}
+
+		// Close <div class='mw-search-results-container'>
+		$out .= '</div>';
 
 		if ( $hasSecondary ) {
 			$out .= $this->sidebarWidget->render(

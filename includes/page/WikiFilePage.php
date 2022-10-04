@@ -1,7 +1,5 @@
 <?php
 /**
- * Special handling for file pages.
- *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
@@ -25,7 +23,7 @@ use MediaWiki\MediaWikiServices;
 use Wikimedia\Rdbms\FakeResultWrapper;
 
 /**
- * Special handling for file pages
+ * Special handling for representing file pages.
  *
  * @ingroup Media
  */
@@ -39,6 +37,9 @@ class WikiFilePage extends WikiPage {
 	/** @var array|null */
 	protected $mDupes = null;
 
+	/**
+	 * @param Title $title
+	 */
 	public function __construct( $title ) {
 		parent::__construct( $title );
 		$this->mDupes = null;
@@ -187,7 +188,7 @@ class WikiFilePage extends WikiPage {
 				'imagelinks',
 				[ 'causeAction' => 'file-purge' ]
 			);
-			JobQueueGroup::singleton()->lazyPush( $job );
+			MediaWikiServices::getInstance()->getJobQueueGroup()->lazyPush( $job );
 		} else {
 			wfDebug( 'ImagePage::doPurge no image for '
 				. $this->mFile->getName() . "; limiting purge to cache only" );
@@ -273,6 +274,12 @@ class WikiFilePage extends WikiPage {
 	 * @inheritDoc
 	 */
 	public function getActionOverrides() {
-		return [ 'delete' => FileDeleteAction::class ] + parent::getActionOverrides();
+		$file = $this->getFile();
+		if ( $file->exists() && $file->isLocal() && !$file->getRedirected() ) {
+			// Would be an actual file deletion
+			return [ 'delete' => FileDeleteAction::class ] + parent::getActionOverrides();
+		}
+		// It should use the normal article deletion interface
+		return parent::getActionOverrides();
 	}
 }

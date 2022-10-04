@@ -27,6 +27,8 @@ use MediaWiki\Permissions\GroupPermissionsLookup;
 use MediaWiki\Revision\RevisionRecord;
 use MediaWiki\Revision\RevisionStore;
 use MediaWiki\User\UserGroupManager;
+use Wikimedia\ParamValidator\ParamValidator;
+use Wikimedia\ParamValidator\TypeDef\IntegerDef;
 
 /**
  * A query module to show contributors to a page
@@ -79,19 +81,16 @@ class ApiQueryContributors extends ApiQueryBase {
 	}
 
 	public function execute() {
-		global $wgActorTableSchemaMigrationStage;
-
 		$db = $this->getDB();
 		$params = $this->extractRequestParams();
 		$this->requireMaxOneParameter( $params, 'group', 'excludegroup', 'rights', 'excluderights' );
 
 		// Only operate on existing pages
-		$pages = array_keys( $this->getPageSet()->getGoodTitles() );
+		$pages = array_keys( $this->getPageSet()->getGoodPages() );
 
 		// Filter out already-processed pages
 		if ( $params['continue'] !== null ) {
-			$cont = explode( '|', $params['continue'] );
-			$this->dieContinueUsageIf( count( $cont ) != 2 );
+			$cont = $this->parseContinueParamOrDie( $params['continue'], [ 'int', 'int' ] );
 			$cont_page = (int)$cont[0];
 			$pages = array_filter( $pages, static function ( $v ) use ( $cont_page ) {
 				return $v >= $cont_page;
@@ -112,15 +111,9 @@ class ApiQueryContributors extends ApiQueryBase {
 
 		$result = $this->getResult();
 		$revQuery = $this->revisionStore->getQueryInfo();
-
-		// For SCHEMA_COMPAT_READ_TEMP, target indexes on the
-		// revision_actor_temp table, otherwise on the revision table.
-		$pageField = ( $wgActorTableSchemaMigrationStage & SCHEMA_COMPAT_READ_TEMP )
-			? 'revactor_page' : 'rev_page';
-		$idField = ( $wgActorTableSchemaMigrationStage & SCHEMA_COMPAT_READ_TEMP )
-			? 'revactor_actor' : 'rev_actor';
-		$countField = ( $wgActorTableSchemaMigrationStage & SCHEMA_COMPAT_READ_TEMP )
-			? 'revactor_actor' : 'rev_actor';
+		$pageField = 'rev_page';
+		$idField = 'rev_actor';
+		$countField = 'rev_actor';
 
 		// First, count anons
 		$this->addTables( $revQuery['tables'] );
@@ -211,6 +204,7 @@ class ApiQueryContributors extends ApiQueryBase {
 			$limitGroups = array_unique( $limitGroups );
 			$this->addTables( 'user_groups' );
 			$this->addJoinConds( [ 'user_groups' => [
+				// @phan-suppress-next-line PhanPossiblyUndeclaredVariable excludeGroups declared when limitGroups set
 				$excludeGroups ? 'LEFT JOIN' : 'JOIN',
 				[
 					'ug_user=' . $revQuery['fields']['rev_user'],
@@ -218,19 +212,17 @@ class ApiQueryContributors extends ApiQueryBase {
 					'ug_expiry IS NULL OR ug_expiry >= ' . $db->addQuotes( $db->timestamp() )
 				]
 			] ] );
+			// @phan-suppress-next-next-line PhanTypeMismatchArgumentNullable,PhanPossiblyUndeclaredVariable
+			// excludeGroups declared when limitGroups set
 			$this->addWhereIf( 'ug_user IS NULL', $excludeGroups );
 		}
 
 		if ( $params['continue'] !== null ) {
-			$cont = explode( '|', $params['continue'] );
-			$this->dieContinueUsageIf( count( $cont ) != 2 );
-			$cont_page = (int)$cont[0];
-			$cont_id = (int)$cont[1];
-			$this->addWhere(
-				"$pageField > $cont_page OR " .
-				"($pageField = $cont_page AND " .
-				"$idField >= $cont_id)"
-			);
+			$cont = $this->parseContinueParamOrDie( $params['continue'], [ 'int', 'int' ] );
+			$this->addWhere( $db->buildComparison( '>=', [
+				$pageField => $cont[0],
+				$idField => $cont[1],
+			] ) );
 		}
 
 		$res = $this->select( __METHOD__ );
@@ -272,27 +264,27 @@ class ApiQueryContributors extends ApiQueryBase {
 
 		return [
 			'group' => [
-				ApiBase::PARAM_TYPE => $userGroups,
-				ApiBase::PARAM_ISMULTI => true,
+				ParamValidator::PARAM_TYPE => $userGroups,
+				ParamValidator::PARAM_ISMULTI => true,
 			],
 			'excludegroup' => [
-				ApiBase::PARAM_TYPE => $userGroups,
-				ApiBase::PARAM_ISMULTI => true,
+				ParamValidator::PARAM_TYPE => $userGroups,
+				ParamValidator::PARAM_ISMULTI => true,
 			],
 			'rights' => [
-				ApiBase::PARAM_TYPE => $userRights,
-				ApiBase::PARAM_ISMULTI => true,
+				ParamValidator::PARAM_TYPE => $userRights,
+				ParamValidator::PARAM_ISMULTI => true,
 			],
 			'excluderights' => [
-				ApiBase::PARAM_TYPE => $userRights,
-				ApiBase::PARAM_ISMULTI => true,
+				ParamValidator::PARAM_TYPE => $userRights,
+				ParamValidator::PARAM_ISMULTI => true,
 			],
 			'limit' => [
-				ApiBase::PARAM_DFLT => 10,
-				ApiBase::PARAM_TYPE => 'limit',
-				ApiBase::PARAM_MIN => 1,
-				ApiBase::PARAM_MAX => ApiBase::LIMIT_BIG1,
-				ApiBase::PARAM_MAX2 => ApiBase::LIMIT_BIG2
+				ParamValidator::PARAM_DEFAULT => 10,
+				ParamValidator::PARAM_TYPE => 'limit',
+				IntegerDef::PARAM_MIN => 1,
+				IntegerDef::PARAM_MAX => ApiBase::LIMIT_BIG1,
+				IntegerDef::PARAM_MAX2 => ApiBase::LIMIT_BIG2
 			],
 			'continue' => [
 				ApiBase::PARAM_HELP_MSG => 'api-help-param-continue',

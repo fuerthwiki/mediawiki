@@ -1,15 +1,19 @@
 <?php
 
 use MediaWiki\Languages\LanguageConverterFactory;
-use MediaWiki\MediaWikiServices;
+use MediaWiki\MainConfigNames;
 use MediaWiki\Page\PageIdentity;
 use MediaWiki\Page\PageReference;
 use MediaWiki\Page\PageReferenceValue;
 use MediaWiki\Page\PageStoreRecord;
+use MediaWiki\Parser\ParserOutputFlags;
 use MediaWiki\Permissions\Authority;
+use MediaWiki\ResourceLoader as RL;
+use MediaWiki\ResourceLoader\ResourceLoader;
 use MediaWiki\Tests\Unit\Permissions\MockAuthorityTrait;
 use PHPUnit\Framework\MockObject\MockObject;
 use Wikimedia\DependencyStore\KeyValueDependencyStore;
+use Wikimedia\Rdbms\FakeResultWrapper;
 use Wikimedia\TestingAccessWrapper;
 
 /**
@@ -24,8 +28,6 @@ class OutputPageTest extends MediaWikiIntegrationTestCase {
 
 	private const SCREEN_MEDIA_QUERY = 'screen and (min-width: 982px)';
 	private const SCREEN_ONLY_MEDIA_QUERY = 'only screen and (min-width: 982px)';
-
-	// phpcs:disable Generic.Files.LineLength
 	private const RSS_RC_LINK = '<link rel="alternate" type="application/rss+xml" title=" RSS feed" href="/w/index.php?title=Special:RecentChanges&amp;feed=rss"/>';
 	private const ATOM_RC_LINK = '<link rel="alternate" type="application/atom+xml" title=" Atom feed" href="/w/index.php?title=Special:RecentChanges&amp;feed=atom"/>';
 
@@ -82,9 +84,7 @@ class OutputPageTest extends MediaWikiIntegrationTestCase {
 			'Sitename' => false,
 		] );
 		$outputPage->setTitle( Title::makeTitle( NS_MAIN, 'Test' ) );
-		$this->setMwGlobals( [
-			'wgScript' => '/w/index.php',
-		] );
+		$this->overrideConfigValue( MainConfigNames::Script, '/w/index.php' );
 		return $outputPage;
 	}
 
@@ -404,7 +404,7 @@ class OutputPageTest extends MediaWikiIntegrationTestCase {
 	 * @covers OutputPage::addParserOutput
 	 */
 	public function testCSPParserOutput() {
-		$this->setMwGlobals( [ 'wgCSPHeader' => [] ] );
+		$this->overrideConfigValue( MainConfigNames::CSPHeader, [] );
 		foreach ( [ 'Default', 'Script', 'Style' ] as $type ) {
 			$op = $this->newInstance();
 			$ltype = strtolower( $type );
@@ -493,13 +493,8 @@ class OutputPageTest extends MediaWikiIntegrationTestCase {
 			$callback( $op, $this );
 		}
 
-		// Avoid a complaint about not being able to disable compression
-		Wikimedia\suppressWarnings();
-		try {
-			$this->assertEquals( $expected, $op->checkLastModified( $timestamp ) );
-		} finally {
-			Wikimedia\restoreWarnings();
-		}
+		// Ignore complaint about not being able to disable compression
+		$this->assertEquals( $expected, @$op->checkLastModified( $timestamp ) );
 	}
 
 	public function provideCheckLastModified() {
@@ -616,6 +611,30 @@ class OutputPageTest extends MediaWikiIntegrationTestCase {
 
 	/**
 	 * @covers OutputPage::setRobotPolicy
+	 * @covers OutputPage::setRobotsOptions
+	 * @covers OutputPage::setIndexPolicy
+	 * @covers OutputPage::getHeadLinksArray
+	 */
+	public function testSetRobotsOptions() {
+		$op = $this->newInstance();
+		$op->setRobotPolicy( 'noindex, nofollow' );
+		$op->setRobotsOptions( [ 'max-snippet' => '500' ] );
+		$op->setIndexPolicy( 'index' );
+
+		$links = $op->getHeadLinksArray();
+		$this->assertContains( '<meta name="robots" content="index,nofollow,max-snippet:500"/>', $links );
+
+		$op->setFollowPolicy( 'follow' );
+		$links = $op->getHeadLinksArray();
+		$this->assertContains(
+			'<meta name="robots" content="max-snippet:500"/>',
+			$links,
+			'When index,follow (browser default) omit'
+		);
+	}
+
+	/**
+	 * @covers OutputPage::setRobotPolicy
 	 * @covers OutputPage::getRobotPolicy
 	 */
 	public function testGetRobotPolicy() {
@@ -727,15 +746,35 @@ class OutputPageTest extends MediaWikiIntegrationTestCase {
 		// HTML title should change as well
 		$this->assertSame( $this->getMsgText( $op, 'pagetitle', 'foobar' ), $op->getHTMLTitle() );
 
-		// Test set to text with good and bad HTML.  We don't try to be comprehensive here, that
-		// belongs in Sanitizer tests.
-		$op->setPageTitle( '<script>a</script>&amp;<i>b</i>' );
+		// Test set to text with good and bad HTML.  We don't try to be *too*
+		// comprehensive here, that belongs in Sanitizer tests, but we'll
+		// address the issues specifically noted in T298401/T67747 at least...
+		$sanitizerTests = [
+			[
+				'input' => '<script>a</script>&amp;<i>b</i>',
+				'getPageTitle' => '&lt;script&gt;a&lt;/script&gt;&amp;<i>b</i>',
+				'getHTMLTitle' => '<script>a</script>&b',
+			],
+			[
+				'input' => '<code style="display:none">', # T298401
+				'getPageTitle' => '<code style="display:none"></code>',
+				'getHTMLTitle' => '',
+			],
+			[
+				'input' => '<b>Foo bar<b>', # T67747
+				'getPageTitle' => '<b>Foo bar<b></b></b>',
+				'getHTMLTitle' => 'Foo bar',
+			],
+		];
+		foreach ( $sanitizerTests as $case ) {
+			$op->setPageTitle( $case['input'] );
 
-		$this->assertSame( '&lt;script&gt;a&lt;/script&gt;&amp;<i>b</i>', $op->getPageTitle() );
-		$this->assertSame(
-			$this->getMsgText( $op, 'pagetitle', '<script>a</script>&b' ),
-			$op->getHTMLTitle()
-		);
+			$this->assertSame( $case['getPageTitle'], $op->getPageTitle() );
+			$this->assertSame(
+				$this->getMsgText( $op, 'pagetitle', $case['getHTMLTitle'] ),
+				$op->getHTMLTitle()
+			);
+		}
 
 		// Test set to message
 		$text = $this->getMsgText( $op, 'mainpage' );
@@ -753,7 +792,7 @@ class OutputPageTest extends MediaWikiIntegrationTestCase {
 
 		$this->assertSame( 'My test page', $op->getTitle()->getPrefixedText() );
 
-		$op->setTitle( Title::newFromText( 'Another test page' ) );
+		$op->setTitle( Title::makeTitle( NS_MAIN, 'Another test page' ) );
 
 		$this->assertSame( 'Another test page', $op->getTitle()->getPrefixedText() );
 	}
@@ -1216,21 +1255,19 @@ class OutputPageTest extends MediaWikiIntegrationTestCase {
 	private function setupCategoryTests(
 		array $fakeResults, callable $variantLinkCallback = null
 	): OutputPage {
-		$this->setMwGlobals( 'wgUsePigLatinVariant', true );
+		$this->overrideConfigValue( MainConfigNames::UsePigLatinVariant, true );
 
 		if ( $variantLinkCallback ) {
 			$mockContLang = $this->createMock( Language::class );
 			$mockContLang
 				->method( 'convertHtml' )
-				->will( $this->returnCallback( static function ( $arg ) {
-					return $arg;
-				} ) );
+				->willReturnArgument( 0 );
 
 			$mockLanguageConverter = $this
 				->createMock( ILanguageConverter::class );
 			$mockLanguageConverter
 				->method( 'findVariantLink' )
-				->will( $this->returnCallback( $variantLinkCallback ) );
+				->willReturnCallback( $variantLinkCallback );
 
 			$languageConverterFactory = $this
 				->createMock( LanguageConverterFactory::class );
@@ -1248,12 +1285,12 @@ class OutputPageTest extends MediaWikiIntegrationTestCase {
 			->onlyMethods( [ 'addCategoryLinksToLBAndGetResult', 'getTitle' ] )
 			->getMock();
 
-		$title = Title::newFromText( 'My test page' );
+		$title = Title::makeTitle( NS_MAIN, 'My test page' );
 		$op->method( 'getTitle' )
 			->willReturn( $title );
 
 		$op->method( 'addCategoryLinksToLBAndGetResult' )
-			->will( $this->returnCallback( static function ( array $categories ) use ( $fakeResults ) {
+			->willReturnCallback( static function ( array $categories ) use ( $fakeResults ) {
 				$return = [];
 				foreach ( $categories as $category => $unused ) {
 					if ( isset( $fakeResults[$category] ) ) {
@@ -1261,7 +1298,7 @@ class OutputPageTest extends MediaWikiIntegrationTestCase {
 					}
 				}
 				return new FakeResultWrapper( $return );
-			} ) );
+			} );
 
 		$this->assertSame( [], $op->getCategories() );
 
@@ -1363,16 +1400,31 @@ class OutputPageTest extends MediaWikiIntegrationTestCase {
 		$this->assertSame( [ 'a' => 'w', 'b' => 'x', 'c' => 'z' ], $op->getIndicators() );
 
 		// Test with addParserOutputMetadata
-		$pOut1 = $this->createParserOutputStub( 'getIndicators', [ 'c' => 'u', 'd' => 'v' ] );
+		// Note that the indicators are wrapped.
+		$pOut1 = $this->createParserOutputStub( [
+			'getIndicators' => [ 'c' => 'u', 'd' => 'v' ],
+			'getWrapperDivClass' => 'wrapper1',
+		] );
 		$op->addParserOutputMetadata( $pOut1 );
-		$this->assertSame( [ 'a' => 'w', 'b' => 'x', 'c' => 'u', 'd' => 'v' ],
-			$op->getIndicators() );
+		$this->assertSame( [
+			'a' => 'w',
+			'b' => 'x',
+			'c' => '<div class="wrapper1">u</div>',
+			'd' => '<div class="wrapper1">v</div>',
+		], $op->getIndicators() );
 
 		// Test with addParserOutput
-		$pOut2 = $this->createParserOutputStub( 'getIndicators', [ 'a' => '!!!' ] );
+		$pOut2 = $this->createParserOutputStub( [
+			'getIndicators' => [ 'a' => '!!!' ],
+			'getWrapperDivClass' => 'wrapper2',
+		] );
 		$op->addParserOutput( $pOut2 );
-		$this->assertSame( [ 'a' => '!!!', 'b' => 'x', 'c' => 'u', 'd' => 'v' ],
-			$op->getIndicators() );
+		$this->assertSame( [
+			'a' => '<div class="wrapper2">!!!</div>',
+			'b' => 'x',
+			'c' => '<div class="wrapper1">u</div>',
+			'd' => '<div class="wrapper1">v</div>',
+		], $op->getIndicators() );
 	}
 
 	/**
@@ -1673,10 +1725,10 @@ class OutputPageTest extends MediaWikiIntegrationTestCase {
 					[ '== Title ==' ],
 					"<h2><span class=\"mw-headline\" id=\"Title\">Title</span></h2>",
 				], 'With title at start' => [
-					[ '* {{PAGENAME}}', true, Title::newFromText( 'Talk:Some page' ) ],
+					[ '* {{PAGENAME}}', true, Title::makeTitle( NS_TALK, 'Some page' ) ],
 					"<ul><li>Some page</li></ul>\n",
 				], 'With title not at start' => [
-					[ '* {{PAGENAME}}', false, Title::newFromText( 'Talk:Some page' ) ],
+					[ '* {{PAGENAME}}', false, Title::makeTitle( NS_TALK, 'Some page' ) ],
 					"<p>* Some page</p>",
 				], 'Untidy input' => [
 					[ '<b>{{PAGENAME}}', true, $somePageRef ],
@@ -1694,10 +1746,10 @@ class OutputPageTest extends MediaWikiIntegrationTestCase {
 					[ '* <b>Not a list', false ],
 					'<p>* <b>Not a list</b></p>',
 				], 'With title at start' => [
-					[ '* {{PAGENAME}}', true, Title::newFromText( 'Talk:Some page' ) ],
+					[ '* {{PAGENAME}}', true, Title::makeTitle( NS_TALK, 'Some page' ) ],
 					"<ul><li>Some page</li></ul>",
 				], 'With title not at start' => [
-					[ '* {{PAGENAME}}', false, Title::newFromText( 'Talk:Some page' ) ],
+					[ '* {{PAGENAME}}', false, Title::makeTitle( NS_TALK, 'Some page' ) ],
 					"<p>* Some page</p>",
 				], 'EditPage' => [
 					[ "<div class='mw-editintro'>{{PAGENAME}}", true, $somePageRef ],
@@ -1815,7 +1867,7 @@ class OutputPageTest extends MediaWikiIntegrationTestCase {
 
 		self::$parserOutputHookCalled = [];
 
-		$this->setMwGlobals( 'wgParserOutputHooks', [
+		$this->overrideConfigValue( MainConfigNames::ParserOutputHooks, [
 			'myhook' => function ( OutputPage $innerOp, ParserOutput $innerPOut, $data )
 			use ( $op, $pOut ) {
 				$this->assertSame( $op, $innerOp );
@@ -1826,7 +1878,7 @@ class OutputPageTest extends MediaWikiIntegrationTestCase {
 			'yourhook' => [ $this, 'parserOutputHookCallback' ],
 			'theirhook' => [ __CLASS__, 'parserOutputHookCallbackStatic' ],
 			'uncalled' => function () {
-				$this->assertTrue( false );
+				$this->fail();
 			},
 		] );
 
@@ -2054,19 +2106,14 @@ class OutputPageTest extends MediaWikiIntegrationTestCase {
 	 *  initialMaxage => Maxage to set before calling adaptCdnTTL() (default 86400)
 	 */
 	public function testAdaptCdnTTL( array $args, $expected, array $options = [] ) {
-		try {
-			MWTimestamp::setFakeTime( self::$fakeTime );
+		MWTimestamp::setFakeTime( self::$fakeTime );
 
-			$op = $this->newInstance();
-			// Set a high maxage so that it will get reduced by adaptCdnTTL().  The default maxage
-			// is 0, so adaptCdnTTL() won't mutate the object at all.
-			$initial = $options['initialMaxage'] ?? 86400;
-			$op->setCdnMaxage( $initial );
-
-			$op->adaptCdnTTL( ...$args );
-		} finally {
-			MWTimestamp::setFakeTime( false );
-		}
+		$op = $this->newInstance();
+		// Set a high maxage so that it will get reduced by adaptCdnTTL().  The default maxage
+		// is 0, so adaptCdnTTL() won't mutate the object at all.
+		$initial = $options['initialMaxage'] ?? 86400;
+		$op->setCdnMaxage( $initial );
+		$op->adaptCdnTTL( ...$args );
 
 		$wrapper = TestingAccessWrapper::newFromObject( $op );
 
@@ -2119,37 +2166,43 @@ class OutputPageTest extends MediaWikiIntegrationTestCase {
 	}
 
 	/**
+	 * @covers OutputPage::disableClientCache
 	 * @covers OutputPage::enableClientCache
 	 * @covers OutputPage::addParserOutputMetadata
 	 * @covers OutputPage::addParserOutput
 	 */
 	public function testClientCache() {
 		$op = $this->newInstance();
+		$op->considerCacheSettingsFinal();
 
 		// Test initial value
-		$this->assertSame( true, $op->enableClientCache( null ) );
-		// Test that calling with null doesn't change the value
-		$this->assertSame( true, $op->enableClientCache( null ) );
+		$this->assertSame( true, $op->couldBePublicCached() );
 
 		// Test setting to false
-		$this->assertSame( true, $op->enableClientCache( false ) );
-		$this->assertSame( false, $op->enableClientCache( null ) );
-		// Test that calling with null doesn't change the value
-		$this->assertSame( false, $op->enableClientCache( null ) );
+		$op->disableClientCache();
+		$this->assertSame( false, $op->couldBePublicCached() );
+
+		// Test setting to true
+		$op->enableClientCache();
+		$this->assertSame( true, $op->couldBePublicCached() );
+
+		// set back to false
+		$op->disableClientCache();
 
 		// Test that a cacheable ParserOutput doesn't set to true
 		$pOutCacheable = $this->createParserOutputStub( 'isCacheable', true );
 		$op->addParserOutputMetadata( $pOutCacheable );
-		$this->assertSame( false, $op->enableClientCache( null ) );
+		$this->assertSame( false, $op->couldBePublicCached() );
 
-		// Test setting back to true
-		$this->assertSame( false, $op->enableClientCache( true ) );
-		$this->assertSame( true, $op->enableClientCache( null ) );
+		// Reset to true
+		$op = $this->newInstance();
+		$op->considerCacheSettingsFinal();
+		$this->assertSame( true, $op->couldBePublicCached() );
 
 		// Test that an uncacheable ParserOutput does set to false
 		$pOutUncacheable = $this->createParserOutputStub( 'isCacheable', false );
 		$op->addParserOutput( $pOutUncacheable );
-		$this->assertSame( false, $op->enableClientCache( null ) );
+		$this->assertSame( false, $op->couldBePublicCached() );
 	}
 
 	/**
@@ -2171,7 +2224,7 @@ class OutputPageTest extends MediaWikiIntegrationTestCase {
 		// We have to reset the cookies because getCacheVaryCookies may have already been called
 		TestingAccessWrapper::newFromClass( OutputPage::class )->cacheVaryCookies = null;
 
-		$this->setMwGlobals( 'wgCacheVaryCookies', [ 'cookie1' ] );
+		$this->overrideConfigValue( MainConfigNames::CacheVaryCookies, [ 'cookie1' ] );
 		$this->setTemporaryHook( 'GetCacheVaryCookies',
 			function ( $innerOP, &$cookies ) use ( $op, $expectedCookies ) {
 				$this->assertSame( $op, $innerOP );
@@ -2509,23 +2562,23 @@ class OutputPageTest extends MediaWikiIntegrationTestCase {
 	}
 
 	/**
-	 * See ResourceLoaderClientHtmlTest for full coverage.
+	 * See ClientHtmlTest for full coverage.
 	 *
 	 * @dataProvider provideMakeResourceLoaderLink
 	 *
 	 * @covers OutputPage::makeResourceLoaderLink
 	 */
 	public function testMakeResourceLoaderLink( $args, $expectedHtml ) {
-		$this->setMwGlobals( [
-			'wgResourceLoaderDebug' => false,
-			'wgLoadScript' => 'http://127.0.0.1:8080/w/load.php',
-			'wgCSPReportOnlyHeader' => true,
+		$this->overrideConfigValues( [
+			MainConfigNames::ResourceLoaderDebug => false,
+			MainConfigNames::LoadScript => 'http://127.0.0.1:8080/w/load.php',
+			MainConfigNames::CSPReportOnlyHeader => true,
 		] );
 		$class = new ReflectionClass( OutputPage::class );
 		$method = $class->getMethod( 'makeResourceLoaderLink' );
 		$method->setAccessible( true );
 		$ctx = new RequestContext();
-		$skinFactory = MediaWikiServices::getInstance()->getSkinFactory();
+		$skinFactory = $this->getServiceContainer()->getSkinFactory();
 		$ctx->setSkin( $skinFactory->makeSkin( 'fallback' ) );
 		$ctx->setLanguage( 'en' );
 		$out = new OutputPage( $ctx );
@@ -2534,7 +2587,7 @@ class OutputPageTest extends MediaWikiIntegrationTestCase {
 		$nonce->setAccessible( true );
 		$nonce->setValue( $out->getCSP(), 'secret' );
 		$rl = $out->getResourceLoader();
-		$rl->setMessageBlobStore( $this->createMock( MessageBlobStore::class ) );
+		$rl->setMessageBlobStore( $this->createMock( RL\MessageBlobStore::class ) );
 		$rl->setDependencyStore( $this->createMock( KeyValueDependencyStore::class ) );
 		$rl->register( [
 			'test.foo' => [
@@ -2580,31 +2633,30 @@ class OutputPageTest extends MediaWikiIntegrationTestCase {
 	}
 
 	public static function provideMakeResourceLoaderLink() {
-		// phpcs:disable Generic.Files.LineLength
 		return [
 			// Single only=scripts load
 			[
-				[ 'test.foo', ResourceLoaderModule::TYPE_SCRIPTS ],
+				[ 'test.foo', RL\Module::TYPE_SCRIPTS ],
 				"<script nonce=\"secret\">(RLQ=window.RLQ||[]).push(function(){"
 					. 'mw.loader.load("http://127.0.0.1:8080/w/load.php?lang=en\u0026modules=test.foo\u0026only=scripts");'
 					. "});</script>"
 			],
 			// Multiple only=styles load
 			[
-				[ [ 'test.baz', 'test.foo', 'test.bar' ], ResourceLoaderModule::TYPE_STYLES ],
+				[ [ 'test.baz', 'test.foo', 'test.bar' ], RL\Module::TYPE_STYLES ],
 
 				'<link rel="stylesheet" href="http://127.0.0.1:8080/w/load.php?lang=en&amp;modules=test.bar%2Cbaz%2Cfoo&amp;only=styles"/>'
 			],
 			// Private embed (only=scripts)
 			[
-				[ 'test.quux', ResourceLoaderModule::TYPE_SCRIPTS ],
+				[ 'test.quux', RL\Module::TYPE_SCRIPTS ],
 				"<script nonce=\"secret\">(RLQ=window.RLQ||[]).push(function(){"
 					. "mw.test.baz({token:123});\nmw.loader.state({\"test.quux\":\"ready\"});"
 					. "});</script>"
 			],
 			// Load private module (combined)
 			[
-				[ 'test.quux', ResourceLoaderModule::TYPE_COMBINED ],
+				[ 'test.quux', RL\Module::TYPE_COMBINED ],
 				"<script nonce=\"secret\">(RLQ=window.RLQ||[]).push(function(){"
 					. "mw.loader.implement(\"test.quux@1ev0i\",function($,jQuery,require,module){"
 					. "mw.test.baz({token:123});},{\"css\":[\".mw-icon{transition:none}"
@@ -2612,17 +2664,17 @@ class OutputPageTest extends MediaWikiIntegrationTestCase {
 			],
 			// Load no modules
 			[
-				[ [], ResourceLoaderModule::TYPE_COMBINED ],
+				[ [], RL\Module::TYPE_COMBINED ],
 				'',
 			],
 			// noscript group
 			[
-				[ 'test.noscript', ResourceLoaderModule::TYPE_STYLES ],
+				[ 'test.noscript', RL\Module::TYPE_STYLES ],
 				'<noscript><link rel="stylesheet" href="http://127.0.0.1:8080/w/load.php?lang=en&amp;modules=test.noscript&amp;only=styles"/></noscript>'
 			],
 			// Load two modules in separate groups
 			[
-				[ [ 'test.group.foo', 'test.group.bar' ], ResourceLoaderModule::TYPE_COMBINED ],
+				[ [ 'test.group.foo', 'test.group.bar' ], RL\Module::TYPE_COMBINED ],
 				"<script nonce=\"secret\">(RLQ=window.RLQ||[]).push(function(){"
 					. 'mw.loader.load("http://127.0.0.1:8080/w/load.php?lang=en\u0026modules=test.group.bar");'
 					. 'mw.loader.load("http://127.0.0.1:8080/w/load.php?lang=en\u0026modules=test.group.foo");'
@@ -2638,17 +2690,17 @@ class OutputPageTest extends MediaWikiIntegrationTestCase {
 	 * @covers OutputPage::buildExemptModules
 	 */
 	public function testBuildExemptModules( array $exemptStyleModules, $expect ) {
-		$this->setMwGlobals( [
-			'wgResourceLoaderDebug' => false,
-			'wgLoadScript' => '/w/load.php',
+		$this->overrideConfigValues( [
+			MainConfigNames::ResourceLoaderDebug => false,
+			MainConfigNames::LoadScript => '/w/load.php',
 			// Stub wgCacheEpoch as it influences getVersionHash used for the
 			// urls in the expected HTML
-			'wgCacheEpoch' => '20140101000000',
+			MainConfigNames::CacheEpoch => '20140101000000',
 		] );
 
 		// Set up stubs
 		$ctx = new RequestContext();
-		$skinFactory = MediaWikiServices::getInstance()->getSkinFactory();
+		$skinFactory = $this->getServiceContainer()->getSkinFactory();
 		$ctx->setSkin( $skinFactory->makeSkin( 'fallback' ) );
 		$ctx->setLanguage( 'en' );
 		$op = $this->getMockBuilder( OutputPage::class )
@@ -2659,7 +2711,7 @@ class OutputPageTest extends MediaWikiIntegrationTestCase {
 			->willReturn( [] );
 		/** @var OutputPage $op */
 		$rl = $op->getResourceLoader();
-		$rl->setMessageBlobStore( $this->createMock( MessageBlobStore::class ) );
+		$rl->setMessageBlobStore( $this->createMock( RL\MessageBlobStore::class ) );
 
 		// Register custom modules
 		$rl->register( [
@@ -2680,7 +2732,6 @@ class OutputPageTest extends MediaWikiIntegrationTestCase {
 	}
 
 	public static function provideBuildExemptModules() {
-		// phpcs:disable Generic.Files.LineLength
 		return [
 			'empty' => [
 				'exemptStyleModules' => [],
@@ -2699,7 +2750,7 @@ class OutputPageTest extends MediaWikiIntegrationTestCase {
 				'exemptStyleModules' => [ 'site' => [ 'site.styles' ], 'user' => [ 'user.styles' ] ],
 				'<meta name="ResourceLoaderDynamicStyles" content=""/>' . "\n" .
 				'<link rel="stylesheet" href="/w/load.php?lang=en&amp;modules=site.styles&amp;only=styles"/>' . "\n" .
-				'<link rel="stylesheet" href="/w/load.php?lang=en&amp;modules=user.styles&amp;only=styles&amp;version=15pue"/>',
+				'<link rel="stylesheet" href="/w/load.php?lang=en&amp;modules=user.styles&amp;only=styles&amp;version=94mvi"/>',
 			],
 			'custom modules' => [
 				'exemptStyleModules' => [
@@ -2710,7 +2761,7 @@ class OutputPageTest extends MediaWikiIntegrationTestCase {
 				'<link rel="stylesheet" href="/w/load.php?lang=en&amp;modules=example.site.a%2Cb&amp;only=styles"/>' . "\n" .
 				'<link rel="stylesheet" href="/w/load.php?lang=en&amp;modules=site.styles&amp;only=styles"/>' . "\n" .
 				'<link rel="stylesheet" href="/w/load.php?lang=en&amp;modules=example.user&amp;only=styles&amp;version={blankCombi}"/>' . "\n" .
-				'<link rel="stylesheet" href="/w/load.php?lang=en&amp;modules=user.styles&amp;only=styles&amp;version=15pue"/>',
+				'<link rel="stylesheet" href="/w/load.php?lang=en&amp;modules=user.styles&amp;only=styles&amp;version=94mvi"/>',
 			],
 		];
 		// phpcs:enable
@@ -2733,15 +2784,14 @@ class OutputPageTest extends MediaWikiIntegrationTestCase {
 		}
 		$this->setMwGlobals( 'IP', $baseDir );
 		$conf = new HashConfig( [
-			'ResourceBasePath' => $basePath,
-			'UploadDirectory' => $uploadDir,
-			'UploadPath' => $uploadPath,
+			MainConfigNames::ResourceBasePath => $basePath,
+			MainConfigNames::UploadDirectory => $uploadDir,
+			MainConfigNames::UploadPath => $uploadPath,
+			MainConfigNames::BaseDirectory => $baseDir
 		] );
 
 		// Some of these paths don't exist and will cause warnings
-		Wikimedia\suppressWarnings();
-		$actual = OutputPage::transformResourcePath( $conf, $path );
-		Wikimedia\restoreWarnings();
+		$actual = @OutputPage::transformResourcePath( $conf, $path );
 
 		$this->assertEquals( $expected ?: $path, $actual );
 	}
@@ -2914,6 +2964,37 @@ class OutputPageTest extends MediaWikiIntegrationTestCase {
 		$op = $this->newInstance();
 		$this->assertFalse( $op->isTOCEnabled() );
 
+		$pOut1 = $this->createParserOutputStub();
+		$pOut1->method( 'getOutputFlag' )->will( $this->returnValueMap( [
+			[ ParserOutputFlags::SHOW_TOC, false ],
+		] ) );
+		$op->addParserOutputMetadata( $pOut1 );
+		$this->assertFalse( $op->isTOCEnabled() );
+
+		$pOut2 = $this->createParserOutputStub();
+		$pOut2->method( 'getOutputFlag' )->will( $this->returnValueMap( [
+			[ ParserOutputFlags::SHOW_TOC, true ],
+		] ) );
+		$op->addParserOutput( $pOut2 );
+		$this->assertTrue( $op->isTOCEnabled() );
+
+		// The parser output doesn't disable the TOC after it was enabled
+		$op->addParserOutputMetadata( $pOut1 );
+		$this->assertTrue( $op->isTOCEnabled() );
+	}
+
+	/**
+	 * @covers OutputPage::isTOCEnabled
+	 * @covers OutputPage::addParserOutputMetadata
+	 * @covers OutputPage::addParserOutput
+	 */
+	public function testIsTOCEnabledBackCompat() {
+		// This tests backward compatibility: OutputPage *used* to use
+		// ParserOutput::getTOCHTML() to determine whether the TOC should
+		// be enabled, before ParserOutputFlags::SHOW_TOC was added in 1.39.
+		$op = $this->newInstance();
+		$this->assertFalse( $op->isTOCEnabled() );
+
 		$pOut1 = $this->createParserOutputStub( 'getTOCHTML', false );
 		$op->addParserOutputMetadata( $pOut1 );
 		$this->assertFalse( $op->isTOCEnabled() );
@@ -2929,15 +3010,11 @@ class OutputPageTest extends MediaWikiIntegrationTestCase {
 
 	/**
 	 * @dataProvider providePreloadLinkHeaders
-	 * @covers ResourceLoaderSkinModule::getPreloadLinks
-	 * @covers ResourceLoaderSkinModule::getLogoPreloadlinks
+	 * @covers \MediaWiki\ResourceLoader\SkinModule::getPreloadLinks
 	 */
-	public function testPreloadLinkHeaders( $config, $result, $installPath = null ) {
-		if ( $installPath ) {
-			$this->setMwGlobals( [ 'IP' => $installPath ] );
-		}
-		$ctx = $this->createMock( ResourceLoaderContext::class );
-		$module = new ResourceLoaderSkinModule();
+	public function testPreloadLinkHeaders( $config, $result ) {
+		$ctx = $this->createMock( RL\Context::class );
+		$module = new RL\SkinModule();
 		$module->setConfig( new HashConfig( $config + ResourceLoaderTestCase::getSettings() ) );
 
 		$this->assertEquals( [ $result ], $module->getHeaders( $ctx ) );
@@ -2999,9 +3076,9 @@ class OutputPageTest extends MediaWikiIntegrationTestCase {
 						'1x' => '/w/test.jpg',
 					],
 					'UploadPath' => '/w/images',
+					'BaseDirectory' => dirname( __DIR__ ) . '/data/media'
 				],
 				'Link: </w/test.jpg?edcf2>;rel=preload;as=image',
-				dirname( __DIR__ ) . '/data/media',
 			],
 		];
 	}
@@ -3040,11 +3117,16 @@ class OutputPageTest extends MediaWikiIntegrationTestCase {
 	 */
 	public function testSendCacheControl( array $options = [], array $expectations = [] ) {
 		$output = $this->newInstance( [
-			'LoggedOutMaxAge' => $options['loggedOutMaxAge'] ?? 0,
 			'UseCdn' => $options['useCdn'] ?? false,
 		] );
+		$output->considerCacheSettingsFinal();
 
-		$output->enableClientCache( $options['enableClientCache'] ?? true );
+		$cacheable = $options['enableClientCache'] ?? true;
+		if ( !$cacheable ) {
+			$output->disableClientCache();
+		}
+		$this->assertEquals( $cacheable, $output->couldBePublicCached() );
+
 		$output->setCdnMaxage( $options['cdnMaxAge'] ?? 0 );
 
 		if ( isset( $options['lastModified'] ) ) {
@@ -3083,20 +3165,11 @@ class OutputPageTest extends MediaWikiIntegrationTestCase {
 			'Default' => [],
 			'Logged out max-age' => [
 				[
-					'loggedOutMaxAge' => 300,
-				],
-				[
-					'Cache-Control' => 'private, must-revalidate, max-age=300',
+					'Cache-Control' => 'private, must-revalidate, max-age=0',
 				],
 			],
 			'Cookies' => [
 				[
-					'cookie' => true,
-				],
-			],
-			'Cookies with logged out max-age' => [
-				[
-					'loggedOutMaxAge' => 300,
 					'cookie' => true,
 				],
 			],
@@ -3172,7 +3245,7 @@ class OutputPageTest extends MediaWikiIntegrationTestCase {
 	 */
 	public function testGetJsVarsEditable( Authority $performer, array $expectedEditableConfig ) {
 		$op = $this->newInstance( [], null, null, $performer );
-		$op->getContext()->getSkin()->setRelevantTitle( Title::newFromText( 'RelevantTitle' ) );
+		$op->getContext()->getSkin()->setRelevantTitle( Title::makeTitle( NS_MAIN, 'RelevantTitle' ) );
 		$this->assertArraySubmapSame( $expectedEditableConfig, $op->getJSVars() );
 	}
 
@@ -3272,7 +3345,7 @@ class OutputPageTest extends MediaWikiIntegrationTestCase {
 		] ) );
 
 		if ( $option !== 'notitle' ) {
-			$context->setTitle( Title::newFromText( 'My test page' ) );
+			$context->setTitle( Title::makeTitle( NS_MAIN, 'My test page' ) );
 		}
 
 		if ( $request ) {

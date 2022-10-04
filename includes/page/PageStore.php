@@ -12,6 +12,7 @@ use MalformedTitleException;
 use MediaWiki\Config\ServiceOptions;
 use MediaWiki\DAO\WikiAwareEntity;
 use MediaWiki\Linker\LinkTarget;
+use MediaWiki\MainConfigNames;
 use NamespaceInfo;
 use NullStatsdDataFactory;
 use stdClass;
@@ -22,7 +23,6 @@ use Wikimedia\Rdbms\ILoadBalancer;
 
 /**
  * @since 1.36
- *
  * @unstable
  */
 class PageStore implements PageLookup {
@@ -52,7 +52,7 @@ class PageStore implements PageLookup {
 	 * @internal for use by service wiring
 	 */
 	public const CONSTRUCTOR_OPTIONS = [
-		'PageLanguageUseDB',
+		MainConfigNames::PageLanguageUseDB,
 	];
 
 	/**
@@ -205,6 +205,10 @@ class PageStore implements PageLookup {
 
 		if ( $row ) {
 			try {
+				// NOTE: LinkCache may not include namespace and title in the cached row,
+				//       since it's already used as the cache key!
+				$row->page_namespace = $namespace;
+				$row->page_title = $dbKey;
 				$page = $this->newPageRecordFromRow( $row );
 
 				// We were able to use the row we got from link cache.
@@ -316,17 +320,9 @@ class PageStore implements PageLookup {
 		if ( $page instanceof ExistingPageRecord && $queryFlags === self::READ_NORMAL ) {
 			return $page;
 		}
-
 		if ( $page instanceof PageIdentity ) {
 			Assert::parameter( $page->canExist(), '$page', 'Must be a proper page' );
-
-			if ( $page->exists() ) {
-				// if we have a page ID, use it
-				$id = $page->getId( $this->wikiId );
-				return $this->getPageById( $id, $queryFlags );
-			}
 		}
-
 		return $this->getPageByName( $page->getNamespace(), $page->getDBkey(), $queryFlags );
 	}
 
@@ -381,7 +377,7 @@ class PageStore implements PageLookup {
 			'page_content_model'
 		];
 
-		if ( $this->options->get( 'PageLanguageUseDB' ) ) {
+		if ( $this->options->get( MainConfigNames::PageLanguageUseDB ) ) {
 			$fields[] = 'page_lang';
 		}
 
@@ -397,7 +393,7 @@ class PageStore implements PageLookup {
 	/**
 	 * @unstable
 	 *
-	 * @param IDatabase|int|null $dbOrFlags The database connection to use, or a READ_XXX constant
+	 * @param IDatabase|int $dbOrFlags The database connection to use, or a READ_XXX constant
 	 *        indicating what kind of database connection to use.
 	 *
 	 * @return PageSelectQueryBuilder

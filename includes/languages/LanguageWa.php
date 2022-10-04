@@ -1,7 +1,5 @@
 <?php
 /**
- * Walloon (Walon) specific code.
- *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
@@ -18,7 +16,6 @@
  * http://www.gnu.org/copyleft/gpl.html
  *
  * @file
- * @ingroup Language
  */
 
 /**
@@ -27,7 +24,7 @@
  * NOTE: cweri après "NOTE:" po des racsegnes so des ratournaedjes
  * k' i gn a.
  *
- * @ingroup Language
+ * @ingroup Languages
  */
 class LanguageWa extends Language {
 
@@ -64,19 +61,19 @@ class LanguageWa extends Language {
 
 		# Walloon format
 		# we output this in all other cases
-		$m = substr( $ts, 4, 2 );
-		$n = substr( $ts, 6, 2 );
+		$m = (int)substr( $ts, 4, 2 );
+		$n = (int)substr( $ts, 6, 2 );
 		if ( $n == 1 ) {
 			$d = "1î d' " . $this->getMonthName( $m ) .
 				" " . substr( $ts, 0, 4 );
 		} elseif ( $n == 2 || $n == 3 || $n == 20 || $n == 22 || $n == 23 ) {
-			$d = ( 0 + $n ) . " d' " . $this->getMonthName( $m ) .
+			$d = $n . " d' " . $this->getMonthName( $m ) .
 				" " . substr( $ts, 0, 4 );
 		} elseif ( $m == 4 || $m == 8 || $m == 10 ) {
-			$d = ( 0 + $n ) . " d' " . $this->getMonthName( $m ) .
+			$d = $n . " d' " . $this->getMonthName( $m ) .
 				" " . substr( $ts, 0, 4 );
 		} else {
-			$d = ( 0 + $n ) . " di " . $this->getMonthName( $m ) .
+			$d = $n . " di " . $this->getMonthName( $m ) .
 				" " . substr( $ts, 0, 4 );
 		}
 		return $d;

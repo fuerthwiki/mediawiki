@@ -21,8 +21,11 @@
 namespace MediaWiki\Block;
 
 use CommentStoreComment;
+use DeprecationHelper;
 use IContextSource;
 use InvalidArgumentException;
+use MediaWiki\DAO\WikiAwareEntityTrait;
+use MediaWiki\MainConfigNames;
 use MediaWiki\MediaWikiServices;
 use MediaWiki\User\UserIdentity;
 use Message;
@@ -35,20 +38,17 @@ use User;
  * @since 1.34 Factored out from DatabaseBlock (previously Block).
  */
 abstract class AbstractBlock implements Block {
+	use DeprecationHelper;
+	use WikiAwareEntityTrait;
+
 	/** @var CommentStoreComment */
 	protected $reason;
 
-	/**
-	 * @deprecated since 1.34. Use getTimestamp and setTimestamp instead.
-	 * @var string
-	 */
-	public $mTimestamp = '';
+	/** @var string */
+	protected $mTimestamp = '';
 
-	/**
-	 * @deprecated since 1.34. Use getExpiry and setExpiry instead.
-	 * @var string
-	 */
-	public $mExpiry = '';
+	/** @var string */
+	protected $mExpiry = '';
 
 	/** @var bool */
 	protected $mBlockEmail = false;
@@ -59,11 +59,8 @@ abstract class AbstractBlock implements Block {
 	/** @var bool */
 	protected $blockCreateAccount = false;
 
-	/**
-	 * @deprecated since 1.34. Use getHideName and setHideName instead.
-	 * @var bool
-	 */
-	public $mHideName = false;
+	/** @var bool */
+	protected $mHideName = false;
 
 	/** @var bool */
 	protected $isHardblock;
@@ -80,11 +77,15 @@ abstract class AbstractBlock implements Block {
 	/** @var bool */
 	protected $isSitewide = true;
 
+	/** @var string|false */
+	protected $wikiId;
+
 	/**
 	 * Create a new block with specified parameters on a user, IP or IP range.
 	 *
 	 * @param array $options Parameters of the block, with supported options:
 	 *  - address: (string|UserIdentity) Target user name, user identity object, IP address or IP range
+	 *  - wiki: (string|false) The wiki the block has been issued in, self::LOCAL for the local wiki (since 1.38)
 	 *  - reason: (string|Message|CommentStoreComment) Reason for the block
 	 *  - timestamp: (string) The time at which the block comes into effect
 	 *  - hideName: (bool) Hide the target user name
@@ -92,6 +93,7 @@ abstract class AbstractBlock implements Block {
 	public function __construct( array $options = [] ) {
 		$defaults = [
 			'address'         => '',
+			'wiki'            => self::LOCAL,
 			'reason'          => '',
 			'timestamp'       => '',
 			'hideName'        => false,
@@ -100,20 +102,26 @@ abstract class AbstractBlock implements Block {
 
 		$options += $defaults;
 
+		$this->wikiId = $options['wiki'];
 		$this->setTarget( $options['address'] );
-
 		$this->setReason( $options['reason'] );
 		$this->setTimestamp( wfTimestamp( TS_MW, $options['timestamp'] ) );
 		$this->setHideName( (bool)$options['hideName'] );
 		$this->isHardblock( !$options['anonOnly'] );
+
+		// hard deprecated since 1.39
+		$this->deprecatePublicProperty( 'mExpiry', '1.34', __CLASS__ );
+		$this->deprecatePublicProperty( 'mHideName', '1.34', __CLASS__ );
+		$this->deprecatePublicProperty( 'mTimestamp', '1.34', __CLASS__ );
 	}
 
 	/**
 	 * Get the user id of the blocking sysop
 	 *
+	 * @param string|false $wikiId (since 1.38)
 	 * @return int (0 for foreign users)
 	 */
-	abstract public function getBy();
+	abstract public function getBy( $wikiId = self::LOCAL ): int;
 
 	/**
 	 * Get the username of the blocking sysop
@@ -123,10 +131,11 @@ abstract class AbstractBlock implements Block {
 	abstract public function getByName();
 
 	/**
-	 * Get the block ID
-	 * @return int|null
+	 * @inheritDoc
 	 */
-	public function getId(): ?int {
+	public function getId( $wikiId = self::LOCAL ): ?int {
+		// TODO: Enable deprecation warnings once cross-wiki accesses have been removed, see T274817
+		// $this->deprecateInvalidCrossWiki( $wikiId, '1.38' );
 		return null;
 	}
 
@@ -266,8 +275,8 @@ abstract class AbstractBlock implements Block {
 	 *  unsure (e.g. unrecognized right or unset property)
 	 */
 	public function appliesToRight( $right ) {
-		$config = RequestContext::getMain()->getConfig();
-		$blockDisablesLogin = $config->get( 'BlockDisablesLogin' );
+		$blockDisablesLogin = MediaWikiServices::getInstance()->getMainConfig()
+			->get( MainConfigNames::BlockDisablesLogin );
 
 		$res = null;
 		switch ( $right ) {
@@ -305,43 +314,6 @@ abstract class AbstractBlock implements Block {
 	 */
 	public function getType(): ?int {
 		return $this->type;
-	}
-
-	/**
-	 * Get the target and target type for this particular block. Note that for autoblocks,
-	 * this returns the unredacted name; frontend functions need to call $block->getRedactedName()
-	 * in this situation.
-	 *
-	 * If the type is not null, it will be an AbstractBlock::TYPE_ constant.
-	 *
-	 * @deprecated since 1.37, use getTargetName() and getTargetUserIdentity()
-	 *             together with getType()
-	 *
-	 * @return array [ User|String|null, int|null ]
-	 * @todo FIXME: This should be an integral part of the block member variables
-	 */
-	public function getTargetAndType() {
-		wfDeprecated( __METHOD__, '1.37' );
-		return [ $this->getTarget(), $this->getType() ];
-	}
-
-	/**
-	 * Get the target for this particular block. Note that for autoblocks,
-	 * this returns the unredacted name; frontend functions need to call $block->getRedactedName()
-	 * in this situation.
-	 * @deprecated since 1.37, use getTargetName() and getTargetUserIdentity()
-	 *             together with getType()
-	 * @return User|string|null
-	 */
-	public function getTarget() {
-		wfDeprecated( __METHOD__, '1.37' );
-		if ( $this->target instanceof UserIdentity ) {
-			return MediaWikiServices::getInstance()
-				->getUserFactory()
-				->newFromUserIdentity( $this->target );
-		} else {
-			return $this->target;
-		}
 	}
 
 	/**
@@ -428,10 +400,22 @@ abstract class AbstractBlock implements Block {
 			$this->target = null;
 			$this->type = null;
 		} else {
-			list( $this->target, $this->type ) = MediaWikiServices::getInstance()
+			list( $parsedTarget, $this->type ) = MediaWikiServices::getInstance()
 				->getBlockUtils()
 				->parseBlockTarget( $target );
+			if ( $parsedTarget !== null ) {
+				$this->assertWiki( is_string( $parsedTarget ) ? self::LOCAL : $parsedTarget->getWikiId() );
+			}
+			$this->target = $parsedTarget;
 		}
+	}
+
+	/**
+	 * @since 1.38
+	 * @return string|false
+	 */
+	public function getWikiId() {
+		return $this->wikiId;
 	}
 
 	/**
@@ -441,7 +425,9 @@ abstract class AbstractBlock implements Block {
 	 *  build the array using Message::getKey and Message::getParams.
 	 * @since 1.22
 	 * @param IContextSource $context
-	 * @return array
+	 * @return array A message array: either a list of strings, the first of which
+	 *  is the message key and the remaining ones the parameters, or an array with
+	 *  a single MessageSpecifier object.
 	 */
 	public function getPermissionsError( IContextSource $context ) {
 		$message = MediaWikiServices::getInstance()
@@ -451,7 +437,7 @@ abstract class AbstractBlock implements Block {
 				$context->getLanguage(),
 				$context->getRequest()->getIP()
 			);
-		return array_merge( [ [ $message->getKey() ], $message->getParams() ] );
+		return array_merge( [ $message->getKey() ], $message->getParams() );
 	}
 
 	/**
@@ -512,8 +498,9 @@ abstract class AbstractBlock implements Block {
 
 		// This is a type of block which uses the ipb_allow_usertalk
 		// flag. The flag can still be overridden by global configs.
-		$config = RequestContext::getMain()->getConfig();
-		if ( !$config->get( 'BlockAllowsUTEdit' ) ) {
+		if ( !MediaWikiServices::getInstance()->getMainConfig()
+			->get( MainConfigNames::BlockAllowsUTEdit )
+		) {
 			return true;
 		}
 		return !$this->isUsertalkEditAllowed();

@@ -1,5 +1,7 @@
 <?php
 
+use MediaWiki\MainConfigNames;
+
 /**
  * Tests for MediaWiki api.php?action=delete.
  *
@@ -20,9 +22,7 @@ class ApiDeleteTest extends ApiTestCase {
 			[ 'change_tag', 'change_tag_def', 'logging', 'watchlist', 'watchlist_expiry' ]
 		);
 
-		$this->setMwGlobals( [
-			'wgWatchlistExpiry' => true,
-		] );
+		$this->overrideConfigValue( MainConfigNames::WatchlistExpiry, true );
 	}
 
 	public function testDelete() {
@@ -46,7 +46,9 @@ class ApiDeleteTest extends ApiTestCase {
 	}
 
 	public function testBatchedDelete() {
-		$this->setMwGlobals( 'wgDeleteRevisionsBatchSize', 1 );
+		$this->overrideConfigValue(
+			MainConfigNames::DeleteRevisionsBatchSize, 1
+		);
 
 		$name = 'Help:' . ucfirst( __FUNCTION__ );
 		for ( $i = 1; $i <= 3; $i++ ) {
@@ -79,6 +81,34 @@ class ApiDeleteTest extends ApiTestCase {
 			'action' => 'delete',
 			'title' => 'This page deliberately left nonexistent',
 		] );
+	}
+
+	public function testDeleteAssociatedTalkPage() {
+		$title = 'Help:' . ucfirst( __FUNCTION__ );
+		$talkPage = 'Help_talk:' . ucfirst( __FUNCTION__ );
+		$this->editPage( $title, 'Some text' );
+		$this->editPage( $talkPage, 'Some text' );
+		$apiResult = $this->doApiRequestWithToken( [
+			'action' => 'delete',
+			'title' => $title,
+			'deletetalk' => true,
+		] )[0];
+
+		$this->assertSame( $title, $apiResult['delete']['title'] );
+		$this->assertFalse( Title::newFromText( $talkPage )->exists( Title::READ_LATEST ) );
+	}
+
+	public function testDeleteAssociatedTalkPageNonexistent() {
+		$title = 'Help:' . ucfirst( __FUNCTION__ );
+		$this->editPage( $title, 'Some text' );
+		$apiResult = $this->doApiRequestWithToken( [
+			'action' => 'delete',
+			'title' => $title,
+			'deletetalk' => true,
+		] )[0];
+
+		$this->assertSame( $title, $apiResult['delete']['title'] );
+		$this->assertArrayHasKey( 'warnings', $apiResult );
 	}
 
 	public function testDeletionWithoutPermission() {
@@ -149,8 +179,10 @@ class ApiDeleteTest extends ApiTestCase {
 		$name = 'Help:' . ucfirst( __FUNCTION__ );
 
 		ChangeTags::defineTag( 'custom tag' );
-		$this->setMwGlobals( 'wgRevokePermissions',
-			[ 'user' => [ 'applychangetags' => true ] ] );
+		$this->overrideConfigValue(
+			MainConfigNames::RevokePermissions,
+			[ 'user' => [ 'applychangetags' => true ] ]
+		);
 
 		$this->editPage( $name, 'Some text' );
 

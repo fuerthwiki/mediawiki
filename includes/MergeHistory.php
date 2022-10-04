@@ -139,7 +139,7 @@ class MergeHistory {
 		$this->timestamp = $timestamp;
 
 		// Get the database
-		$this->dbw = $loadBalancer->getConnection( DB_PRIMARY );
+		$this->dbw = $loadBalancer->getConnectionRef( DB_PRIMARY );
 
 		$this->contentHandlerFactory = $contentHandlerFactory;
 		$this->revisionStore = $revisionStore;
@@ -247,7 +247,7 @@ class MergeHistory {
 	}
 
 	/**
-	 * Does various sanity checks that the merge is
+	 * Does various checks that the merge is
 	 * valid. Only things based on the two pages
 	 * should be checked here.
 	 *
@@ -302,8 +302,6 @@ class MergeHistory {
 	 * @return Status status of the history merge
 	 */
 	public function merge( Authority $performer, $reason = '' ) {
-		global $wgActorTableSchemaMigrationStage;
-
 		$status = new Status();
 
 		// Check validity and permissions required for merge
@@ -330,20 +328,6 @@ class MergeHistory {
 		if ( $this->revisionsMerged < 1 ) {
 			$this->dbw->endAtomic( __METHOD__ );
 			return $status->fatal( 'mergehistory-fail-no-change' );
-		}
-
-		// Update denormalized revactor_page too
-		if ( $wgActorTableSchemaMigrationStage & SCHEMA_COMPAT_WRITE_TEMP ) {
-			$this->dbw->update(
-				'revision_actor_temp',
-				[ 'revactor_page' => $this->dest->getId() ],
-				[
-					'revactor_page' => $this->source->getId(),
-					// Slightly hacky, but should work given the values assigned in this class
-					str_replace( 'rev_timestamp', 'revactor_timestamp', $this->getTimeWhere() )
-				],
-				__METHOD__
-			);
 		}
 
 		$haveRevisions = $this->dbw->lockForUpdate(
@@ -386,7 +370,7 @@ class MergeHistory {
 		$logEntry = new ManualLogEntry( 'merge', 'merge' );
 		$logEntry->setPerformer( $performer->getUser() );
 		$logEntry->setComment( $reason );
-		$logEntry->setTarget( TitleValue::newFromPage( $this->source ) );
+		$logEntry->setTarget( $this->source );
 		$logEntry->setParameters( [
 			'4::dest' => $this->titleFormatter->getPrefixedText( $this->dest ),
 			'5::mergepoint' => $this->getTimestampLimit()->getTimestamp( TS_MW )
@@ -394,6 +378,7 @@ class MergeHistory {
 		$logId = $logEntry->insert();
 		$logEntry->publish( $logId );
 
+		// @phan-suppress-next-line PhanTypeMismatchArgumentNullable castFrom does not return null here
 		$this->hookRunner->onArticleMergeComplete( $legacySource, $legacyDest );
 
 		$this->dbw->endAtomic( __METHOD__ );
@@ -426,6 +411,7 @@ class MergeHistory {
 			$newContent = $contentHandler->makeEmptyContent();
 		} else {
 			$msg = wfMessage( 'mergehistory-redirect-text' )->inContentLanguage()->plain();
+			// @phan-suppress-next-line PhanTypeMismatchArgumentNullable castFrom does not return null here
 			$newContent = $contentHandler->makeRedirectContent( $legacyDestTitle, $msg );
 		}
 
@@ -496,7 +482,7 @@ class MergeHistory {
 			// revisions are now tied to a different title and its content model
 			// does not support redirects, so we cannot leave a new revision on it.
 			// This deletion does not depend on userright but may still fails. If it
-			// fails, it will be communicated in the status reponse.
+			// fails, it will be communicated in the status response.
 			$reason = wfMessage( 'mergehistory-source-deleted-reason' )->inContentLanguage()->plain();
 			$deletionStatus = $newPage->doDeleteArticleReal( $reason, $user );
 			// Notify callers that the source page has been deleted.

@@ -40,27 +40,27 @@ class DeprecatedHooks {
 		'BeforeParserrenderImageGallery' => [ 'deprecatedVersion' => '1.35' ],
 		'EditPageBeforeEditToolbar' => [ 'deprecatedVersion' => '1.36' ],
 		'InternalParseBeforeSanitize' => [ 'deprecatedVersion' => '1.35' ],
+		'LinksUpdateConstructed' => [ 'deprecatedVersion' => '1.38' ],
+		'LinksUpdateAfterInsert' => [ 'deprecatedVersion' => '1.38' ],
 		'LocalFile::getHistory' => [ 'deprecatedVersion' => '1.37' ],
 		'MagicWordwgVariableIDs' => [ 'deprecatedVersion' => '1.35', 'silent' => true ],
 		'PageContentSave' => [ 'deprecatedVersion' => '1.35', 'silent' => true ],
-		'ParserGetVariableValueVarCache' => [ 'deprecatedVersion' => '1.35' ],
 		'ParserSectionCreate' => [ 'deprecatedVersion' => '1.35' ],
 		'ParserTestTables' => [ 'deprecatedVersion' => '1.36', 'silent' => true ],
 		'PrefixSearchBackend' => [ 'deprecatedVersion' => '1.27', 'silent' => true ],
 		'ProtectionForm::buildForm' => [ 'deprecatedVersion' => '1.36', 'silent' => true ],
 		'ResourceLoaderTestModules' => [ 'deprecatedVersion' => '1.33' ],
 		'RollbackComplete' => [ 'deprecatedVersion' => '1.36', 'silent' => true ],
-		'SkinGetPoweredBy' => [ 'deprecatedVersion' => '1.37' ],
 		'SpecialMuteSubmit' => [ 'deprecatedVersion' => '1.35', 'silent' => true ],
 		'UserLoadFromDatabase' => [ 'deprecatedVersion' => '1.37' ],
-		'UserLoadOptions' => [ 'deprecatedVersion' => '1.37' ],
-		'UserResetAllOptions' => [ 'deprecatedVersion' => '1.37' ],
-		'UserSaveOptions' => [ 'deprecatedVersion' => '1.37' ],
 		'UserSetCookies' => [ 'deprecatedVersion' => '1.27' ],
 		'WikiPageDeletionUpdates' => [ 'deprecatedVersion' => '1.32', 'silent' => true ],
 		'userCan' => [ 'deprecatedVersion' => '1.37' ],
 		'ArticleDelete' => [ 'deprecatedVersion' => '1.37', 'silent' => true ],
 		'ArticleDeleteComplete' => [ 'deprecatedVersion' => '1.37', 'silent' => true ],
+		'SkinTemplateNavigation' => [ 'deprecatedVersion' => '1.39' ],
+		'SkinTemplateNavigation::SpecialPage' => [ 'deprecatedVersion' => '1.39' ],
+		'PersonalUrls' => [ 'deprecatedVersion' => '1.39' ],
 	];
 
 	/**
@@ -94,8 +94,8 @@ class DeprecatedHooks {
 	 * @param bool $silent True to not raise any deprecation warning
 	 * @throws InvalidArgumentException Hook has already been marked deprecated
 	 */
-	public function markDeprecated( string $hook, string $version,
-		?string $component = null, bool $silent = false
+	public function markDeprecated(
+		string $hook, string $version, ?string $component = null, bool $silent = false
 	): void {
 		if ( isset( $this->deprecatedHooks[$hook] ) ) {
 			throw new InvalidArgumentException(

@@ -21,6 +21,7 @@
  * @defgroup JobQueue JobQueue
  */
 use Liuggio\StatsdClient\Factory\StatsdDataFactoryInterface;
+use Wikimedia\RequestTimeout\TimeoutException;
 use Wikimedia\UUID\GlobalIdGenerator;
 
 /**
@@ -117,7 +118,7 @@ abstract class JobQueue {
 	 *      by timestamp, allowing for some jobs to be popped off out of order.
 	 *      If "random" is used, pop() will pick jobs in random order.
 	 *      Note that it may only be weakly random (e.g. a lottery of the oldest X).
-	 *      If "any" is choosen, the queue will use whatever order is the fastest.
+	 *      If "any" is chosen, the queue will use whatever order is the fastest.
 	 *      This might be useful for improving concurrency for job acquisition.
 	 *   - claimTTL : If supported, the queue will recycle jobs that have been popped
 	 *      but not acknowledged as completed after this many seconds. Recycling
@@ -156,7 +157,7 @@ abstract class JobQueue {
 
 	/**
 	 * @return string Wiki ID
-	 * @deprecated 1.33 (hard deprecated since 1.37)
+	 * @deprecated since 1.33 (hard deprecated since 1.37)
 	 */
 	final public function getWiki() {
 		wfDeprecated( __METHOD__, '1.33' );
@@ -407,6 +408,8 @@ abstract class JobQueue {
 				$this->incrStats( 'dupe_pops', $job->getType() );
 				$job = DuplicateJob::newFromJob( $job ); // convert to a no-op
 			}
+		} catch ( TimeoutException $e ) {
+			throw $e;
 		} catch ( Exception $e ) {
 			// don't lose jobs over this
 		}
@@ -530,7 +533,7 @@ abstract class JobQueue {
 	protected function doIsRootJobOldDuplicate( IJobSpecification $job ) {
 		$params = $job->hasRootJobParams() ? $job->getRootJobParams() : null;
 		if ( !$params ) {
-			return false; // job has no de-deplication info
+			return false; // job has no de-duplication info
 		}
 
 		$key = $this->getRootJobCacheKey( $params['rootJobSignature'], $job->getType() );
@@ -673,7 +676,7 @@ abstract class JobQueue {
 	 * Do not use this function outside of JobQueue/JobQueueGroup
 	 *
 	 * @stable to override
-	 * @return string
+	 * @return string|null
 	 * @since 1.22
 	 */
 	public function getCoalesceLocationInternal() {

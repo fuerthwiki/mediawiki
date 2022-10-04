@@ -7,10 +7,11 @@ use HashConfig;
 use InvalidArgumentException;
 use LocalIdLookup;
 use MediaWiki\Config\ServiceOptions;
+use MediaWiki\MainConfigNames;
 use MediaWiki\User\CentralId\CentralIdLookupFactory;
 use MediaWiki\User\UserIdentityLookup;
 use MediaWikiUnitTestCase;
-use Wikimedia\ObjectFactory;
+use Wikimedia\ObjectFactory\ObjectFactory;
 use Wikimedia\Rdbms\ILoadBalancer;
 use Wikimedia\Services\ServiceContainer;
 
@@ -21,7 +22,7 @@ class CentralIdLookupFactoryTest extends MediaWikiUnitTestCase {
 	/** @var CentralIdLookup */
 	private $centralLookupMock;
 
-	public function setUp(): void {
+	protected function setUp(): void {
 		parent::setUp();
 		$this->centralLookupMock = $this->getMockForAbstractClass( CentralIdLookup::class );
 	}
@@ -33,9 +34,9 @@ class CentralIdLookupFactoryTest extends MediaWikiUnitTestCase {
 			->willReturnMap( [
 				[ 'DBLoadBalancer', $this->createMock( ILoadBalancer::class ) ],
 				[ 'MainConfig', new HashConfig( [
-					'SharedDB' => null,
-					'SharedTables' => [],
-					'LocalDatabases' => [],
+					MainConfigNames::SharedDB => null,
+					MainConfigNames::SharedTables => [],
+					MainConfigNames::LocalDatabases => [],
 				] ) ],
 			] );
 		$localIdLookupTest = [
@@ -49,14 +50,14 @@ class CentralIdLookupFactoryTest extends MediaWikiUnitTestCase {
 			new ServiceOptions(
 				CentralIdLookupFactory::CONSTRUCTOR_OPTIONS,
 				[
-					'CentralIdLookupProviders' => [
+					MainConfigNames::CentralIdLookupProviders => [
 						'local' => $localIdLookupTest,
 						'local2' => $localIdLookupTest,
 						'mock' => [ 'factory' => function () {
 							return $this->centralLookupMock;
 						} ]
 					],
-					'CentralIdLookupProvider' => 'mock',
+					MainConfigNames::CentralIdLookupProvider => 'mock',
 				]
 			),
 			new ObjectFactory( $services ),

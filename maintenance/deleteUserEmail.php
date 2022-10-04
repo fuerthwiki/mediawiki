@@ -44,14 +44,13 @@ class DeleteUserEmail extends Maintenance {
 		$userFactory = MediaWikiServices::getInstance()->getUserFactory();
 		$userName = $this->getArg( 0 );
 		if ( preg_match( '/^#\d+$/', $userName ) ) {
-			$userName = substr( $userName, 1 );
-			$user = $userFactory->newFromId( $userName );
+			$user = $userFactory->newFromId( (int)substr( $userName, 1 ) );
 		} else {
 			$user = $userFactory->newFromName( $userName );
 		}
 
 		// Checking whether User object is valid and has an actual id
-		if ( !$user || !$user->getId() || !$user->loadFromId() ) {
+		if ( !$user || !$user->isRegistered() || !$user->loadFromId() ) {
 			$this->fatalError( "Error: user '$userName' could not be loaded" );
 		}
 

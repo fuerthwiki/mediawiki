@@ -21,6 +21,9 @@
  */
 
 use MediaWiki\CommentFormatter\RowCommentFormatter;
+use MediaWiki\MainConfigNames;
+use Wikimedia\ParamValidator\ParamValidator;
+use Wikimedia\ParamValidator\TypeDef\IntegerDef;
 
 /**
  * Query module to enumerate all create-protected pages.
@@ -91,20 +94,14 @@ class ApiQueryProtectedTitles extends ApiQueryGeneratorBase {
 		$this->addWhereRange( 'pt_title', $params['dir'], null, null );
 
 		if ( $params['continue'] !== null ) {
-			$cont = explode( '|', $params['continue'] );
-			$this->dieContinueUsageIf( count( $cont ) != 3 );
-			$op = ( $params['dir'] === 'newer' ? '>' : '<' );
+			$cont = $this->parseContinueParamOrDie( $params['continue'], [ 'string', 'int', 'string' ] );
+			$op = ( $params['dir'] === 'newer' ? '>=' : '<=' );
 			$db = $this->getDB();
-			$continueTimestamp = $db->addQuotes( $db->timestamp( $cont[0] ) );
-			$continueNs = (int)$cont[1];
-			$this->dieContinueUsageIf( $continueNs != $cont[1] );
-			$continueTitle = $db->addQuotes( $cont[2] );
-			$this->addWhere( "pt_timestamp $op $continueTimestamp OR " .
-				"(pt_timestamp = $continueTimestamp AND " .
-				"(pt_namespace $op $continueNs OR " .
-				"(pt_namespace = $continueNs AND " .
-				"pt_title $op= $continueTitle)))"
-			);
+			$this->addWhere( $db->buildComparison( $op, [
+				'pt_timestamp' => $db->timestamp( $cont[0] ),
+				'pt_namespace' => $cont[1],
+				'pt_title' => $cont[2],
+			] ) );
 		}
 
 		if ( isset( $prop['user'] ) ) {
@@ -212,38 +209,39 @@ class ApiQueryProtectedTitles extends ApiQueryGeneratorBase {
 	public function getAllowedParams() {
 		return [
 			'namespace' => [
-				ApiBase::PARAM_ISMULTI => true,
-				ApiBase::PARAM_TYPE => 'namespace',
+				ParamValidator::PARAM_ISMULTI => true,
+				ParamValidator::PARAM_TYPE => 'namespace',
 			],
 			'level' => [
-				ApiBase::PARAM_ISMULTI => true,
-				ApiBase::PARAM_TYPE => array_diff( $this->getConfig()->get( 'RestrictionLevels' ), [ '' ] )
+				ParamValidator::PARAM_ISMULTI => true,
+				ParamValidator::PARAM_TYPE => array_diff(
+					$this->getConfig()->get( MainConfigNames::RestrictionLevels ), [ '' ] )
 			],
 			'limit' => [
-				ApiBase::PARAM_DFLT => 10,
-				ApiBase::PARAM_TYPE => 'limit',
-				ApiBase::PARAM_MIN => 1,
-				ApiBase::PARAM_MAX => ApiBase::LIMIT_BIG1,
-				ApiBase::PARAM_MAX2 => ApiBase::LIMIT_BIG2
+				ParamValidator::PARAM_DEFAULT => 10,
+				ParamValidator::PARAM_TYPE => 'limit',
+				IntegerDef::PARAM_MIN => 1,
+				IntegerDef::PARAM_MAX => ApiBase::LIMIT_BIG1,
+				IntegerDef::PARAM_MAX2 => ApiBase::LIMIT_BIG2
 			],
 			'dir' => [
-				ApiBase::PARAM_DFLT => 'older',
-				ApiBase::PARAM_TYPE => [
+				ParamValidator::PARAM_DEFAULT => 'older',
+				ParamValidator::PARAM_TYPE => [
 					'newer',
 					'older'
 				],
 				ApiBase::PARAM_HELP_MSG => 'api-help-param-direction',
 			],
 			'start' => [
-				ApiBase::PARAM_TYPE => 'timestamp'
+				ParamValidator::PARAM_TYPE => 'timestamp'
 			],
 			'end' => [
-				ApiBase::PARAM_TYPE => 'timestamp'
+				ParamValidator::PARAM_TYPE => 'timestamp'
 			],
 			'prop' => [
-				ApiBase::PARAM_ISMULTI => true,
-				ApiBase::PARAM_DFLT => 'timestamp|level',
-				ApiBase::PARAM_TYPE => [
+				ParamValidator::PARAM_ISMULTI => true,
+				ParamValidator::PARAM_DEFAULT => 'timestamp|level',
+				ParamValidator::PARAM_TYPE => [
 					'timestamp',
 					'user',
 					'userid',

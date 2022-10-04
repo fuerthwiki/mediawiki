@@ -28,6 +28,8 @@ use MediaWiki\Cache\CacheKeyHelper;
 use MediaWiki\Content\IContentHandlerFactory;
 use MediaWiki\HookContainer\HookContainer;
 use MediaWiki\HookContainer\HookRunner;
+use MediaWiki\MainConfigNames;
+use MediaWiki\MediaWikiServices;
 use MediaWiki\Page\PageIdentity;
 use MediaWiki\Page\WikiPageFactory;
 use MediaWiki\Permissions\PermissionManager;
@@ -54,16 +56,16 @@ class WikiImporter {
 	/** @var callable */
 	private $mUploadCallback;
 
-	/** @var callable */
+	/** @var callable|null */
 	private $mRevisionCallback;
 
-	/** @var callable */
+	/** @var callable|null */
 	private $mPageCallback;
 
 	/** @var callable|null */
 	private $mSiteInfoCallback;
 
-	/** @var callable */
+	/** @var callable|null */
 	private $mPageOutCallback;
 
 	/** @var callable|null */
@@ -173,7 +175,8 @@ class WikiImporter {
 
 		// Enable the entity loader, as it is needed for loading external URLs via
 		// XMLReader::open (T86036)
-		$oldDisable = libxml_disable_entity_loader( false );
+		// phpcs:ignore Generic.PHP.NoSilencedErrors -- suppress deprecation per T268847
+		$oldDisable = @libxml_disable_entity_loader( false );
 		if ( defined( 'LIBXML_PARSEHUGE' ) ) {
 			$status = $this->reader->open( "uploadsource://$id", null, LIBXML_PARSEHUGE );
 		} else {
@@ -181,11 +184,13 @@ class WikiImporter {
 		}
 		if ( !$status ) {
 			$error = libxml_get_last_error();
-			libxml_disable_entity_loader( $oldDisable );
+			// phpcs:ignore Generic.PHP.NoSilencedErrors
+			@libxml_disable_entity_loader( $oldDisable );
 			throw new MWException( 'Encountered an internal error while initializing WikiImporter object: ' .
 				$error->message );
 		}
-		libxml_disable_entity_loader( $oldDisable );
+		// phpcs:ignore Generic.PHP.NoSilencedErrors
+		@libxml_disable_entity_loader( $oldDisable );
 
 		// Default callbacks
 		$this->setPageCallback( [ $this, 'beforeImportPage' ] );
@@ -285,8 +290,8 @@ class WikiImporter {
 
 	/**
 	 * Sets the action to perform as each new page in the stream is reached.
-	 * @param callable $callback
-	 * @return callable
+	 * @param callable|null $callback
+	 * @return callable|null
 	 */
 	public function setPageCallback( $callback ) {
 		$previous = $this->mPageCallback;
@@ -300,8 +305,8 @@ class WikiImporter {
 	 * with the original title form (in case it's been overridden into a
 	 * local namespace), and a count of revisions.
 	 *
-	 * @param callable $callback
-	 * @return callable
+	 * @param callable|null $callback
+	 * @return callable|null
 	 */
 	public function setPageOutCallback( $callback ) {
 		$previous = $this->mPageOutCallback;
@@ -311,8 +316,8 @@ class WikiImporter {
 
 	/**
 	 * Sets the action to perform as each page revision is reached.
-	 * @param callable $callback
-	 * @return callable
+	 * @param callable|null $callback
+	 * @return callable|null
 	 */
 	public function setRevisionCallback( $callback ) {
 		$previous = $this->mRevisionCallback;
@@ -555,16 +560,16 @@ class WikiImporter {
 			$page = $this->wikiPageFactory->newFromTitle( $pageIdentity );
 
 			$page->loadPageData( WikiPage::READ_LATEST );
-			$content = $page->getContent();
-			if ( $content === null ) {
+			$rev = $page->getRevisionRecord();
+			if ( $rev === null ) {
+
 				wfDebug( __METHOD__ . ': Skipping article count adjustment for ' . $pageIdentity .
-					' because WikiPage::getContent() returned null' );
+					' because WikiPage::getRevisionRecord() returned null' );
 			} else {
-				// No user is available
 				$user = RequestContext::getMain()->getUser();
-				$editInfo = $page->prepareContentForEdit( $content, null, $user );
+				$update = $page->newPageUpdater( $user )->prepareUpdate();
 				$countKey = 'title_' . CacheKeyHelper::getKeyForPage( $pageIdentity );
-				$countable = $page->isCountable( $editInfo );
+				$countable = $update->isCountable();
 				if ( array_key_exists( $countKey, $this->countableCache ) &&
 					$countable != $this->countableCache[$countKey] ) {
 					DeferredUpdates::addUpdate( SiteStatsUpdate::factory( [
@@ -575,6 +580,7 @@ class WikiImporter {
 		}
 
 		$title = Title::castFromPageIdentity( $pageIdentity );
+		// @phan-suppress-next-line PhanTypeMismatchArgumentNullable castFrom does not return null here
 		return $this->hookRunner->onAfterImportPage( $title, $foreignTitle,
 			$revCount, $sRevCount, $pageInfo );
 	}
@@ -659,7 +665,7 @@ class WikiImporter {
 	 * element.
 	 */
 	public function nodeAttribute( $attr ) {
-		return $this->reader->getAttribute( $attr );
+		return $this->reader->getAttribute( $attr ) ?? '';
 	}
 
 	/**
@@ -700,12 +706,14 @@ class WikiImporter {
 		// Calls to reader->read need to be wrapped in calls to
 		// libxml_disable_entity_loader() to avoid local file
 		// inclusion attacks (T48932).
-		$oldDisable = libxml_disable_entity_loader( true );
+		// phpcs:ignore Generic.PHP.NoSilencedErrors -- suppress deprecation per T268847
+		$oldDisable = @libxml_disable_entity_loader( true );
 		try {
 			$this->reader->read();
 
 			if ( $this->reader->localName != 'mediawiki' ) {
-				libxml_disable_entity_loader( $oldDisable );
+				// phpcs:ignore Generic.PHP.NoSilencedErrors
+				@libxml_disable_entity_loader( $oldDisable );
 				$error = libxml_get_last_error();
 				if ( $error ) {
 					throw new NormalizedException( "XML error at line {line}: {message}", [
@@ -762,7 +770,8 @@ class WikiImporter {
 				}
 			}
 		} finally {
-			libxml_disable_entity_loader( $oldDisable );
+			// phpcs:ignore Generic.PHP.NoSilencedErrors
+			@libxml_disable_entity_loader( $oldDisable );
 			$this->reader->close();
 		}
 
@@ -856,16 +865,14 @@ class WikiImporter {
 			$revision->setComment( $logInfo['comment'] );
 		}
 
-		if ( isset( $logInfo['contributor']['ip'] ) ) {
-			$revision->setUserIP( $logInfo['contributor']['ip'] );
-		}
-
-		if ( !isset( $logInfo['contributor']['username'] ) ) {
-			$revision->setUsername( $this->externalUserNames->addPrefix( 'Unknown user' ) );
-		} else {
+		if ( isset( $logInfo['contributor']['username'] ) ) {
 			$revision->setUsername(
 				$this->externalUserNames->applyPrefix( $logInfo['contributor']['username'] )
 			);
+		} elseif ( isset( $logInfo['contributor']['ip'] ) ) {
+			$revision->setUserIP( $logInfo['contributor']['ip'] );
+		} else {
+			$revision->setUsername( $this->externalUserNames->addPrefix( 'Unknown user' ) );
 		}
 
 		return $this->logItemCallback( $revision );
@@ -948,6 +955,7 @@ class WikiImporter {
 			$title = $pageInfo['_title'];
 			$this->pageOutCallback(
 				$title,
+				// @phan-suppress-next-line PhanPossiblyUndeclaredVariable Set together with _title key
 				$foreignTitle,
 				$pageInfo['revisionCount'],
 				$pageInfo['successfulRevisionCount'],
@@ -1039,7 +1047,8 @@ class WikiImporter {
 	 * @throws MWException
 	 */
 	private function makeContent( Title $title, $revisionId, $contentInfo ) {
-		global $wgMaxArticleSize;
+		$maxArticleSize = MediaWikiServices::getInstance()->getMainConfig()->get(
+			MainConfigNames::MaxArticleSize );
 
 		if ( !isset( $contentInfo['text'] ) ) {
 			throw new MWException( 'Missing text field in import.' );
@@ -1058,13 +1067,13 @@ class WikiImporter {
 					'text',
 					''
 				] ) ) &&
-			strlen( $contentInfo['text'] ) > $wgMaxArticleSize * 1024
+			strlen( $contentInfo['text'] ) > $maxArticleSize * 1024
 		) {
 			throw new MWException( 'The text of ' .
 				( $revisionId ?
 					"the revision with ID $revisionId" :
 					'a revision'
-				) . " exceeds the maximum allowable size ($wgMaxArticleSize KiB)" );
+				) . " exceeds the maximum allowable size ({$maxArticleSize} KiB)" );
 		}
 
 		$role = $contentInfo['role'] ?? SlotRecord::MAIN;
@@ -1113,12 +1122,12 @@ class WikiImporter {
 		if ( isset( $revisionInfo['minor'] ) ) {
 			$revision->setMinor( true );
 		}
-		if ( isset( $revisionInfo['contributor']['ip'] ) ) {
-			$revision->setUserIP( $revisionInfo['contributor']['ip'] );
-		} elseif ( isset( $revisionInfo['contributor']['username'] ) ) {
+		if ( isset( $revisionInfo['contributor']['username'] ) ) {
 			$revision->setUsername(
 				$this->externalUserNames->applyPrefix( $revisionInfo['contributor']['username'] )
 			);
+		} elseif ( isset( $revisionInfo['contributor']['ip'] ) ) {
+			$revision->setUserIP( $revisionInfo['contributor']['ip'] );
 		} else {
 			$revision->setUsername( $this->externalUserNames->addPrefix( 'Unknown user' ) );
 		}
@@ -1224,13 +1233,12 @@ class WikiImporter {
 		$revision->setSize( intval( $uploadInfo['size'] ) );
 		$revision->setComment( $uploadInfo['comment'] );
 
-		if ( isset( $uploadInfo['contributor']['ip'] ) ) {
-			$revision->setUserIP( $uploadInfo['contributor']['ip'] );
-		}
 		if ( isset( $uploadInfo['contributor']['username'] ) ) {
 			$revision->setUsername(
 				$this->externalUserNames->applyPrefix( $uploadInfo['contributor']['username'] )
 			);
+		} elseif ( isset( $uploadInfo['contributor']['ip'] ) ) {
+			$revision->setUserIP( $uploadInfo['contributor']['ip'] );
 		}
 		$revision->setNoUpdates( $this->mNoUpdates );
 

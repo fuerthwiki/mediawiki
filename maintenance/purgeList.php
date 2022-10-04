@@ -37,7 +37,7 @@ class PurgeList extends Maintenance {
 	private $allNamespaces;
 	/** @var bool */
 	private $doDbTouch;
-	/** @var float */
+	/** @var int */
 	private $delay;
 
 	public function __construct() {
@@ -48,7 +48,12 @@ class PurgeList extends Maintenance {
 		);
 		$this->addOption( 'namespace', 'Purge pages with this namespace number', false, true );
 		$this->addOption( 'all-namespaces', 'Purge pages in all namespaces', false, false );
-		$this->addOption( 'db-touch', 'Update the page.page_touched database field', false, false );
+		$this->addOption( 'db-touch',
+			"Update the page.page_touched database field.\n"
+				. "This is only considered when purging by title, not when purging by namespace or URL.",
+			false,
+			false
+		);
 		$this->addOption( 'delay', 'Number of seconds to delay between each purge', false, true );
 		$this->addOption( 'verbose', 'Show more output', false, false, 'v' );
 		$this->setBatchSize( 100 );
@@ -58,15 +63,7 @@ class PurgeList extends Maintenance {
 		$this->namespaceId = $this->getOption( 'namespace' );
 		$this->allNamespaces = $this->hasOption( 'all-namespaces' );
 		$this->doDbTouch = $this->hasOption( 'db-touch' );
-		$this->delay = floatval( $this->getOption( 'delay', '0' ) );
-
-		$conf = $this->getConfig();
-		if ( ( $this->namespaceId !== null || $this->allNamespaces )
-			&& $this->doDbTouch
-			&& $conf->get( 'MiserMode' )
-		) {
-			$this->fatalError( 'Prevented mass db-invalidation (MiserMode is enabled).' );
-		}
+		$this->delay = intval( $this->getOption( 'delay', '0' ) );
 
 		if ( $this->allNamespaces ) {
 			$this->purgeNamespace( false );
@@ -119,6 +116,13 @@ class PurgeList extends Maintenance {
 	 * @param int|bool $namespace
 	 */
 	private function purgeNamespace( $namespace = false ) {
+		if ( $this->doDbTouch ) {
+			// NOTE: If support for this is added in the future,
+			// it MUST NOT be allowed when $wgMiserMode is enabled.
+			// Change this to a check and error about instead! (T263957)
+			$this->fatalError( 'The --db-touch option is not supported when purging by namespace.' );
+		}
+
 		$dbr = $this->getDB( DB_REPLICA );
 		$htmlCacheUpdater = MediaWikiServices::getInstance()->getHtmlCacheUpdater();
 		$startId = 0;
@@ -163,7 +167,7 @@ class PurgeList extends Maintenance {
 					$this->output( $url . "\n" );
 				}
 				$hcu->purgeUrls( $url, $hcu::PURGE_NAIVE );
-				usleep( $this->delay * 1e6 );
+				sleep( $this->delay );
 			}
 		} else {
 			if ( $this->hasOption( 'verbose' ) ) {

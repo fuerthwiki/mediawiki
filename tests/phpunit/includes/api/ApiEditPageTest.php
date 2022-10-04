@@ -1,7 +1,7 @@
 <?php
 
 use MediaWiki\Block\DatabaseBlock;
-use MediaWiki\MediaWikiServices;
+use MediaWiki\MainConfigNames;
 use MediaWiki\Revision\RevisionRecord;
 
 /**
@@ -20,19 +20,19 @@ class ApiEditPageTest extends ApiTestCase {
 	protected function setUp(): void {
 		parent::setUp();
 
-		$this->setMwGlobals( [
-			'wgExtraNamespaces' => [
+		$this->overrideConfigValues( [
+			MainConfigNames::ExtraNamespaces => [
 				12312 => 'Dummy',
 				12313 => 'Dummy_talk',
 				12314 => 'DummyNonText',
 				12315 => 'DummyNonText_talk',
 			],
-			'wgNamespaceContentModels' => [
+			MainConfigNames::NamespaceContentModels => [
 				12312 => 'testing',
 				12314 => 'testing-nontext',
 			],
-			'wgWatchlistExpiry' => true,
-			'wgWatchlistExpiryMaxDuration' => '6 months',
+			MainConfigNames::WatchlistExpiry => true,
+			MainConfigNames::WatchlistExpiryMaxDuration => '6 months',
 		] );
 		$this->mergeMwGlobalArrayValue( 'wgContentHandlers', [
 			'testing' => 'DummyContentHandlerForTesting',
@@ -142,7 +142,7 @@ class ApiEditPageTest extends ApiTestCase {
 				'title' => $name,
 				'text' => $text, ] );
 
-			$this->assertSame( 'Success', $re['edit']['result'] ); // sanity
+			$this->assertSame( 'Success', $re['edit']['result'] );
 		}
 
 		// -- try append/prepend --------------------------------------------
@@ -154,7 +154,7 @@ class ApiEditPageTest extends ApiTestCase {
 		$this->assertSame( 'Success', $re['edit']['result'] );
 
 		// -- validate -----------------------------------------------------
-		$page = new WikiPage( Title::newFromText( $name ) );
+		$page = $this->getServiceContainer()->getWikiPageFactory()->newFromTitle( Title::newFromText( $name ) );
 		$content = $page->getContent();
 		$this->assertNotNull( $content, 'Page should have been created' );
 
@@ -168,12 +168,13 @@ class ApiEditPageTest extends ApiTestCase {
 	 */
 	public function testEditSection() {
 		$name = 'Help:ApiEditPageTest_testEditSection';
-		$page = WikiPage::factory( Title::newFromText( $name ) );
+		$wikiPageFactory = $this->getServiceContainer()->getWikiPageFactory();
+		$page = $wikiPageFactory->newFromTitle( Title::newFromText( $name ) );
 		$text = "==section 1==\ncontent 1\n==section 2==\ncontent2";
 		// Preload the page with some text
 		$page->doUserEditContent(
 			ContentHandler::makeContent( $text, $page->getTitle() ),
-			$this->getTestSysop()->getUser(),
+			$this->getTestSysop()->getAuthority(),
 			'summary'
 		);
 
@@ -184,7 +185,7 @@ class ApiEditPageTest extends ApiTestCase {
 			'text' => "==section 1==\nnew content 1",
 		] );
 		$this->assertSame( 'Success', $re['edit']['result'] );
-		$newtext = WikiPage::factory( Title::newFromText( $name ) )
+		$newtext = $wikiPageFactory->newFromTitle( Title::newFromText( $name ) )
 			->getContent( RevisionRecord::RAW )
 			->getText();
 		$this->assertSame( "==section 1==\nnew content 1\n\n==section 2==\ncontent2", $newtext );
@@ -211,6 +212,7 @@ class ApiEditPageTest extends ApiTestCase {
 	 */
 	public function testEditNewSection() {
 		$name = 'Help:ApiEditPageTest_testEditNewSection';
+		$wikiPageFactory = $this->getServiceContainer()->getWikiPageFactory();
 
 		// Test on a page that does not already exist
 		$this->assertFalse( Title::newFromText( $name )->exists() );
@@ -224,7 +226,7 @@ class ApiEditPageTest extends ApiTestCase {
 
 		$this->assertSame( 'Success', $re['edit']['result'] );
 		// Check the page text is correct
-		$text = WikiPage::factory( Title::newFromText( $name ) )
+		$text = $wikiPageFactory->newFromTitle( Title::newFromText( $name ) )
 			->getContent( RevisionRecord::RAW )
 			->getText();
 		$this->assertSame( "== header ==\n\ntest", $text );
@@ -240,10 +242,124 @@ class ApiEditPageTest extends ApiTestCase {
 		] );
 
 		$this->assertSame( 'Success', $re2['edit']['result'] );
-		$text = WikiPage::factory( Title::newFromText( $name ) )
+		$text = $wikiPageFactory->newFromTitle( Title::newFromText( $name ) )
 			->getContent( RevisionRecord::RAW )
 			->getText();
 		$this->assertSame( "== header ==\n\ntest\n\n== header ==\n\ntest", $text );
+	}
+
+	/**
+	 * Test action=edit&section=new with different combinations of summary and sectiontitle.
+	 *
+	 * @dataProvider provideEditNewSectionSummarySectiontitle
+	 */
+	public function testEditNewSectionSummarySectiontitle(
+		$sectiontitle,
+		$summary,
+		$expectedText,
+		$expectedSummary
+	) {
+		static $count = 0;
+		$count++;
+		$name = 'Help:ApiEditPageTest_testEditNewSectionSummarySectiontitle' . $count;
+
+		// Test edit 1 (new page)
+		$this->doApiRequestWithToken( [
+			'action' => 'edit',
+			'title' => $name,
+			'section' => 'new',
+			'text' => 'text',
+			'sectiontitle' => $sectiontitle,
+			'summary' => $summary,
+		] );
+
+		$wikiPageFactory = $this->getServiceContainer()->getWikiPageFactory();
+		$wikiPage = $wikiPageFactory->newFromTitle( Title::newFromText( $name ) );
+
+		// Check the page text is correct
+		$savedText = $wikiPage->getContent( RevisionRecord::RAW )->getText();
+		$this->assertSame( $expectedText, $savedText, 'Correct text saved (new page)' );
+
+		// Check that the edit summary is correct
+		// (when not provided or empty, there is an autogenerated summary for page creation)
+		$savedSummary = $wikiPage->getRevisionRecord()->getComment( RevisionRecord::RAW )->text;
+		$expectedSummaryNew = $expectedSummary ?: wfMessage( 'autosumm-new' )->rawParams( $expectedText )
+			->inContentLanguage()->text();
+		$this->assertSame( $expectedSummaryNew, $savedSummary, 'Correct summary saved (new page)' );
+
+		// Clear the page
+		$this->editPage( $name, '' );
+
+		// Test edit 2 (existing page)
+		$this->doApiRequestWithToken( [
+			'action' => 'edit',
+			'title' => $name,
+			'section' => 'new',
+			'text' => 'text',
+			'sectiontitle' => $sectiontitle,
+			'summary' => $summary,
+		] );
+
+		$wikiPage = $wikiPageFactory->newFromTitle( Title::newFromText( $name ) );
+
+		// Check the page text is correct
+		$savedText = $wikiPage->getContent( RevisionRecord::RAW )->getText();
+		$this->assertSame( $expectedText, $savedText, 'Correct text saved (existing page)' );
+
+		// Check that the edit summary is correct
+		$savedSummary = $wikiPage->getRevisionRecord()->getComment( RevisionRecord::RAW )->text;
+		$this->assertSame( $expectedSummary, $savedSummary, 'Correct summary saved (existing page)' );
+	}
+
+	public function provideEditNewSectionSummarySectiontitle() {
+		$sectiontitleCases = [
+			'unset' => null,
+			'empty' => '',
+			'set' => 'sectiontitle',
+		];
+		$summaryCases = [
+			'unset' => null,
+			'empty' => '',
+			'set' => 'summary',
+		];
+
+		$expectedTexts = [
+			"text",
+			"text",
+			"== summary ==\n\ntext",
+			"text",
+			"text",
+			"text",
+			"== sectiontitle ==\n\ntext",
+			"== sectiontitle ==\n\ntext",
+			"== sectiontitle ==\n\ntext",
+		];
+
+		$expectedSummaries = [
+			'',
+			'',
+			'/* summary */ new section',
+			'',
+			'',
+			'summary',
+			'/* sectiontitle */ new section',
+			'/* sectiontitle */ new section',
+			'summary',
+		];
+
+		$i = 0;
+		foreach ( $sectiontitleCases as $sectiontitleDesc => $sectiontitle ) {
+			foreach ( $summaryCases as $summaryDesc => $summary ) {
+				$message = "sectiontitle $sectiontitleDesc, summary $summaryDesc";
+				yield $message => [
+					$sectiontitle,
+					$summary,
+					$expectedTexts[$i],
+					$expectedSummaries[$i],
+				];
+				$i++;
+			}
+		}
 	}
 
 	/**
@@ -256,11 +372,12 @@ class ApiEditPageTest extends ApiTestCase {
 		// assume NS_HELP defaults to wikitext
 		$name = "Help:ApiEditPageTest_testEdit_redirect_$count";
 		$title = Title::newFromText( $name );
-		$page = WikiPage::factory( $title );
+		$wikiPageFactory = $this->getServiceContainer()->getWikiPageFactory();
+		$page = $wikiPageFactory->newFromTitle( $title );
 
 		$rname = "Help:ApiEditPageTest_testEdit_redirect_r$count";
 		$rtitle = Title::newFromText( $rname );
-		$rpage = WikiPage::factory( $rtitle );
+		$rpage = $wikiPageFactory->newFromTitle( $rtitle );
 
 		// base edit for content
 		$page->doUserEditContent(
@@ -317,11 +434,12 @@ class ApiEditPageTest extends ApiTestCase {
 		// assume NS_HELP defaults to wikitext
 		$name = "Help:ApiEditPageTest_testEdit_redirectText_$count";
 		$title = Title::newFromText( $name );
-		$page = WikiPage::factory( $title );
+		$wikiPageFactory = $this->getServiceContainer()->getWikiPageFactory();
+		$page = $wikiPageFactory->newFromTitle( $title );
 
 		$rname = "Help:ApiEditPageTest_testEdit_redirectText_r$count";
 		$rtitle = Title::newFromText( $rname );
-		$rpage = WikiPage::factory( $rtitle );
+		$rpage = $wikiPageFactory->newFromTitle( $rtitle );
 
 		// base edit for content
 		$page->doUserEditContent(
@@ -378,7 +496,7 @@ class ApiEditPageTest extends ApiTestCase {
 		$name = "Help:ApiEditPageTest_testEditConflict_$count";
 		$title = Title::newFromText( $name );
 
-		$page = WikiPage::factory( $title );
+		$page = $this->getServiceContainer()->getWikiPageFactory()->newFromTitle( $title );
 
 		// base edit
 		$page->doUserEditContent(
@@ -424,7 +542,7 @@ class ApiEditPageTest extends ApiTestCase {
 		$name = "Help:ApiEditPageTest_testEditConflict_$count";
 		$title = Title::newFromText( $name );
 
-		$page = WikiPage::factory( $title );
+		$page = $this->getServiceContainer()->getWikiPageFactory()->newFromTitle( $title );
 
 		// base edit
 		$page->doUserEditContent(
@@ -473,7 +591,7 @@ class ApiEditPageTest extends ApiTestCase {
 		$name = "Help:ApiEditPageTest_testEditConflict_newSection_$count";
 		$title = Title::newFromText( $name );
 
-		$page = WikiPage::factory( $title );
+		$page = $this->getServiceContainer()->getWikiPageFactory()->newFromTitle( $title );
 
 		// base edit
 		$page->doUserEditContent(
@@ -522,11 +640,12 @@ class ApiEditPageTest extends ApiTestCase {
 		// assume NS_HELP defaults to wikitext
 		$name = "Help:ApiEditPageTest_testEditConflict_redirect_T43990_$count";
 		$title = Title::newFromText( $name );
-		$page = WikiPage::factory( $title );
+		$wikiPageFactory = $this->getServiceContainer()->getWikiPageFactory();
+		$page = $wikiPageFactory->newFromTitle( $title );
 
 		$rname = "Help:ApiEditPageTest_testEditConflict_redirect_T43990_r$count";
 		$rtitle = Title::newFromText( $rname );
-		$rpage = WikiPage::factory( $rtitle );
+		$rpage = $wikiPageFactory->newFromTitle( $rtitle );
 
 		// base edit for content
 		$page->doUserEditContent(
@@ -601,7 +720,7 @@ class ApiEditPageTest extends ApiTestCase {
 
 	public function testSupportsDirectApiEditing_withContentHandlerOverride() {
 		$name = 'DummyNonText:ApiEditPageTest_testNonTextEdit';
-		$data = serialize( 'some bla bla text' );
+		$data = 'some bla bla text';
 
 		$result = $this->doApiRequestWithToken( [
 			'action' => 'edit',
@@ -622,7 +741,7 @@ class ApiEditPageTest extends ApiTestCase {
 		$this->assertArrayHasKey( 'pageid', $apiResult['edit'] );
 
 		// validate resulting revision
-		$page = WikiPage::factory( Title::newFromText( $name ) );
+		$page = $this->getServiceContainer()->getWikiPageFactory()->newFromTitle( Title::newFromText( $name ) );
 		$this->assertSame( "testing-nontext", $page->getContentModel() );
 		$this->assertSame( $data, $page->getContent()->serialize() );
 	}
@@ -860,7 +979,7 @@ class ApiEditPageTest extends ApiTestCase {
 			'undoafter' => $revId1,
 		] );
 
-		$text = ( new WikiPage( $titleObj ) )->getContent()->getText();
+		$text = $this->getServiceContainer()->getWikiPageFactory()->newFromTitle( $titleObj )->getContent()->getText();
 
 		$this->assertSame( '1', $text );
 	}
@@ -885,7 +1004,7 @@ class ApiEditPageTest extends ApiTestCase {
 			'undo' => $revId,
 		] );
 
-		$text = ( new WikiPage( Title::newFromText( $name ) ) )->getContent()
+		$text = $this->getServiceContainer()->getWikiPageFactory()->newFromTitle( Title::newFromText( $name ) )->getContent()
 			->getText();
 		$this->assertSame( '3', $text );
 	}
@@ -906,7 +1025,7 @@ class ApiEditPageTest extends ApiTestCase {
 			'undoafter' => $revId2,
 		] );
 
-		$text = ( new WikiPage( Title::newFromText( $name ) ) )->getContent()
+		$text = $this->getServiceContainer()->getWikiPageFactory()->newFromTitle( Title::newFromText( $name ) )->getContent()
 			->getText();
 		$this->assertSame( '2', $text );
 	}
@@ -977,7 +1096,7 @@ class ApiEditPageTest extends ApiTestCase {
 			'md5' => md5( 'Alert: ' ),
 		] );
 
-		$text = ( new WikiPage( Title::newFromText( $name ) ) )
+		$text = $this->getServiceContainer()->getWikiPageFactory()->newFromTitle( Title::newFromText( $name ) )
 			->getContent()->getText();
 		$this->assertSame( 'Alert: Some text', $text );
 	}
@@ -994,7 +1113,7 @@ class ApiEditPageTest extends ApiTestCase {
 			'md5' => md5( ' is nice' ),
 		] );
 
-		$text = ( new WikiPage( Title::newFromText( $name ) ) )
+		$text = $this->getServiceContainer()->getWikiPageFactory()->newFromTitle( Title::newFromText( $name ) )
 			->getContent()->getText();
 		$this->assertSame( 'Some text is nice', $text );
 	}
@@ -1012,7 +1131,7 @@ class ApiEditPageTest extends ApiTestCase {
 			'md5' => md5( 'Alert:  is nice' ),
 		] );
 
-		$text = ( new WikiPage( Title::newFromText( $name ) ) )
+		$text = $this->getServiceContainer()->getWikiPageFactory()->newFromTitle( Title::newFromText( $name ) )
 			->getContent()->getText();
 		$this->assertSame( 'Alert: Some text is nice', $text );
 	}
@@ -1079,7 +1198,7 @@ class ApiEditPageTest extends ApiTestCase {
 			] );
 		} finally {
 			// Validate that content was not changed
-			$text = ( new WikiPage( Title::newFromText( $name ) ) )
+			$text = $this->getServiceContainer()->getWikiPageFactory()->newFromTitle( Title::newFromText( $name ) )
 				->getContent()->getText();
 
 			$this->assertSame( 'Some text', $text );
@@ -1181,7 +1300,7 @@ class ApiEditPageTest extends ApiTestCase {
 			'section' => 'new',
 		] );
 
-		$text = ( new WikiPage( Title::newFromText( $name ) ) )
+		$text = $this->getServiceContainer()->getWikiPageFactory()->newFromTitle( Title::newFromText( $name ) )
 			->getContent()->getText();
 
 		$this->assertSame( "Initial content\n\n== New section ==", $text );
@@ -1217,7 +1336,7 @@ class ApiEditPageTest extends ApiTestCase {
 			'section' => 'new',
 		] );
 
-		$page = new WikiPage( Title::newFromText( $name ) );
+		$page = $this->getServiceContainer()->getWikiPageFactory()->newFromTitle( Title::newFromText( $name ) );
 
 		$this->assertSame( "Initial content\n\n== My section ==\n\nMore content",
 			$page->getContent()->getText() );
@@ -1239,7 +1358,7 @@ class ApiEditPageTest extends ApiTestCase {
 			'summary' => 'Add new section',
 		] );
 
-		$page = new WikiPage( Title::newFromText( $name ) );
+		$page = $this->getServiceContainer()->getWikiPageFactory()->newFromTitle( Title::newFromText( $name ) );
 
 		$this->assertSame( "Initial content\n\n== Add new section ==\n\nMore content",
 			$page->getContent()->getText() );
@@ -1263,7 +1382,7 @@ class ApiEditPageTest extends ApiTestCase {
 			'summary' => 'Add new section',
 		] );
 
-		$page = new WikiPage( Title::newFromText( $name ) );
+		$page = $this->getServiceContainer()->getWikiPageFactory()->newFromTitle( Title::newFromText( $name ) );
 
 		$this->assertSame( "Initial content\n\n== My section ==\n\nMore content",
 			$page->getContent()->getText() );
@@ -1285,7 +1404,7 @@ class ApiEditPageTest extends ApiTestCase {
 			'section' => '1',
 		] );
 
-		$text = ( new WikiPage( Title::newFromText( $name ) ) )
+		$text = $this->getServiceContainer()->getWikiPageFactory()->newFromTitle( Title::newFromText( $name ) )
 			->getContent()->getText();
 
 		$this->assertSame( "== Section 1 ==\n\nContent and more content\n\n" .
@@ -1304,7 +1423,7 @@ class ApiEditPageTest extends ApiTestCase {
 			'section' => '0',
 		] );
 
-		$text = ( new WikiPage( Title::newFromText( $name ) ) )
+		$text = $this->getServiceContainer()->getWikiPageFactory()->newFromTitle( Title::newFromText( $name ) )
 			->getContent()->getText();
 
 		$this->assertSame( "Content and more content\n\n== Section 1 ==\n\n" .
@@ -1327,7 +1446,7 @@ class ApiEditPageTest extends ApiTestCase {
 				'section' => '1',
 			] );
 		} finally {
-			$text = ( new WikiPage( Title::newFromText( $name ) ) )
+			$text = $this->getServiceContainer()->getWikiPageFactory()->newFromTitle( Title::newFromText( $name ) )
 				->getContent()->getText();
 
 			$this->assertSame( 'Content', $text );
@@ -1349,7 +1468,7 @@ class ApiEditPageTest extends ApiTestCase {
 				'section' => 'It is unlikely that this is valid',
 			] );
 		} finally {
-			$text = ( new WikiPage( Title::newFromText( $name ) ) )
+			$text = $this->getServiceContainer()->getWikiPageFactory()->newFromTitle( Title::newFromText( $name ) )
 				->getContent()->getText();
 
 			$this->assertSame( 'Content', $text );
@@ -1365,8 +1484,8 @@ class ApiEditPageTest extends ApiTestCase {
 
 		$this->editPage( $name, 'Some text' );
 
-		$pageObj = new WikiPage( Title::newFromText( $name ) );
-		$pageObj->doDeleteArticleReal( 'Bye-bye', $this->getTestSysop()->getUser() );
+		$pageObj = $this->getServiceContainer()->getWikiPageFactory()->newFromTitle( Title::newFromText( $name ) );
+		$this->deletePage( $pageObj );
 
 		$this->assertFalse( $pageObj->exists() );
 
@@ -1394,7 +1513,7 @@ class ApiEditPageTest extends ApiTestCase {
 			'minor' => '',
 		] );
 
-		$revisionStore = \MediaWiki\MediaWikiServices::getInstance()->getRevisionStore();
+		$revisionStore = $this->getServiceContainer()->getRevisionStore();
 		$revision = $revisionStore->getRevisionByTitle( Title::newFromText( $name ) );
 		$this->assertTrue( $revision->isMinor() );
 	}
@@ -1406,8 +1525,8 @@ class ApiEditPageTest extends ApiTestCase {
 
 		$this->editPage( $name, 'Some text' );
 
-		$pageObj = new WikiPage( Title::newFromText( $name ) );
-		$pageObj->doDeleteArticleReal( 'Bye-bye', $this->getTestSysop()->getUser() );
+		$pageObj = $this->getServiceContainer()->getWikiPageFactory()->newFromTitle( Title::newFromText( $name ) );
+		$this->deletePage( $pageObj );
 
 		$this->assertFalse( $pageObj->exists() );
 
@@ -1497,8 +1616,10 @@ class ApiEditPageTest extends ApiTestCase {
 		$this->assertFalse( Title::newFromText( $name )->exists() );
 
 		ChangeTags::defineTag( 'custom tag' );
-		$this->setMwGlobals( 'wgRevokePermissions',
-			[ 'user' => [ 'applychangetags' => true ] ] );
+		$this->overrideConfigValue(
+			MainConfigNames::RevokePermissions,
+			[ 'user' => [ 'applychangetags' => true ] ]
+		);
 
 		try {
 			$this->doApiRequestWithToken( [
@@ -1560,7 +1681,7 @@ class ApiEditPageTest extends ApiTestCase {
 	public function testEditWhileBlocked() {
 		$name = 'Help:' . ucfirst( __FUNCTION__ );
 
-		$this->assertNull( DatabaseBlock::newFromTarget( '127.0.0.1' ), 'Sanity check' );
+		$this->assertNull( DatabaseBlock::newFromTarget( '127.0.0.1' ) );
 
 		$block = new DatabaseBlock( [
 			'address' => self::$users['sysop']->getUser()->getName(),
@@ -1570,7 +1691,7 @@ class ApiEditPageTest extends ApiTestCase {
 			'expiry' => 'infinity',
 			'enableAutoblock' => true,
 		] );
-		$blockStore = MediaWikiServices::getInstance()->getDatabaseBlockStore();
+		$blockStore = $this->getServiceContainer()->getDatabaseBlockStore();
 		$blockStore->insertBlock( $block );
 
 		try {
@@ -1595,7 +1716,7 @@ class ApiEditPageTest extends ApiTestCase {
 		$this->expectException( ApiUsageException::class );
 		$this->expectExceptionMessage( 'The wiki is currently in read-only mode.' );
 
-		$svc = \MediaWiki\MediaWikiServices::getInstance()->getReadOnlyMode();
+		$svc = $this->getServiceContainer()->getReadOnlyMode();
 		$svc->setReason( "Read-only for testing" );
 
 		try {
@@ -1628,8 +1749,10 @@ class ApiEditPageTest extends ApiTestCase {
 		$this->expectException( ApiUsageException::class );
 		$this->expectExceptionMessage( "You don't have permission to create image redirects." );
 
-		$this->setMwGlobals( 'wgRevokePermissions',
-			[ 'user' => [ 'upload' => true ] ] );
+		$this->overrideConfigValue(
+			MainConfigNames::RevokePermissions,
+			[ 'user' => [ 'upload' => true ] ]
+		);
 
 		$this->doApiRequestWithToken( [
 			'action' => 'edit',
@@ -1646,7 +1769,7 @@ class ApiEditPageTest extends ApiTestCase {
 			'The content you supplied exceeds the article size limit of 1 kibibyte.'
 		);
 
-		$this->setMwGlobals( 'wgMaxArticleSize', 1 );
+		$this->overrideConfigValue( MainConfigNames::MaxArticleSize, 1 );
 
 		$text = str_repeat( '!', 1025 );
 
@@ -1668,7 +1791,10 @@ class ApiEditPageTest extends ApiTestCase {
 			'The action you have requested is limited to users in'
 		);
 
-		$this->setMwGlobals( 'wgRevokePermissions', [ '*' => [ 'edit' => true ] ] );
+		$this->overrideConfigValue(
+			MainConfigNames::RevokePermissions,
+			[ '*' => [ 'edit' => true ] ]
+		);
 
 		$this->doApiRequestWithToken( [
 			'action' => 'edit',
@@ -1685,8 +1811,10 @@ class ApiEditPageTest extends ApiTestCase {
 			"You don't have permission to change the content model of a page."
 		);
 
-		$this->setMwGlobals( 'wgRevokePermissions',
-			[ 'user' => [ 'editcontentmodel' => true ] ] );
+		$this->overrideConfigValue(
+			MainConfigNames::RevokePermissions,
+			[ 'user' => [ 'editcontentmodel' => true ] ]
+		);
 
 		$this->doApiRequestWithToken( [
 			'action' => 'edit',
@@ -1700,7 +1828,7 @@ class ApiEditPageTest extends ApiTestCase {
 		$name = 'Help:' . ucfirst( __FUNCTION__ );
 		$title = Title::newFromText( $name );
 
-		$page = WikiPage::factory( $title );
+		$page = $this->getServiceContainer()->getWikiPageFactory()->newFromTitle( $title );
 
 		// base edit, currently in Wikitext
 		$page->doUserEditContent(

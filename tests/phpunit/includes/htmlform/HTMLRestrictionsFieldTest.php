@@ -29,14 +29,13 @@ class HTMLRestrictionsFieldTest extends PHPUnit\Framework\TestCase {
 	 * @dataProvider provideValidate
 	 */
 	public function testForm( $text, $value ) {
-		$form = HTMLForm::factory( 'ooui', [
-			'restrictions' => [ 'class' => HTMLRestrictionsField::class ],
-		] );
 		$request = new FauxRequest( [ 'wprestrictions' => $text ], true );
 		$context = new DerivativeContext( RequestContext::getMain() );
 		$context->setRequest( $request );
-		$form->setContext( $context );
-		$form->setTitle( Title::newFromText( 'Main Page' ) )->setSubmitCallback( static function () {
+		$form = HTMLForm::factory( 'ooui', [
+			'restrictions' => [ 'class' => HTMLRestrictionsField::class ],
+		], $context );
+		$form->setTitle( Title::makeTitle( NS_MAIN, 'Main Page' ) )->setSubmitCallback( static function () {
 			return true;
 		} )->prepareForm();
 		$status = $form->trySubmit();
@@ -55,7 +54,6 @@ class HTMLRestrictionsFieldTest extends PHPUnit\Framework\TestCase {
 			$this->assertEquals( $value, $restrictions->toArray()['IPAddresses'] );
 		}
 
-		// sanity
 		$form->getHTML( $status );
 	}
 

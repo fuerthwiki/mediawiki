@@ -102,7 +102,9 @@ class OOUIHTMLForm extends HTMLForm {
 		foreach ( $this->mButtons as $button ) {
 			$attrs = [];
 
+			// @phan-suppress-next-line PhanTypePossiblyInvalidDimOffset Always set in HTMLForm::addButton
 			if ( $button['attribs'] ) {
+				// @phan-suppress-next-line PhanTypePossiblyInvalidDimOffset Always set in HTMLForm::addButton
 				$attrs += $button['attribs'];
 			}
 
@@ -127,7 +129,9 @@ class OOUIHTMLForm extends HTMLForm {
 				'name' => $button['name'],
 				'value' => $button['value'],
 				'label' => $label,
+				// @phan-suppress-next-line PhanTypePossiblyInvalidDimOffset Always set in HTMLForm::addButton
 				'flags' => $button['flags'],
+				// @phan-suppress-next-line PhanTypePossiblyInvalidDimOffset Always set in HTMLForm::addButton
 				'framed' => $button['framed'],
 			] + $attrs );
 		}
@@ -238,12 +242,12 @@ class OOUIHTMLForm extends HTMLForm {
 		return '';
 	}
 
-	public function getHeaderText( $section = null ) {
+	public function getHeaderHtml( $section = null ) {
 		if ( $section === null ) {
 			// We handle $this->mHeader elsewhere, in getBody()
 			return '';
 		} else {
-			return parent::getHeaderText( $section );
+			return parent::getHeaderHtml( $section );
 		}
 	}
 

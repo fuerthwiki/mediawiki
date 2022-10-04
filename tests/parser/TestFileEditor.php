@@ -1,13 +1,20 @@
 <?php
 
 class TestFileEditor {
+	/** @var string[] */
 	private $lines;
+	/** @var int */
 	private $numLines;
+	/** @var array */
 	private $deletions;
+	/** @var array */
 	private $changes;
-	private $pos;
+	/** @var int */
+	private $pos = 0;
+	/** @var callable|false */
 	private $warningCallback;
-	private $result;
+	/** @var string */
+	private $result = '';
 
 	public static function edit( $text, array $deletions, array $changes, $warningCallback = null ) {
 		$editor = new self( $text, $deletions, $changes, $warningCallback );
@@ -20,9 +27,7 @@ class TestFileEditor {
 		$this->numLines = count( $this->lines );
 		$this->deletions = array_fill_keys( $deletions, true );
 		$this->changes = $changes;
-		$this->pos = 0;
 		$this->warningCallback = $warningCallback;
-		$this->result = '';
 	}
 
 	private function execute() {

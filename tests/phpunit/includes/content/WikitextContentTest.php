@@ -1,6 +1,6 @@
 <?php
 
-use MediaWiki\MediaWikiServices;
+use MediaWiki\Deferred\LinksUpdate\LinksDeletionUpdate;
 
 /**
  * @group ContentHandler
@@ -23,18 +23,6 @@ more stuff
 
 	public function newContent( $text ) {
 		return new WikitextContent( $text );
-	}
-
-	public static function dataGetParserOutput() {
-		return [
-			[
-				"WikitextContentTest_testGetParserOutput",
-				CONTENT_MODEL_WIKITEXT,
-				"hello ''world''\n",
-				"<div class=\"mw-parser-output\"><p>hello <i>world</i>\n</p>\n\n\n</div>"
-			],
-			// TODO: more...?
-		];
 	}
 
 	public static function dataGetSection() {
@@ -128,8 +116,11 @@ just a test"
 	public function testAddSectionHeader() {
 		$content = $this->newContent( 'hello world' );
 		$content = $content->addSectionHeader( 'test' );
-
 		$this->assertEquals( "== test ==\n\nhello world", $content->getText() );
+
+		$content = $this->newContent( 'hello world' );
+		$content = $content->addSectionHeader( '' );
+		$this->assertEquals( "hello world", $content->getText() );
 	}
 
 	public static function dataPreSaveTransform() {
@@ -227,7 +218,7 @@ just a test"
 	 * @covers WikitextContent::matchMagicWord
 	 */
 	public function testMatchMagicWord() {
-		$mw = MediaWikiServices::getInstance()->getMagicWordFactory()->get( "staticredirect" );
+		$mw = $this->getServiceContainer()->getMagicWordFactory()->get( "staticredirect" );
 
 		$content = $this->newContent( "#REDIRECT [[FOO]]\n__STATICREDIRECT__" );
 		$this->assertTrue( $content->matchMagicWord( $mw ), "should have matched magic word" );
@@ -288,6 +279,7 @@ just a test"
 	 */
 	public function testRedirectParserOption() {
 		$title = Title::newFromText( 'testRedirectParserOption' );
+		$contentRenderer = $this->getServiceContainer()->getContentRenderer();
 
 		// Set up hook and its reporting variables
 		$wikitext = null;
@@ -305,9 +297,9 @@ just a test"
 		$wikitext = false;
 		$redirectTarget = false;
 		$content = $this->newContent( 'hello world.' );
-		$options = ParserOptions::newCanonical( 'canonical' );
+		$options = ParserOptions::newFromAnon();
 		$options->setRedirectTarget( $title );
-		$content->getParserOutput( $title, null, $options );
+		$contentRenderer->getParserOutput( $content, $title, null, $options );
 		$this->assertEquals( 'hello world.', $wikitext,
 			'Wikitext passed to hook was not as expected'
 		);
@@ -322,8 +314,8 @@ just a test"
 		$content = $this->newContent(
 			"#REDIRECT [[TestRedirectParserOption/redir]]\nhello redirect."
 		);
-		$options = ParserOptions::newCanonical( 'canonical' );
-		$content->getParserOutput( $title, null, $options );
+		$options = ParserOptions::newFromAnon();
+		$contentRenderer->getParserOutput( $content, $title, null, $options );
 		$this->assertEquals(
 			'hello redirect.',
 			$wikitext,
@@ -366,23 +358,5 @@ just a test"
 			],
 			// @todo more...?
 		];
-	}
-
-	/**
-	 * @covers WikitextContent::fillParserOutput
-	 */
-	public function testHadSignature() {
-		$this->hideDeprecated( 'AbstractContent::preSaveTransform' );
-
-		$titleObj = Title::newFromText( __CLASS__ );
-
-		$content = new WikitextContent( '~~~~' );
-		$pstContent = $content->preSaveTransform(
-			$titleObj,
-			$this->getTestUser()->getUser(),
-			ParserOptions::newFromAnon()
-		);
-
-		$this->assertTrue( $pstContent->getParserOutput( $titleObj )->getFlag( 'user-signature' ) );
 	}
 }

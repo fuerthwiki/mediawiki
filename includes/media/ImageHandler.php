@@ -21,6 +21,8 @@
  * @ingroup Media
  */
 
+use Wikimedia\AtEase\AtEase;
+
 /**
  * Media handler abstract base class for images
  *
@@ -99,8 +101,9 @@ abstract class ImageHandler extends MediaHandler {
 	 * @inheritDoc
 	 * @stable to override
 	 * @param File $image
-	 * @param array &$params
+	 * @param array &$params @phan-ignore-reference
 	 * @return bool
+	 * @phan-assert array{width:int,physicalWidth:int,height:int,physicalHeight:int,page:int} $params
 	 */
 	public function normaliseParams( $image, &$params ) {
 		$mimeType = $image->getMimeType();
@@ -145,6 +148,7 @@ abstract class ImageHandler extends MediaHandler {
 
 		if ( !isset( $params['physicalWidth'] ) ) {
 			# Passed all validations, so set the physicalWidth
+			// @phan-suppress-next-line PhanTypePossiblyInvalidDimOffset False positive, checked above
 			$params['physicalWidth'] = $params['width'];
 		}
 
@@ -181,7 +185,6 @@ abstract class ImageHandler extends MediaHandler {
 	private function validateThumbParams( &$width, &$height, $srcWidth, $srcHeight, $mimeType ) {
 		$width = intval( $width );
 
-		# Sanity check $width
 		if ( $width <= 0 ) {
 			wfDebug( __METHOD__ . ": Invalid destination width: $width" );
 
@@ -208,7 +211,7 @@ abstract class ImageHandler extends MediaHandler {
 	 * @param File $image
 	 * @param string $script
 	 * @param array $params
-	 * @return bool|MediaTransformOutput
+	 * @return MediaTransformOutput|false
 	 */
 	public function getScriptedTransform( $image, $script, $params ) {
 		if ( !$this->normaliseParams( $image, $params ) ) {
@@ -222,9 +225,9 @@ abstract class ImageHandler extends MediaHandler {
 	}
 
 	public function getImageSize( $image, $path ) {
-		Wikimedia\suppressWarnings();
+		AtEase::suppressWarnings();
 		$gis = getimagesize( $path );
-		Wikimedia\restoreWarnings();
+		AtEase::restoreWarnings();
 
 		return $gis;
 	}

@@ -191,13 +191,6 @@ class PageHistoryHandler extends SimpleHandler {
 		];
 
 		if ( $params['filter'] ) {
-			// This redundant join condition tells MySQL that rev_page and revactor_page are the
-			// same, so it can propagate the condition
-			if ( isset( $revQuery['tables']['temp_rev_user'] ) /* SCHEMA_COMPAT_READ_TEMP */ ) {
-				$revQuery['joins']['temp_rev_user'][1] =
-					"temp_rev_user.revactor_rev = rev_id AND revactor_page = rev_page";
-			}
-
 			// The validator ensures this value, if present, is one of the expected values
 			switch ( $params['filter'] ) {
 				case 'bot':
@@ -372,7 +365,11 @@ class PageHistoryHandler extends SimpleHandler {
 
 			if ( $revisions && $params['newer_than'] ) {
 				$revisions = array_reverse( $revisions );
+				// @phan-suppress-next-next-line PhanPossiblyUndeclaredVariable
+				// $lastRevId is declared because $res has one element
 				$temp = $lastRevId;
+				// @phan-suppress-next-next-line PhanPossiblyUndeclaredVariable
+				// $firstRevId is declared because $res has one element
 				$lastRevId = $firstRevId;
 				$firstRevId = $temp;
 			}
@@ -386,11 +383,15 @@ class PageHistoryHandler extends SimpleHandler {
 		// This facilitates clients doing "paging" style api operations.
 		if ( $revisions ) {
 			if ( $params['newer_than'] || $res->numRows() > self::REVISIONS_RETURN_LIMIT ) {
+				// @phan-suppress-next-next-line PhanPossiblyUndeclaredVariable
+				// $lastRevId is declared because $res has one element
 				$older = $lastRevId;
 			}
 			if ( $params['older_than'] ||
 				( $params['newer_than'] && $res->numRows() > self::REVISIONS_RETURN_LIMIT )
 			) {
+				// @phan-suppress-next-next-line PhanPossiblyUndeclaredVariable
+				// $firstRevId is declared because $res has one element
 				$newer = $firstRevId;
 			}
 		}

@@ -184,17 +184,16 @@ CREATE INDEX pl_backlinks_namespace ON pagelinks (
 
 CREATE TABLE templatelinks (
   tl_from INT DEFAULT 0 NOT NULL,
-  tl_namespace INT DEFAULT 0 NOT NULL,
-  tl_title TEXT DEFAULT '' NOT NULL,
+  tl_target_id BIGINT NOT NULL,
   tl_from_namespace INT DEFAULT 0 NOT NULL,
-  PRIMARY KEY(tl_from, tl_namespace, tl_title)
+  PRIMARY KEY(tl_from, tl_target_id)
 );
 
-CREATE INDEX tl_namespace ON templatelinks (tl_namespace, tl_title, tl_from);
+CREATE INDEX tl_target_id ON templatelinks (tl_target_id, tl_from);
 
-CREATE INDEX tl_backlinks_namespace ON templatelinks (
-  tl_from_namespace, tl_namespace,
-  tl_title, tl_from
+CREATE INDEX tl_backlinks_namespace_target_id ON templatelinks (
+  tl_from_namespace, tl_target_id,
+  tl_from
 );
 
 
@@ -316,7 +315,6 @@ CREATE TABLE page_restrictions (
   pr_type TEXT NOT NULL,
   pr_level TEXT NOT NULL,
   pr_cascade SMALLINT NOT NULL,
-  pr_user INT DEFAULT NULL,
   pr_expiry TIMESTAMPTZ DEFAULT NULL,
   PRIMARY KEY(pr_id)
 );
@@ -475,25 +473,6 @@ CREATE TABLE revision_comment_temp (
 );
 
 CREATE UNIQUE INDEX revcomment_rev ON revision_comment_temp (revcomment_rev);
-
-
-CREATE TABLE revision_actor_temp (
-  revactor_rev INT NOT NULL,
-  revactor_actor BIGINT NOT NULL,
-  revactor_timestamp TIMESTAMPTZ NOT NULL,
-  revactor_page INT NOT NULL,
-  PRIMARY KEY(revactor_rev, revactor_actor)
-);
-
-CREATE UNIQUE INDEX revactor_rev ON revision_actor_temp (revactor_rev);
-
-CREATE INDEX actor_timestamp ON revision_actor_temp (
-  revactor_actor, revactor_timestamp
-);
-
-CREATE INDEX page_actor_timestamp ON revision_actor_temp (
-  revactor_page, revactor_actor, revactor_timestamp
-);
 
 
 CREATE TABLE page_props (
@@ -880,7 +859,6 @@ CREATE TABLE page (
   page_id SERIAL NOT NULL,
   page_namespace INT NOT NULL,
   page_title TEXT NOT NULL,
-  page_restrictions TEXT DEFAULT NULL,
   page_is_redirect SMALLINT DEFAULT 0 NOT NULL,
   page_is_new SMALLINT DEFAULT 0 NOT NULL,
   page_random FLOAT NOT NULL,
@@ -931,6 +909,13 @@ CREATE INDEX user_email_token ON "user" (user_email_token);
 CREATE INDEX user_email ON "user" (user_email);
 
 
+CREATE TABLE user_autocreate_serial (
+  uas_shard INT NOT NULL,
+  uas_value INT NOT NULL,
+  PRIMARY KEY(uas_shard)
+);
+
+
 CREATE TABLE revision (
   rev_id SERIAL NOT NULL,
   rev_page INT NOT NULL,
@@ -944,8 +929,6 @@ CREATE TABLE revision (
   rev_sha1 TEXT DEFAULT '' NOT NULL,
   PRIMARY KEY(rev_id)
 );
-
-CREATE INDEX rev_page_id ON revision (rev_page, rev_id);
 
 CREATE INDEX rev_timestamp ON revision (rev_timestamp);
 
@@ -969,3 +952,13 @@ CREATE UNIQUE INDEX si_page ON searchindex (si_page);
 CREATE INDEX si_title ON searchindex (si_title);
 
 CREATE INDEX si_text ON searchindex (si_text);
+
+
+CREATE TABLE linktarget (
+  lt_id BIGSERIAL NOT NULL,
+  lt_namespace INT NOT NULL,
+  lt_title TEXT NOT NULL,
+  PRIMARY KEY(lt_id)
+);
+
+CREATE UNIQUE INDEX lt_namespace_title ON linktarget (lt_namespace, lt_title);

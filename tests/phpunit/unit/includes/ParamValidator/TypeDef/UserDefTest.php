@@ -364,7 +364,6 @@ class UserDefTest extends TypeDefTestCase {
 					'subtypes' => [ 'name', 'ip', 'cidr', 'interwiki' ],
 				],
 				[
-					// phpcs:ignore Generic.Files.LineLength.TooLong
 					ParamValidator::PARAM_TYPE => '<message key="paramvalidator-help-type-user"><text>1</text><list listType="text"><text><message key="paramvalidator-help-type-user-subtype-name"></message></text><text><message key="paramvalidator-help-type-user-subtype-ip"></message></text><text><message key="paramvalidator-help-type-user-subtype-cidr"></message></text><text><message key="paramvalidator-help-type-user-subtype-interwiki"></message></text></list><num>4</num></message>',
 				],
 			],
@@ -378,7 +377,6 @@ class UserDefTest extends TypeDefTestCase {
 					'subtypes' => [ 'name', 'id' ],
 				],
 				[
-					// phpcs:ignore Generic.Files.LineLength.TooLong
 					ParamValidator::PARAM_TYPE => '<message key="paramvalidator-help-type-user"><text>2</text><list listType="text"><text><message key="paramvalidator-help-type-user-subtype-name"></message></text><text><message key="paramvalidator-help-type-user-subtype-id"></message></text></list><num>2</num></message>',
 				],
 			],
@@ -439,6 +437,23 @@ class UserDefTest extends TypeDefTestCase {
 		// Already in the canonical form
 		// See our mock UserIdentityLookup for which ids and names exist
 		$userName = 'UserDefTest-processUser-missing';
+
+		$userDef = $this->getInstance( new SimpleCallbacks( [] ), [] );
+		$res = $userDef->validate(
+			'', // $name, unused here
+			$userName,
+			[
+				UserDef::PARAM_ALLOWED_USER_TYPES => [ 'name' ],
+				UserDef::PARAM_RETURN_OBJECT => true,
+			], // $settings
+			[] // $options, unused here
+		);
+
+		$this->assertUserIdentity( $res, 0, $userName );
+	}
+
+	public function testProcessUser_0() {
+		$userName = '0';
 
 		$userDef = $this->getInstance( new SimpleCallbacks( [] ), [] );
 		$res = $userDef->validate(

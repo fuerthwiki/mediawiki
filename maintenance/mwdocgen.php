@@ -100,7 +100,7 @@ class MWDocGen extends Maintenance {
 		$this->input = '';
 		$inputs = explode( ',', $this->getOption( 'file', '' ) );
 		foreach ( $inputs as $input ) {
-			# Doxygen inputs are space separted and double quoted
+			# Doxygen inputs are space separated and double quoted
 			$this->input .= " \"$IP/$input\"";
 		}
 
@@ -115,12 +115,8 @@ class MWDocGen extends Maintenance {
 
 		$this->template = $IP . '/maintenance/Doxyfile';
 		$this->excludes = [
+			'cache',
 			'images',
-			'node_modules',
-			'resources',
-			'static',
-			'tests',
-			'vendor',
 		];
 		$this->excludePatterns = [];
 		if ( $this->input === '' ) {
@@ -134,7 +130,7 @@ class MWDocGen extends Maintenance {
 			}
 		}
 
-		$this->doDot = shell_exec( 'which dot' );
+		$this->doDot = (bool)shell_exec( 'which dot' );
 	}
 
 	public function execute() {

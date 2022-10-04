@@ -135,7 +135,7 @@ ChangesListWrapperWidget.prototype.onModelUpdate = function (
 						// * recentchanges-network
 						// * recentchanges-notargetpage
 						// * allpagesbadtitle
-						.text( mw.msg( this.getMsgKeyForNoResults( noResultsDetails ) ) )
+						.text( mw.message( this.getMsgKeyForNoResults( noResultsDetails ) ).parse() )
 				);
 
 			// remove all classes matching mw-changeslist-*
@@ -177,7 +177,8 @@ ChangesListWrapperWidget.prototype.onModelUpdate = function (
 	} );
 };
 
-/** Toggles overlay class on changes list
+/**
+ * Toggles overlay class on changes list
  *
  * @param {boolean} isVisible True if overlay should be visible
  */

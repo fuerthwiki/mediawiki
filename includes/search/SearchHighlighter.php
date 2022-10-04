@@ -21,6 +21,7 @@
  * @ingroup Search
  */
 
+use MediaWiki\MainConfigNames;
 use MediaWiki\MediaWikiServices;
 
 /**
@@ -63,13 +64,14 @@ class SearchHighlighter {
 		$contextlines = self::DEFAULT_CONTEXT_LINES,
 		$contextchars = self::DEFAULT_CONTEXT_CHARS
 	) {
-		global $wgSearchHighlightBoundaries;
+		$searchHighlightBoundaries = MediaWikiServices::getInstance()
+			->getMainConfig()->get( MainConfigNames::SearchHighlightBoundaries );
 
 		if ( $text == '' ) {
 			return '';
 		}
 
-		// spli text into text + templates/links/tables
+		// split text into text + templates/links/tables
 		$spat = "/(\\{\\{)|(\\[\\[[^\\]:]+:)|(\n\\{\\|)";
 		// first capture group is for detecting nested templates/links/tables/references
 		$endPatterns = [
@@ -168,7 +170,7 @@ class SearchHighlighter {
 			}
 		}
 		$anyterm = implode( '|', $terms );
-		$phrase = implode( "$wgSearchHighlightBoundaries+", $terms );
+		$phrase = implode( "{$searchHighlightBoundaries}+", $terms );
 		// @todo FIXME: A hack to scale contextchars, a correct solution
 		// would be to have contextchars actually be char and not byte
 		// length, and do proper utf-8 substrings and lengths everywhere,
@@ -176,8 +178,8 @@ class SearchHighlighter {
 		$scale = strlen( $anyterm ) / mb_strlen( $anyterm );
 		$contextchars = intval( $contextchars * $scale );
 
-		$patPre = "(^|$wgSearchHighlightBoundaries)";
-		$patPost = "($wgSearchHighlightBoundaries|$)";
+		$patPre = "(^|{$searchHighlightBoundaries})";
+		$patPost = "({$searchHighlightBoundaries}|$)";
 
 		$pat1 = "/(" . $phrase . ")/ui";
 		$pat2 = "/$patPre(" . $anyterm . ")$patPost/ui";
@@ -247,12 +249,16 @@ class SearchHighlighter {
 		foreach ( $snippets as $index => $line ) {
 			$extended[$index] = $line;
 			$len = strlen( $line );
+			// @phan-suppress-next-next-line PhanPossiblyUndeclaredVariable
+			// $targetchars is set when $snippes contains anything
 			if ( $len < $targetchars - 20 ) {
 				// complete this line
 				if ( $len < strlen( $all[$index] ) ) {
 					$extended[$index] = $this->extract(
 						$all[$index],
 						$offsets[$index],
+						// @phan-suppress-next-next-line PhanPossiblyUndeclaredVariable
+						// $targetchars is set when $snippes contains anything
 						$offsets[$index] + $targetchars,
 						$offsets[$index]
 					);
@@ -261,10 +267,14 @@ class SearchHighlighter {
 
 				// add more lines
 				$add = $index + 1;
+				// @phan-suppress-next-next-line PhanPossiblyUndeclaredVariable
+				// $targetchars is set when $snippes contains anything
 				while ( $len < $targetchars - 20
 						&& array_key_exists( $add, $all )
 						&& !array_key_exists( $add, $snippets ) ) {
 					$offsets[$add] = 0;
+					// @phan-suppress-next-next-line PhanPossiblyUndeclaredVariable
+					// $targetchars is set when $snippes contains anything
 					$tt = "\n" . $this->extract( $all[$add], 0, $targetchars - $len, $offsets[$add] );
 					$extended[$add] = $tt;
 					$len += strlen( $tt );
@@ -283,7 +293,7 @@ class SearchHighlighter {
 			} elseif ( $last + 1 == $index
 				&& $offsets[$last] + strlen( $snippets[$last] ) >= strlen( $all[$last] )
 			) {
-				$extract .= " " . $line; // continous lines
+				$extract .= " " . $line; // continuous lines
 			} else {
 				$extract .= '<b> ... </b>' . $line;
 			}
@@ -530,15 +540,12 @@ class SearchHighlighter {
 		$max = intval( $contextchars ) + 1;
 		$pat1 = "/(.*)($terms)(.{0,$max})/i";
 
-		$lineno = 0;
-
 		$extract = "";
 		$contLang = MediaWikiServices::getInstance()->getContentLanguage();
 		foreach ( $lines as $line ) {
 			if ( $contextlines == 0 ) {
 				break;
 			}
-			++$lineno;
 			$m = [];
 			if ( !preg_match( $pat1, $line, $m ) ) {
 				continue;
@@ -555,12 +562,11 @@ class SearchHighlighter {
 
 			$found = $m[2];
 
-			// @phan-suppress-next-line SecurityCheck-DoubleEscaped Triggered by Language::truncateForVisual
 			$line = htmlspecialchars( $pre . $found . $post );
 			$pat2 = '/(' . $terms . ")/i";
 			$line = preg_replace( $pat2, "<span class='searchmatch'>\\1</span>", $line );
 
-			$extract .= "${line}\n";
+			$extract .= "{$line}\n";
 		}
 
 		return $extract;

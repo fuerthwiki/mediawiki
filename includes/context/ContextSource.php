@@ -15,10 +15,9 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
  * http://www.gnu.org/copyleft/gpl.html
  *
- * @author Happy-melon
  * @file
  */
-use MediaWiki\MediaWikiServices;
+
 use MediaWiki\Permissions\Authority;
 use MediaWiki\Session\CsrfTokenSet;
 use Wikimedia\NonSerializable\NonSerializableTrait;
@@ -29,6 +28,7 @@ use Wikimedia\NonSerializable\NonSerializableTrait;
  *
  * @stable to extend
  * @since 1.18
+ * @author Happy-melon
  */
 abstract class ContextSource implements IContextSource {
 	use NonSerializableTrait;
@@ -48,7 +48,7 @@ abstract class ContextSource implements IContextSource {
 		if ( $this->context === null ) {
 			$class = static::class;
 			wfDebug( __METHOD__ . " ($class): called and \$context is null. " .
-				"Using RequestContext::getMain() for sanity" );
+				"Using RequestContext::getMain()" );
 			$this->context = RequestContext::getMain();
 		}
 
@@ -119,6 +119,17 @@ abstract class ContextSource implements IContextSource {
 	}
 
 	/**
+	 * Get the action name for the current web request.
+	 *
+	 * @since 1.38
+	 * @stable to override
+	 * @return string
+	 */
+	public function getActionName(): string {
+		return $this->getContext()->getActionName();
+	}
+
+	/**
 	 * @since 1.18
 	 * @stable to override
 	 * @return OutputPage
@@ -170,17 +181,6 @@ abstract class ContextSource implements IContextSource {
 	 */
 	public function getTiming() {
 		return $this->getContext()->getTiming();
-	}
-
-	/**
-	 * @deprecated since 1.27 use a StatsdDataFactory from MediaWikiServices (preferably injected)
-	 *
-	 * @since 1.25
-	 * @stable to override
-	 * @return IBufferingStatsdDataFactory
-	 */
-	public function getStats() {
-		return MediaWikiServices::getInstance()->getStatsdDataFactory();
 	}
 
 	/**

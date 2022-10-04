@@ -33,7 +33,6 @@ class ImportTest extends MediaWikiLangTestCase {
 	}
 
 	public function getUnknownTagsXML() {
-		// phpcs:disable Generic.Files.LineLength
 		return [
 			[
 				<<< EOF
@@ -97,7 +96,6 @@ EOF
 	}
 
 	public function getRedirectXML() {
-		// phpcs:disable Generic.Files.LineLength
 		return [
 			[
 				<<< EOF
@@ -179,7 +177,6 @@ EOF
 	}
 
 	public function getSiteInfoXML() {
-		// phpcs:disable Generic.Files.LineLength
 		return [
 			[
 				<<< EOF
@@ -224,8 +221,9 @@ EOF
 	 */
 	public function testUnknownUserHandling( $assign, $create ) {
 		$hookId = -99;
-		$this->setMwGlobals( 'wgHooks', [
-			'ImportHandleUnknownUser' => [ function ( $name ) use ( $assign, $create, &$hookId ) {
+		$this->setTemporaryHook(
+			'ImportHandleUnknownUser',
+			function ( $name ) use ( $assign, $create, &$hookId ) {
 				if ( !$assign ) {
 					$this->fail( 'ImportHandleUnknownUser was called unexpectedly' );
 				}
@@ -238,14 +236,12 @@ EOF
 					return false;
 				}
 				return true;
-			} ]
-		] );
+			}
+		);
 
 		$user = $this->getTestUser()->getUser();
 
 		$n = ( $assign ? 1 : 0 ) + ( $create ? 2 : 0 );
-
-		// phpcs:disable Generic.Files.LineLength
 		$source = new ImportStringSource( <<<EOF
 <mediawiki xmlns="http://www.mediawiki.org/xml/export-0.10/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mediawiki.org/xml/export-0.10/ http://www.mediawiki.org/xml/export-0.10.xsd" version="0.10" xml:lang="en">
   <page>

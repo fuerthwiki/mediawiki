@@ -31,6 +31,7 @@ use MediaWiki\Block\Restriction\PageRestriction;
 use MediaWiki\Config\ServiceOptions;
 use MediaWiki\HookContainer\HookContainer;
 use MediaWiki\HookContainer\HookRunner;
+use MediaWiki\MainConfigNames;
 use MediaWiki\Permissions\Authority;
 use MediaWiki\User\UserEditTracker;
 use MediaWiki\User\UserFactory;
@@ -108,8 +109,8 @@ class BlockUser {
 	 * @internal For use by UserBlockCommandFactory
 	 */
 	public const CONSTRUCTOR_OPTIONS = [
-		'HideUserContribLimit',
-		'BlockAllowsUTEdit',
+		MainConfigNames::HideUserContribLimit,
+		MainConfigNames::BlockAllowsUTEdit,
 	];
 
 	/**
@@ -136,7 +137,7 @@ class BlockUser {
 	 * @var bool|null
 	 *
 	 * This may be null when an invalid option was passed to the constructor.
-	 * Such a case is catched in placeBlockUnsafe.
+	 * Such a case is caught in placeBlockUnsafe.
 	 */
 	private $isUserTalkEditBlocked = null;
 
@@ -189,18 +190,18 @@ class BlockUser {
 	 * @param Authority $performer Performer of the block
 	 * @param string $expiry Expiry of the block (timestamp or 'infinity')
 	 * @param string $reason Reason of the block
-	 * @param bool[] $blockOptions Block options
+	 * @param bool[] $blockOptions
 	 *    Valid options:
-	 *    - isCreateAccountBlocked      : Are acount creations prevented?
+	 *    - isCreateAccountBlocked      : Are account creations prevented?
 	 *    - isEmailBlocked              : Is emailing other users prevented?
 	 *    - isHardBlock                 : Are registered users prevented from editing?
 	 *    - isAutoblocking              : Should this block spread to others to
 	 *                                    limit block evasion?
 	 *    - isUserTalkEditBlocked       : Is editing blocked user's own talkpage allowed?
-	 *    - isHideUser                  : Should blocked user's name be hiden (needs hideuser)?
+	 *    - isHideUser                  : Should blocked user's name be hidden (needs hideuser)?
 	 *    - isPartial                   : Is this block partial? This is ignored when
 	 *                                    blockRestrictions is not an empty array.
-	 * @param array $blockRestrictions Block restrictions
+	 * @param array $blockRestrictions
 	 * @param string[] $tags Tags that should be assigned to the log entry
 	 */
 	public function __construct(
@@ -287,7 +288,7 @@ class BlockUser {
 			// - always blocked if the config says so;
 			// - otherwise blocked/unblocked if the option was passed in;
 			// - otherwise defaults to not blocked.
-			if ( !$this->options->get( 'BlockAllowsUTEdit' ) ) {
+			if ( !$this->options->get( MainConfigNames::BlockAllowsUTEdit ) ) {
 				$this->isUserTalkEditBlocked = true;
 			} else {
 				$this->isUserTalkEditBlocked = $blockOptions['isUserTalkEditBlocked'] ?? false;
@@ -385,14 +386,15 @@ class BlockUser {
 		$block->isUsertalkEditAllowed( !$this->isUserTalkEditBlocked );
 		$block->setHideName( $this->isHideUser );
 
-		if ( $block->getId() === null ) {
+		$blockId = $block->getId();
+		if ( $blockId === null ) {
 			// Block wasn't inserted into the DB yet
 			$block->setRestrictions( $this->blockRestrictions );
 		} else {
 			// Block is in the DB, we need to set restrictions through a service
 			$block->setRestrictions(
 				$this->blockRestrictionStore->setBlockId(
-					$block->getId(),
+					$blockId,
 					$this->blockRestrictions
 				)
 			);
@@ -507,7 +509,7 @@ class BlockUser {
 				return Status::newFatal( 'ipb_expiry_temp' );
 			}
 
-			$hideUserContribLimit = $this->options->get( 'HideUserContribLimit' );
+			$hideUserContribLimit = $this->options->get( MainConfigNames::HideUserContribLimit );
 			if (
 				$hideUserContribLimit !== false &&
 				$this->userEditTracker->getUserEditCount( $this->target ) > $hideUserContribLimit
@@ -531,7 +533,7 @@ class BlockUser {
 	}
 
 	/**
-	 * Places a block without any sort of sanity/permission checks, hooks can still
+	 * Places a block without any sort of permission or double checking, hooks can still
 	 * abort the block through, as well as already existing block.
 	 *
 	 * @param bool $reblock Should this reblock?
@@ -748,7 +750,7 @@ class BlockUser {
 			$flags[] = 'noemail';
 		}
 
-		if ( $this->options->get( 'BlockAllowsUTEdit' ) && $this->isUserTalkEditBlocked ) {
+		if ( $this->options->get( MainConfigNames::BlockAllowsUTEdit ) && $this->isUserTalkEditBlocked ) {
 			// For grepping: message block-log-flags-nousertalk
 			$flags[] = 'nousertalk';
 		}

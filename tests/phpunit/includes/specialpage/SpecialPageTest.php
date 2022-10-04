@@ -1,6 +1,6 @@
 <?php
 
-use MediaWiki\MediaWikiServices;
+use MediaWiki\MainConfigNames;
 
 /**
  * @covers SpecialPage
@@ -14,9 +14,9 @@ class SpecialPageTest extends MediaWikiIntegrationTestCase {
 	protected function setUp(): void {
 		parent::setUp();
 
-		$this->setContentLang( 'en' );
-		$this->setMwGlobals( [
-			'wgScript' => '/index.php',
+		$this->overrideConfigValues( [
+			MainConfigNames::Script => '/index.php',
+			MainConfigNames::LanguageCode => 'en',
 		] );
 	}
 
@@ -66,7 +66,7 @@ class SpecialPageTest extends MediaWikiIntegrationTestCase {
 		$user = User::newFromId( 0 );
 		$specialPage->getContext()->setUser( $user );
 		$specialPage->getContext()->setLanguage(
-			MediaWikiServices::getInstance()->getLanguageFactory()->getLanguage( 'en' ) );
+			$this->getServiceContainer()->getLanguageFactory()->getLanguage( 'en' ) );
 
 		$this->expectException( UserNotLoggedIn::class );
 		$this->expectExceptionMessage( $expected );

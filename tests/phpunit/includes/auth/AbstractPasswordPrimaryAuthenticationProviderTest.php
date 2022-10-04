@@ -2,7 +2,7 @@
 
 namespace MediaWiki\Auth;
 
-use MediaWiki\MediaWikiServices;
+use MediaWiki\MainConfigNames;
 use MediaWiki\Tests\Unit\Auth\AuthenticationProviderTestTrait;
 use MultiConfig;
 use Wikimedia\TestingAccessWrapper;
@@ -91,8 +91,9 @@ class AbstractPasswordPrimaryAuthenticationProviderTest extends \MediaWikiIntegr
 	public function testCheckPasswordValidity() {
 		$uppCalled = 0;
 		$uppStatus = \Status::newGood( [] );
-		$this->setMwGlobals( [
-			'wgPasswordPolicy' => [
+		$this->overrideConfigValue(
+			MainConfigNames::PasswordPolicy,
+			[
 				'policies' => [
 					'default' => [
 						'Check' => true,
@@ -105,7 +106,7 @@ class AbstractPasswordPrimaryAuthenticationProviderTest extends \MediaWikiIntegr
 					},
 				],
 			]
-		] );
+		);
 
 		$provider = $this->getMockForAbstractClass(
 			AbstractPasswordPrimaryAuthenticationProvider::class
@@ -124,7 +125,7 @@ class AbstractPasswordPrimaryAuthenticationProviderTest extends \MediaWikiIntegr
 			'InvalidPasswordReset' => true,
 		] );
 
-		$services = MediaWikiServices::getInstance();
+		$services = $this->getServiceContainer();
 		$manager = new AuthManager(
 			new \FauxRequest(),
 			$services->getMainConfig(),

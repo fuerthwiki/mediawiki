@@ -21,6 +21,8 @@
  * @ingroup Maintenance
  */
 
+use Wikimedia\AtEase\AtEase;
+
 require_once __DIR__ . '/Maintenance.php';
 
 /**
@@ -38,18 +40,16 @@ class JSParseHelper extends Maintenance {
 	}
 
 	public function execute() {
-		if ( $this->hasArg( 0 ) ) {
-			$files = $this->mArgs;
-		} else {
-			// @todo fixme this is a lame API :)
+		if ( !$this->hasArg( 0 ) ) {
 			$this->maybeHelp( true );
 		}
+		$files = $this->mArgs;
 
 		$parser = new JSParser();
 		foreach ( $files as $filename ) {
-			Wikimedia\suppressWarnings();
+			AtEase::suppressWarnings();
 			$js = file_get_contents( $filename );
-			Wikimedia\restoreWarnings();
+			AtEase::restoreWarnings();
 			if ( $js === false ) {
 				$this->output( "$filename ERROR: could not read file\n" );
 				$this->errs++;

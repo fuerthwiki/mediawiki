@@ -273,7 +273,7 @@ class EditResult implements JsonSerializable {
 	 *
 	 * @since 1.36
 	 */
-	public function jsonSerialize() {
+	public function jsonSerialize(): array {
 		return [
 			'isNew' => $this->isNew,
 			'originalRevisionId' => $this->originalRevisionId,

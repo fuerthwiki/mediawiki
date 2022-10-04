@@ -36,6 +36,11 @@ abstract class JoinGroupBase {
 				$alias = $this->getAutoAlias();
 			}
 			$table = new Subquery( $table->getSQL() );
+		} elseif ( $table instanceof Subquery ) {
+			if ( $alias === null ) {
+				throw new \InvalidArgumentException( __METHOD__ .
+					': Subquery as table must provide an alias.' );
+			}
 		} elseif ( !is_string( $table ) ) {
 			throw new \InvalidArgumentException( __METHOD__ .
 				': $table must be either string, JoinGroup or SelectQueryBuilder' );
@@ -79,6 +84,22 @@ abstract class JoinGroupBase {
 	 */
 	public function join( $table, $alias = null, $conds = [] ) {
 		$this->addJoin( 'JOIN', $table, $alias, $conds );
+		return $this;
+	}
+
+	/**
+	 * Straight join a table or group of tables. This should be called after table().
+	 *
+	 * @param string|JoinGroup|SelectQueryBuilder $table The table name, or a
+	 *   JoinGroup containing multiple tables, or a SelectQueryBuilder
+	 *   representing a subquery.
+	 * @param string|null $alias The alias name, or null to automatically
+	 *   generate an alias which will be unique to this builder
+	 * @param string|array $conds The conditions for the ON clause
+	 * @return $this
+	 */
+	public function straightJoin( $table, $alias = null, $conds = [] ) {
+		$this->addJoin( 'STRAIGHT_JOIN', $table, $alias, $conds );
 		return $this;
 	}
 

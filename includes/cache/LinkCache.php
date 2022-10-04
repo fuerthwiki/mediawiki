@@ -22,9 +22,11 @@
  */
 
 use MediaWiki\Linker\LinkTarget;
+use MediaWiki\MainConfigNames;
 use MediaWiki\MediaWikiServices;
 use MediaWiki\Page\PageIdentity;
 use MediaWiki\Page\PageReference;
+use MediaWiki\Page\PageStoreRecord;
 use Psr\Log\LoggerAwareInterface;
 use Psr\Log\LoggerInterface;
 use Psr\Log\NullLogger;
@@ -44,9 +46,6 @@ class LinkCache implements LoggerAwareInterface {
 	private $badLinks;
 	/** @var WANObjectCache */
 	private $wanCache;
-
-	/** @var bool */
-	private $mForUpdate = false;
 
 	/** @var TitleFormatter */
 	private $titleFormatter;
@@ -69,19 +68,15 @@ class LinkCache implements LoggerAwareInterface {
 	/**
 	 * @param TitleFormatter $titleFormatter
 	 * @param WANObjectCache $cache
-	 * @param NamespaceInfo|null $nsInfo Null for backward compatibility, but deprecated
+	 * @param NamespaceInfo $nsInfo
 	 * @param ILoadBalancer|null $loadBalancer Use null when no database is set up, for example on installation
 	 */
 	public function __construct(
 		TitleFormatter $titleFormatter,
 		WANObjectCache $cache,
-		NamespaceInfo $nsInfo = null,
+		NamespaceInfo $nsInfo,
 		ILoadBalancer $loadBalancer = null
 	) {
-		if ( !$nsInfo ) {
-			wfDeprecated( __METHOD__ . ' with no NamespaceInfo argument', '1.34' );
-			$nsInfo = MediaWikiServices::getInstance()->getNamespaceInfo();
-		}
 		$this->goodLinks = new MapCacheLRU( self::MAX_SIZE );
 		$this->badLinks = new MapCacheLRU( self::MAX_SIZE );
 		$this->wanCache = $cache;
@@ -96,22 +91,6 @@ class LinkCache implements LoggerAwareInterface {
 	 */
 	public function setLogger( LoggerInterface $logger ) {
 		$this->logger = $logger;
-	}
-
-	/**
-	 * General accessor to get/set whether the primary DB should be used
-	 *
-	 * This used to also set the FOR UPDATE option (locking the rows read
-	 * in order to avoid link table inconsistency), which was later removed
-	 * for performance on wikis with a high edit rate.
-	 *
-	 * @param bool|null $update
-	 * @return bool
-	 * @deprecated Since 1.34. Use PageStore::getPageForLink with IDBAccessObject::READ_LATEST.
-	 */
-	public function forUpdate( $update = null ) {
-		wfDeprecated( __METHOD__, '1.34' ); // hard deprecated since 1.37
-		return wfSetVar( $this->mForUpdate, $update );
 	}
 
 	/**
@@ -200,7 +179,7 @@ class LinkCache implements LoggerAwareInterface {
 	 *        Can be given as an object or an associative array containing the
 	 *        page_namespace and page_title fields.
 	 *        In MediaWiki 1.36 and earlier, only LinkTarget was accepted.
-	 * @param string $field ( 'id', 'length', 'redirect', 'revision', 'model', 'lang', 'restrictions' )
+	 * @param string $field ( 'id', 'length', 'redirect', 'revision', 'model', 'lang' )
 	 * @return string|int|null The field value, or null if the page was not cached or does not exist
 	 *         or is not a proper page (e.g. a special page or interwiki link).
 	 */
@@ -236,10 +215,6 @@ class LinkCache implements LoggerAwareInterface {
 			case 'lang':
 				return !empty( $row->page_lang )
 					? strval( $row->page_lang )
-					: null;
-			case 'restrictions':
-				return !empty( $row->page_restrictions )
-					? strval( $row->page_restrictions )
 					: null;
 			default:
 				throw new InvalidArgumentException( "Unknown field: $field" );
@@ -282,6 +257,7 @@ class LinkCache implements LoggerAwareInterface {
 	public function addGoodLinkObj( $id, $page, $len = -1, $redir = null,
 		$revision = 0, $model = null, $lang = null
 	) {
+		wfDeprecated( __METHOD__, '1.38' );
 		$this->addGoodLinkObjFromRow( $page, (object)[
 			'page_id' => (int)$id,
 			'page_namespace' => $page->getNamespace(),
@@ -291,7 +267,6 @@ class LinkCache implements LoggerAwareInterface {
 			'page_latest' => (int)$revision,
 			'page_content_model' => $model ? (string)$model : null,
 			'page_lang' => $lang ? (string)$lang : null,
-			'page_restrictions' => null,
 			'page_is_new' => 0,
 			'page_touched' => '',
 		] );
@@ -380,18 +355,18 @@ class LinkCache implements LoggerAwareInterface {
 	 * @return array
 	 */
 	public static function getSelectFields() {
-		global $wgPageLanguageUseDB;
+		$pageLanguageUseDB = MediaWikiServices::getInstance()->getMainConfig()
+			->get( MainConfigNames::PageLanguageUseDB );
 
-		$fields = [
-			'page_id',
-			'page_len',
-			'page_is_redirect',
-			'page_latest',
-			'page_restrictions',
-			'page_content_model',
-		];
+		$fields = array_merge(
+			PageStoreRecord::REQUIRED_FIELDS,
+			[
+				'page_len',
+				'page_content_model',
+			]
+		);
 
-		if ( $wgPageLanguageUseDB ) {
+		if ( $pageLanguageUseDB ) {
 			$fields[] = 'page_lang';
 		}
 
@@ -424,6 +399,72 @@ class LinkCache implements LoggerAwareInterface {
 	}
 
 	/**
+	 * @param TitleValue|null $link
+	 * @param callable|null $fetchCallback
+	 * @param int $queryFlags
+	 * @return array [ $shouldAddGoodLink, $row ], $shouldAddGoodLink is a bool indicating
+	 * whether addGoodLinkObjFromRow should be called, and $row is the row the caller was looking
+	 * for (or false, when it was not found).
+	 */
+	private function getGoodLinkRowInternal(
+		?TitleValue $link,
+		callable $fetchCallback = null,
+		int $queryFlags = IDBAccessObject::READ_NORMAL
+	): array {
+		$key = $link ? $this->getCacheKey( $link ) : null;
+		if ( $key === null ) {
+			return [ false, false ];
+		}
+
+		$ns = $link->getNamespace();
+		$dbkey = $link->getDBkey();
+		$callerShouldAddGoodLink = false;
+
+		$forUpdate = $queryFlags & IDBAccessObject::READ_LATEST;
+
+		if ( !$forUpdate && $this->isBadLink( $key ) ) {
+			return [ $callerShouldAddGoodLink, false ];
+		}
+
+		[ $row, $rowFlags ] = $this->goodLinks->get( $key );
+		if ( $row && $rowFlags >= $queryFlags ) {
+			return [ $callerShouldAddGoodLink, $row ];
+		}
+
+		if ( !$fetchCallback ) {
+			return [ $callerShouldAddGoodLink, false ];
+		}
+
+		$callerShouldAddGoodLink = true;
+		if ( $this->usePersistentCache( $ns ) && !$forUpdate ) {
+			// Some pages are often transcluded heavily, so use persistent caching
+			$wanCacheKey = $this->wanCache->makeKey( 'page', $ns, sha1( $dbkey ) );
+
+			$row = $this->wanCache->getWithSetCallback(
+				$wanCacheKey,
+				WANObjectCache::TTL_DAY,
+				function ( $curValue, &$ttl, array &$setOpts ) use ( $fetchCallback, $ns, $dbkey ) {
+					$dbr = $this->loadBalancer->getConnectionRef( ILoadBalancer::DB_REPLICA );
+					$setOpts += Database::getCacheSetOptions( $dbr );
+
+					$row = $fetchCallback( $dbr, $ns, $dbkey, [] );
+					$mtime = $row ? (int)wfTimestamp( TS_UNIX, $row->page_touched ) : false;
+					$ttl = $this->wanCache->adaptiveTTL( $mtime, $ttl );
+
+					return $row;
+				}
+			);
+		} else {
+			// No persistent caching needed, but we can still use the callback.
+			[ $mode, $options ] = DBAccessObjectUtils::getDBOptions( $queryFlags );
+			$dbr = $this->loadBalancer->getConnectionRef( $mode );
+			$row = $fetchCallback( $dbr, $ns, $dbkey, $options );
+		}
+
+		return [ $callerShouldAddGoodLink, $row ];
+	}
+
+	/**
 	 * Returns the row for the page if the page exists (subject to race conditions).
 	 * The row will be returned from local cache or WAN cache if possible, or it
 	 * will be looked up using the callback provided.
@@ -444,56 +485,30 @@ class LinkCache implements LoggerAwareInterface {
 		int $queryFlags = IDBAccessObject::READ_NORMAL
 	): ?stdClass {
 		$link = TitleValue::tryNew( $ns, $dbkey );
-		$key = $link ? $this->getCacheKey( $link ) : null;
-		if ( $key === null ) {
+		if ( $link === null ) {
 			return null;
 		}
-
-		if ( $this->mForUpdate ) {
-			$queryFlags |= IDBAccessObject::READ_LATEST;
-		}
-		$forUpdate = $queryFlags & IDBAccessObject::READ_LATEST;
-
-		if ( !$forUpdate && $this->isBadLink( $key ) ) {
-			return null;
-		}
-
-		[ $row, $rowFlags ] = $this->goodLinks->get( $key );
-		if ( $row && $rowFlags >= $queryFlags ) {
-			return $row;
-		}
-
-		if ( !$fetchCallback ) {
-			return null;
-		}
-
-		if ( $this->usePersistentCache( $ns ) && !$forUpdate ) {
-			// Some pages are often transcluded heavily, so use persistent caching
-			$wanCacheKey = $this->wanCache->makeKey( 'page', $ns, sha1( $dbkey ) );
-
-			$row = $this->wanCache->getWithSetCallback(
-				$wanCacheKey,
-				WANObjectCache::TTL_DAY,
-				function ( $curValue, &$ttl, array &$setOpts ) use ( $fetchCallback, $ns, $dbkey ) {
-					$dbr = $this->loadBalancer->getConnectionRef( ILoadBalancer::DB_REPLICA );
-					$setOpts += Database::getCacheSetOptions( $dbr );
-
-					$row = $fetchCallback( $dbr, $ns, $dbkey, [] );
-					$mtime = $row ? wfTimestamp( TS_UNIX, $row->page_touched ) : false;
-					$ttl = $this->wanCache->adaptiveTTL( $mtime, $ttl );
-
-					return $row;
-				}
-			);
-		} else {
-			// No persistent caching needed, but we can still use the callback.
-			[ $mode, $options ] = DBAccessObjectUtils::getDBOptions( $queryFlags );
-			$dbr = $this->loadBalancer->getConnectionRef( $mode );
-			$row = $fetchCallback( $dbr, $ns, $dbkey, $options );
-		}
+		[ $shouldAddGoodLink, $row ] = $this->getGoodLinkRowInternal(
+			$link,
+			$fetchCallback,
+			$queryFlags
+		);
 
 		if ( $row ) {
-			$this->addGoodLinkObjFromRow( $link, $row );
+			if ( $shouldAddGoodLink ) {
+				try {
+					$this->addGoodLinkObjFromRow( $link, $row, $queryFlags );
+				} catch ( InvalidArgumentException $e ) {
+					// a field is missing from $row; maybe we used a cache?; invalidate it and try again
+					$this->invalidateTitle( $link );
+					[ $shouldAddGoodLink, $row ] = $this->getGoodLinkRowInternal(
+						$link,
+						$fetchCallback,
+						$queryFlags
+					);
+					$this->addGoodLinkObjFromRow( $link, $row, $queryFlags );
+				}
+			}
 		} else {
 			$this->addBadLinkObj( $link );
 		}

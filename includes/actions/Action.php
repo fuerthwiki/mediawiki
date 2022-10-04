@@ -22,6 +22,7 @@
 use MediaWiki\HookContainer\HookContainer;
 use MediaWiki\HookContainer\HookRunner;
 use MediaWiki\MediaWikiServices;
+use MediaWiki\Permissions\Authority;
 
 /**
  * @defgroup Actions Actions
@@ -61,7 +62,7 @@ abstract class Action implements MessageLocalizer {
 	/**
 	 * IContextSource if specified; otherwise we'll use the Context from the Page
 	 * @since 1.17
-	 * @var IContextSource
+	 * @var IContextSource|null
 	 */
 	protected $context;
 
@@ -106,19 +107,21 @@ abstract class Action implements MessageLocalizer {
 	 * @return string Action name
 	 */
 	final public static function getActionName( IContextSource $context ) {
-		return MediaWikiServices::getInstance()
-			->getActionFactory()
-			->getActionName( $context );
+		// Optimisation: Reuse/prime the cached value of RequestContext
+		return $context->getActionName();
 	}
 
 	/**
 	 * Check if a given action is recognised, even if it's disabled
+	 *
 	 * @since 1.17
+	 * @deprecated since 1.38 use (bool)ActionFactory::getAction()
 	 *
 	 * @param string $name Name of an action
 	 * @return bool
 	 */
 	final public static function exists( string $name ): bool {
+		wfDeprecated( __METHOD__, '1.38' );
 		return MediaWikiServices::getInstance()
 			->getActionFactory()
 			->actionExists( $name );
@@ -165,6 +168,16 @@ abstract class Action implements MessageLocalizer {
 	 */
 	final public function getUser() {
 		return $this->getContext()->getUser();
+	}
+
+	/**
+	 * Shortcut to get the Authority executing this instance
+	 *
+	 * @return Authority
+	 * @since 1.39
+	 */
+	final public function getAuthority(): Authority {
+		return $this->getContext()->getAuthority();
 	}
 
 	/**
@@ -317,6 +330,16 @@ abstract class Action implements MessageLocalizer {
 	}
 
 	/**
+	 * Indicates whether this action requires read rights
+	 * @since 1.38
+	 * @stable to override
+	 * @return bool
+	 */
+	public function needsReadRights() {
+		return true;
+	}
+
+	/**
 	 * Checks if the given user (identified by an object) can perform this action.  Can be
 	 * overridden by sub-classes with more complicated permissions schemes.  Failures here
 	 * must throw subclasses of ErrorPageError
@@ -328,9 +351,9 @@ abstract class Action implements MessageLocalizer {
 	 */
 	protected function checkCanExecute( User $user ) {
 		$right = $this->getRestriction();
+		$permissionManager = MediaWikiServices::getInstance()->getPermissionManager();
 		if ( $right !== null ) {
-			$errors = MediaWikiServices::getInstance()->getPermissionManager()
-				->getPermissionErrors( $right, $user, $this->getTitle() );
+			$errors = $permissionManager->getPermissionErrors( $right, $user, $this->getTitle() );
 			if ( count( $errors ) ) {
 				throw new PermissionsError( $right, $errors );
 			}
@@ -340,7 +363,7 @@ abstract class Action implements MessageLocalizer {
 		$checkReplica = !$this->getRequest()->wasPosted();
 		if (
 			$this->requiresUnblock() &&
-			$user->isBlockedFrom( $this->getTitle(), $checkReplica )
+			$permissionManager->isBlockedFrom( $user, $this->getTitle(), $checkReplica )
 		) {
 			$block = $user->getBlock();
 			if ( $block ) {
@@ -358,7 +381,8 @@ abstract class Action implements MessageLocalizer {
 		// This should be checked at the end so that the user won't think the
 		// error is only temporary when he also don't have the rights to execute
 		// this action
-		if ( $this->requiresWrite() && wfReadOnly() ) {
+		$readOnlyMode = MediaWikiServices::getInstance()->getReadOnlyMode();
+		if ( $this->requiresWrite() && $readOnlyMode->isReadOnly() ) {
 			throw new ReadOnlyError();
 		}
 	}
@@ -400,7 +424,7 @@ abstract class Action implements MessageLocalizer {
 	}
 
 	/**
-	 * Returns the name that goes in the \<h1\> page title
+	 * Returns the name that goes in the `<h1>` page title.
 	 *
 	 * @stable to override
 	 * @return string
@@ -410,10 +434,10 @@ abstract class Action implements MessageLocalizer {
 	}
 
 	/**
-	 * Returns the description that goes below the \<h1\> tag
+	 * Returns the description that goes below the `<h1>` element.
+	 *
 	 * @since 1.17
 	 * @stable to override
-	 *
 	 * @return string HTML
 	 */
 	protected function getDescription() {

@@ -25,6 +25,7 @@
 use MediaWiki\DAO\WikiAwareEntityTrait;
 use MediaWiki\Interwiki\InterwikiLookup;
 use MediaWiki\Linker\LinkTarget;
+use MediaWiki\MainConfigNames;
 use MediaWiki\MediaWikiServices;
 use MediaWiki\Page\ExistingPageRecord;
 use MediaWiki\Page\PageIdentity;
@@ -32,6 +33,7 @@ use MediaWiki\Page\PageIdentityValue;
 use MediaWiki\Page\PageReference;
 use MediaWiki\Page\PageStoreRecord;
 use MediaWiki\Page\ProperPageIdentity;
+use MediaWiki\ResourceLoader\WikiModule;
 use Wikimedia\Assert\Assert;
 use Wikimedia\Assert\PreconditionException;
 use Wikimedia\Rdbms\IDatabase;
@@ -74,6 +76,27 @@ class Title implements LinkTarget, PageIdentity, IDBAccessObject {
 	 */
 	public const NEW_CLONE = 'clone';
 
+	/** @var string Text form (spaces not underscores) of the main part */
+	private $mTextform = '';
+
+	/** @var string URL-encoded form of the main part */
+	private $mUrlform = '';
+
+	/** @var string Main part with underscores */
+	private $mDbkeyform = '';
+
+	/** @var int Namespace index, i.e. one of the NS_xxxx constants */
+	private $mNamespace = NS_MAIN;
+
+	/** @var string Interwiki prefix */
+	private $mInterwiki = '';
+
+	/** @var bool Was this Title created from a string with a local interwiki prefix? */
+	private $mLocalInterwiki = false;
+
+	/** @var string Title fragment (i.e. the bit after the #) */
+	private $mFragment = '';
+
 	/***************************************************************************/
 	// region   Private member variables
 	/** @name   Private member variables
@@ -81,51 +104,6 @@ class Title implements LinkTarget, PageIdentity, IDBAccessObject {
 	 * @internal
 	 * @{
 	 */
-
-	/**
-	 * @deprecated since 1.37 directly accessing this member,
-	 *   use the ::getText() method instead.
-	 * @var string Text form (spaces not underscores) of the main part
-	 */
-	public $mTextform = '';
-
-	/**
-	 * @deprecated since 1.37 directly accessing this member,
-	 *   use the ::getPartialURL() method instead.
-	 * @var string URL-encoded form of the main part
-	 */
-	public $mUrlform = '';
-
-	/**
-	 * @deprecated since 1.37 directly accessing this member,
-	 *   use the ::getDBkey() method instead.
-	 * @var string Main part with underscores
-	 */
-	public $mDbkeyform = '';
-
-	/**
-	 * @deprecated sine 1.37 Avoid directly accessing this member,
-	 *   use the ::getNamespace() method instead
-	 * @var int Namespace index, i.e. one of the NS_xxxx constants
-	 */
-	public $mNamespace = NS_MAIN;
-
-	/**
-	 * @deprecated since 1.37 Avoid directly accessing this member,
-	 *   use the ::getInterwiki() method instead.
-	 * @var string Interwiki prefix
-	 */
-	public $mInterwiki = '';
-
-	/** @var bool Was this Title created from a string with a local interwiki prefix? */
-	private $mLocalInterwiki = false;
-
-	/**
-	 * @deprecated since 1.37 Avoid directly accessing this member,
-	 *   use the ::getFragment() method instead.
-	 * @var string Title fragment (i.e. the bit after the #)
-	 */
-	public $mFragment = '';
 
 	/** @var int Article ID, fetched from the link cache on demand */
 	public $mArticleID = -1;
@@ -145,7 +123,7 @@ class Title implements LinkTarget, PageIdentity, IDBAccessObject {
 	 */
 	private $mForcedContentModel = false;
 
-	/** @var int Estimated number of revisions; null of not loaded */
+	/** @var int|null Estimated number of revisions; null of not loaded */
 	private $mEstimateRevisions;
 
 	/**
@@ -159,12 +137,11 @@ class Title implements LinkTarget, PageIdentity, IDBAccessObject {
 	public $prefixedText = null;
 
 	/**
-	 * @var int Namespace index when there is no namespace. Don't change the
-	 *   following default, NS_MAIN is hardcoded in several places. See T2696.
-	 *   Used primarily for {{transclusion}} tags.
-	 * @see newFromText()
+	 * Namespace to assume when no namespace was passed to factory methods.
+	 * This must be NS_MAIN, as it's hardcoded in several places. See T2696.
+	 * Used primarily for {{transclusion}} tags.
 	 */
-	public $mDefaultNamespace = NS_MAIN;
+	private const DEFAULT_NAMESPACE = NS_MAIN;
 
 	/** @var int The page length, 0 for special pages */
 	protected $mLength = -1;
@@ -242,6 +219,15 @@ class Title implements LinkTarget, PageIdentity, IDBAccessObject {
 	}
 
 	private function __construct() {
+		$this->deprecatePublicProperty( 'mTextform', '1.37', __CLASS__ );
+		$this->deprecatePublicProperty( 'mUrlform', '1.37', __CLASS__ );
+		$this->deprecatePublicProperty( 'mDbkeyform', '1.37', __CLASS__ );
+		$this->deprecatePublicProperty( 'mNamespace', '1.37', __CLASS__ );
+		$this->deprecatePublicProperty( 'mInterwiki', '1.37', __CLASS__ );
+
+		// Phan is being silly about callable|string, see T297352.
+		// @phan-suppress-next-line PhanUndeclaredFunctionInCallable
+		$this->deprecatePublicPropertyFallback( 'mFragment', '1.37', 'getFragment', 'setFragment' );
 	}
 
 	/**
@@ -269,7 +255,8 @@ class Title implements LinkTarget, PageIdentity, IDBAccessObject {
 	 * unless $forceClone is "clone". If $forceClone is "clone" and the given TitleValue
 	 * is already a Title instance, that instance is copied using the clone operator.
 	 *
-	 * @deprecated since 1.34, use newFromLinkTarget or castFromLinkTarget
+	 * @deprecated since 1.34, use newFromLinkTarget or castFromLinkTarget. Hard
+	 *   deprecated in 1.39.
 	 *
 	 * @param TitleValue $titleValue Assumed to be safe.
 	 * @param string $forceClone set to NEW_CLONE to ensure a fresh instance is returned.
@@ -277,6 +264,7 @@ class Title implements LinkTarget, PageIdentity, IDBAccessObject {
 	 * @return Title
 	 */
 	public static function newFromTitleValue( TitleValue $titleValue, $forceClone = '' ) {
+		wfDeprecated( __METHOD__, '1.34' );
 		return self::newFromLinkTarget( $titleValue, $forceClone );
 	}
 
@@ -384,7 +372,7 @@ class Title implements LinkTarget, PageIdentity, IDBAccessObject {
 		if ( $text !== null && !is_string( $text ) && !is_int( $text ) ) {
 			throw new InvalidArgumentException( '$text must be a string.' );
 		}
-		if ( $text === null ) {
+		if ( $text === null || $text === '' ) {
 			return null;
 		}
 
@@ -508,13 +496,15 @@ class Title implements LinkTarget, PageIdentity, IDBAccessObject {
 
 	/**
 	 * Returns a list of fields that are to be selected for initializing Title
-	 * objects or LinkCache entries.
+	 * objects.
 	 *
 	 * @deprecated since 1.36, use PageStore::newSelectQueryBuilder() instead.
+	 *   Hard deprecated in 1.39, remove in 1.40
 	 *
 	 * @return array
 	 */
 	protected static function getSelectFields() {
+		wfDeprecated( __METHOD__, '1.36' );
 		return MediaWikiServices::getInstance()->getPageStore()->getSelectFields();
 	}
 
@@ -527,10 +517,11 @@ class Title implements LinkTarget, PageIdentity, IDBAccessObject {
 	 */
 	public static function newFromID( $id, $flags = 0 ) {
 		$flags |= ( $flags & self::GAID_FOR_UPDATE ) ? self::READ_LATEST : 0; // b/c
-		list( $index, $options ) = DBAccessObjectUtils::getDBOptions( $flags );
+		$pageStore = MediaWikiServices::getInstance()->getPageStore();
+		[ $index, $options ] = DBAccessObjectUtils::getDBOptions( $flags );
 		$row = wfGetDB( $index )->selectRow(
 			'page',
-			self::getSelectFields(),
+			$pageStore->getSelectFields(),
 			[ 'page_id' => $id ],
 			__METHOD__,
 			$options
@@ -549,8 +540,11 @@ class Title implements LinkTarget, PageIdentity, IDBAccessObject {
 	 *
 	 * @param int[] $ids Array of IDs
 	 * @return Title[] Array of Titles
+	 * @deprecated since 1.38 use a PageStore QueryBuilder instead
 	 */
 	public static function newFromIDs( $ids ) {
+		wfDeprecated( __METHOD__, '1.38' );
+
 		if ( !count( $ids ) ) {
 			return [];
 		}
@@ -609,12 +603,6 @@ class Title implements LinkTarget, PageIdentity, IDBAccessObject {
 			}
 			if ( isset( $row->page_lang ) ) {
 				$this->mDbPageLanguage = (string)$row->page_lang;
-			}
-			if ( isset( $row->page_restrictions ) ) {
-				// If we have them handy, save them so we don't need to look them up later
-				MediaWikiServices::getInstance()->getRestrictionStore()
-					->registerOldRestrictions( $this, $row->page_restrictions );
-
 			}
 		} else { // page not found
 			$this->mArticleID = 0;
@@ -699,8 +687,8 @@ class Title implements LinkTarget, PageIdentity, IDBAccessObject {
 	 * `$wgForceUIMsgAsContentMsg`. If that is the case, then calling this method
 	 * will use the user language, which would involve initialising the session
 	 * via `RequestContext::getMain()->getLanguage()`. For session-less endpoints,
-	 * be sure to pass in a MessageLocalizer (such as your own RequestContext,
-	 * or ResourceloaderContext) to prevent an error.
+	 * be sure to pass in a MessageLocalizer (such as your own RequestContext or
+	 * ResourceLoader Context) to prevent an error.
 	 *
 	 * @note The Title instance returned by this method is not guaranteed to be a fresh instance.
 	 * It may instead be a cached instance created previously, with references to it remaining
@@ -710,13 +698,22 @@ class Title implements LinkTarget, PageIdentity, IDBAccessObject {
 	 * @return Title
 	 */
 	public static function newMainPage( MessageLocalizer $localizer = null ) {
+		static $recursionGuard = false;
+		if ( $recursionGuard ) {
+			// Somehow parsing the message contents has fallen back to the
+			// main page (bare local interwiki), so use the hardcoded
+			// fallback (T297571).
+			return self::newFromText( 'Main Page' );
+		}
 		if ( $localizer ) {
 			$msg = $localizer->msg( 'mainpage' );
 		} else {
 			$msg = wfMessage( 'mainpage' );
 		}
 
+		$recursionGuard = true;
 		$title = self::newFromText( $msg->inContentLanguage()->text() );
+		$recursionGuard = false;
 
 		// Every page renders at least one link to the Main Page (e.g. sidebar).
 		// If the localised value is invalid, don't produce fatal errors that
@@ -725,6 +722,7 @@ class Title implements LinkTarget, PageIdentity, IDBAccessObject {
 		if ( !$title ) {
 			$title = self::newFromText( 'Main Page' );
 		}
+		// @phan-suppress-next-line PhanTypeMismatchReturnNullable Fallback is always valid
 		return $title;
 	}
 
@@ -955,7 +953,7 @@ class Title implements LinkTarget, PageIdentity, IDBAccessObject {
 	 *
 	 * @return bool
 	 */
-	public function isExternal() {
+	public function isExternal(): bool {
 		return $this->mInterwiki !== '';
 	}
 
@@ -966,7 +964,7 @@ class Title implements LinkTarget, PageIdentity, IDBAccessObject {
 	 *
 	 * @return string Interwiki prefix
 	 */
-	public function getInterwiki() {
+	public function getInterwiki(): string {
 		return $this->mInterwiki;
 	}
 
@@ -1038,7 +1036,7 @@ class Title implements LinkTarget, PageIdentity, IDBAccessObject {
 	 *
 	 * @return string Main part of the title
 	 */
-	public function getText() {
+	public function getText(): string {
 		return $this->mTextform;
 	}
 
@@ -1070,6 +1068,16 @@ class Title implements LinkTarget, PageIdentity, IDBAccessObject {
 	}
 
 	/**
+	 * @param int $flags
+	 *
+	 * @return bool Whether $flags indicates that the latest information should be
+	 *         read from the primary database, bypassing caches.
+	 */
+	private function shouldReadLatest( int $flags ) {
+		return ( $flags & ( self::READ_LATEST | self::GAID_FOR_UPDATE ) ) > 0;
+	}
+
+	/**
 	 * Get the page's content model id, see the CONTENT_MODEL_XXX constants.
 	 *
 	 * @todo Deprecate this in favor of SlotRecord::getModel()
@@ -1086,15 +1094,8 @@ class Title implements LinkTarget, PageIdentity, IDBAccessObject {
 			return $this->mContentModel;
 		}
 
-		if ( DBAccessObjectUtils::hasFlags( $flags, self::READ_LATEST ) ) {
-			$this->lazyFillContentModel( $this->loadFieldFromDB( 'page_content_model', $flags ) );
-		} elseif (
-			( !$this->mContentModel || $flags & self::GAID_FOR_UPDATE ) &&
-			$this->getArticleID( $flags )
-		) {
-			$linkCache = MediaWikiServices::getInstance()->getLinkCache();
-			$linkCache->addLinkObj( $this ); # in case we already had an article ID
-			$this->lazyFillContentModel( $linkCache->getGoodLinkFieldObj( $this, 'model' ) );
+		if ( $this->shouldReadLatest( $flags ) || !$this->mContentModel ) {
+			$this->lazyFillContentModel( $this->getFieldFromPageStore( 'page_content_model', $flags ) );
 		}
 
 		if ( !$this->mContentModel ) {
@@ -1154,16 +1155,21 @@ class Title implements LinkTarget, PageIdentity, IDBAccessObject {
 	/**
 	 * Get the namespace text
 	 *
-	 * @return string|false Namespace text
+	 * @return string|false Namespace name with underscores (not spaces), e.g. 'User_talk'
 	 */
 	public function getNsText() {
 		if ( $this->isExternal() ) {
 			// This probably shouldn't even happen, except for interwiki transclusion.
 			// If possible, use the canonical name for the foreign namespace.
-			$nsText = MediaWikiServices::getInstance()->getNamespaceInfo()->
-				getCanonicalName( $this->mNamespace );
-			if ( $nsText !== false ) {
-				return $nsText;
+			if ( $this->mNamespace === NS_MAIN ) {
+				// Optimisation
+				return '';
+			} else {
+				$nsText = MediaWikiServices::getInstance()->getNamespaceInfo()->
+					getCanonicalName( $this->mNamespace );
+				if ( $nsText !== false ) {
+					return $nsText;
+				}
 			}
 		}
 
@@ -1179,7 +1185,7 @@ class Title implements LinkTarget, PageIdentity, IDBAccessObject {
 	/**
 	 * Get the namespace text of the subject (rather than talk) page
 	 *
-	 * @return string Namespace text
+	 * @return string Namespace name with underscores (not spaces)
 	 */
 	public function getSubjectNsText() {
 		$services = MediaWikiServices::getInstance();
@@ -1190,7 +1196,7 @@ class Title implements LinkTarget, PageIdentity, IDBAccessObject {
 	/**
 	 * Get the namespace text of the talk page
 	 *
-	 * @return string Namespace text
+	 * @return string Namespace name with underscores (not spaces)
 	 */
 	public function getTalkNsText() {
 		$services = MediaWikiServices::getInstance();
@@ -1276,7 +1282,7 @@ class Title implements LinkTarget, PageIdentity, IDBAccessObject {
 	 */
 	public function isSpecial( $name ) {
 		if ( $this->isSpecialPage() ) {
-			list( $thisName, /* $subpage */ ) =
+			[ $thisName, /* $subpage */ ] =
 				MediaWikiServices::getInstance()->getSpecialPageFactory()->
 					resolveAlias( $this->mDbkeyform );
 			if ( $name == $thisName ) {
@@ -1295,7 +1301,7 @@ class Title implements LinkTarget, PageIdentity, IDBAccessObject {
 	public function fixSpecialName() {
 		if ( $this->isSpecialPage() ) {
 			$spFactory = MediaWikiServices::getInstance()->getSpecialPageFactory();
-			list( $canonicalName, $par ) = $spFactory->resolveAlias( $this->mDbkeyform );
+			[ $canonicalName, $par ] = $spFactory->resolveAlias( $this->mDbkeyform );
 			if ( $canonicalName ) {
 				$localName = $spFactory->getLocalNameFor( $canonicalName, $par );
 				if ( $localName != $this->mDbkeyform ) {
@@ -1309,14 +1315,11 @@ class Title implements LinkTarget, PageIdentity, IDBAccessObject {
 	/**
 	 * Returns true if the title is inside the specified namespace.
 	 *
-	 * Please make use of this instead of comparing to getNamespace()
-	 * This function is much more resistant to changes we may make
-	 * to namespaces than code that makes direct comparisons.
 	 * @param int $ns The namespace
 	 * @return bool
 	 * @since 1.19
 	 */
-	public function inNamespace( $ns ) {
+	public function inNamespace( int $ns ): bool {
 		return MediaWikiServices::getInstance()->getNamespaceInfo()->
 			equals( $this->mNamespace, $ns );
 	}
@@ -1425,6 +1428,7 @@ class Title implements LinkTarget, PageIdentity, IDBAccessObject {
 	 */
 	public function isConversionTable() {
 		// @todo ConversionTable should become a separate content model.
+		// @todo And the prefix should be localized, too!
 
 		return $this->mNamespace === NS_MEDIAWIKI &&
 			strpos( $this->getText(), 'Conversiontable/' ) === 0;
@@ -1752,24 +1756,13 @@ class Title implements LinkTarget, PageIdentity, IDBAccessObject {
 	}
 
 	/**
-	 * Get the default namespace index, for when there is no namespace
-	 * @deprecated since 1.37, no callers, should be removed.
-	 *
-	 * @return int Default namespace index
-	 */
-	public function getDefaultNamespace() {
-		wfDeprecated( __METHOD__, '1.37' );
-		return $this->mDefaultNamespace;
-	}
-
-	/**
 	 * Get the Title fragment (i.e.\ the bit after the #) in text form
 	 *
 	 * Use Title::hasFragment to check for a fragment
 	 *
 	 * @return string Title fragment
 	 */
-	public function getFragment() {
+	public function getFragment(): string {
 		return $this->mFragment;
 	}
 
@@ -1779,7 +1772,7 @@ class Title implements LinkTarget, PageIdentity, IDBAccessObject {
 	 * @return bool
 	 * @since 1.23
 	 */
-	public function hasFragment() {
+	public function hasFragment(): bool {
 		return $this->mFragment !== '';
 	}
 
@@ -1825,7 +1818,7 @@ class Title implements LinkTarget, PageIdentity, IDBAccessObject {
 	 * @param string $fragment
 	 * @return Title
 	 */
-	public function createFragmentTarget( $fragment ) {
+	public function createFragmentTarget( string $fragment ): self {
 		return self::makeTitle(
 			$this->mNamespace,
 			$this->getText(),
@@ -2278,6 +2271,7 @@ class Title implements LinkTarget, PageIdentity, IDBAccessObject {
 				$url = false;
 				$matches = [];
 
+				// @phan-suppress-next-line PhanPossiblyUndeclaredVariable False positive
 				$articlePaths = PathRouter::getActionPaths( $wgActionPaths, $wgArticlePath );
 
 				if ( $articlePaths
@@ -2316,6 +2310,7 @@ class Title implements LinkTarget, PageIdentity, IDBAccessObject {
 					if ( $query == '-' ) {
 						$query = '';
 					}
+					// @phan-suppress-next-line PhanPossiblyUndeclaredVariable False positive
 					$url = "{$wgScript}?title={$dbkey}&{$query}";
 				}
 			}
@@ -2345,6 +2340,7 @@ class Title implements LinkTarget, PageIdentity, IDBAccessObject {
 	 */
 	public function getLinkURL( $query = '', $query2 = false, $proto = false ) {
 		if ( $this->isExternal() || $proto !== false ) {
+			// @phan-suppress-next-line PhanTypeMismatchArgument
 			$ret = $this->getFullURL( $query, $query2, $proto );
 		} elseif ( $this->getPrefixedText() === '' && $this->hasFragment() ) {
 			$ret = $this->getFragmentForURL();
@@ -2494,30 +2490,6 @@ class Title implements LinkTarget, PageIdentity, IDBAccessObject {
 	}
 
 	/**
-	 * Determines if $user is unable to edit this page because it has been protected
-	 * by $wgNamespaceProtection.
-	 *
-	 * @deprecated since 1.34, hard-deprecated since 1.37
-	 * @param User $user User object to check permissions
-	 * @return bool
-	 */
-	public function isNamespaceProtected( User $user ) {
-		global $wgNamespaceProtection;
-
-		wfDeprecated( __METHOD__, '1.34' );
-
-		if ( isset( $wgNamespaceProtection[$this->mNamespace] ) ) {
-			$permissionManager = MediaWikiServices::getInstance()->getPermissionManager();
-			foreach ( (array)$wgNamespaceProtection[$this->mNamespace] as $right ) {
-				if ( !$permissionManager->userHasRight( $user, $right ) ) {
-					return true;
-				}
-			}
-		}
-		return false;
-	}
-
-	/**
 	 * Cascading protection: Return true if cascading restrictions apply to this page, false if not.
 	 *
 	 * @deprecated since 1.37, use RestrictionStore::isCascadeProtected instead
@@ -2552,7 +2524,7 @@ class Title implements LinkTarget, PageIdentity, IDBAccessObject {
 	 *        themselves.
 	 * @return array Two elements: First is an array of Title objects of the
 	 *        pages from which cascading restrictions have come if $getPages
-	 *        is true, or a bool indicating whetehr any cascading protection
+	 *        is true, or a bool indicating whether any cascading protection
 	 *        applies if $getPages was set to false.
 	 *        Second is an array like that returned by Title::getAllRestrictions(),
 	 *        or an empty array if $getPages is false.
@@ -2647,14 +2619,10 @@ class Title implements LinkTarget, PageIdentity, IDBAccessObject {
 	 * @deprecated since 1.37, use RestrictionStore::loadRestrictionsFromRows instead
 	 *
 	 * @param stdClass[] $rows Array of db result objects
-	 * @param string|null $oldFashionedRestrictions Comma-separated set of permission keys
-	 * indicating who can move or edit the page from the page table, (pre 1.10) rows.
-	 * Edit and move sections are separated by a colon
-	 * Example: "edit=autoconfirmed,sysop:move=sysop"
 	 */
-	public function loadRestrictionsFromRows( $rows, $oldFashionedRestrictions = null ) {
+	public function loadRestrictionsFromRows( $rows ) {
 		MediaWikiServices::getInstance()->getRestrictionStore()->loadRestrictionsFromRows(
-			$this, $rows, $oldFashionedRestrictions
+			$this, $rows
 		);
 	}
 
@@ -2663,16 +2631,11 @@ class Title implements LinkTarget, PageIdentity, IDBAccessObject {
 	 *
 	 * @deprecated since 1.37, no public replacement
 	 *
-	 * @param string|null $oldFashionedRestrictions Comma-separated set of permission keys
-	 * indicating who can move or edit the page from the page table, (pre 1.10) rows.
-	 * Edit and move sections are separated by a colon
-	 * Example: "edit=autoconfirmed,sysop:move=sysop"
 	 * @param int $flags A bit field. If self::READ_LATEST is set, skip replicas and read
 	 *  from the primary DB.
 	 */
-	public function loadRestrictions( $oldFashionedRestrictions = null, $flags = 0 ) {
-		MediaWikiServices::getInstance()->getRestrictionStore()->loadRestrictions( $this, $flags,
-			$oldFashionedRestrictions );
+	public function loadRestrictions( $flags = 0 ) {
+		MediaWikiServices::getInstance()->getRestrictionStore()->loadRestrictions( $this, $flags );
 	}
 
 	/**
@@ -2691,7 +2654,7 @@ class Title implements LinkTarget, PageIdentity, IDBAccessObject {
 	 * This will purge no more than $wgUpdateRowsPerQuery page_restrictions rows
 	 */
 	public static function purgeExpiredRestrictions() {
-		if ( wfReadOnly() ) {
+		if ( MediaWikiServices::getInstance()->getReadOnlyMode()->isReadOnly() ) {
 			return;
 		}
 
@@ -2705,7 +2668,7 @@ class Title implements LinkTarget, PageIdentity, IDBAccessObject {
 					'pr_id',
 					[ 'pr_expiry < ' . $dbw->addQuotes( $dbw->timestamp() ) ],
 					$fname,
-					[ 'LIMIT' => $config->get( 'UpdateRowsPerQuery' ) ] // T135470
+					[ 'LIMIT' => $config->get( MainConfigNames::UpdateRowsPerQuery ) ] // T135470
 				);
 				if ( $ids ) {
 					$dbw->delete( 'page_restrictions', [ 'pr_id' => $ids ], $fname );
@@ -2860,25 +2823,14 @@ class Title implements LinkTarget, PageIdentity, IDBAccessObject {
 	 * @return int The ID
 	 */
 	public function getArticleID( $flags = 0 ) {
-		if ( !$this->canExist() ) {
+		if ( $this->mArticleID === -1 && !$this->canExist() ) {
 			$this->mArticleID = 0;
 
 			return $this->mArticleID;
 		}
 
-		if ( $flags & self::GAID_FOR_UPDATE ) {
-			$linkCache = MediaWikiServices::getInstance()->getLinkCache();
-			$linkCache->clearLink( $this );
-			$this->mArticleID = $linkCache->addLinkObj( $this, self::READ_LATEST );
-		} elseif ( DBAccessObjectUtils::hasFlags( $flags, self::READ_LATEST ) ) {
-			// If mArticleID is >0, pageCond() will use it, making it impossible
-			// for the call below to return a different result, e.g. after a
-			// page move.
-			$this->mArticleID = -1;
-			$this->mArticleID = (int)$this->loadFieldFromDB( 'page_id', $flags );
-		} elseif ( $this->mArticleID == -1 ) {
-			$linkCache = MediaWikiServices::getInstance()->getLinkCache();
-			$this->mArticleID = $linkCache->addLinkObj( $this );
+		if ( $this->mArticleID === -1 || $this->shouldReadLatest( $flags ) ) {
+			$this->mArticleID = (int)$this->getFieldFromPageStore( 'page_id', $flags );
 		}
 
 		return $this->mArticleID;
@@ -2899,18 +2851,8 @@ class Title implements LinkTarget, PageIdentity, IDBAccessObject {
 	 * @return bool
 	 */
 	public function isRedirect( $flags = 0 ) {
-		if ( DBAccessObjectUtils::hasFlags( $flags, self::READ_LATEST ) ) {
-			$this->mRedirect = (bool)$this->loadFieldFromDB( 'page_is_redirect', $flags );
-		} elseif ( $this->mRedirect === null ) {
-			if ( $this->getArticleID( $flags ) ) {
-				$linkCache = MediaWikiServices::getInstance()->getLinkCache();
-				$linkCache->addLinkObj( $this ); // in case we already had an article ID
-				// Note that LinkCache returns null if it thinks the page does not exist;
-				// always trust the state of LinkCache over that of this Title instance.
-				$this->mRedirect = (bool)$linkCache->getGoodLinkFieldObj( $this, 'redirect' );
-			} else {
-				$this->mRedirect = false;
-			}
+		if ( $this->shouldReadLatest( $flags ) || $this->mRedirect === null ) {
+			$this->mRedirect = (bool)$this->getFieldFromPageStore( 'page_is_redirect', $flags );
 		}
 
 		return $this->mRedirect;
@@ -2924,21 +2866,12 @@ class Title implements LinkTarget, PageIdentity, IDBAccessObject {
 	 * @return int
 	 */
 	public function getLength( $flags = 0 ) {
-		if ( DBAccessObjectUtils::hasFlags( $flags, self::READ_LATEST ) ) {
-			$this->mLength = (int)$this->loadFieldFromDB( 'page_len', $flags );
-		} else {
-			if ( $this->mLength != -1 ) {
-				return $this->mLength;
-			} elseif ( !$this->getArticleID( $flags ) ) {
-				$this->mLength = 0;
-				return $this->mLength;
-			}
+		if ( $this->shouldReadLatest( $flags ) || $this->mLength < 0 ) {
+			$this->mLength = (int)$this->getFieldFromPageStore( 'page_len', $flags );
+		}
 
-			$linkCache = MediaWikiServices::getInstance()->getLinkCache();
-			$linkCache->addLinkObj( $this ); // in case we already had an article ID
-			// Note that LinkCache returns null if it thinks the page does not exist;
-			// always trust the state of LinkCache over that of this Title instance.
-			$this->mLength = (int)$linkCache->getGoodLinkFieldObj( $this, 'length' );
+		if ( $this->mLength < 0 ) {
+			$this->mLength = 0;
 		}
 
 		return $this->mLength;
@@ -2951,22 +2884,12 @@ class Title implements LinkTarget, PageIdentity, IDBAccessObject {
 	 * @return int Int or 0 if the page doesn't exist
 	 */
 	public function getLatestRevID( $flags = 0 ) {
-		if ( DBAccessObjectUtils::hasFlags( $flags, self::READ_LATEST ) ) {
-			$this->mLatestID = (int)$this->loadFieldFromDB( 'page_latest', $flags );
-		} else {
-			if ( $this->mLatestID !== false ) {
-				return (int)$this->mLatestID;
-			} elseif ( !$this->getArticleID( $flags ) ) {
-				$this->mLatestID = 0;
+		if ( $this->shouldReadLatest( $flags ) || $this->mLatestID === false ) {
+			$this->mLatestID = (int)$this->getFieldFromPageStore( 'page_latest', $flags );
+		}
 
-				return $this->mLatestID;
-			}
-
-			$linkCache = MediaWikiServices::getInstance()->getLinkCache();
-			$linkCache->addLinkObj( $this ); // in case we already had an article ID
-			// Note that LinkCache returns null if it thinks the page does not exist;
-			// always trust the state of LinkCache over that of this Title instance.
-			$this->mLatestID = (int)$linkCache->getGoodLinkFieldObj( $this, 'revision' );
+		if ( !$this->mLatestID ) {
+			$this->mLatestID = 0;
 		}
 
 		return $this->mLatestID;
@@ -2983,7 +2906,7 @@ class Title implements LinkTarget, PageIdentity, IDBAccessObject {
 	 *
 	 * @note This overrides Title::setContentModel()
 	 *
-	 * @param int|bool $id Page ID, 0 for non-existant, or false for "unknown" (lazy-load)
+	 * @param int|bool $id Page ID, 0 for non-existent, or false for "unknown" (lazy-load)
 	 */
 	public function resetArticleID( $id ) {
 		if ( $id === false ) {
@@ -3047,7 +2970,7 @@ class Title implements LinkTarget, PageIdentity, IDBAccessObject {
 	 */
 	private function secureAndSplit( $text, $defaultNamespace = null ) {
 		if ( $defaultNamespace === null ) {
-			$defaultNamespace = $this->mDefaultNamespace;
+			$defaultNamespace = self::DEFAULT_NAMESPACE;
 		}
 
 		// @note: splitTitleString() is a temporary hack to allow MediaWikiTitleCodec to share
@@ -3066,7 +2989,6 @@ class Title implements LinkTarget, PageIdentity, IDBAccessObject {
 		$this->mInterwiki = $parts['interwiki'];
 		$this->mLocalInterwiki = $parts['local_interwiki'];
 		$this->mNamespace = $parts['namespace'];
-		$this->mDefaultNamespace = $defaultNamespace;
 
 		$this->mDbkeyform = $parts['dbkey'];
 		$this->mUrlform = wfUrlencode( $this->mDbkeyform );
@@ -3100,16 +3022,24 @@ class Title implements LinkTarget, PageIdentity, IDBAccessObject {
 			$db = wfGetDB( DB_REPLICA );
 		}
 
-		$res = $db->select(
-			[ 'page', $table ],
-			LinkCache::getSelectFields(),
-			[
-				"{$prefix}_from=page_id",
+		$linksMigration = MediaWikiServices::getInstance()->getLinksMigration();
+		if ( isset( $linksMigration::$mapping[$table] ) ) {
+			$titleConds = $linksMigration->getLinksConditions( $table, $this );
+		} else {
+			$titleConds = [
 				"{$prefix}_namespace" => $this->mNamespace,
-				"{$prefix}_title" => $this->mDbkeyform ],
-			__METHOD__,
-			$options
-		);
+				"{$prefix}_title" => $this->mDbkeyform
+			];
+		}
+
+		$res = $db->newSelectQueryBuilder()
+			->select( LinkCache::getSelectFields() )
+			->from( $table )
+			->join( 'page', null, "{$prefix}_from=page_id" )
+			->where( $titleConds )
+			->options( $options )
+			->caller( __METHOD__ )
+			->fetchResultSet();
 
 		$retVal = [];
 		if ( $res->numRows() ) {
@@ -3160,15 +3090,27 @@ class Title implements LinkTarget, PageIdentity, IDBAccessObject {
 		}
 
 		$db = wfGetDB( DB_REPLICA );
+		$linksMigration = MediaWikiServices::getInstance()->getLinksMigration();
 
-		$blNamespace = "{$prefix}_namespace";
-		$blTitle = "{$prefix}_title";
+		if ( isset( $linksMigration::$mapping[$table] ) ) {
+			list( $blNamespace, $blTitle ) = $linksMigration->getTitleFields( $table );
+			$linktargetQueryInfo = $linksMigration->getQueryInfo( $table );
+			$fields = $linktargetQueryInfo['fields'];
+			$tables = $linktargetQueryInfo['tables'];
+			$joins = $linktargetQueryInfo['joins'];
+		} else {
+			$blNamespace = "{$prefix}_namespace";
+			$blTitle = "{$prefix}_title";
+			$fields = [ $blNamespace, $blTitle ];
+			$tables = [ $table ];
+			$joins = [];
+		}
 
 		$pageQuery = WikiPage::getQueryInfo();
 		$res = $db->select(
-			[ $table, 'nestpage' => $pageQuery['tables'] ],
+			array_merge( $tables, [ 'nestpage' => $pageQuery['tables'] ] ),
 			array_merge(
-				[ $blNamespace, $blTitle ],
+				$fields,
 				$pageQuery['fields']
 			),
 			[ "{$prefix}_from" => $id ],
@@ -3177,7 +3119,7 @@ class Title implements LinkTarget, PageIdentity, IDBAccessObject {
 			[ 'nestpage' => [
 				'LEFT JOIN',
 				[ "page_namespace=$blNamespace", "page_title=$blTitle" ]
-			] ] + $pageQuery['joins']
+			] ] + $pageQuery['joins'] + $joins
 		);
 
 		$retVal = [];
@@ -3250,7 +3192,7 @@ class Title implements LinkTarget, PageIdentity, IDBAccessObject {
 	/**
 	 * Get a list of URLs to purge from the CDN cache when this page changes.
 	 *
-	 * @deprecated 1.35 Use HtmlCacheUpdater
+	 * @deprecated since 1.35 Use HtmlCacheUpdater
 	 * @return string[]
 	 */
 	public function getCdnUrls() {
@@ -3260,7 +3202,7 @@ class Title implements LinkTarget, PageIdentity, IDBAccessObject {
 
 	/**
 	 * Purge all applicable CDN URLs
-	 * @deprecated 1.35 Use HtmlCacheUpdater
+	 * @deprecated since 1.35 Use HtmlCacheUpdater
 	 */
 	public function purgeSquid() {
 		$htmlCache = MediaWikiServices::getInstance()->getHtmlCacheUpdater();
@@ -3277,10 +3219,11 @@ class Title implements LinkTarget, PageIdentity, IDBAccessObject {
 	public function isSingleRevRedirect() {
 		$dbw = wfGetDB( DB_PRIMARY );
 		$dbw->startAtomic( __METHOD__ );
+		$pageStore = MediaWikiServices::getInstance()->getPageStore();
 
 		$row = $dbw->selectRow(
 			'page',
-			self::getSelectFields(),
+			$pageStore->getSelectFields(),
 			$this->pageCond(),
 			__METHOD__,
 			[ 'FOR UPDATE' ]
@@ -3384,13 +3327,16 @@ class Title implements LinkTarget, PageIdentity, IDBAccessObject {
 	}
 
 	/**
-	 * Check if this is a new page
+	 * Check if this is a new page.
+	 *
+	 * @note This returns false if the page does not exist.
+	 * @param int $flags one of the READ_XXX constants.
 	 *
 	 * @return bool
 	 */
-	public function isNewPage() {
-		$dbr = wfGetDB( DB_REPLICA );
-		return (bool)$dbr->selectField( 'page', 'page_is_new', $this->pageCond(), __METHOD__ );
+	public function isNewPage( $flags = self::READ_NORMAL ) {
+		// NOTE: we rely on PHP casting "0" to false here.
+		return (bool)$this->getFieldFromPageStore( 'page_is_new', $flags );
 	}
 
 	/**
@@ -3476,7 +3422,7 @@ class Title implements LinkTarget, PageIdentity, IDBAccessObject {
 	 * @param LinkTarget $other
 	 * @return bool
 	 */
-	public function isSameLinkAs( LinkTarget $other ) {
+	public function isSameLinkAs( LinkTarget $other ): bool {
 		// NOTE: keep in sync with TitleValue::isSameLinkAs()!
 		// NOTE: === is needed for number-like titles
 		return ( $other->getInterwiki() === $this->getInterwiki() )
@@ -3626,7 +3572,7 @@ class Title implements LinkTarget, PageIdentity, IDBAccessObject {
 			// Use always content language to avoid loading hundreds of languages
 			// to get the link color.
 			$contLang = $services->getContentLanguage();
-			list( $name, ) = $services->getMessageCache()->figureMessage(
+			[ $name, ] = $services->getMessageCache()->figureMessage(
 				$contLang->lcfirst( $this->getText() )
 			);
 			$message = wfMessage( $name )->inLanguage( $contLang )->useDatabase( false );
@@ -3678,7 +3624,7 @@ class Title implements LinkTarget, PageIdentity, IDBAccessObject {
 			return false;
 		}
 
-		list( $name, $lang ) = MediaWikiServices::getInstance()->getMessageCache()->figureMessage(
+		[ $name, $lang ] = MediaWikiServices::getInstance()->getMessageCache()->figureMessage(
 			MediaWikiServices::getInstance()->getContentLanguage()->lcfirst( $this->getText() )
 		);
 		$message = wfMessage( $name )->inLanguage( $lang )->useDatabase( false );
@@ -3697,7 +3643,7 @@ class Title implements LinkTarget, PageIdentity, IDBAccessObject {
 	 * @return bool True if the update succeeded
 	 */
 	public function invalidateCache( $purgeTime = null ) {
-		if ( wfReadOnly() ) {
+		if ( MediaWikiServices::getInstance()->getReadOnlyMode()->isReadOnly() ) {
 			return false;
 		}
 		if ( $this->mArticleID === 0 ) {
@@ -3721,7 +3667,7 @@ class Title implements LinkTarget, PageIdentity, IDBAccessObject {
 
 					MediaWikiServices::getInstance()->getLinkCache()->invalidateTitle( $this );
 
-					ResourceLoaderWikiModule::invalidateModuleCache(
+					WikiModule::invalidateModuleCache(
 						$this, null, null, $dbw->getDomainID() );
 				}
 			),
@@ -3751,32 +3697,42 @@ class Title implements LinkTarget, PageIdentity, IDBAccessObject {
 			);
 		}
 
-		JobQueueGroup::singleton()->lazyPush( $jobs );
+		MediaWikiServices::getInstance()->getJobQueueGroup()->lazyPush( $jobs );
 	}
 
 	/**
 	 * Get the last touched timestamp
 	 *
-	 * @param IDatabase|null $db
+	 * @param int $flags one of the READ_XXX constants. For historical reasons, an IDatabase
+	 *        instance is also accepted here. If an IDatabase is passed, a deprecation warning
+	 *        is triggered, caches will be bypassed, and the primary database connection will be
+	 *        used. However, the IDatabase instance itself will be ignored.
 	 * @return string|false Last-touched timestamp
 	 */
-	public function getTouched( $db = null ) {
-		if ( $db === null ) {
-			$db = wfGetDB( DB_REPLICA );
+	public function getTouched( $flags = self::READ_NORMAL ) {
+		if ( is_object( $flags ) ) {
+			wfDeprecatedMsg(
+				__METHOD__ . ' was called with a ' . get_class( $flags )
+				. ' instance instead of an integer!',
+				'1.38'
+			);
+			$flags = self::READ_LATEST;
 		}
-		$touched = $db->selectField( 'page', 'page_touched', $this->pageCond(), __METHOD__ );
-		return $touched;
+
+		$touched = $this->getFieldFromPageStore( 'page_touched', $flags );
+		return $touched ? MWTimestamp::convert( TS_MW, $touched ) : false;
 	}
 
 	/**
 	 * Get the timestamp when this page was updated since the user last saw it.
 	 *
-	 * @deprecated since 1.35
+	 * @deprecated since 1.35, hard deprecated since 1.39
 	 *
 	 * @param User $user
 	 * @return string|bool|null String timestamp, false if not watched, null if nothing is unseen
 	 */
 	public function getNotificationTimestamp( User $user ) {
+		wfDeprecated( __METHOD__, '1.35' );
 		return MediaWikiServices::getInstance()
 			->getWatchlistManager()
 			->getTitleNotificationTimestamp( $user, $this );
@@ -3935,23 +3891,23 @@ class Title implements LinkTarget, PageIdentity, IDBAccessObject {
 
 	/**
 	 * Returns the page language code saved in the database, if $wgPageLanguageUseDB is set
-	 * to true in LocalSettings.php, otherwise returns false. If there is no language saved in
-	 * the db, it will return NULL.
+	 * to true in LocalSettings.php, otherwise returns null. If there is no language saved in
+	 * the database, it will return null.
 	 *
-	 * @return string|null|bool
+	 * @param int $flags
+	 *
+	 * @return ?string
 	 */
-	private function getDbPageLanguageCode() {
+	private function getDbPageLanguageCode( int $flags = 0 ): ?string {
 		global $wgPageLanguageUseDB;
 
 		// check, if the page language could be saved in the database, and if so and
-		// the value is not requested already, lookup the page language using LinkCache
+		// the value is not requested already, lookup the page language using PageStore
 		if ( $wgPageLanguageUseDB && $this->mDbPageLanguage === false ) {
-			$linkCache = MediaWikiServices::getInstance()->getLinkCache();
-			$linkCache->addLinkObj( $this );
-			$this->mDbPageLanguage = $linkCache->getGoodLinkFieldObj( $this, 'lang' );
+			$this->mDbPageLanguage = $this->getFieldFromPageStore( 'page_lang', $flags ) ?: null;
 		}
 
-		return $this->mDbPageLanguage;
+		return $this->mDbPageLanguage ?: null;
 	}
 
 	/**
@@ -4056,7 +4012,7 @@ class Title implements LinkTarget, PageIdentity, IDBAccessObject {
 
 		// Optional notice for the entire namespace
 		$editnotice_ns = 'editnotice-' . $this->mNamespace;
-		$msg = wfMessage( $editnotice_ns );
+		$msg = wfMessage( $editnotice_ns )->page( $this );
 		if ( $msg->exists() ) {
 			$html = $msg->parseAsBlock();
 			// Edit notices may have complex logic, but output nothing (T91715)
@@ -4081,7 +4037,7 @@ class Title implements LinkTarget, PageIdentity, IDBAccessObject {
 			$editnotice_base = $editnotice_ns;
 			foreach ( explode( '/', $this->mDbkeyform ) as $part ) {
 				$editnotice_base .= '-' . $part;
-				$msg = wfMessage( $editnotice_base );
+				$msg = wfMessage( $editnotice_base )->page( $this );
 				if ( $msg->exists() ) {
 					$html = $msg->parseAsBlock();
 					if ( trim( $html ) !== '' ) {
@@ -4100,7 +4056,7 @@ class Title implements LinkTarget, PageIdentity, IDBAccessObject {
 		} else {
 			// Even if there are no subpages in namespace, we still don't want "/" in MediaWiki message keys
 			$editnoticeText = $editnotice_ns . '-' . strtr( $this->mDbkeyform, '/', '-' );
-			$msg = wfMessage( $editnoticeText );
+			$msg = wfMessage( $editnoticeText )->page( $this );
 			if ( $msg->exists() ) {
 				$html = $msg->parseAsBlock();
 				if ( trim( $html ) !== '' ) {
@@ -4124,23 +4080,38 @@ class Title implements LinkTarget, PageIdentity, IDBAccessObject {
 	/**
 	 * @param string $field
 	 * @param int $flags Bitfield of class READ_* constants
-	 * @return string|bool
+	 * @return string|false
 	 */
-	private function loadFieldFromDB( $field, $flags ) {
-		if ( !in_array( $field, self::getSelectFields(), true ) ) {
-			return false; // field does not exist
+	private function getFieldFromPageStore( $field, $flags ) {
+		$flags |= ( $flags & self::GAID_FOR_UPDATE ) ? self::READ_LATEST : 0; // b/c
+
+		$pageStore = MediaWikiServices::getInstance()->getPageStore();
+
+		if ( !in_array( $field, $pageStore->getSelectFields(), true ) ) {
+			throw new InvalidArgumentException( "Unknown field: $field" );
 		}
 
-		$flags |= ( $flags & self::GAID_FOR_UPDATE ) ? self::READ_LATEST : 0; // b/c
-		list( $index, $options ) = DBAccessObjectUtils::getDBOptions( $flags );
+		if ( $flags === self::READ_NORMAL && $this->mArticleID === 0 ) {
+			// page does not exist
+			return false;
+		}
 
-		return wfGetDB( $index )->selectField(
-			'page',
-			$field,
-			$this->pageCond(),
-			__METHOD__,
-			$options
-		);
+		if ( !$this->canExist() ) {
+			return false;
+		}
+
+		$page = $pageStore->getPageByReference( $this, $flags );
+
+		if ( $page instanceof PageStoreRecord ) {
+			return $page->getField( $field );
+		} else {
+			// The page record failed to load, remember the page as non-existing.
+			// Note that this can happen even if a page ID was known before under some
+			// rare circumstances, if this method is called with the READ_LATEST bit set
+			// and the page has been deleted since the ID had initially been determined.
+			$this->mArticleID = 0;
+			return false;
+		}
 	}
 
 	/**
@@ -4153,7 +4124,6 @@ class Title implements LinkTarget, PageIdentity, IDBAccessObject {
 			'mFragment',
 			'mInterwiki',
 			'mLocalInterwiki',
-			'mDefaultNamespace',
 		];
 	}
 
@@ -4186,7 +4156,7 @@ class Title implements LinkTarget, PageIdentity, IDBAccessObject {
 	 * If this ID is 0, this means the page does not exist.
 	 *
 	 * @see getArticleID()
-	 * @since 1.35
+	 * @since 1.36, since 1.35.6 as an alias of getArticleId()
 	 *
 	 * @param string|false $wikiId The wiki ID expected by the caller.
 	 *
@@ -4242,7 +4212,7 @@ class Title implements LinkTarget, PageIdentity, IDBAccessObject {
 			$this->getId(),
 			$this->getNamespace(),
 			$this->getDBkey(),
-			self::LOCAL
+			$this->getWikiId()
 		);
 	}
 
@@ -4277,10 +4247,10 @@ class Title implements LinkTarget, PageIdentity, IDBAccessObject {
 				'page_title' => $this->getDBkey(),
 				'page_wiki_id' => $this->getWikiId(),
 				'page_latest' => $this->getLatestRevID( $flags ),
-				'page_is_new' => $this->isNewPage(), // no flags?
+				'page_is_new' => $this->isNewPage( $flags ),
 				'page_is_redirect' => $this->isRedirect( $flags ),
-				'page_touched' => $this->getTouched(), // no flags?
-				'page_lang' => $this->getDbPageLanguageCode() ?: null,
+				'page_touched' => $this->getTouched( $flags ),
+				'page_lang' => $this->getDbPageLanguageCode( $flags ),
 			],
 			PageIdentity::LOCAL
 		);

@@ -1,7 +1,7 @@
 <?php
 
 use MediaWiki\Block\DatabaseBlock;
-use MediaWiki\MediaWikiServices;
+use MediaWiki\MainConfigNames;
 use Wikimedia\TestingAccessWrapper;
 
 /**
@@ -14,7 +14,7 @@ class SpecialUnblockTest extends SpecialPageTestBase {
 	 * @inheritDoc
 	 */
 	protected function newSpecialPage() {
-		$services = MediaWikiServices::getInstance();
+		$services = $this->getServiceContainer();
 		return new SpecialUnblock(
 			$services->getUnblockUserFactory(),
 			$services->getBlockUtils(),
@@ -79,11 +79,11 @@ class SpecialUnblockTest extends SpecialPageTestBase {
 				'by' => $performer,
 				'hideName' => true,
 			] );
-			MediaWikiServices::getInstance()->getDatabaseBlockStore()->insertBlock( $block );
+			$this->getServiceContainer()->getDatabaseBlockStore()->insertBlock( $block );
 		}
 
 		if ( !empty( $options['readOnly'] ) ) {
-			$this->setMwGlobals( [ 'wgReadOnly' => true ] );
+			$this->overrideConfigValue( MainConfigNames::ReadOnly, true );
 			$this->expectException( ReadOnlyError::class );
 		}
 
@@ -140,7 +140,7 @@ class SpecialUnblockTest extends SpecialPageTestBase {
 			'by' => $blocker,
 			'address' => $performer,
 		] );
-		MediaWikiServices::getInstance()->getDatabaseBlockStore()->insertBlock( $block );
+		$this->getServiceContainer()->getDatabaseBlockStore()->insertBlock( $block );
 
 		$request = new FauxRequest( [
 			'wpTarget' => $performer->getName(),

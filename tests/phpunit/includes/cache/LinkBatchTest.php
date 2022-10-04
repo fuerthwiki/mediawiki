@@ -1,10 +1,10 @@
 <?php
 
 use MediaWiki\Cache\CacheKeyHelper;
+use MediaWiki\Linker\LinksMigration;
 use MediaWiki\Linker\LinkTarget;
 use MediaWiki\Page\PageReference;
 use MediaWiki\Page\PageReferenceValue;
-use Wikimedia\AtEase\AtEase;
 use Wikimedia\Rdbms\ILoadBalancer;
 
 /**
@@ -53,7 +53,8 @@ class LinkBatchTest extends MediaWikiIntegrationTestCase {
 			$this->createMock( TitleFormatter::class ),
 			$this->createMock( Language::class ),
 			$this->createMock( GenderCache::class ),
-			$this->createMock( ILoadBalancer::class )
+			$this->createMock( ILoadBalancer::class ),
+			$this->createMock( LinksMigration::class )
 		);
 
 		$this->assertTrue( $batch->isEmpty() );
@@ -75,7 +76,8 @@ class LinkBatchTest extends MediaWikiIntegrationTestCase {
 			$this->createMock( TitleFormatter::class ),
 			$this->createMock( Language::class ),
 			$this->createMock( GenderCache::class ),
-			$this->createMock( ILoadBalancer::class )
+			$this->createMock( ILoadBalancer::class ),
+			$this->createMock( LinksMigration::class )
 		);
 
 		$this->assertFalse( $batch->isEmpty() );
@@ -95,7 +97,8 @@ class LinkBatchTest extends MediaWikiIntegrationTestCase {
 			$this->createMock( TitleFormatter::class ),
 			$this->createMock( Language::class ),
 			$this->createMock( GenderCache::class ),
-			$this->getServiceContainer()->getDBLoadBalancer()
+			$this->getServiceContainer()->getDBLoadBalancer(),
+			$this->getServiceContainer()->getLinksMigration()
 		);
 	}
 
@@ -142,9 +145,7 @@ class LinkBatchTest extends MediaWikiIntegrationTestCase {
 		$nonexisting1 = $this->getNonexistingTestPage( __METHOD__ . 'x' )->getTitle();
 		$nonexisting2 = $this->getNonexistingTestPage( __METHOD__ . 'y' )->getTitle();
 
-		$cache = $this->getMockBuilder( LinkCache::class )
-			->disableOriginalConstructor()
-			->getMock();
+		$cache = $this->createMock( LinkCache::class );
 
 		$good = [];
 		$bad = [];
@@ -161,7 +162,7 @@ class LinkBatchTest extends MediaWikiIntegrationTestCase {
 				$bad["$title"] = $title;
 			} );
 
-		$services = \MediaWiki\MediaWikiServices::getInstance();
+		$services = $this->getServiceContainer();
 
 		$batch = new LinkBatch(
 			[],
@@ -183,9 +184,7 @@ class LinkBatchTest extends MediaWikiIntegrationTestCase {
 		$batch->add( NS_MAIN, 'X_' );
 		$batch->add( NS_MAIN, '' );
 
-		AtEase::suppressWarnings();
-		$batch->execute();
-		AtEase::restoreWarnings();
+		@$batch->execute();
 
 		$this->assertArrayHasKey( $existing1->getTitleValue()->__toString(), $good );
 		$this->assertArrayHasKey( $existing2->getTitleValue()->__toString(), $good );
@@ -254,7 +253,8 @@ class LinkBatchTest extends MediaWikiIntegrationTestCase {
 			$this->createMock( TitleFormatter::class ),
 			$language,
 			$genderCache,
-			$this->createMock( ILoadBalancer::class )
+			$this->createMock( ILoadBalancer::class ),
+			$this->createMock( LinksMigration::class )
 		);
 		$batch->addObj(
 			new TitleValue( NS_MAIN, 'Foo' )

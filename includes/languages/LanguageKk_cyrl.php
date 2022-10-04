@@ -1,7 +1,5 @@
 <?php
 /**
- * Kazakh (Қазақша) specific code.
- *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
@@ -18,15 +16,17 @@
  * http://www.gnu.org/copyleft/gpl.html
  *
  * @file
- * @ingroup Language
  */
+// phpcs:ignoreFile Squiz.Classes.ValidClassName.NotCamelCaps
+
+use MediaWiki\MainConfigNames;
+use MediaWiki\MediaWikiServices;
 
 /**
  * Kazakh (Қазақша)
  *
- * @ingroup Language
+ * @ingroup Languages
  */
-// phpcs:ignore Squiz.Classes.ValidClassName.NotCamelCaps
 class LanguageKk_cyrl extends Language {
 	# Convert from the nominative form of a noun to some other case
 	# Invoked with {{GRAMMAR:case|word}}
@@ -40,12 +40,13 @@ class LanguageKk_cyrl extends Language {
 	 * @return string
 	 */
 	protected function convertGrammarKk_cyrl( $word, $case ) {
-		global $wgGrammarForms;
-		if ( isset( $wgGrammarForms['kk-kz'][$case][$word] ) ) {
-			return $wgGrammarForms['kk-kz'][$case][$word];
+		$grammarForms =
+			MediaWikiServices::getInstance()->getMainConfig()->get( MainConfigNames::GrammarForms );
+		if ( isset( $grammarForms['kk-kz'][$case][$word] ) ) {
+			return $grammarForms['kk-kz'][$case][$word];
 		}
-		if ( isset( $wgGrammarForms['kk-cyrl'][$case][$word] ) ) {
-			return $wgGrammarForms['kk-cyrl'][$case][$word];
+		if ( isset( $grammarForms['kk-cyrl'][$case][$word] ) ) {
+			return $grammarForms['kk-cyrl'][$case][$word];
 		}
 		// Set up some constants...
 		// Vowels in last syllable
@@ -272,12 +273,13 @@ class LanguageKk_cyrl extends Language {
 	 * @return string
 	 */
 	protected function convertGrammarKk_latn( $word, $case ) {
-		global $wgGrammarForms;
-		if ( isset( $wgGrammarForms['kk-tr'][$case][$word] ) ) {
-			return $wgGrammarForms['kk-tr'][$case][$word];
+		$grammarForms =
+			MediaWikiServices::getInstance()->getMainConfig()->get( MainConfigNames::GrammarForms );
+		if ( isset( $grammarForms['kk-tr'][$case][$word] ) ) {
+			return $grammarForms['kk-tr'][$case][$word];
 		}
-		if ( isset( $wgGrammarForms['kk-latn'][$case][$word] ) ) {
-			return $wgGrammarForms['kk-latn'][$case][$word];
+		if ( isset( $grammarForms['kk-latn'][$case][$word] ) ) {
+			return $grammarForms['kk-latn'][$case][$word];
 		}
 		// Set up some constants...
 		// Vowels in last syllable
@@ -504,12 +506,13 @@ class LanguageKk_cyrl extends Language {
 	 * @return string
 	 */
 	protected function convertGrammarKk_arab( $word, $case ) {
-		global $wgGrammarForms;
-		if ( isset( $wgGrammarForms['kk-cn'][$case][$word] ) ) {
-			return $wgGrammarForms['kk-cn'][$case][$word];
+		$grammarForms =
+			MediaWikiServices::getInstance()->getMainConfig()->get( MainConfigNames::GrammarForms );
+		if ( isset( $grammarForms['kk-cn'][$case][$word] ) ) {
+			return $grammarForms['kk-cn'][$case][$word];
 		}
-		if ( isset( $wgGrammarForms['kk-arab'][$case][$word] ) ) {
-			return $wgGrammarForms['kk-arab'][$case][$word];
+		if ( isset( $grammarForms['kk-arab'][$case][$word] ) ) {
+			return $grammarForms['kk-arab'][$case][$word];
 		}
 		// Set up some constants...
 		// Vowels in last syllable

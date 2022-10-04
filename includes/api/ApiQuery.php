@@ -21,7 +21,9 @@
  */
 
 use MediaWiki\Export\WikiExporterFactory;
-use Wikimedia\ObjectFactory;
+use MediaWiki\MainConfigNames;
+use Wikimedia\ObjectFactory\ObjectFactory;
+use Wikimedia\ParamValidator\ParamValidator;
 use Wikimedia\Rdbms\IDatabase;
 use Wikimedia\Rdbms\ILoadBalancer;
 
@@ -66,6 +68,7 @@ class ApiQuery extends ApiBase {
 				'SlotRoleRegistry',
 				'ChangeTagDefStore',
 				'LinkBatchFactory',
+				'ContentRenderer',
 				'ContentTransformer',
 			]
 		],
@@ -80,6 +83,10 @@ class ApiQuery extends ApiBase {
 		],
 		'fileusage' => [
 			'class' => ApiQueryBacklinksprop::class,
+			'services' => [
+				// Same as for linkshere, redirects, transcludedin
+				'LinksMigration',
+			]
 		],
 		'images' => [
 			'class' => ApiQueryImages::class,
@@ -103,16 +110,24 @@ class ApiQuery extends ApiBase {
 				'TitleFormatter',
 				'WatchedItemStore',
 				'LanguageConverterFactory',
+				'RestrictionStore',
+				'LinksMigration',
 			],
 		],
 		'links' => [
 			'class' => ApiQueryLinks::class,
 			'services' => [
+				// Same as for templates
 				'LinkBatchFactory',
+				'LinksMigration',
 			]
 		],
 		'linkshere' => [
 			'class' => ApiQueryBacklinksprop::class,
+			'services' => [
+				// Same as for fileusage, redirects, transcludedin
+				'LinksMigration',
+			]
 		],
 		'iwlinks' => [
 			'class' => ApiQueryIWLinks::class,
@@ -132,6 +147,10 @@ class ApiQuery extends ApiBase {
 		],
 		'redirects' => [
 			'class' => ApiQueryBacklinksprop::class,
+			'services' => [
+				// Same as for fileusage, linkshere, transcludedin
+				'LinksMigration',
+			]
 		],
 		'revisions' => [
 			'class' => ApiQueryRevisions::class,
@@ -142,6 +161,7 @@ class ApiQuery extends ApiBase {
 				'SlotRoleRegistry',
 				'ChangeTagDefStore',
 				'ActorMigration',
+				'ContentRenderer',
 				'ContentTransformer',
 			]
 		],
@@ -157,11 +177,17 @@ class ApiQuery extends ApiBase {
 		'templates' => [
 			'class' => ApiQueryLinks::class,
 			'services' => [
+				// Same as for links
 				'LinkBatchFactory',
+				'LinksMigration',
 			]
 		],
 		'transcludedin' => [
 			'class' => ApiQueryBacklinksprop::class,
+			'services' => [
+				// Same as for fileusage, linkshere, redirects
+				'LinksMigration',
+			]
 		],
 	];
 
@@ -181,6 +207,7 @@ class ApiQuery extends ApiBase {
 				'SlotRoleRegistry',
 				'ChangeTagDefStore',
 				'NamespaceInfo',
+				'ContentRenderer',
 				'ContentTransformer',
 			]
 		],
@@ -190,6 +217,7 @@ class ApiQuery extends ApiBase {
 				// Same as for alllinks, allredirects, alltransclusions
 				'NamespaceInfo',
 				'GenderCache',
+				'LinksMigration',
 			]
 		],
 		'allimages' => [
@@ -205,6 +233,7 @@ class ApiQuery extends ApiBase {
 				// Same as for allfileusages, allredirects, alltransclusions
 				'NamespaceInfo',
 				'GenderCache',
+				'LinksMigration',
 			]
 		],
 		'allpages' => [
@@ -212,6 +241,7 @@ class ApiQuery extends ApiBase {
 			'services' => [
 				'NamespaceInfo',
 				'GenderCache',
+				'RestrictionStore',
 			]
 		],
 		'allredirects' => [
@@ -220,6 +250,7 @@ class ApiQuery extends ApiBase {
 				// Same as for allfileusages, alllinks, alltransclusions
 				'NamespaceInfo',
 				'GenderCache',
+				'LinksMigration',
 			]
 		],
 		'allrevisions' => [
@@ -231,6 +262,7 @@ class ApiQuery extends ApiBase {
 				'SlotRoleRegistry',
 				'ActorMigration',
 				'NamespaceInfo',
+				'ContentRenderer',
 				'ContentTransformer',
 			]
 		],
@@ -243,6 +275,7 @@ class ApiQuery extends ApiBase {
 				// Same as for allfileusages, alllinks, allredirects
 				'NamespaceInfo',
 				'GenderCache',
+				'LinksMigration',
 			]
 		],
 		'allusers' => [
@@ -256,6 +289,9 @@ class ApiQuery extends ApiBase {
 		],
 		'backlinks' => [
 			'class' => ApiQueryBacklinks::class,
+			'services' => [
+				'LinksMigration',
+			]
 		],
 		'blocks' => [
 			'class' => ApiQueryBlocks::class,
@@ -263,7 +299,6 @@ class ApiQuery extends ApiBase {
 				'BlockActionInfo',
 				'BlockRestrictionStore',
 				'CommentStore',
-				'UserNameUtils',
 			],
 		],
 		'categorymembers' => [
@@ -284,6 +319,9 @@ class ApiQuery extends ApiBase {
 		],
 		'embeddedin' => [
 			'class' => ApiQueryBacklinks::class,
+			'services' => [
+				'LinksMigration',
+			]
 		],
 		'exturlusage' => [
 			'class' => ApiQueryExtLinksUsage::class,
@@ -297,6 +335,9 @@ class ApiQuery extends ApiBase {
 		],
 		'imageusage' => [
 			'class' => ApiQueryBacklinks::class,
+			'services' => [
+				'LinksMigration',
+			]
 		],
 		'iwbacklinks' => [
 			'class' => ApiQueryIWBacklinks::class,
@@ -378,7 +419,7 @@ class ApiQuery extends ApiBase {
 				'UserNameUtils',
 				'UserFactory',
 				'UserGroupManager',
-				'UserOptionsLookup',
+				'GenderCache',
 				'AuthManager',
 			],
 		],
@@ -511,11 +552,11 @@ class ApiQuery extends ApiBase {
 		// Allow custom modules to be added in LocalSettings.php
 		$config = $this->getConfig();
 		$this->mModuleMgr->addModules( self::QUERY_PROP_MODULES, 'prop' );
-		$this->mModuleMgr->addModules( $config->get( 'APIPropModules' ), 'prop' );
+		$this->mModuleMgr->addModules( $config->get( MainConfigNames::APIPropModules ), 'prop' );
 		$this->mModuleMgr->addModules( self::QUERY_LIST_MODULES, 'list' );
-		$this->mModuleMgr->addModules( $config->get( 'APIListModules' ), 'list' );
+		$this->mModuleMgr->addModules( $config->get( MainConfigNames::APIListModules ), 'list' );
 		$this->mModuleMgr->addModules( self::QUERY_META_MODULES, 'meta' );
-		$this->mModuleMgr->addModules( $config->get( 'APIMetaModules' ), 'meta' );
+		$this->mModuleMgr->addModules( $config->get( MainConfigNames::APIMetaModules ), 'meta' );
 
 		$this->getHookRunner()->onApiQuery__moduleManager( $this->mModuleMgr );
 
@@ -534,16 +575,21 @@ class ApiQuery extends ApiBase {
 	}
 
 	/**
-	 * Get the query database connection with the given name.
+	 * Get a cached database connection with a given name.
+	 *
 	 * If no such connection has been requested before, it will be created.
 	 * Subsequent calls with the same $name will return the same connection
-	 * as the first, regardless of the values of $db and $groups
+	 * as the first, regardless of the values of $db and $groups.
+	 *
+	 * @deprecated since 1.39 Use or override ApiBase::getDB() and optionally
+	 *  pass a query group to wfGetDB() or ILoadBalancer::getConnectionRef().
 	 * @param string $name Name to assign to the database connection
 	 * @param int $db One of the DB_* constants
 	 * @param string|string[] $groups Query groups
 	 * @return IDatabase
 	 */
 	public function getNamedDB( $name, $db, $groups ) {
+		wfDeprecated( __METHOD__, '1.39' );
 		if ( !array_key_exists( $name, $this->mNamedDB ) ) {
 			$this->mNamedDB[$name] = $this->loadBalancer->getConnectionRef( $db, $groups );
 		}
@@ -842,23 +888,23 @@ class ApiQuery extends ApiBase {
 	public function getAllowedParams( $flags = 0 ) {
 		$result = [
 			'prop' => [
-				ApiBase::PARAM_ISMULTI => true,
-				ApiBase::PARAM_TYPE => 'submodule',
+				ParamValidator::PARAM_ISMULTI => true,
+				ParamValidator::PARAM_TYPE => 'submodule',
 			],
 			'list' => [
-				ApiBase::PARAM_ISMULTI => true,
-				ApiBase::PARAM_TYPE => 'submodule',
+				ParamValidator::PARAM_ISMULTI => true,
+				ParamValidator::PARAM_TYPE => 'submodule',
 			],
 			'meta' => [
-				ApiBase::PARAM_ISMULTI => true,
-				ApiBase::PARAM_TYPE => 'submodule',
+				ParamValidator::PARAM_ISMULTI => true,
+				ParamValidator::PARAM_TYPE => 'submodule',
 			],
 			'indexpageids' => false,
 			'export' => false,
 			'exportnowrap' => false,
 			'exportschema' => [
-				ApiBase::PARAM_DFLT => WikiExporter::schemaVersion(),
-				ApiBase::PARAM_TYPE => XmlDumpWriter::$supportedSchemas,
+				ParamValidator::PARAM_DEFAULT => WikiExporter::schemaVersion(),
+				ParamValidator::PARAM_TYPE => XmlDumpWriter::$supportedSchemas,
 			],
 			'iwurl' => false,
 			'continue' => [

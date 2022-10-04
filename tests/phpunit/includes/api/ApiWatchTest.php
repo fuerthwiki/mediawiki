@@ -1,6 +1,6 @@
 <?php
 
-use MediaWiki\MediaWikiServices;
+use MediaWiki\MainConfigNames;
 use Wikimedia\Timestamp\ConvertibleTimestamp;
 
 /**
@@ -21,9 +21,9 @@ class ApiWatchTest extends ApiTestCase {
 		// Fake current time to be 2019-06-05T19:50:42Z
 		ConvertibleTimestamp::setFakeTime( 1559764242 );
 
-		$this->setMwGlobals( [
-			'wgWatchlistExpiry' => true,
-			'wgWatchlistExpiryMaxDuration' => '6 months',
+		$this->overrideConfigValues( [
+			MainConfigNames::WatchlistExpiry => true,
+			MainConfigNames::WatchlistExpiryMaxDuration => '6 months',
 		] );
 	}
 
@@ -55,7 +55,7 @@ class ApiWatchTest extends ApiTestCase {
 	}
 
 	public function testWatchWithExpiry() {
-		$store = MediaWikiServices::getInstance()->getWatchedItemStore();
+		$store = $this->getServiceContainer()->getWatchedItemStore();
 		$user = $this->getTestUser()->getUser();
 
 		// First watch without expiry (indefinite).

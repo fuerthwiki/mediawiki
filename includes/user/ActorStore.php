@@ -73,8 +73,7 @@ class ActorStore implements UserIdentityLookup, ActorNormalization {
 		LoggerInterface $logger,
 		$wikiId = WikiAwareEntity::LOCAL
 	) {
-		Assert::parameterType( 'string|boolean', $wikiId, '$wikiId' );
-		Assert::parameter( $wikiId !== true, '$wikiId', 'must be false or a string' );
+		Assert::parameterType( [ 'string', 'false' ], $wikiId, '$wikiId' );
 
 		$this->loadBalancer = $loadBalancer;
 		$this->userNameUtils = $userNameUtils;
@@ -143,7 +142,7 @@ class ActorStore implements UserIdentityLookup, ActorNormalization {
 	 */
 	public function newActorFromRowFields( $userId, $name, $actorId ): UserIdentity {
 		// For backwards compatibility we are quite relaxed about what to accept,
-		// but try not to create entirely insane objects. As we move more code
+		// but try not to create entirely incorrect objects. As we move more code
 		// from ActorMigration aliases to proper join with the actor table,
 		// we should use ::newActorFromRow more, and eventually deprecate this method.
 		$userId = $userId === null ? 0 : (int)$userId;
@@ -187,14 +186,6 @@ class ActorStore implements UserIdentityLookup, ActorNormalization {
 	 */
 	public function deleteUserIdentityFromCache( UserIdentity $actor ) {
 		$this->cache->remove( $actor );
-	}
-
-	/**
-	 * @internal only exists until User::resetIdByNameCache is removed.
-	 * Wipe-out the in-process caches.
-	 */
-	public function clearCaches() {
-		$this->cache->clear();
 	}
 
 	/**
@@ -272,7 +263,7 @@ class ActorStore implements UserIdentityLookup, ActorNormalization {
 	 *
 	 * @param UserIdentity $user
 	 * @param int $id
-	 * @param bool $assigned - whether a new actor ID was just assigned.
+	 * @param bool $assigned whether a new actor ID was just assigned.
 	 */
 	private function attachActorId( UserIdentity $user, int $id, bool $assigned ) {
 		if ( $user instanceof User ) {
@@ -535,7 +526,7 @@ class ActorStore implements UserIdentityLookup, ActorNormalization {
 		$dbw->upsert(
 			'actor',
 			[ 'actor_name' => $userName, 'actor_user' => $userId ],
-			[ 'actor_name' ],
+			[ [ 'actor_name' ] ],
 			[ 'actor_user' => $userId ],
 			__METHOD__
 		);

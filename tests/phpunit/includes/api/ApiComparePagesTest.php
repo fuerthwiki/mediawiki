@@ -1,5 +1,6 @@
 <?php
 
+use MediaWiki\MainConfigNames;
 use MediaWiki\Revision\RevisionRecord;
 
 /**
@@ -13,13 +14,17 @@ class ApiComparePagesTest extends ApiTestCase {
 	protected static $repl = [];
 
 	protected function addPage( $page, $text, $model = CONTENT_MODEL_WIKITEXT ) {
-		$title = Title::newFromText( 'ApiComparePagesTest ' . $page );
-		$content = ContentHandler::makeContent( $text, $title, $model );
-
-		$page = WikiPage::factory( $title );
-		$user = static::getTestSysop()->getUser();
-		$status = $page->doUserEditContent(
-			$content, $user, 'Test for ApiComparePagesTest: ' . $text
+		$title = Title::makeTitle( NS_MAIN, 'ApiComparePagesTest ' . $page );
+		$content = $this->getServiceContainer()->getContentHandlerFactory()
+			->getContentHandler( $model )
+			->unserializeContent( $text );
+		$performer = static::getTestSysop()->getAuthority();
+		$status = $this->editPage(
+			$title,
+			$content,
+			'Test for ApiComparePagesTest: ' . $text,
+			NS_MAIN,
+			$performer
 		);
 		if ( !$status->isOK() ) {
 			$this->fail( "Failed to create $title: " . $status->getWikiText( false, false, 'en' ) );
@@ -36,13 +41,13 @@ class ApiComparePagesTest extends ApiTestCase {
 		self::$repl['revA2'] = $this->addPage( 'A', 'A 2' );
 		self::$repl['revA3'] = $this->addPage( 'A', 'A 3' );
 		self::$repl['revA4'] = $this->addPage( 'A', 'A 4' );
-		self::$repl['pageA'] = Title::newFromText( 'ApiComparePagesTest A' )->getArticleID();
+		self::$repl['pageA'] = Title::makeTitle( NS_MAIN, 'ApiComparePagesTest A' )->getArticleID();
 
 		self::$repl['revB1'] = $this->addPage( 'B', 'B 1' );
 		self::$repl['revB2'] = $this->addPage( 'B', 'B 2' );
 		self::$repl['revB3'] = $this->addPage( 'B', 'B 3' );
 		self::$repl['revB4'] = $this->addPage( 'B', 'B 4' );
-		self::$repl['pageB'] = Title::newFromText( 'ApiComparePagesTest B' )->getArticleID();
+		self::$repl['pageB'] = Title::makeTitle( NS_MAIN, 'ApiComparePagesTest B' )->getArticleID();
 		$updateTimestamps = [
 			self::$repl['revB1'] => '20010101011101',
 			self::$repl['revB2'] => '20020202022202',
@@ -61,34 +66,35 @@ class ApiComparePagesTest extends ApiTestCase {
 		self::$repl['revC1'] = $this->addPage( 'C', 'C 1' );
 		self::$repl['revC2'] = $this->addPage( 'C', 'C 2' );
 		self::$repl['revC3'] = $this->addPage( 'C', 'C 3' );
-		self::$repl['pageC'] = Title::newFromText( 'ApiComparePagesTest C' )->getArticleID();
+		self::$repl['pageC'] = Title::makeTitle( NS_MAIN, 'ApiComparePagesTest C' )->getArticleID();
 
 		$id = $this->addPage( 'D', 'D 1' );
-		self::$repl['pageD'] = Title::newFromText( 'ApiComparePagesTest D' )->getArticleID();
+		self::$repl['pageD'] = Title::makeTitle( NS_MAIN, 'ApiComparePagesTest D' )->getArticleID();
 		wfGetDB( DB_PRIMARY )->delete( 'revision', [ 'rev_id' => $id ] );
 
 		self::$repl['revE1'] = $this->addPage( 'E', 'E 1' );
 		self::$repl['revE2'] = $this->addPage( 'E', 'E 2' );
 		self::$repl['revE3'] = $this->addPage( 'E', 'E 3' );
 		self::$repl['revE4'] = $this->addPage( 'E', 'E 4' );
-		self::$repl['pageE'] = Title::newFromText( 'ApiComparePagesTest E' )->getArticleID();
+		self::$repl['pageE'] = Title::makeTitle( NS_MAIN, 'ApiComparePagesTest E' )->getArticleID();
 		wfGetDB( DB_PRIMARY )->update(
 			'page', [ 'page_latest' => 0 ], [ 'page_id' => self::$repl['pageE'] ]
 		);
 
 		self::$repl['revF1'] = $this->addPage( 'F', "== Section 1 ==\nF 1.1\n\n== Section 2 ==\nF 1.2" );
-		self::$repl['pageF'] = Title::newFromText( 'ApiComparePagesTest F' )->getArticleID();
+		self::$repl['pageF'] = Title::makeTitle( NS_MAIN, 'ApiComparePagesTest F' )->getArticleID();
 
 		self::$repl['revG1'] = $this->addPage( 'G', "== Section 1 ==\nG 1.1", CONTENT_MODEL_TEXT );
-		self::$repl['pageG'] = Title::newFromText( 'ApiComparePagesTest G' )->getArticleID();
+		self::$repl['pageG'] = Title::makeTitle( NS_MAIN, 'ApiComparePagesTest G' )->getArticleID();
 
-		WikiPage::factory( Title::newFromText( 'ApiComparePagesTest C' ) )
-			->doDeleteArticleReal( 'Test for ApiComparePagesTest', $user );
+		$page = $this->getServiceContainer()->getWikiPageFactory()
+			->newFromTitle( Title::makeTitle( NS_MAIN, 'ApiComparePagesTest C' ) );
+		$this->deletePage( $page, 'Test for ApiComparePagesTest', $user );
 
 		RevisionDeleter::createList(
 			'revision',
 			RequestContext::getMain(),
-			Title::newFromText( 'ApiComparePagesTest B' ),
+			Title::makeTitle( NS_MAIN, 'ApiComparePagesTest B' ),
 			[ self::$repl['revB2'] ]
 		)->setVisibility( [
 			'value' => [
@@ -102,7 +108,7 @@ class ApiComparePagesTest extends ApiTestCase {
 		RevisionDeleter::createList(
 			'revision',
 			RequestContext::getMain(),
-			Title::newFromText( 'ApiComparePagesTest B' ),
+			Title::makeTitle( NS_MAIN, 'ApiComparePagesTest B' ),
 			[ self::$repl['revB3'] ]
 		)->setVisibility( [
 			'value' => [
@@ -137,7 +143,7 @@ class ApiComparePagesTest extends ApiTestCase {
 	 * @dataProvider provideDiff
 	 */
 	public function testDiff( $params, $expect, $exceptionCode = false, $sysop = false ) {
-		$this->setMwGlobals( [ 'wgDiffEngine' => 'php' ] );
+		$this->overrideConfigValue( MainConfigNames::DiffEngine, 'php' );
 
 		$this->doReplacements( $params );
 
@@ -146,19 +152,19 @@ class ApiComparePagesTest extends ApiTestCase {
 			'errorformat' => 'none',
 		];
 
-		$user = $sysop
-			? static::getTestSysop()->getUser()
-			: static::getTestUser()->getUser();
+		$performer = $sysop
+			? static::getTestSysop()->getAuthority()
+			: static::getTestUser()->getAuthority();
 		if ( $exceptionCode ) {
 			try {
-				$this->doApiRequest( $params, null, false, $user );
+				$this->doApiRequest( $params, null, false, $performer );
 				$this->fail( 'Expected exception not thrown' );
 			} catch ( ApiUsageException $ex ) {
 				$this->assertTrue( $this->apiExceptionHasCode( $ex, $exceptionCode ),
 					"Exception with code $exceptionCode" );
 			}
 		} else {
-			$apiResult = $this->doApiRequest( $params, null, false, $user );
+			$apiResult = $this->doApiRequest( $params, null, false, $performer );
 			$apiResult = $apiResult[0];
 			$this->doReplacements( $expect );
 			$this->assertEquals( $expect, $apiResult );
@@ -185,7 +191,6 @@ class ApiComparePagesTest extends ApiTestCase {
 	}
 
 	public static function provideDiff() {
-		// phpcs:disable Generic.Files.LineLength.TooLong
 		return [
 			'Basic diff, titles' => [
 				[

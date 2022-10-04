@@ -1,6 +1,6 @@
 <?php
 
-use MediaWiki\MediaWikiServices;
+use MediaWiki\MainConfigNames;
 
 /**
  * @covers SearchNearMatcher
@@ -75,7 +75,8 @@ class SearchNearMatcherTest extends MediaWikiIntegrationTestCase {
 		$titleText,
 		$enableSearchContributorsByIP = false
 	) {
-		$services = MediaWikiServices::getInstance();
+		$this->overrideConfigValue( MainConfigNames::LanguageCode, 'en' );
+		$services = $this->getServiceContainer();
 		$this->addGoodLinkObject( 42, Title::newFromText( $titleText ) );
 		$config = new HashConfig( [
 			'EnableSearchContributorsByIP' => $enableSearchContributorsByIP,
@@ -101,14 +102,14 @@ class SearchNearMatcherTest extends MediaWikiIntegrationTestCase {
 	 * @covers SearchNearMatcher::getNearMatch
 	 */
 	public function testNearMatch_Hooks( $hook ) {
-		$services = MediaWikiServices::getInstance();
+		$services = $this->getServiceContainer();
 		$config = new HashConfig( [
 			'EnableSearchContributorsByIP' => false,
 		] );
 
 		$this->setTemporaryHook( $hook, static function ( $term, &$title ) {
 			if ( $term === [ 'Hook' ] || $term === 'Hook' ) {
-				$title = Title::newFromText( 'TitleFromHook' );
+				$title = Title::makeTitle( NS_MAIN, 'TitleFromHook' );
 				return false;
 			}
 			return null;
@@ -127,8 +128,8 @@ class SearchNearMatcherTest extends MediaWikiIntegrationTestCase {
 	 * @covers SearchNearMatcher::getNearMatchResultSet
 	 */
 	public function testGetNearMatchResultSet() {
-		$services = MediaWikiServices::getInstance();
-		$this->addGoodLinkObject( 42, Title::newFromText( "Test Link" ) );
+		$services = $this->getServiceContainer();
+		$this->addGoodLinkObject( 42, Title::makeTitle( NS_MAIN, "Test Link" ) );
 
 		$config = new HashConfig( [
 			'EnableSearchContributorsByIP' => false,

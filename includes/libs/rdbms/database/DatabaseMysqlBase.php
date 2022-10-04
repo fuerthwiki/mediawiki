@@ -1,7 +1,5 @@
 <?php
 /**
- * This is the MySQL database abstraction layer.
- *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
@@ -18,22 +16,22 @@
  * http://www.gnu.org/copyleft/gpl.html
  *
  * @file
- * @ingroup Database
  */
 namespace Wikimedia\Rdbms;
 
 use InvalidArgumentException;
-use mysqli_result;
 use RuntimeException;
 use stdClass;
-use Wikimedia\AtEase\AtEase;
+use Wikimedia\Rdbms\Platform\ISQLPlatform;
+use Wikimedia\Rdbms\Platform\MySQLPlatform;
 
 /**
- * Database abstraction object for MySQL.
- * Defines methods independent on used MySQL extension.
+ * MySQL database abstraction layer.
+ *
+ * Defines methods independent of the used MySQL extension.
  *
  * TODO: This could probably be merged with DatabaseMysqli.
- * The split was created to support a transition from the old "mysql" extension
+ * The classees were split to support a transition from the old "mysql" extension
  * to mysqli, and there may be an argument for retaining it in order to support
  * some future transition to something else, but it's complexity and YAGNI.
  *
@@ -64,8 +62,6 @@ abstract class DatabaseMysqlBase extends Database {
 	 * @var string|null
 	 */
 	protected $sslCiphers;
-	/** @var string sql_mode value to send on connection */
-	protected $sqlMode;
 	/** @var bool Use experimental UTF-8 transmission encoding */
 	protected $utf8Mode;
 	/** @var bool|null */
@@ -82,16 +78,20 @@ abstract class DatabaseMysqlBase extends Database {
 	/** @var float Warn if lag estimates are made for transactions older than this many seconds */
 	private const LAG_STALE_WARN_THRESHOLD = 0.100;
 
+	/** @var ISQLPlatform */
+	protected $platform;
+
 	/**
 	 * Additional $params include:
 	 *   - lagDetectionMethod : set to one of (Seconds_Behind_Master,pt-heartbeat).
 	 *       pt-heartbeat assumes the table is at heartbeat.heartbeat
 	 *       and uses UTC timestamps in the heartbeat.ts column.
 	 *       (https://www.percona.com/doc/percona-toolkit/2.2/pt-heartbeat.html)
-	 *   - lagDetectionOptions : if using pt-heartbeat, this can be set to an array map to change
-	 *       the default behavior. Normally, the heartbeat row with the server
-	 *       ID of this server's primary DB will be used. Set the "conds" field to
-	 *       override the query conditions, e.g. ['shard' => 's1'].
+	 *   - lagDetectionOptions : if using pt-heartbeat, this can be set to an array map.
+	 *       The "conds" key overrides the WHERE clause used to find the relevant row in the
+	 *       `heartbeat` table, e.g. ['shard' => 's1']. By default, the row used is the newest
+	 *       row having a server_id matching that of the immediate replication source server
+	 *       for the given replica.
 	 *   - useGTIDs : use GTID methods like MASTER_GTID_WAIT() when possible.
 	 *   - insertSelectIsSafe : force that native INSERT SELECT is or is not safe [default: null]
 	 *   - sslKeyPath : path to key file [default: null]
@@ -111,12 +111,16 @@ abstract class DatabaseMysqlBase extends Database {
 				$this->$var = $params[$var];
 			}
 		}
-		$this->sqlMode = $params['sqlMode'] ?? null;
 		$this->utf8Mode = !empty( $params['utf8Mode'] );
 		$this->insertSelectIsSafe = isset( $params['insertSelectIsSafe'] )
 			? (bool)$params['insertSelectIsSafe'] : null;
-
 		parent::__construct( $params );
+		$this->platform = new MySQLPlatform(
+			$this,
+			$params['queryLogger'],
+			$this->currentDomain,
+			$this->errorLogger
+		);
 	}
 
 	/**
@@ -148,16 +152,13 @@ abstract class DatabaseMysqlBase extends Database {
 
 		try {
 			$this->currentDomain = new DatabaseDomain(
-				strlen( $db ) ? $db : null,
+				$db && strlen( $db ) ? $db : null,
 				null,
 				$tablePrefix
 			);
-			// Abstract over any insane MySQL defaults
+			$this->platform->setPrefix( $tablePrefix );
+			// Abstract over any excessive MySQL defaults
 			$set = [ 'group_concat_max_len = 262144' ];
-			// Set SQL mode, default is turning them all off, can be overridden or skipped with null
-			if ( is_string( $this->sqlMode ) ) {
-				$set[] = 'sql_mode = ' . $this->addQuotes( $this->sqlMode );
-			}
 			// Set any custom settings defined by site config
 			// https://dev.mysql.com/doc/refman/5.7/en/innodb-parameters.html
 			foreach ( $this->connectionVariables as $var => $val ) {
@@ -165,17 +166,20 @@ abstract class DatabaseMysqlBase extends Database {
 				if ( !is_int( $val ) && !is_float( $val ) ) {
 					$val = $this->addQuotes( $val );
 				}
-				$set[] = $this->addIdentifierQuotes( $var ) . ' = ' . $val;
+				$set[] = $this->platform->addIdentifierQuotes( $var ) . ' = ' . $val;
 			}
 
 			// @phan-suppress-next-next-line PhanRedundantCondition
-			// If kept for safety and to avoid broken query
+			// Safety check to avoid empty SET query
 			if ( $set ) {
-				$this->query(
-					'SET ' . implode( ', ', $set ),
-					__METHOD__,
-					self::QUERY_IGNORE_DBO_TRX | self::QUERY_NO_RETRY | self::QUERY_CHANGE_TRX
-				);
+				$sql = 'SET ' . implode( ', ', $set );
+				$flags = self::QUERY_NO_RETRY | self::QUERY_CHANGE_TRX;
+				// Avoid using query() so that replaceLostConnection() does not throw
+				// errors if the transaction status is STATUS_TRX_ERROR
+				$qs = $this->executeQuery( $sql, __METHOD__, $flags, $sql );
+				if ( $qs->res === false ) {
+					$this->reportQueryError( $qs->message, $qs->code, $sql, __METHOD__ );
+				}
 			}
 		} catch ( RuntimeException $e ) {
 			throw $this->newExceptionAfterConnectError( $e->getMessage() );
@@ -198,23 +202,23 @@ abstract class DatabaseMysqlBase extends Database {
 				null,
 				$domain->getTablePrefix()
 			);
+			$this->platform->setPrefix( $domain->getTablePrefix() );
 
 			return true;
 		}
 
 		if ( $database !== $this->getDBname() ) {
 			$sql = 'USE ' . $this->addIdentifierQuotes( $database );
-			list( $res, $err, $errno ) =
-				$this->executeQuery( $sql, __METHOD__, self::QUERY_IGNORE_DBO_TRX );
-
-			if ( $res === false ) {
-				$this->reportQueryError( $err, $errno, $sql, __METHOD__ );
+			$qs = $this->executeQuery( $sql, __METHOD__, self::QUERY_IGNORE_DBO_TRX, $sql );
+			if ( $qs->res === false ) {
+				$this->reportQueryError( $qs->message, $qs->code, $sql, __METHOD__ );
 				return false; // unreachable
 			}
 		}
 
 		// Update that domain fields on success (no exception thrown)
 		$this->currentDomain = $domain;
+		$this->platform->setPrefix( $domain->getTablePrefix() );
 
 		return true;
 	}
@@ -232,49 +236,17 @@ abstract class DatabaseMysqlBase extends Database {
 	abstract protected function mysqlConnect( $server, $user, $password, $db );
 
 	/**
-	 * mysql_field_type() wrapper
-	 *
-	 * Not part of the interface and apparently not called by anything.
-	 *
-	 * @deprecated since 1.37
-	 *
-	 * @param MysqliResultWrapper $res
-	 * @param int $n
-	 * @return string
-	 */
-	public function fieldType( $res, $n ) {
-		wfDeprecated( __METHOD__, '1.37' );
-		return $this->mysqlFieldType( $res->getInternalResult(), $n );
-	}
-
-	/**
-	 * Get the type of the specified field in a result
-	 *
-	 * @deprecated since 1.37
-	 *
-	 * @param mysqli_result $res
-	 * @param int $n
-	 * @return string
-	 */
-	abstract protected function mysqlFieldType( $res, $n );
-
-	/**
 	 * @return string
 	 */
 	public function lastError() {
 		if ( $this->conn ) {
-			# Even if it's non-zero, it can still be invalid
-			AtEase::suppressWarnings();
+			// Even if it's non-zero, it can still be invalid
 			$error = $this->mysqlError( $this->conn );
 			if ( !$error ) {
 				$error = $this->mysqlError();
 			}
-			AtEase::restoreWarnings();
 		} else {
 			$error = $this->mysqlError();
-		}
-		if ( $error ) {
-			$error .= ' (' . $this->getServerName() . ')';
 		}
 
 		return $error;
@@ -287,12 +259,6 @@ abstract class DatabaseMysqlBase extends Database {
 	 * @return string
 	 */
 	abstract protected function mysqlError( $conn = null );
-
-	protected function wasQueryTimeout( $error, $errno ) {
-		// https://dev.mysql.com/doc/refman/8.0/en/client-error-reference.html
-		// https://phabricator.wikimedia.org/T170638
-		return in_array( $errno, [ 2062, 3024 ] );
-	}
 
 	protected function isInsertSelectSafe( array $insertOptions, array $selectOptions ) {
 		$row = $this->getReplicationSafetyInfo();
@@ -347,7 +313,7 @@ abstract class DatabaseMysqlBase extends Database {
 	 * @param string $fname
 	 * @param string|array $options
 	 * @param array $join_conds
-	 * @return bool|int
+	 * @return int|false
 	 */
 	public function estimateRowCount(
 		$tables,
@@ -357,8 +323,8 @@ abstract class DatabaseMysqlBase extends Database {
 		$options = [],
 		$join_conds = []
 	) {
-		$conds = $this->normalizeConditions( $conds, $fname );
-		$column = $this->extractSingleFieldFromList( $var );
+		$conds = $this->platform->normalizeConditions( $conds, $fname );
+		$column = $this->platform->extractSingleFieldFromList( $var );
 		if ( is_string( $column ) && !in_array( $column, [ '*', '1' ] ) ) {
 			$conds[] = "$column IS NOT NULL";
 		}
@@ -368,7 +334,7 @@ abstract class DatabaseMysqlBase extends Database {
 		if ( $res === false ) {
 			return false;
 		}
-		if ( !$this->numRows( $res ) ) {
+		if ( !$res->numRows() ) {
 			return 0;
 		}
 
@@ -383,7 +349,7 @@ abstract class DatabaseMysqlBase extends Database {
 	public function tableExists( $table, $fname = __METHOD__ ) {
 		// Split database and table into proper variables as Database::tableName() returns
 		// shared tables prefixed with their database, which do not work in SHOW TABLES statements
-		list( $database, , $prefix, $table ) = $this->qualifiedTableComponents( $table );
+		list( $database, , $prefix, $table ) = $this->platform->qualifiedTableComponents( $table );
 		$tableName = "{$prefix}{$table}";
 
 		if ( isset( $this->sessionTempTables[$tableName] ) ) {
@@ -392,11 +358,12 @@ abstract class DatabaseMysqlBase extends Database {
 
 		// We can't use buildLike() here, because it specifies an escape character
 		// other than the backslash, which is the only one supported by SHOW TABLES
-		$encLike = $this->escapeLikeInternal( $tableName, '\\' );
+		// TODO: Avoid using platform's internal methods
+		$encLike = $this->platform->escapeLikeInternal( $tableName, '\\' );
 
 		// If the database has been specified (such as for shared tables), use "FROM"
 		if ( $database !== '' ) {
-			$encDatabase = $this->addIdentifierQuotes( $database );
+			$encDatabase = $this->platform->addIdentifierQuotes( $database );
 			$sql = "SHOW TABLES FROM $encDatabase LIKE '$encLike'";
 		} else {
 			$sql = "SHOW TABLES LIKE '$encLike'";
@@ -414,7 +381,7 @@ abstract class DatabaseMysqlBase extends Database {
 	/**
 	 * @param string $table
 	 * @param string $field
-	 * @return bool|MySQLField
+	 * @return MySQLField|false
 	 */
 	public function fieldInfo( $table, $field ) {
 		$res = $this->query(
@@ -473,30 +440,12 @@ abstract class DatabaseMysqlBase extends Database {
 	}
 
 	/**
+	 * Escape special characters in a string for use in an SQL statement
+	 *
 	 * @param string $s
 	 * @return mixed
 	 */
 	abstract protected function mysqlRealEscapeString( $s );
-
-	/**
-	 * MySQL uses `backticks` for identifier quoting instead of the sql standard "double quotes".
-	 *
-	 * @param string $s
-	 * @return string
-	 */
-	public function addIdentifierQuotes( $s ) {
-		// Characters in the range \u0001-\uFFFF are valid in a quoted identifier
-		// Remove NUL bytes and escape backticks by doubling
-		return '`' . str_replace( [ "\0", '`' ], [ '', '``' ], $s ) . '`';
-	}
-
-	/**
-	 * @param string $name
-	 * @return bool
-	 */
-	public function isQuotedIdentifier( $name ) {
-		return strlen( $name ) && $name[0] == '`' && substr( $name, -1, 1 ) == '`';
-	}
 
 	protected function doGetLag() {
 		if ( $this->getLagDetectionMethod() === 'pt-heartbeat' ) {
@@ -560,12 +509,17 @@ abstract class DatabaseMysqlBase extends Database {
 		}
 
 		if ( isset( $options['conds'] ) ) {
-			// Best method for multi-DC setups: use logical channel names
-			$ago = $this->fetchSecondsSinceHeartbeat( $options['conds'] );
+			// Custom/explicit method: specify the server_id or use logical channel names.
+			// This works well for multi-datacenter setups with read-only "standby masters"
+			// in secondary datacenters that are used as replication sources. The `heartbeat`
+			// row for the primary server can be found without resorting to slow queries to
+			// fetch the server_id of the primary.
+			$conds = $options['conds'];
 		} else {
-			// Standard method: use primary server ID (works with stock pt-heartbeat)
-			$masterInfo = $this->getPrimaryServerInfo();
-			if ( !$masterInfo ) {
+			// Standard method: determine source server ID (works with stock pt-heartbeat).
+			// This assumes that the immediate source server is the primary server.
+			$sourceInfo = $this->getSourceServerInfo();
+			if ( !$sourceInfo ) {
 				$this->queryLogger->error(
 					"Unable to query primary of {db_server} for server ID",
 					$this->getLogContext( [
@@ -576,10 +530,10 @@ abstract class DatabaseMysqlBase extends Database {
 				return false; // could not get primary server ID
 			}
 
-			$conds = [ 'server_id' => intval( $masterInfo['serverId'] ) ];
-			$ago = $this->fetchSecondsSinceHeartbeat( $conds );
+			$conds = [ 'server_id' => $sourceInfo['serverId'] ];
 		}
 
+		$ago = $this->fetchSecondsSinceHeartbeat( $conds );
 		if ( $ago !== null ) {
 			return max( $ago, 0.0 );
 		}
@@ -594,49 +548,26 @@ abstract class DatabaseMysqlBase extends Database {
 		return false;
 	}
 
-	protected function getPrimaryServerInfo() {
-		$cache = $this->srvCache;
-		$key = $cache->makeGlobalKey(
-			'mysql',
-			'master-info',
-			// Using one key for all cluster replica DBs is preferable
-			$this->topologyRootMaster ?? $this->getServerName()
-		);
-		$fname = __METHOD__;
+	/**
+	 * Get information about the direct replication source server for this replica server
+	 *
+	 * This only queries the replica itself, avoiding outages due to primary failure
+	 *
+	 * @return array<string,mixed>|false Map or false on failure
+	 */
+	protected function getSourceServerInfo() {
+		$row = $this->getServerRoleStatus( 'SLAVE', __METHOD__ );
+		if ( $row ) {
+			// MariaDB uses Master_Server_Id; MySQL uses Source_Server_Id
+			// https://mariadb.com/kb/en/show-replica-status/
+			// https://dev.mysql.com/doc/refman/8.0/en/show-replica-status.html
+			$id = (int)( $row['Master_Server_Id'] ?? $row['Source_Server_Id'] ?? 0 );
+		} else {
+			$id = 0;
+		}
 
-		return $cache->getWithSetCallback(
-			$key,
-			$cache::TTL_INDEFINITE,
-			function () use ( $cache, $key, $fname ) {
-				// Get and leave a lock key in place for a short period
-				if ( !$cache->lock( $key, 0, 10 ) ) {
-					return false; // avoid primary DB connection spike slams
-				}
-
-				$conn = $this->getLazyMasterHandle();
-				if ( !$conn ) {
-					return false; // something is misconfigured
-				}
-
-				$flags = self::QUERY_SILENCE_ERRORS | self::QUERY_IGNORE_DBO_TRX | self::QUERY_CHANGE_NONE;
-				// Connect to and query the primary DB; catch errors to avoid outages
-				try {
-					$res = $conn->query( 'SELECT @@server_id AS id', $fname, $flags );
-					$row = $res ? $res->fetchObject() : false;
-					$id = $row ? (int)$row->id : 0;
-				} catch ( DBError $e ) {
-					$id = 0;
-				}
-
-				// Cache the ID if it was retrieved
-				return $id ? [ 'serverId' => $id, 'asOf' => time() ] : false;
-			}
-		);
-	}
-
-	protected function getMasterServerInfo() {
-		wfDeprecated( __METHOD__, '1.37' );
-		return $this->getPrimaryServerInfo();
+		// Cache the ID if it was retrieved
+		return $id ? [ 'serverId' => $id, 'asOf' => time() ] : false;
 	}
 
 	/**
@@ -661,7 +592,7 @@ abstract class DatabaseMysqlBase extends Database {
 
 	protected function getApproximateLagStatus() {
 		if ( $this->getLagDetectionMethod() === 'pt-heartbeat' ) {
-			// Disable caching since this is fast enough and we don't wan't
+			// Disable caching since this is fast enough and we don't want
 			// to be *too* pessimistic by having both the cache TTL and the
 			// pt-heartbeat interval count as lag in getSessionLagStatus()
 			return parent::getApproximateLagStatus();
@@ -746,7 +677,7 @@ abstract class DatabaseMysqlBase extends Database {
 		$start = microtime( true );
 		$flags = self::QUERY_IGNORE_DBO_TRX | self::QUERY_CHANGE_NONE;
 		$res = $this->query( $sql, __METHOD__, $flags );
-		$row = $this->fetchRow( $res );
+		$row = $res->fetchRow();
 		$seconds = max( microtime( true ) - $start, 0 );
 
 		// Result can be NULL (error), -1 (timeout), or 0+ per the MySQL manual
@@ -793,7 +724,7 @@ abstract class DatabaseMysqlBase extends Database {
 	/**
 	 * Get the position of the primary DB from SHOW SLAVE STATUS
 	 *
-	 * @return MySQLPrimaryPos|bool
+	 * @return MySQLPrimaryPos|false
 	 */
 	public function getReplicaPos() {
 		$now = microtime( true ); // as-of-time *before* fetching GTID variables
@@ -823,7 +754,7 @@ abstract class DatabaseMysqlBase extends Database {
 	/**
 	 * Get the position of the primary DB from SHOW MASTER STATUS
 	 *
-	 * @return MySQLPrimaryPos|bool
+	 * @return MySQLPrimaryPos|false
 	 */
 	public function getPrimaryPos() {
 		$now = microtime( true ); // as-of-time *before* fetching GTID variables
@@ -859,11 +790,6 @@ abstract class DatabaseMysqlBase extends Database {
 		return $pos;
 	}
 
-	public function getMasterPos() {
-		wfDeprecated( __METHOD__, '1.37' );
-		return $this->getPrimaryPos();
-	}
-
 	/**
 	 * @inheritDoc
 	 * @return string|null 32 bit integer ID; null if not applicable or unknown
@@ -885,7 +811,7 @@ abstract class DatabaseMysqlBase extends Database {
 				$flags = self::QUERY_IGNORE_DBO_TRX | self::QUERY_CHANGE_NONE;
 				$res = $this->query( "SELECT @@server_id AS id", $fname, $flags );
 
-				return $this->fetchObject( $res )->id;
+				return $res->fetchObject()->id;
 			}
 		);
 	}
@@ -902,7 +828,7 @@ abstract class DatabaseMysqlBase extends Database {
 			function () use ( $fname ) {
 				$flags = self::QUERY_IGNORE_DBO_TRX | self::QUERY_CHANGE_NONE;
 				$res = $this->query( "SHOW GLOBAL VARIABLES LIKE 'server_uuid'", $fname, $flags );
-				$row = $this->fetchObject( $res );
+				$row = $res->fetchObject();
 
 				return $row ? $row->Value : null;
 			}
@@ -935,38 +861,23 @@ abstract class DatabaseMysqlBase extends Database {
 	/**
 	 * @param string $role One of "MASTER"/"SLAVE"
 	 * @param string $fname
-	 * @return string[] Latest available server status row
+	 * @return array<string,mixed>|null Latest available server status row; false on failure
 	 */
 	protected function getServerRoleStatus( $role, $fname = __METHOD__ ) {
-		$flags = self::QUERY_IGNORE_DBO_TRX | self::QUERY_CHANGE_NONE;
+		$flags = self::QUERY_SILENCE_ERRORS | self::QUERY_IGNORE_DBO_TRX | self::QUERY_CHANGE_NONE;
 		$res = $this->query( "SHOW $role STATUS", $fname, $flags );
+		$row = $res ? $res->fetchRow() : false;
 
-		return $res->fetchRow() ?: [];
+		return ( $row ?: null );
 	}
 
 	public function serverIsReadOnly() {
 		// Avoid SHOW to avoid internal temporary tables
 		$flags = self::QUERY_IGNORE_DBO_TRX | self::QUERY_CHANGE_NONE;
 		$res = $this->query( "SELECT @@GLOBAL.read_only AS Value", __METHOD__, $flags );
-		$row = $this->fetchObject( $res );
+		$row = $res->fetchObject();
 
 		return $row ? (bool)$row->Value : false;
-	}
-
-	/**
-	 * @param string $index
-	 * @return string
-	 */
-	public function useIndexClause( $index ) {
-		return "FORCE INDEX (" . $this->indexName( $index ) . ")";
-	}
-
-	/**
-	 * @param string $index
-	 * @return string
-	 */
-	public function ignoreIndexClause( $index ) {
-		return "IGNORE INDEX (" . $this->indexName( $index ) . ")";
 	}
 
 	/**
@@ -1026,11 +937,20 @@ abstract class DatabaseMysqlBase extends Database {
 	 * @param array $options
 	 */
 	public function setSessionOptions( array $options ) {
+		$sqlAssignments = [];
+
 		if ( isset( $options['connTimeout'] ) ) {
-			$flags = self::QUERY_IGNORE_DBO_TRX | self::QUERY_CHANGE_TRX;
-			$timeout = (int)$options['connTimeout'];
-			$this->query( "SET net_read_timeout=$timeout", __METHOD__, $flags );
-			$this->query( "SET net_write_timeout=$timeout", __METHOD__, $flags );
+			$encTimeout = (int)$options['connTimeout'];
+			$sqlAssignments[] = "net_read_timeout=$encTimeout";
+			$sqlAssignments[] = "net_write_timeout=$encTimeout";
+		}
+
+		if ( $sqlAssignments ) {
+			$this->query(
+				'SET ' . implode( ', ', $sqlAssignments ),
+				__METHOD__,
+				self::QUERY_CHANGE_TRX | self::QUERY_CHANGE_NONE
+			);
 		}
 	}
 
@@ -1049,87 +969,58 @@ abstract class DatabaseMysqlBase extends Database {
 	}
 
 	public function doLockIsFree( string $lockName, string $method ) {
-		$encName = $this->addQuotes( $this->makeLockName( $lockName ) );
-
 		$res = $this->query(
-			"SELECT IS_FREE_LOCK($encName) AS unlocked",
+			$this->platform->lockIsFreeSQLText( $lockName ),
 			$method,
-			self::QUERY_IGNORE_DBO_TRX | self::QUERY_CHANGE_NONE
+			self::QUERY_CHANGE_LOCKS
 		);
-		$row = $this->fetchObject( $res );
+		$row = $res->fetchObject();
 
 		return ( $row->unlocked == 1 );
 	}
 
 	public function doLock( string $lockName, string $method, int $timeout ) {
-		$encName = $this->addQuotes( $this->makeLockName( $lockName ) );
-		// Unlike NOW(), SYSDATE() gets the time at invokation rather than query start.
-		// The precision argument is silently ignored for MySQL < 5.6 and MariaDB < 5.3.
-		// https://dev.mysql.com/doc/refman/5.6/en/date-and-time-functions.html#function_sysdate
-		// https://dev.mysql.com/doc/refman/5.6/en/fractional-seconds.html
 		$res = $this->query(
-			"SELECT IF(GET_LOCK($encName,$timeout),UNIX_TIMESTAMP(SYSDATE(6)),NULL) AS acquired",
+			$this->platform->lockSQLText( $lockName, $timeout ),
 			$method,
-			self::QUERY_IGNORE_DBO_TRX | self::QUERY_CHANGE_NONE
+			self::QUERY_CHANGE_LOCKS
 		);
-		$row = $this->fetchObject( $res );
+		$row = $res->fetchObject();
 
 		return ( $row->acquired !== null ) ? (float)$row->acquired : null;
 	}
 
 	public function doUnlock( string $lockName, string $method ) {
-		$encName = $this->addQuotes( $this->makeLockName( $lockName ) );
-
 		$res = $this->query(
-			"SELECT RELEASE_LOCK($encName) AS released",
+			$this->platform->unlockSQLText( $lockName ),
 			$method,
-			self::QUERY_IGNORE_DBO_TRX | self::QUERY_CHANGE_NONE
+			self::QUERY_CHANGE_LOCKS
 		);
-		$row = $this->fetchObject( $res );
+		$row = $res->fetchObject();
 
 		return ( $row->released == 1 );
-	}
-
-	private function makeLockName( $lockName ) {
-		// https://dev.mysql.com/doc/refman/5.7/en/locking-functions.html#function_get-lock
-		// MySQL 5.7+ enforces a 64 char length limit.
-		return ( strlen( $lockName ) > 64 ) ? sha1( $lockName ) : $lockName;
 	}
 
 	public function namedLocksEnqueue() {
 		return true;
 	}
 
-	public function tableLocksHaveTransactionScope() {
-		return false; // tied to TCP connection
-	}
-
-	protected function doLockTables( array $read, array $write, $method ) {
-		$items = [];
-		foreach ( $write as $table ) {
-			$items[] = $this->tableName( $table ) . ' WRITE';
+	protected function doFlushSession( $fname ) {
+		$flags = self::QUERY_CHANGE_LOCKS | self::QUERY_NO_RETRY;
+		// Note that RELEASE_ALL_LOCKS() is not supported well enough to use here.
+		// https://mariadb.com/kb/en/release_all_locks/
+		$releaseLockFields = [];
+		foreach ( $this->sessionNamedLocks as $name => $info ) {
+			$encName = $this->addQuotes( $this->platform->makeLockName( $name ) );
+			$releaseLockFields[] = "RELEASE_LOCK($encName)";
 		}
-		foreach ( $read as $table ) {
-			$items[] = $this->tableName( $table ) . ' READ';
+		if ( $releaseLockFields ) {
+			$sql = 'SELECT ' . implode( ',', $releaseLockFields );
+			$qs = $this->executeQuery( $sql, __METHOD__, $flags, $sql );
+			if ( $qs->res === false ) {
+				$this->reportQueryError( $qs->message, $qs->code, $sql, $fname, true );
+			}
 		}
-
-		$this->query(
-			"LOCK TABLES " . implode( ',', $items ),
-			$method,
-			self::QUERY_IGNORE_DBO_TRX | self::QUERY_CHANGE_ROWS
-		);
-
-		return true;
-	}
-
-	protected function doUnlockTables( $method ) {
-		$this->query(
-			"UNLOCK TABLES",
-			$method,
-			self::QUERY_IGNORE_DBO_TRX | self::QUERY_CHANGE_ROWS
-		);
-
-		return true;
 	}
 
 	/**
@@ -1151,36 +1042,8 @@ abstract class DatabaseMysqlBase extends Database {
 		$this->query(
 			"SET sql_big_selects=" . ( $value ? '1' : '0' ),
 			__METHOD__,
-			self::QUERY_IGNORE_DBO_TRX | self::QUERY_CHANGE_TRX
+			self::QUERY_CHANGE_TRX
 		);
-	}
-
-	/**
-	 * DELETE where the condition is a join. MySql uses multi-table deletes.
-	 * @param string $delTable
-	 * @param string $joinTable
-	 * @param string $delVar
-	 * @param string $joinVar
-	 * @param array|string $conds
-	 * @param bool|string $fname
-	 * @throws DBUnexpectedError
-	 */
-	public function deleteJoin(
-		$delTable, $joinTable, $delVar, $joinVar, $conds, $fname = __METHOD__
-	) {
-		if ( !$conds ) {
-			throw new DBUnexpectedError( $this, __METHOD__ . ' called with empty $conds' );
-		}
-
-		$delTable = $this->tableName( $delTable );
-		$joinTable = $this->tableName( $joinTable );
-		$sql = "DELETE $delTable FROM $delTable, $joinTable WHERE $delVar=$joinVar ";
-
-		if ( $conds != '*' ) {
-			$sql .= ' AND ' . $this->makeList( $conds, self::LIST_AND );
-		}
-
-		$this->query( $sql, $fname, self::QUERY_CHANGE_ROWS );
 	}
 
 	protected function doUpsert(
@@ -1191,11 +1054,15 @@ abstract class DatabaseMysqlBase extends Database {
 		string $fname
 	) {
 		$encTable = $this->tableName( $table );
-		list( $sqlColumns, $sqlTuples ) = $this->makeInsertLists( $rows );
+		list( $sqlColumns, $sqlTuples ) = $this->platform->makeInsertLists( $rows );
 		$sqlColumnAssignments = $this->makeList( $set, self::LIST_SET );
+		// No need to expose __NEW.* since buildExcludedValue() uses VALUES(column)
 
+		// https://mariadb.com/kb/en/insert-on-duplicate-key-update/
+		// https://dev.mysql.com/doc/refman/8.0/en/insert-on-duplicate.html
 		$sql =
-			"INSERT INTO $encTable ($sqlColumns) VALUES $sqlTuples " .
+			"INSERT INTO $encTable " .
+			"($sqlColumns) VALUES $sqlTuples " .
 			"ON DUPLICATE KEY UPDATE $sqlColumnAssignments";
 
 		$this->query( $sql, $fname, self::QUERY_CHANGE_ROWS );
@@ -1203,22 +1070,11 @@ abstract class DatabaseMysqlBase extends Database {
 
 	protected function doReplace( $table, array $identityKey, array $rows, $fname ) {
 		$encTable = $this->tableName( $table );
-		list( $sqlColumns, $sqlTuples ) = $this->makeInsertLists( $rows );
+		list( $sqlColumns, $sqlTuples ) = $this->platform->makeInsertLists( $rows );
 
 		$sql = "REPLACE INTO $encTable ($sqlColumns) VALUES $sqlTuples";
 
 		$this->query( $sql, $fname, self::QUERY_CHANGE_ROWS );
-	}
-
-	/**
-	 * Determines how long the server has been up
-	 *
-	 * @return int
-	 */
-	public function getServerUptime() {
-		$vars = $this->getMysqlStatus( 'Uptime' );
-
-		return (int)$vars['Uptime'];
 	}
 
 	/**
@@ -1249,15 +1105,25 @@ abstract class DatabaseMysqlBase extends Database {
 			( $this->lastErrno() == 1290 && strpos( $this->lastError(), '--read-only' ) !== false );
 	}
 
-	public function wasConnectionError( $errno ) {
-		return $errno == 2013 || $errno == 2006;
+	protected function isConnectionError( $errno ) {
+		// https://mariadb.com/kb/en/mariadb-error-codes/
+		// https://dev.mysql.com/doc/mysql-errors/8.0/en/server-error-reference.html
+		// https://dev.mysql.com/doc/mysql-errors/8.0/en/client-error-reference.html
+		return in_array( $errno, [ 2013, 2006, 2003, 1927, 1053 ], true );
 	}
 
-	protected function wasKnownStatementRollbackError() {
-		$errno = $this->lastErrno();
+	protected function isQueryTimeoutError( $errno ) {
+		// https://mariadb.com/kb/en/mariadb-error-codes/
+		// https://dev.mysql.com/doc/refman/8.0/en/client-error-reference.html
+		// https://dev.mysql.com/doc/mysql-errors/8.0/en/server-error-reference.html
+		return in_array( $errno, [ 3024, 2062, 1969, 1028 ], true );
+	}
 
+	protected function isKnownStatementRollbackError( $errno ) {
+		// https://mariadb.com/kb/en/mariadb-error-codes/
+		// https://dev.mysql.com/doc/mysql-errors/8.0/en/server-error-reference.html
 		if ( $errno === 1205 ) { // lock wait timeout
-			// Note that this is uncached to avoid stale values of SET is used
+			// Note that this is uncached to avoid stale values if SET is used
 			$res = $this->query(
 				"SELECT @@innodb_rollback_on_timeout AS Value",
 				__METHOD__,
@@ -1269,8 +1135,11 @@ abstract class DatabaseMysqlBase extends Database {
 			return ( $row && !$row->Value );
 		}
 
-		// See https://dev.mysql.com/doc/refman/5.5/en/error-messages-server.html
-		return in_array( $errno, [ 1022, 1062, 1216, 1217, 1137, 1146, 1051, 1054 ], true );
+		return in_array(
+			$errno,
+			[ 3024, 1969, 1022, 1062, 1216, 1217, 1137, 1146, 1051, 1054 ],
+			true
+		);
 	}
 
 	/**
@@ -1320,27 +1189,6 @@ abstract class DatabaseMysqlBase extends Database {
 		}
 
 		return $endArray;
-	}
-
-	/**
-	 * Get status information from SHOW STATUS in an associative array
-	 *
-	 * @param string $which
-	 * @return array
-	 */
-	private function getMysqlStatus( $which = "%" ) {
-		$res = $this->query(
-			"SHOW STATUS LIKE '{$which}'",
-			__METHOD__,
-			self::QUERY_IGNORE_DBO_TRX | self::QUERY_CHANGE_NONE
-		);
-
-		$status = [];
-		foreach ( $res as $row ) {
-			$status[$row->Variable_name] = $row->Value;
-		}
-
-		return $status;
 	}
 
 	/**
@@ -1395,21 +1243,33 @@ abstract class DatabaseMysqlBase extends Database {
 		return in_array( $name, $this->listViews( $prefix, __METHOD__ ) );
 	}
 
-	protected function isTransactableQuery( $sql ) {
-		return parent::isTransactableQuery( $sql ) &&
-			!preg_match( '/^SELECT\s+(GET|RELEASE|IS_FREE)_LOCK\(/', $sql );
-	}
+	public function selectSQLText(
+		$table,
+		$vars,
+		$conds = '',
+		$fname = __METHOD__,
+		$options = [],
+		$join_conds = []
+	) {
+		$sql = parent::selectSQLText( $table, $vars, $conds, $fname, $options, $join_conds );
+		// https://dev.mysql.com/doc/refman/5.7/en/optimizer-hints.html
+		// https://mariadb.com/kb/en/library/aborting-statements/
+		$timeoutMsec = intval( $options['MAX_EXECUTION_TIME'] ?? 0 );
+		if ( $timeoutMsec > 0 ) {
+			list( $vendor, $number ) = $this->getMySqlServerVariant();
+			if ( $vendor === 'MariaDB' && version_compare( $number, '10.1.2', '>=' ) ) {
+				$timeoutSec = $timeoutMsec / 1000;
+				$sql = "SET STATEMENT max_statement_time=$timeoutSec FOR $sql";
+			} elseif ( $vendor === 'MySQL' && version_compare( $number, '5.7.0', '>=' ) ) {
+				$sql = preg_replace(
+					'/^SELECT(?=\s)/',
+					"SELECT /*+ MAX_EXECUTION_TIME($timeoutMsec)*/",
+					$sql
+				);
+			}
+		}
 
-	public function buildStringCast( $field ) {
-		return "CAST( $field AS BINARY )";
-	}
-
-	/**
-	 * @param string $field Field or column to cast
-	 * @return string
-	 */
-	public function buildIntegerCast( $field ) {
-		return 'CAST( ' . $field . ' AS SIGNED )';
+		return $sql;
 	}
 
 	/**

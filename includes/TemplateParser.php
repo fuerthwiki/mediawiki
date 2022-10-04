@@ -1,6 +1,7 @@
 <?php
 
 use LightnCandy\LightnCandy;
+use MediaWiki\MainConfigNames;
 use MediaWiki\MediaWikiServices;
 
 /**
@@ -111,9 +112,11 @@ class TemplateParser {
 			return $this->renderers[$templateKey];
 		}
 
-		// Fetch a secret key for building a keyed hash of the PHP code
-		$config = MediaWikiServices::getInstance()->getMainConfig();
-		$secretKey = $config->get( 'SecretKey' );
+		// Fetch a secret key for building a keyed hash of the PHP code.
+		// Note that this may be called before MediaWiki is fully initialized.
+		$secretKey = MediaWikiServices::hasInstance()
+			? MediaWikiServices::getInstance()->getMainConfig()->get( MainConfigNames::SecretKey )
+			: null;
 
 		if ( $secretKey ) {
 			// See if the compiled PHP code is stored in the server-local cache.
@@ -146,7 +149,7 @@ class TemplateParser {
 				}
 			}
 
-			// We're not using the cached code for whathever reason. Recompile the template and
+			// We're not using the cached code for whatever reason. Recompile the template and
 			// cache it.
 			if ( !$compiledTemplate ) {
 				$compiledTemplate = $this->compile( $templateName );
@@ -253,6 +256,8 @@ class TemplateParser {
 			// Check anyway for paranoia
 			throw new RuntimeException( "Could not compile template `{$filename}`" );
 		}
+
+		$files = array_values( array_unique( $files ) );
 
 		return [
 			'phpCode' => $compiled,

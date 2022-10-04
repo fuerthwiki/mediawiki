@@ -1,7 +1,5 @@
 <?php
 /**
- * Job to fix double redirects after moving a page.
- *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
@@ -18,7 +16,6 @@
  * http://www.gnu.org/copyleft/gpl.html
  *
  * @file
- * @ingroup JobQueue
  */
 
 use MediaWiki\Cache\CacheKeyHelper;
@@ -29,11 +26,17 @@ use MediaWiki\Revision\RevisionLookup;
 use MediaWiki\Revision\SlotRecord;
 
 /**
- * Job to fix double redirects after moving a page
+ * Fix any double redirects after moving a page.
  *
  * @ingroup JobQueue
  */
 class DoubleRedirectJob extends Job {
+	/**
+	 * @var int Max number of double redirect jobs counter.
+	 *   This is meant to avoid excessive memory usage. This is
+	 *   also used in fixDoubleRedirects.php script.
+	 */
+	public const MAX_DR_JOBS_COUNTER = 10000;
 
 	/** @var Title The title which has changed, redirects pointing to this
 	 *    title are fixed
@@ -79,6 +82,7 @@ class DoubleRedirectJob extends Job {
 			return;
 		}
 		$jobs = [];
+		$jobQueueGroup = MediaWikiServices::getInstance()->getJobQueueGroup();
 		foreach ( $res as $row ) {
 			$title = Title::makeTitle( $row->page_namespace, $row->page_title );
 			if ( !$title ) {
@@ -92,12 +96,12 @@ class DoubleRedirectJob extends Job {
 					->getPrefixedDBkey( $redirTitle ),
 			] );
 			# Avoid excessive memory usage
-			if ( count( $jobs ) > 10000 ) {
-				JobQueueGroup::singleton()->push( $jobs );
+			if ( count( $jobs ) > self::MAX_DR_JOBS_COUNTER ) {
+				$jobQueueGroup->push( $jobs );
 				$jobs = [];
 			}
 		}
-		JobQueueGroup::singleton()->push( $jobs );
+		$jobQueueGroup->push( $jobs );
 	}
 
 	/**
@@ -179,7 +183,8 @@ class DoubleRedirectJob extends Job {
 		$reason = wfMessage( 'double-redirect-fixed-' . $this->params['reason'],
 			$this->redirTitle->getPrefixedText(), $newTitle->getPrefixedText()
 		)->inContentLanguage()->text();
-		$flags = EDIT_UPDATE | EDIT_SUPPRESS_RC | EDIT_INTERNAL;
+		// Avoid RC flood, and use minor to avoid email notifs
+		$flags = EDIT_UPDATE | EDIT_SUPPRESS_RC | EDIT_INTERNAL | EDIT_MINOR;
 		$article->doUserEditContent( $newContent, $user, $reason, $flags );
 		$wgUser = $oldUser;
 
@@ -234,7 +239,7 @@ class DoubleRedirectJob extends Job {
 					$row->rd_namespace,
 					$row->rd_title,
 					'',
-					$row->rd_interwiki
+					$row->rd_interwiki ?? ''
 				);
 			}
 		}

@@ -49,7 +49,7 @@ class UserSelectQueryBuilder extends SelectQueryBuilder {
 	 * @return UserSelectQueryBuilder
 	 */
 	public function whereUserIds( $userIds ): self {
-		Assert::parameterType( 'integer|array', $userIds, '$userIds' );
+		Assert::parameterType( [ 'integer', 'array' ], $userIds, '$userIds' );
 		$this->conds( [ 'actor_user' => $userIds ] );
 		return $this;
 	}
@@ -71,7 +71,7 @@ class UserSelectQueryBuilder extends SelectQueryBuilder {
 	 * @return UserSelectQueryBuilder
 	 */
 	public function whereUserNames( $userNames ): self {
-		Assert::parameterType( 'string|array', $userNames, '$userIds' );
+		Assert::parameterType( [ 'string', 'array' ], $userNames, '$userIds' );
 		$userNames = array_map( function ( $name ) {
 			return $this->actorStore->normalizeUserName( (string)$name );
 		}, (array)$userNames );
@@ -159,6 +159,25 @@ class UserSelectQueryBuilder extends SelectQueryBuilder {
 	 */
 	public function anon(): self {
 		$this->conds( [ 'actor_user' => null ] );
+		return $this;
+	}
+
+	/**
+	 * Filter based on user hidden status
+	 *
+	 * @since 1.38
+	 * @param bool $hidden True - only hidden users, false - no hidden users
+	 * @return $this
+	 */
+	public function hidden( bool $hidden ): self {
+		$this->leftJoin( 'ipblocks', null, [ "actor_user=ipb_user" ] );
+		if ( $hidden ) {
+			// only hidden users
+			$this->conds( [ 'ipb_deleted = 1' ] );
+		} else {
+			// filter out hidden users
+			$this->conds( [ 'ipb_deleted = 0 OR ipb_deleted IS NULL' ] );
+		}
 		return $this;
 	}
 

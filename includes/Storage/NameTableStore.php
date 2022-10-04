@@ -28,6 +28,7 @@ use Wikimedia\Assert\Assert;
 use Wikimedia\Rdbms\Database;
 use Wikimedia\Rdbms\IDatabase;
 use Wikimedia\Rdbms\ILoadBalancer;
+use Wikimedia\RequestTimeout\TimeoutException;
 
 /**
  * @author Addshore
@@ -108,11 +109,10 @@ class NameTableStore {
 	/**
 	 * @param int $index A database index, like DB_PRIMARY or DB_REPLICA
 	 * @param int $flags Database connection flags
-	 *
 	 * @return IDatabase
 	 */
 	private function getDBConnection( $index, $flags = 0 ) {
-		return $this->loadBalancer->getConnectionRef( $index, [], $this->domain, $flags );
+		return $this->loadBalancer->getConnection( $index, [], $this->domain, $flags );
 	}
 
 	/**
@@ -481,6 +481,8 @@ class NameTableStore {
 				},
 				IDatabase::ATOMIC_CANCELABLE
 			);
+		} catch ( TimeoutException $e ) {
+			throw $e;
 		} catch ( Exception $ex ) {
 			$this->logger->error(
 				'Re-insertion of name into table ' . $this->table . ' failed: ' . $ex->getMessage()

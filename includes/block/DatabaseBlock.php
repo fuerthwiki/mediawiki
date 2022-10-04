@@ -25,13 +25,16 @@ namespace MediaWiki\Block;
 use CommentStore;
 use Hooks;
 use Html;
+use InvalidArgumentException;
 use MediaWiki\Block\Restriction\ActionRestriction;
 use MediaWiki\Block\Restriction\NamespaceRestriction;
 use MediaWiki\Block\Restriction\PageRestriction;
 use MediaWiki\Block\Restriction\Restriction;
 use MediaWiki\Logger\LoggerFactory;
+use MediaWiki\MainConfigNames;
 use MediaWiki\MediaWikiServices;
 use MediaWiki\User\UserIdentity;
+use MediaWiki\User\UserIdentityValue;
 use MWException;
 use stdClass;
 use Title;
@@ -48,23 +51,14 @@ use Wikimedia\Rdbms\IDatabase;
  * @since 1.34 Renamed from Block.
  */
 class DatabaseBlock extends AbstractBlock {
-	/**
-	 * @deprecated since 1.34. Use getType to check whether a block is autoblocking.
-	 * @var bool
-	 */
-	public $mAuto;
+	/** @var bool */
+	private $mAuto;
 
-	/**
-	 * @deprecated since 1.34. Use getParentBlockId instead.
-	 * @var int
-	 */
-	public $mParentBlockId;
+	/** @var int */
+	private $mParentBlockId;
 
 	/** @var int */
 	private $mId;
-
-	/** @var bool */
-	private $mFromPrimary;
 
 	/** @var bool */
 	private $isAutoblocking;
@@ -115,7 +109,7 @@ class DatabaseBlock extends AbstractBlock {
 			$this->setBlocker( $options['by'] );
 		}
 
-		$this->setExpiry( wfGetDB( DB_REPLICA )->decodeExpiry( $options['expiry'] ) );
+		$this->setExpiry( $this->getDBConnection( DB_REPLICA )->decodeExpiry( $options['expiry'] ) );
 
 		# Boolean settings
 		$this->mAuto = (bool)$options['auto'];
@@ -125,7 +119,9 @@ class DatabaseBlock extends AbstractBlock {
 		$this->isCreateAccountBlocked( (bool)$options['createAccount'] );
 		$this->isUsertalkEditAllowed( (bool)$options['allowUsertalk'] );
 
-		$this->mFromPrimary = false;
+		// hard deprecated since 1.39
+		$this->deprecatePublicProperty( 'mAuto', '1.34', __CLASS__ );
+		$this->deprecatePublicProperty( 'mParentBlockId', '1.34', __CLASS__ );
 	}
 
 	/**
@@ -161,10 +157,11 @@ class DatabaseBlock extends AbstractBlock {
 	 * aliases.
 	 *
 	 * @since 1.31
-	 * @return array With three keys:
-	 *   - tables: (string[]) to include in the `$table` to `IDatabase->select()`
-	 *   - fields: (string[]) to include in the `$vars` to `IDatabase->select()`
-	 *   - joins: (array) to include in the `$join_conds` to `IDatabase->select()`
+	 * @return array[] With three keys:
+	 *   - tables: (string[]) to include in the `$table` to `IDatabase->select()` or `SelectQueryBuilder::tables`
+	 *   - fields: (string[]) to include in the `$vars` to `IDatabase->select()` or `SelectQueryBuilder::fields`
+	 *   - joins: (array) to include in the `$join_conds` to `IDatabase->select()` or `SelectQueryBuilder::joinConds`
+	 * @phan-return array{tables:string[],fields:string[],joins:array}
 	 */
 	public static function getQueryInfo() {
 		$commentQuery = CommentStore::getStore()->getJoin( 'ipb_reason' );
@@ -269,6 +266,7 @@ class DatabaseBlock extends AbstractBlock {
 					$conds['ipb_address'][] = (string)$target;
 					$conds['ipb_address'] = array_unique( $conds['ipb_address'] );
 					$conds[] = self::getRangeCond( IPUtils::toHex( $target ) );
+					// @phan-suppress-next-line SecurityCheck-SQLInjection
 					$conds = $db->makeList( $conds, LIST_OR );
 					break;
 
@@ -276,6 +274,7 @@ class DatabaseBlock extends AbstractBlock {
 					list( $start, $end ) = IPUtils::parseRange( $target );
 					$conds['ipb_address'][] = (string)$target;
 					$conds[] = self::getRangeCond( $start, $end );
+					// @phan-suppress-next-line SecurityCheck-SQLInjection
 					$conds = $db->makeList( $conds, LIST_OR );
 					break;
 
@@ -285,6 +284,7 @@ class DatabaseBlock extends AbstractBlock {
 		}
 
 		$blockQuery = self::getQueryInfo();
+		// @phan-suppress-next-line SecurityCheck-SQLInjection
 		$res = $db->select(
 			$blockQuery['tables'],
 			$blockQuery['fields'],
@@ -415,11 +415,11 @@ class DatabaseBlock extends AbstractBlock {
 	 * @return string
 	 */
 	protected static function getIpFragment( $hex ) {
-		global $wgBlockCIDRLimit;
+		$blockCIDRLimit = MediaWikiServices::getInstance()->getMainConfig()->get( MainConfigNames::BlockCIDRLimit );
 		if ( substr( $hex, 0, 3 ) == 'v6-' ) {
-			return 'v6-' . substr( substr( $hex, 3 ), 0, floor( $wgBlockCIDRLimit['IPv6'] / 4 ) );
+			return 'v6-' . substr( substr( $hex, 3 ), 0, (int)floor( $blockCIDRLimit['IPv6'] / 4 ) );
 		} else {
-			return substr( $hex, 0, floor( $wgBlockCIDRLimit['IPv4'] / 4 ) );
+			return substr( $hex, 0, (int)floor( $blockCIDRLimit['IPv4'] / 4 ) );
 		}
 	}
 
@@ -442,7 +442,7 @@ class DatabaseBlock extends AbstractBlock {
 			->newActorFromRowFields( $row->ipb_by, $row->ipb_by_text, $row->ipb_by_actor ) );
 
 		// I wish I didn't have to do this
-		$db = wfGetDB( DB_REPLICA );
+		$db = $this->getDBConnection( DB_REPLICA );
 		$this->setExpiry( $db->decodeExpiry( $row->ipb_expiry ) );
 		$this->setReason(
 			CommentStore::getStore()
@@ -510,20 +510,6 @@ class DatabaseBlock extends AbstractBlock {
 		return MediaWikiServices::getInstance()
 			->getDatabaseBlockStore()
 			->updateBlock( $this );
-	}
-
-	/**
-	 * Checks whether a given IP is on the autoblock exemption list.
-	 *
-	 * @deprecated since 1.36; use DatabaseBlock::isExemptedFromAutoblocks()
-	 *
-	 * @param string $ip The IP to check
-	 * @return bool
-	 */
-	public static function isWhitelistedFromAutoblocks( $ip ) {
-		// Hard-deprecated since MW 1.37.
-		wfDeprecated( __METHOD__, '1.36' );
-		return self::isExemptedFromAutoblocks( $ip );
 	}
 
 	/**
@@ -615,12 +601,16 @@ class DatabaseBlock extends AbstractBlock {
 			}
 			return false;
 		}
+		$blocker = $this->getBlocker();
+		if ( !$blocker ) {
+			throw new \RuntimeException( __METHOD__ . ': this block does not have a blocker' );
+		}
 
 		# Make a new block object with the desired properties.
-		$autoblock = new DatabaseBlock;
+		$autoblock = new DatabaseBlock( [ 'wiki' => $this->getWikiId() ] );
 		wfDebug( "Autoblocking {$this->getTargetName()}@" . $autoblockIP );
-		$autoblock->setTarget( $autoblockIP );
-		$autoblock->setBlocker( $this->getBlocker() );
+		$autoblock->setTarget( UserIdentityValue::newAnonymous( $autoblockIP, $this->getWikiId() ) );
+		$autoblock->setBlocker( $blocker );
 		$autoblock->setReason(
 			wfMessage(
 				'autoblocker',
@@ -650,7 +640,8 @@ class DatabaseBlock extends AbstractBlock {
 
 		# Insert the block...
 		$status = MediaWikiServices::getInstance()->getDatabaseBlockStore()->insertBlock(
-			$autoblock
+			$autoblock,
+			$this->getDBConnection( DB_PRIMARY )
 		);
 		return $status
 			? $status['id']
@@ -676,14 +667,14 @@ class DatabaseBlock extends AbstractBlock {
 			$this->setTimestamp( wfTimestamp() );
 			$this->setExpiry( self::getAutoblockExpiry( $this->getTimestamp() ) );
 
-			$dbw = wfGetDB( DB_PRIMARY );
+			$dbw = $this->getDBConnection( DB_PRIMARY );
 			$dbw->update( 'ipblocks',
 				[ /* SET */
 					'ipb_timestamp' => $dbw->timestamp( $this->getTimestamp() ),
 					'ipb_expiry' => $dbw->timestamp( $this->getExpiry() ),
 				],
 				[ /* WHERE */
-					'ipb_id' => $this->getId(),
+					'ipb_id' => $this->getId( $this->getWikiId() ),
 				],
 				__METHOD__
 			);
@@ -742,7 +733,9 @@ class DatabaseBlock extends AbstractBlock {
 	/**
 	 * @inheritDoc
 	 */
-	public function getId(): ?int {
+	public function getId( $wikiId = self::LOCAL ): ?int {
+		// TODO: Enable deprecation warnings once cross-wiki accesses have been removed, see T274817
+		// $this->deprecateInvalidCrossWiki( $wikiId, '1.38' );
 		return $this->mId;
 	}
 
@@ -824,9 +817,9 @@ class DatabaseBlock extends AbstractBlock {
 	 * @return string
 	 */
 	public static function getAutoblockExpiry( $timestamp ) {
-		global $wgAutoblockExpiry;
+		$autoblockExpiry = MediaWikiServices::getInstance()->getMainConfig()->get( MainConfigNames::AutoblockExpiry );
 
-		return wfTimestamp( TS_MW, (int)wfTimestamp( TS_UNIX, $timestamp ) + $wgAutoblockExpiry );
+		return wfTimestamp( TS_MW, (int)wfTimestamp( TS_UNIX, $timestamp ) + $autoblockExpiry );
 	}
 
 	/**
@@ -984,8 +977,8 @@ class DatabaseBlock extends AbstractBlock {
 	/**
 	 * @inheritDoc
 	 */
-	public function getIdentifier() {
-		return $this->getId();
+	public function getIdentifier( $wikiId = self::LOCAL ) {
+		return $this->getId( $wikiId );
 	}
 
 	/**
@@ -1094,7 +1087,7 @@ class DatabaseBlock extends AbstractBlock {
 
 		$res = parent::appliesToRight( $right );
 
-		if ( !$res && $config->get( 'EnablePartialActionBlocks' ) ) {
+		if ( !$res && $config->get( MainConfigNames::EnablePartialActionBlocks ) ) {
 			$blockActions = MediaWikiServices::getInstance()->getBlockActionInfo()
 				->getAllBlockActions();
 
@@ -1142,14 +1135,18 @@ class DatabaseBlock extends AbstractBlock {
 	 * @return BlockRestrictionStore
 	 */
 	private function getBlockRestrictionStore(): BlockRestrictionStore {
-		return MediaWikiServices::getInstance()->getBlockRestrictionStore();
+		// TODO: get rid of global state here
+		return MediaWikiServices::getInstance()
+			->getBlockRestrictionStoreFactory()
+			->getBlockRestrictionStore( $this->getWikiId() );
 	}
 
 	/**
 	 * @inheritDoc
 	 */
-	public function getBy() {
-		return ( $this->blocker ) ? $this->blocker->getId() : 0;
+	public function getBy( $wikiId = self::LOCAL ): int {
+		$this->assertWiki( $wikiId );
+		return ( $this->blocker ) ? $this->blocker->getId( $wikiId ) : 0;
 	}
 
 	/**
@@ -1183,15 +1180,26 @@ class DatabaseBlock extends AbstractBlock {
 				'Blocker is neither a local user nor an invalid username',
 				[
 					'blocker' => (string)$user,
-					'blockId' => $this->getId(),
+					'blockId' => $this->getId( $this->getWikiId() ),
 				]
 			);
-			throw new \InvalidArgumentException(
+			throw new InvalidArgumentException(
 				'Blocker must be a local user or a name that cannot be a local user'
 			);
 		}
-
+		$this->assertWiki( $user->getWikiId() );
 		$this->blocker = $user;
+	}
+
+	/**
+	 * @param int $i Specific or virtual (DB_PRIMARY/DB_REPLICA) server index
+	 * @return IDatabase
+	 */
+	private function getDBConnection( int $i ) {
+		return MediaWikiServices::getInstance()
+			->getDBLoadBalancerFactory()
+			->getMainLB( $this->getWikiId() )
+			->getConnectionRef( $i, [], $this->getWikiId() );
 	}
 }
 

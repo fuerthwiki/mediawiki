@@ -24,6 +24,8 @@
 use MediaWiki\Json\JsonUnserializable;
 use MediaWiki\Json\JsonUnserializableTrait;
 use MediaWiki\Json\JsonUnserializer;
+use MediaWiki\MainConfigNames;
+use MediaWiki\MediaWikiServices;
 use MediaWiki\Parser\ParserCacheMetadata;
 use Wikimedia\Reflection\GhostFieldAccessTrait;
 
@@ -140,7 +142,8 @@ class CacheTime implements ParserCacheMetadata, JsonUnserializable {
 	 * @return int
 	 */
 	public function getCacheExpiry(): int {
-		global $wgParserCacheExpireTime;
+		$parserCacheExpireTime = MediaWikiServices::getInstance()->getMainConfig()
+			->get( MainConfigNames::ParserCacheExpireTime );
 
 		// NOTE: keep support for undocumented used of -1 to mean "not cacheable".
 		if ( $this->mCacheTime !== '' && $this->mCacheTime < 0 ) {
@@ -150,9 +153,9 @@ class CacheTime implements ParserCacheMetadata, JsonUnserializable {
 		$expire = $this->mCacheExpiry;
 
 		if ( $expire === null ) {
-			$expire = $wgParserCacheExpireTime;
+			$expire = $parserCacheExpireTime;
 		} else {
-			$expire = min( $expire, $wgParserCacheExpireTime );
+			$expire = min( $expire, $parserCacheExpireTime );
 		}
 
 		if ( $expire <= 0 ) {
@@ -178,13 +181,13 @@ class CacheTime implements ParserCacheMetadata, JsonUnserializable {
 	 * @return bool
 	 */
 	public function expired( $touched ) {
-		global $wgCacheEpoch;
+		$cacheEpoch = MediaWikiServices::getInstance()->getMainConfig()->get( MainConfigNames::CacheEpoch );
 
 		$expiry = MWTimestamp::convert( TS_MW, MWTimestamp::time() - $this->getCacheExpiry() );
 
 		return !$this->isCacheable() // parser says it's not cacheable
 			|| $this->getCacheTime() < $touched
-			|| $this->getCacheTime() <= $wgCacheEpoch
+			|| $this->getCacheTime() <= $cacheEpoch
 			|| $this->getCacheTime() < $expiry; // expiry period has passed
 	}
 

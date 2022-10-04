@@ -114,7 +114,7 @@ class Status extends StatusValue {
 
 	/**
 	 * Makes this Status object use the given localizer instead of the global one.
-	 * If it is an IContextSource or a ResourceLoaderContext, it will also be used to
+	 * If it is an IContextSource or a ResourceLoader Context, it will also be used to
 	 * determine the interface language.
 	 * @note This setting does not survive serialization. That's usually for the best
 	 *   (there's no guarantee we'll still have the same localization settings after
@@ -293,7 +293,8 @@ class Status extends StatusValue {
 	protected function getErrorMessage( $error, $lang = null ) {
 		if ( is_array( $error ) ) {
 			if ( isset( $error['message'] ) && $error['message'] instanceof Message ) {
-				$msg = $error['message'];
+				// Apply context from MessageLocalizer even if we have a Message object already
+				$msg = $this->msg( $error['message'] );
 			} elseif ( isset( $error['message'] ) && isset( $error['params'] ) ) {
 				$msg = $this->msg( $error['message'], array_map( static function ( $param ) {
 					return is_string( $param ) ? wfEscapeWikiText( $param ) : $param;

@@ -26,6 +26,7 @@
 use MediaWiki\Logger\LoggerFactory;
 use MediaWiki\MediaWikiServices;
 use MediaWiki\User\UserIdentity;
+use Wikimedia\AtEase\AtEase;
 use Wikimedia\Rdbms\IDatabase;
 
 /**
@@ -66,7 +67,6 @@ class DatabaseLogEntry extends LogEntryBase {
 			'log_params', 'log_deleted',
 			'user_id',
 			'user_name',
-			'user_editcount',
 			'log_actor',
 			'log_user' => 'logging_actor.actor_user',
 			'log_user_text' => 'logging_actor.actor_name'
@@ -181,9 +181,9 @@ class DatabaseLogEntry extends LogEntryBase {
 	public function getParameters() {
 		if ( !isset( $this->params ) ) {
 			$blob = $this->getRawParameters();
-			Wikimedia\suppressWarnings();
+			AtEase::suppressWarnings();
 			$params = LogEntryBase::extractParams( $blob );
-			Wikimedia\restoreWarnings();
+			AtEase::restoreWarnings();
 			if ( $params !== false ) {
 				$this->params = $params;
 				$this->legacy = false;

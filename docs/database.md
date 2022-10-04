@@ -7,7 +7,8 @@
 For information about the MediaWiki database layout, such as a description of the tables and their contents, please see:
 
 * [The manual](https://www.mediawiki.org/wiki/Manual:Database_layout)
-* [https://phabricator.wikimedia.org/diffusion/MW/browse/master/maintenance/tables.sql](https://phabricator.wikimedia.org/diffusion/MW/browse/master/maintenance/tables.sql)
+* [Abstract schema of MediaWiki core](https://phabricator.wikimedia.org/diffusion/MW/browse/master/maintenance/tables.json)
+* [MySQL schema (automatically generated)](https://phabricator.wikimedia.org/diffusion/MW/browse/master/maintenance/tables-generated.sql)
 
 
 ## API
@@ -15,16 +16,23 @@ For information about the MediaWiki database layout, such as a description of th
 To make a read query, something like this usually suffices:
 
 ```php
-$dbr = wfGetDB( DB_REPLICA );
-$res = $dbr->select( /* ...see docs... */ );
-foreach ( $res as $row ) {
+use MediaWiki\MediaWikiServices;
+$lb = MediaWikiServices::getInstance()->getDBLoadBalancer();
+...
+$dbr = $lb->getConnectionRef( DB_REPLICA );
+$res = $dbr->newSelectQueryBuilder()
+  ->select( /* ... see docs... */ )
+  // ...see docs for other methods...
+  ->fetchResultSet();
+
+foreach( $res as $row ) {
 	...
 }
 ```
 
 For a write query, use something like:
 ```php
-$dbw = wfGetDB( DB_PRIMARY );
+$dbw = $lb->getConnectionRef( DB_PRIMARY );
 $dbw->insert( /* ...see docs... */ );
 ```
 We use the convention `$dbr` for read and `$dbw` for write to help you keep track of whether the database object is a replica (read-only) or a primary (read/write). If you write to a replica, the world will explode. Or to be precise, a subsequent write query which succeeded on the primary may fail when propagated to the replica due to a unique key collision. Replication will then stop and it may take hours to repair the database and get it back online. Setting `read_only` in `my.cnf` on the replica will avoid this scenario, but given the dire consequences, we prefer to have as many checks as possible.
@@ -58,7 +66,7 @@ To avoid excessive lag, queries which write large numbers of rows should be spli
 
 ## Working with lag
 
-Despite our best efforts, it's not practical to guarantee a low-lag environment. Lag will usually be less than one second, but may occasionally be up to 30 seconds. For scalability, it's very important to keep load on the primary low, so simply sending all your queries to the masprimaryter is not the answer. So when you have a genuine need for up-to-date data, the following approach is advised:
+Despite our best efforts, it's not practical to guarantee a low-lag environment. Lag will usually be less than one second, but may occasionally be up to 30 seconds. For scalability, it's very important to keep load on the primary low, so simply sending all your queries to the primary is not the answer. So when you have a genuine need for up-to-date data, the following approach is advised:
 
 1) Do a quick query to the primary for a sequence number or timestamp
 2) Run the full query on the replica and check if it matches the data you got
@@ -86,7 +94,7 @@ Instead of locking reads, combine your existence checks into your write queries,
 
 ## Query groups
 
-MediaWiki supports database query groups, a way to indicate a preferred group of database hosts to use for a given query. Query groups are only supported for connections to child (non-primary) databases, making them only viable for read operations. It should be noted that using query groups does not _guarantee_ a given group of hosts will be used, but rather that the query prefers such group. Making use of query groups can be benficial in many cases.
+MediaWiki supports database query groups, a way to indicate a preferred group of database hosts to use for a given query. Query groups are only supported for connections to child (non-primary) databases, making them only viable for read operations. It should be noted that using query groups does not _guarantee_ a given group of hosts will be used, but rather that the query prefers such group. Making use of query groups can be beneficial in many cases.
 
 One benefit is a reduction of cache misses. Directing reads for a category of queries (e.g. all logging queries) to a given host can result in more deterministic and faster performing queries.
 

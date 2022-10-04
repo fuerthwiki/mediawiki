@@ -24,13 +24,16 @@
  */
 
 use MediaWiki\Content\IContentHandlerFactory;
+use MediaWiki\Content\Renderer\ContentRenderer;
 use MediaWiki\Content\Transform\ContentTransformer;
+use MediaWiki\MainConfigNames;
 use MediaWiki\ParamValidator\TypeDef\UserDef;
 use MediaWiki\Revision\RevisionRecord;
 use MediaWiki\Revision\RevisionStore;
 use MediaWiki\Revision\SlotRoleRegistry;
 use MediaWiki\Storage\NameTableAccessException;
 use MediaWiki\Storage\NameTableStore;
+use Wikimedia\ParamValidator\ParamValidator;
 
 /**
  * Query module to enumerate all deleted revisions.
@@ -57,6 +60,7 @@ class ApiQueryAllDeletedRevisions extends ApiQueryRevisionsBase {
 	 * @param SlotRoleRegistry $slotRoleRegistry
 	 * @param NameTableStore $changeTagDefStore
 	 * @param NamespaceInfo $namespaceInfo
+	 * @param ContentRenderer $contentRenderer
 	 * @param ContentTransformer $contentTransformer
 	 */
 	public function __construct(
@@ -68,6 +72,7 @@ class ApiQueryAllDeletedRevisions extends ApiQueryRevisionsBase {
 		SlotRoleRegistry $slotRoleRegistry,
 		NameTableStore $changeTagDefStore,
 		NamespaceInfo $namespaceInfo,
+		ContentRenderer $contentRenderer,
 		ContentTransformer $contentTransformer
 	) {
 		parent::__construct(
@@ -78,6 +83,7 @@ class ApiQueryAllDeletedRevisions extends ApiQueryRevisionsBase {
 			$contentHandlerFactory,
 			$parserFactory,
 			$slotRoleRegistry,
+			$contentRenderer,
 			$contentTransformer
 		);
 		$this->revisionStore = $revisionStore;
@@ -90,7 +96,6 @@ class ApiQueryAllDeletedRevisions extends ApiQueryRevisionsBase {
 	 * @return void
 	 */
 	protected function run( ApiPageSet $resultPageSet = null ) {
-		$user = $this->getUser();
 		$db = $this->getDB();
 		$params = $this->extractRequestParams( false );
 
@@ -260,7 +265,7 @@ class ApiQueryAllDeletedRevisions extends ApiQueryRevisionsBase {
 				}
 			}
 		} else {
-			if ( $this->getConfig()->get( 'MiserMode' ) ) {
+			if ( $this->getConfig()->get( MainConfigNames::MiserMode ) ) {
 				$miser_ns = $params['namespace'];
 			} else {
 				$this->addWhereFld( 'ar_namespace', $params['namespace'] );
@@ -293,38 +298,27 @@ class ApiQueryAllDeletedRevisions extends ApiQueryRevisionsBase {
 		}
 
 		if ( $params['continue'] !== null ) {
-			$cont = explode( '|', $params['continue'] );
-			$op = ( $dir == 'newer' ? '>' : '<' );
+			$op = ( $dir == 'newer' ? '>=' : '<=' );
 			if ( $optimizeGenerateTitles ) {
-				$this->dieContinueUsageIf( count( $cont ) != 2 );
-				$ns = (int)$cont[0];
-				$this->dieContinueUsageIf( strval( $ns ) !== $cont[0] );
-				$title = $db->addQuotes( $cont[1] );
-				$this->addWhere( "ar_namespace $op $ns OR " .
-					"(ar_namespace = $ns AND ar_title $op= $title)" );
+				$cont = $this->parseContinueParamOrDie( $params['continue'], [ 'int', 'string' ] );
+				$this->addWhere( $db->buildComparison( $op, [
+					'ar_namespace' => $cont[0],
+					'ar_title' => $cont[1],
+				] ) );
 			} elseif ( $mode == 'all' ) {
-				$this->dieContinueUsageIf( count( $cont ) != 4 );
-				$ns = (int)$cont[0];
-				$this->dieContinueUsageIf( strval( $ns ) !== $cont[0] );
-				$title = $db->addQuotes( $cont[1] );
-				$ts = $db->addQuotes( $db->timestamp( $cont[2] ) );
-				$ar_id = (int)$cont[3];
-				$this->dieContinueUsageIf( strval( $ar_id ) !== $cont[3] );
-				$this->addWhere( "ar_namespace $op $ns OR " .
-					"(ar_namespace = $ns AND " .
-					"(ar_title $op $title OR " .
-					"(ar_title = $title AND " .
-					"(ar_timestamp $op $ts OR " .
-					"(ar_timestamp = $ts AND " .
-					"ar_id $op= $ar_id)))))" );
+				$cont = $this->parseContinueParamOrDie( $params['continue'], [ 'int', 'string', 'string', 'int' ] );
+				$this->addWhere( $db->buildComparison( $op, [
+					'ar_namespace' => $cont[0],
+					'ar_title' => $cont[1],
+					'ar_timestamp' => $db->timestamp( $cont[2] ),
+					'ar_id' => $cont[3],
+				] ) );
 			} else {
-				$this->dieContinueUsageIf( count( $cont ) != 2 );
-				$ts = $db->addQuotes( $db->timestamp( $cont[0] ) );
-				$ar_id = (int)$cont[1];
-				$this->dieContinueUsageIf( strval( $ar_id ) !== $cont[1] );
-				$this->addWhere( "ar_timestamp $op $ts OR " .
-					"(ar_timestamp = $ts AND " .
-					"ar_id $op= $ar_id)" );
+				$cont = $this->parseContinueParamOrDie( $params['continue'], [ 'string', 'int' ] );
+				$this->addWhere( $db->buildComparison( $op, [
+					'ar_timestamp' => $db->timestamp( $cont[0] ),
+					'ar_id' => $cont[1],
+				] ) );
 			}
 		}
 
@@ -441,27 +435,27 @@ class ApiQueryAllDeletedRevisions extends ApiQueryRevisionsBase {
 	public function getAllowedParams() {
 		$ret = parent::getAllowedParams() + [
 			'user' => [
-				ApiBase::PARAM_TYPE => 'user',
+				ParamValidator::PARAM_TYPE => 'user',
 				UserDef::PARAM_ALLOWED_USER_TYPES => [ 'name', 'ip', 'id', 'interwiki' ],
 			],
 			'namespace' => [
-				ApiBase::PARAM_ISMULTI => true,
-				ApiBase::PARAM_TYPE => 'namespace',
+				ParamValidator::PARAM_ISMULTI => true,
+				ParamValidator::PARAM_TYPE => 'namespace',
 			],
 			'start' => [
-				ApiBase::PARAM_TYPE => 'timestamp',
+				ParamValidator::PARAM_TYPE => 'timestamp',
 				ApiBase::PARAM_HELP_MSG_INFO => [ [ 'useronly' ] ],
 			],
 			'end' => [
-				ApiBase::PARAM_TYPE => 'timestamp',
+				ParamValidator::PARAM_TYPE => 'timestamp',
 				ApiBase::PARAM_HELP_MSG_INFO => [ [ 'useronly' ] ],
 			],
 			'dir' => [
-				ApiBase::PARAM_TYPE => [
+				ParamValidator::PARAM_TYPE => [
 					'newer',
 					'older'
 				],
-				ApiBase::PARAM_DFLT => 'older',
+				ParamValidator::PARAM_DEFAULT => 'older',
 				ApiBase::PARAM_HELP_MSG => 'api-help-param-direction',
 			],
 			'from' => [
@@ -474,7 +468,7 @@ class ApiQueryAllDeletedRevisions extends ApiQueryRevisionsBase {
 				ApiBase::PARAM_HELP_MSG_INFO => [ [ 'nonuseronly' ] ],
 			],
 			'excludeuser' => [
-				ApiBase::PARAM_TYPE => 'user',
+				ParamValidator::PARAM_TYPE => 'user',
 				UserDef::PARAM_ALLOWED_USER_TYPES => [ 'name', 'ip', 'id', 'interwiki' ],
 				ApiBase::PARAM_HELP_MSG_INFO => [ [ 'nonuseronly' ] ],
 			],
@@ -483,11 +477,11 @@ class ApiQueryAllDeletedRevisions extends ApiQueryRevisionsBase {
 				ApiBase::PARAM_HELP_MSG => 'api-help-param-continue',
 			],
 			'generatetitles' => [
-				ApiBase::PARAM_DFLT => false
+				ParamValidator::PARAM_DEFAULT => false
 			],
 		];
 
-		if ( $this->getConfig()->get( 'MiserMode' ) ) {
+		if ( $this->getConfig()->get( MainConfigNames::MiserMode ) ) {
 			$ret['user'][ApiBase::PARAM_HELP_MSG_APPEND] = [
 				'apihelp-query+alldeletedrevisions-param-miser-user-namespace',
 			];

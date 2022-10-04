@@ -6,12 +6,11 @@ use ApiUsageException;
 use HashConfig;
 use MediaWiki\Content\IContentHandlerFactory;
 use MediaWiki\Rest\Handler\CreationHandler;
-use MediaWiki\Rest\HttpException;
 use MediaWiki\Rest\LocalizedHttpException;
 use MediaWiki\Rest\RequestData;
+use MediaWiki\Revision\MutableRevisionRecord;
 use MediaWiki\Revision\RevisionLookup;
-use MediaWiki\Storage\MutableRevisionRecord;
-use MediaWiki\Storage\SlotRecord;
+use MediaWiki\Revision\SlotRecord;
 use MediaWiki\Tests\Unit\DummyServicesTrait;
 use MediaWikiIntegrationTestCase;
 use MockTitleTrait;
@@ -306,7 +305,7 @@ class CreationHandlerTest extends MediaWikiIntegrationTestCase {
 
 		$handler = $this->newHandler( $actionResult, null, $csrfSafe );
 
-		$response = $this->executeHandler( $handler, $request );
+		$response = $this->executeHandler( $handler, $request, [], [], [], [], null, $csrfSafe );
 
 		$this->assertSame( 201, $response->getStatusCode() );
 		$this->assertSame(
@@ -421,35 +420,6 @@ class CreationHandlerTest extends MediaWikiIntegrationTestCase {
 		];
 	}
 
-	public function testBodyValidation_extraneousToken() {
-		$requestData = [
-			'method' => 'POST',
-			'pathParams' => [ 'title' => 'Foo' ],
-			'headers' => [
-				'Content-Type' => 'application/json',
-			],
-			'bodyContents' => json_encode( [
-				'title' => 'Foo',
-				'token' => 'TOKEN',
-				'comment' => 'Testing',
-				'source' => 'Lorem Ipsum',
-				'content_model' => 'wikitext'
-			] ),
-		];
-
-		$request = new RequestData( $requestData );
-
-		$handler = $this->newHandler( [], null, true );
-
-		$exception = $this->executeHandlerAndGetHttpException( $handler, $request );
-
-		$this->assertSame( 400, $exception->getCode(), 'HTTP status' );
-		$this->assertInstanceOf( LocalizedHttpException::class, $exception );
-
-		$expectedMessage = new MessageValue( 'rest-extraneous-csrf-token' );
-		$this->assertEquals( $expectedMessage, $exception->getMessageValue() );
-	}
-
 	/**
 	 * @dataProvider provideHeaderValidation
 	 */
@@ -463,6 +433,9 @@ class CreationHandlerTest extends MediaWikiIntegrationTestCase {
 		$this->assertSame( $expectedStatus, $exception->getCode(), 'HTTP status' );
 	}
 
+	/*
+	 * FIXME: Status::newFatal invokes MediaWikiServices, which is not allowed in a dataProvider.
+	 */
 	public function provideErrorMapping() {
 		yield "missingtitle" => [
 			new ApiUsageException( null, Status::newFatal( 'apierror-missingtitle' ) ),
@@ -512,47 +485,46 @@ class CreationHandlerTest extends MediaWikiIntegrationTestCase {
 		];
 	}
 
-	/**
-	 * @dataProvider provideErrorMapping
-	 */
-	public function testErrorMapping(
-		ApiUsageException $apiUsageException,
-		HttpException $expectedHttpException
-	) {
-		$requestData = [ // Request data received by CreationHandler
-			'method' => 'POST',
-			'headers' => [
-				'Content-Type' => 'application/json',
-			],
-			'bodyContents' => json_encode( [
-				'title' => 'Foo',
-				'source' => 'Lorem Ipsum',
-				'comment' => 'Testing',
-				'content_model' => CONTENT_MODEL_WIKITEXT,
-			] ),
-		];
-		$request = new RequestData( $requestData );
+	public function testErrorMapping() {
+		$provideErrorMapping = $this->provideErrorMapping();
+		foreach ( $provideErrorMapping as $expected ) {
+			$apiUsageException = $expected[0];
+			$expectedHttpException = $expected[1];
+			$requestData = [ // Request data received by CreationHandler
+				'method' => 'POST',
+				'headers' => [
+					'Content-Type' => 'application/json',
+				],
+				'bodyContents' => json_encode( [
+					'title' => 'Foo',
+					'source' => 'Lorem Ipsum',
+					'comment' => 'Testing',
+					'content_model' => CONTENT_MODEL_WIKITEXT,
+				] ),
+			];
+			$request = new RequestData( $requestData );
 
-		$handler = $this->newHandler( [], $apiUsageException );
+			$handler = $this->newHandler( [], $apiUsageException );
 
-		$exception = $this->executeHandlerAndGetHttpException( $handler, $request );
+			$exception = $this->executeHandlerAndGetHttpException( $handler, $request );
 
-		$this->assertSame( $expectedHttpException->getMessage(), $exception->getMessage() );
-		$this->assertSame( $expectedHttpException->getCode(), $exception->getCode(), 'HTTP status' );
+			$this->assertSame( $expectedHttpException->getMessage(), $exception->getMessage() );
+			$this->assertSame( $expectedHttpException->getCode(), $exception->getCode(), 'HTTP status' );
 
-		$errorData = $exception->getErrorData();
-		if ( $expectedHttpException->getErrorData() ) {
-			foreach ( $expectedHttpException->getErrorData() as $key => $value ) {
-				$this->assertSame( $value, $errorData[$key], 'Error data key $key' );
+			$errorData = $exception->getErrorData();
+			if ( $expectedHttpException->getErrorData() ) {
+				foreach ( $expectedHttpException->getErrorData() as $key => $value ) {
+					$this->assertSame( $value, $errorData[$key], 'Error data key $key' );
+				}
 			}
-		}
 
-		if ( $expectedHttpException instanceof LocalizedHttpException ) {
-			/** @var LocalizedHttpException $exception */
-			$this->assertEquals(
-				$expectedHttpException->getMessageValue(),
-				$exception->getMessageValue()
-			);
+			if ( $expectedHttpException instanceof LocalizedHttpException ) {
+				/** @var LocalizedHttpException $exception */
+				$this->assertEquals(
+					$expectedHttpException->getMessageValue(),
+					$exception->getMessageValue()
+				);
+			}
 		}
 	}
 

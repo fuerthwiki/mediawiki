@@ -20,6 +20,8 @@
  * @file
  */
 
+use Wikimedia\ParamValidator\ParamValidator;
+
 /**
  * A query module to show basic page information.
  *
@@ -50,8 +52,8 @@ class ApiQueryPageProps extends ApiQueryBase {
 
 		$params = $this->extractRequestParams();
 		if ( $params['continue'] ) {
-			$continueValue = (int)$params['continue'];
-			$this->dieContinueUsageIf( strval( $continueValue ) !== $params['continue'] );
+			$cont = $this->parseContinueParamOrDie( $params['continue'], [ 'int' ] );
+			$continueValue = $cont[0];
 			$filteredPages = [];
 			foreach ( $pages as $id => $page ) {
 				if ( $id >= $continueValue ) {
@@ -112,7 +114,7 @@ class ApiQueryPageProps extends ApiQueryBase {
 				ApiBase::PARAM_HELP_MSG => 'api-help-param-continue',
 			],
 			'prop' => [
-				ApiBase::PARAM_ISMULTI => true,
+				ParamValidator::PARAM_ISMULTI => true,
 			],
 		];
 	}

@@ -1,7 +1,5 @@
 <?php
 /**
- * Slovenian (Slovenščina) specific code.
- *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
@@ -18,13 +16,15 @@
  * http://www.gnu.org/copyleft/gpl.html
  *
  * @file
- * @ingroup Language
  */
+
+use MediaWiki\MainConfigNames;
+use MediaWiki\MediaWikiServices;
 
 /**
  * Slovenian (Slovenščina)
  *
- * @ingroup Language
+ * @ingroup Languages
  */
 class LanguageSl extends Language {
 	# Convert from the nominative form of a noun to some other case
@@ -39,9 +39,10 @@ class LanguageSl extends Language {
 	 * @return string
 	 */
 	public function convertGrammar( $word, $case ) {
-		global $wgGrammarForms;
-		if ( isset( $wgGrammarForms['sl'][$case][$word] ) ) {
-			return $wgGrammarForms['sl'][$case][$word];
+		$grammarForms =
+			MediaWikiServices::getInstance()->getMainConfig()->get( MainConfigNames::GrammarForms );
+		if ( isset( $grammarForms['sl'][$case][$word] ) ) {
+			return $grammarForms['sl'][$case][$word];
 		}
 
 		switch ( $case ) {

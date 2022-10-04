@@ -94,6 +94,16 @@ class ParserOutputFlags {
 	// These flags are stored in the ParserOutput::$mFlags array
 
 	/**
+	 * @var string Show the table of contents in the skin?
+	 */
+	public const SHOW_TOC = 'show-toc';
+
+	/**
+	 * @var string Used to suppress language conversion in ToC contents.
+	 */
+	public const NO_TOC_CONVERSION = 'no-toc-conversion';
+
+	/**
 	 * @var string
 	 */
 	public const VARY_REVISION = 'vary-revision';
@@ -146,4 +156,26 @@ class ParserOutputFlags {
 	 * similar (T230652).
 	 */
 	public const USER_SIGNATURE = 'user-signature';
+
+	public static function cases(): array {
+		return [
+			self::NO_GALLERY,
+			self::NO_TOC_CONVERSION,
+			self::ENABLE_OOUI,
+			self::INDEX_POLICY,
+			self::NO_INDEX_POLICY,
+			self::NEW_SECTION,
+			self::HIDE_NEW_SECTION,
+			self::SHOW_TOC,
+			self::PREVENT_CLICKJACKING,
+			self::VARY_REVISION,
+			self::VARY_REVISION_ID,
+			self::VARY_REVISION_TIMESTAMP,
+			self::VARY_REVISION_SHA1,
+			self::VARY_REVISION_EXISTS,
+			self::VARY_PAGE_ID,
+			self::VARY_USER,
+			self::USER_SIGNATURE,
+		];
+	}
 }

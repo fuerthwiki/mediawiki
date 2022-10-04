@@ -22,6 +22,8 @@
 
 declare( strict_types = 1 );
 
+use MediaWiki\MainConfigNames;
+
 /**
  * Factory class for creating and checking Password objects
  *
@@ -39,7 +41,7 @@ final class PasswordFactory {
 	/**
 	 * Mapping of password types to classes
 	 *
-	 * @var array
+	 * @var array[]
 	 * @see PasswordFactory::register
 	 * @see Setup.php
 	 */
@@ -111,17 +113,17 @@ final class PasswordFactory {
 	 * @param Config $config Configuration object to load data from
 	 */
 	public function init( Config $config ): void {
-		foreach ( $config->get( 'PasswordConfig' ) as $type => $options ) {
+		foreach ( $config->get( MainConfigNames::PasswordConfig ) as $type => $options ) {
 			$this->register( $type, $options );
 		}
 
-		$this->setDefaultType( $config->get( 'PasswordDefault' ) );
+		$this->setDefaultType( $config->get( MainConfigNames::PasswordDefault ) );
 	}
 
 	/**
 	 * Get the list of types of passwords
 	 *
-	 * @return array
+	 * @return array[]
 	 */
 	public function getTypes(): array {
 		return $this->types;

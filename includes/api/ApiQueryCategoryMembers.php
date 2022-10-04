@@ -21,6 +21,9 @@
  */
 
 use MediaWiki\Collation\CollationFactory;
+use MediaWiki\MainConfigNames;
+use Wikimedia\ParamValidator\ParamValidator;
+use Wikimedia\ParamValidator\TypeDef\IntegerDef;
 
 /**
  * A query module to enumerate pages that belong to a category.
@@ -107,7 +110,7 @@ class ApiQueryCategoryMembers extends ApiQueryGeneratorBase {
 		// Scanning large datasets for rare categories sucks, and I already told
 		// how to have efficient subcategory access :-) ~~~~ (oh well, domas)
 		$miser_ns = [];
-		if ( $this->getConfig()->get( 'MiserMode' ) ) {
+		if ( $this->getConfig()->get( MainConfigNames::MiserMode ) ) {
 			$miser_ns = $params['namespace'] ?: [];
 		} else {
 			$this->addWhereFld( 'page_namespace', $params['namespace'] );
@@ -124,23 +127,19 @@ class ApiQueryCategoryMembers extends ApiQueryGeneratorBase {
 			$this->addWhereRange( 'cl_from', $dir, null, null );
 
 			if ( $params['continue'] !== null ) {
-				$cont = explode( '|', $params['continue'] );
-				$this->dieContinueUsageIf( count( $cont ) != 2 );
-				$op = ( $dir === 'newer' ? '>' : '<' );
+				$cont = $this->parseContinueParamOrDie( $params['continue'], [ 'string', 'int' ] );
+				$op = ( $dir === 'newer' ? '>=' : '<=' );
 				$db = $this->getDB();
-				$continueTimestamp = $db->addQuotes( $db->timestamp( $cont[0] ) );
-				$continueFrom = (int)$cont[1];
-				$this->dieContinueUsageIf( $continueFrom != $cont[1] );
-				$this->addWhere( "cl_timestamp $op $continueTimestamp OR " .
-					"(cl_timestamp = $continueTimestamp AND " .
-					"cl_from $op= $continueFrom)"
-				);
+				$this->addWhere( $db->buildComparison( $op, [
+					'cl_timestamp' => $db->timestamp( $cont[0] ),
+					'cl_from' => $cont[1],
+				] ) );
 			}
 
-			$this->addOption( 'USE INDEX', 'cl_timestamp' );
+			$this->addOption( 'USE INDEX', [ 'categorylinks' => 'cl_timestamp' ] );
 		} else {
 			if ( $params['continue'] ) {
-				$cont = explode( '|', $params['continue'], 3 );
+				$cont = explode( '|', $params['continue'] );
 				$this->dieContinueUsageIf( count( $cont ) != 3 );
 
 				// Remove the types to skip from $queryTypes
@@ -190,7 +189,7 @@ class ApiQueryCategoryMembers extends ApiQueryGeneratorBase {
 					$endsortkey );
 				$this->addWhereRange( 'cl_from', $dir, null, null );
 			}
-			$this->addOption( 'USE INDEX', 'cl_sortkey' );
+			$this->addOption( 'USE INDEX', [ 'categorylinks' => 'cl_sortkey' ] );
 		}
 
 		$this->addWhere( 'cl_from=page_id' );
@@ -311,15 +310,15 @@ class ApiQueryCategoryMembers extends ApiQueryGeneratorBase {
 	public function getAllowedParams() {
 		$ret = [
 			'title' => [
-				ApiBase::PARAM_TYPE => 'string',
+				ParamValidator::PARAM_TYPE => 'string',
 			],
 			'pageid' => [
-				ApiBase::PARAM_TYPE => 'integer'
+				ParamValidator::PARAM_TYPE => 'integer'
 			],
 			'prop' => [
-				ApiBase::PARAM_DFLT => 'ids|title',
-				ApiBase::PARAM_ISMULTI => true,
-				ApiBase::PARAM_TYPE => [
+				ParamValidator::PARAM_DEFAULT => 'ids|title',
+				ParamValidator::PARAM_ISMULTI => true,
+				ParamValidator::PARAM_TYPE => [
 					'ids',
 					'title',
 					'sortkey',
@@ -330,13 +329,13 @@ class ApiQueryCategoryMembers extends ApiQueryGeneratorBase {
 				ApiBase::PARAM_HELP_MSG_PER_VALUE => [],
 			],
 			'namespace' => [
-				ApiBase::PARAM_ISMULTI => true,
-				ApiBase::PARAM_TYPE => 'namespace',
+				ParamValidator::PARAM_ISMULTI => true,
+				ParamValidator::PARAM_TYPE => 'namespace',
 			],
 			'type' => [
-				ApiBase::PARAM_ISMULTI => true,
-				ApiBase::PARAM_DFLT => 'page|subcat|file',
-				ApiBase::PARAM_TYPE => [
+				ParamValidator::PARAM_ISMULTI => true,
+				ParamValidator::PARAM_DEFAULT => 'page|subcat|file',
+				ParamValidator::PARAM_TYPE => [
 					'page',
 					'subcat',
 					'file'
@@ -346,22 +345,22 @@ class ApiQueryCategoryMembers extends ApiQueryGeneratorBase {
 				ApiBase::PARAM_HELP_MSG => 'api-help-param-continue',
 			],
 			'limit' => [
-				ApiBase::PARAM_TYPE => 'limit',
-				ApiBase::PARAM_DFLT => 10,
-				ApiBase::PARAM_MIN => 1,
-				ApiBase::PARAM_MAX => ApiBase::LIMIT_BIG1,
-				ApiBase::PARAM_MAX2 => ApiBase::LIMIT_BIG2
+				ParamValidator::PARAM_TYPE => 'limit',
+				ParamValidator::PARAM_DEFAULT => 10,
+				IntegerDef::PARAM_MIN => 1,
+				IntegerDef::PARAM_MAX => ApiBase::LIMIT_BIG1,
+				IntegerDef::PARAM_MAX2 => ApiBase::LIMIT_BIG2
 			],
 			'sort' => [
-				ApiBase::PARAM_DFLT => 'sortkey',
-				ApiBase::PARAM_TYPE => [
+				ParamValidator::PARAM_DEFAULT => 'sortkey',
+				ParamValidator::PARAM_TYPE => [
 					'sortkey',
 					'timestamp'
 				]
 			],
 			'dir' => [
-				ApiBase::PARAM_DFLT => 'ascending',
-				ApiBase::PARAM_TYPE => [
+				ParamValidator::PARAM_DEFAULT => 'ascending',
+				ParamValidator::PARAM_TYPE => [
 					'asc',
 					'desc',
 					// Normalising with other modules
@@ -372,24 +371,24 @@ class ApiQueryCategoryMembers extends ApiQueryGeneratorBase {
 				]
 			],
 			'start' => [
-				ApiBase::PARAM_TYPE => 'timestamp'
+				ParamValidator::PARAM_TYPE => 'timestamp'
 			],
 			'end' => [
-				ApiBase::PARAM_TYPE => 'timestamp'
+				ParamValidator::PARAM_TYPE => 'timestamp'
 			],
 			'starthexsortkey' => null,
 			'endhexsortkey' => null,
 			'startsortkeyprefix' => null,
 			'endsortkeyprefix' => null,
 			'startsortkey' => [
-				ApiBase::PARAM_DEPRECATED => true,
+				ParamValidator::PARAM_DEPRECATED => true,
 			],
 			'endsortkey' => [
-				ApiBase::PARAM_DEPRECATED => true,
+				ParamValidator::PARAM_DEPRECATED => true,
 			],
 		];
 
-		if ( $this->getConfig()->get( 'MiserMode' ) ) {
+		if ( $this->getConfig()->get( MainConfigNames::MiserMode ) ) {
 			$ret['namespace'][ApiBase::PARAM_HELP_MSG_APPEND] = [
 				'api-help-param-limited-in-miser-mode',
 			];

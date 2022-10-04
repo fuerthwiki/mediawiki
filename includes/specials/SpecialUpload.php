@@ -22,6 +22,7 @@
  * @ingroup Upload
  */
 
+use MediaWiki\MainConfigNames;
 use MediaWiki\MediaWikiServices;
 use MediaWiki\User\UserOptionsLookup;
 use MediaWiki\Watchlist\WatchlistManager;
@@ -208,6 +209,7 @@ class SpecialUpload extends SpecialPage {
 		# Check blocks
 		if ( $user->isBlockedFromUpload() ) {
 			throw new UserBlockedError(
+				// @phan-suppress-next-line PhanTypeMismatchArgumentNullable Block is checked and not null
 				$user->getBlock(),
 				$user,
 				$this->getLanguage(),
@@ -280,14 +282,12 @@ class SpecialUpload extends SpecialPage {
 	 * Get an UploadForm instance with title and text properly set.
 	 *
 	 * @param string $message HTML string to add to the form
-	 * @param string $sessionKey Session key in case this is a stashed upload
+	 * @param string|null $sessionKey Session key in case this is a stashed upload
 	 * @param bool $hideIgnoreWarning Whether to hide "ignore warning" check box
 	 * @return UploadForm
 	 */
 	protected function getUploadForm( $message = '', $sessionKey = '', $hideIgnoreWarning = false ) {
 		# Initialize form
-		$context = new DerivativeContext( $this->getContext() );
-		$context->setTitle( $this->getPageTitle() ); // Remove subpage
 		$form = new UploadForm(
 			[
 				'watch' => $this->getWatchCheck(),
@@ -301,12 +301,13 @@ class SpecialUpload extends SpecialPage {
 				'textaftersummary' => $this->uploadFormTextAfterSummary,
 				'destfile' => $this->mDesiredDestName,
 			],
-			$context,
+			$this->getContext(),
 			$this->getLinkRenderer(),
 			$this->localRepo,
 			$this->getContentLanguage(),
 			$this->nsInfo
 		);
+		$form->setTitle( $this->getPageTitle() ); // Remove subpage
 
 		# Check the token, but only if necessary
 		if (
@@ -349,11 +350,10 @@ class SpecialUpload extends SpecialPage {
 	}
 
 	/**
-	 * Shows the "view X deleted revivions link""
+	 * Shows the "view X deleted revisions link""
 	 */
 	protected function showViewDeletedLinks() {
 		$title = Title::makeTitleSafe( NS_FILE, $this->mDesiredDestName );
-		$user = $this->getUser();
 		// Show a subtitle link to deleted revisions (to sysops et al only)
 		if ( $title instanceof Title ) {
 			$count = $title->getDeletedEditsCount();
@@ -381,7 +381,7 @@ class SpecialUpload extends SpecialPage {
 	 *
 	 * Note: only errors that can be handled by changing the name or
 	 * description should be redirected here. It should be assumed that the
-	 * file itself is sane and has passed UploadBase::verifyFile. This
+	 * file itself is sensible and has passed UploadBase::verifyFile. This
 	 * essentially means that UploadBase::VERIFICATION_ERROR and
 	 * UploadBase::EMPTY_FILE should not be passed here.
 	 *
@@ -651,7 +651,7 @@ class SpecialUpload extends SpecialPage {
 		}
 
 		$msg = [];
-		$forceUIMsgAsContentMsg = (array)$config->get( 'ForceUIMsgAsContentMsg' );
+		$forceUIMsgAsContentMsg = (array)$config->get( MainConfigNames::ForceUIMsgAsContentMsg );
 		/* These messages are transcluded into the actual text of the description page.
 		 * Thus, forcing them as content messages makes the upload to produce an int: template
 		 * instead of hardcoding it there in the uploader language.
@@ -676,7 +676,7 @@ class SpecialUpload extends SpecialPage {
 			$pageText = $headerText . "\n" . $pageText;
 		}
 
-		if ( $config->get( 'UseCopyrightUpload' ) ) {
+		if ( $config->get( MainConfigNames::UseCopyrightUpload ) ) {
 			$pageText .= '== ' . $msg['filestatus'] . " ==\n" . $copyStatus . "\n";
 			$pageText .= $licenseText;
 			$pageText .= '== ' . $msg['filesource'] . " ==\n" . $source;
@@ -768,7 +768,8 @@ class SpecialUpload extends SpecialPage {
 				} else {
 					$msg->params( $details['finalExt'] );
 				}
-				$extensions = array_unique( $this->getConfig()->get( 'FileExtensions' ) );
+				$extensions =
+					array_unique( $this->getConfig()->get( MainConfigNames::FileExtensions ) );
 				$msg->params( $this->getLanguage()->commaList( $extensions ),
 					count( $extensions ) );
 

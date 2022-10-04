@@ -23,6 +23,7 @@
 
 use MediaWiki\Cache\LinkBatchFactory;
 use MediaWiki\Content\IContentHandlerFactory;
+use MediaWiki\MainConfigNames;
 use MediaWiki\Permissions\GroupPermissionsLookup;
 use MediaWiki\Revision\MutableRevisionRecord;
 use MediaWiki\Revision\RevisionLookup;
@@ -221,15 +222,7 @@ class SpecialNewpages extends IncludableSpecialPage {
 			$out->setFeedAppendQuery( wfArrayToCgi( $allValues ) );
 		}
 
-		$pager = new NewPagesPager(
-			$this,
-			$this->opts,
-			$this->linkBatchFactory,
-			$this->getHookContainer(),
-			$this->groupPermissionsLookup,
-			$this->loadBalancer,
-			$this->namespaceInfo
-		);
+		$pager = $this->getNewPagesPager();
 		$pager->mLimit = $this->opts->getValue( 'limit' );
 		$pager->mOffset = $this->opts->getValue( 'offset' );
 
@@ -252,10 +245,10 @@ class SpecialNewpages extends IncludableSpecialPage {
 
 		// Option value -> message mapping
 		$filters = [
-			'hideliu' => 'rcshowhideliu',
-			'hidepatrolled' => 'rcshowhidepatr',
-			'hidebots' => 'rcshowhidebots',
-			'hideredirs' => 'whatlinkshere-hideredirs'
+			'hideliu' => 'newpages-showhide-registered',
+			'hidepatrolled' => 'newpages-showhide-patrolled',
+			'hidebots' => 'newpages-showhide-bots',
+			'hideredirs' => 'newpages-showhide-redirect'
 		];
 		foreach ( $this->customFilters as $key => $params ) {
 			$filters[$key] = $params['msg'];
@@ -355,7 +348,7 @@ class SpecialNewpages extends IncludableSpecialPage {
 			'size' => [
 				'type' => 'sizefilter',
 				'name' => 'size',
-				'default' => -$max * $size,
+				'default' => ( $max ? -1 : 1 ) * $size,
 			],
 		];
 
@@ -392,7 +385,7 @@ class SpecialNewpages extends IncludableSpecialPage {
 	 * @param Title $title
 	 * @return RevisionRecord
 	 */
-	private function revisionFromRcResult( stdClass $result, Title $title ): RevisionRecord {
+	protected function revisionFromRcResult( stdClass $result, Title $title ): RevisionRecord {
 		$revRecord = new MutableRevisionRecord( $title );
 		$revRecord->setComment(
 			$this->commentStore->getComment( 'rc_comment', $result )
@@ -530,6 +523,18 @@ class SpecialNewpages extends IncludableSpecialPage {
 		return Html::rawElement( 'li', $attribs, $ret ) . "\n";
 	}
 
+	private function getNewPagesPager() {
+		return new NewPagesPager(
+			$this,
+			$this->groupPermissionsLookup,
+			$this->getHookContainer(),
+			$this->linkBatchFactory,
+			$this->loadBalancer,
+			$this->namespaceInfo,
+			$this->opts
+		);
+	}
+
 	/**
 	 * Should a specific result row provide "patrollable" links?
 	 *
@@ -546,13 +551,13 @@ class SpecialNewpages extends IncludableSpecialPage {
 	 * @param string $type
 	 */
 	protected function feed( $type ) {
-		if ( !$this->getConfig()->get( 'Feed' ) ) {
+		if ( !$this->getConfig()->get( MainConfigNames::Feed ) ) {
 			$this->getOutput()->addWikiMsg( 'feed-unavailable' );
 
 			return;
 		}
 
-		$feedClasses = $this->getConfig()->get( 'FeedClasses' );
+		$feedClasses = $this->getConfig()->get( MainConfigNames::FeedClasses );
 		if ( !isset( $feedClasses[$type] ) ) {
 			$this->getOutput()->addWikiMsg( 'feed-invalid' );
 
@@ -565,17 +570,9 @@ class SpecialNewpages extends IncludableSpecialPage {
 			$this->getPageTitle()->getFullURL()
 		);
 
-		$pager = new NewPagesPager(
-			$this,
-			$this->opts,
-			$this->linkBatchFactory,
-			$this->getHookContainer(),
-			$this->groupPermissionsLookup,
-			$this->loadBalancer,
-			$this->namespaceInfo
-		);
+		$pager = $this->getNewPagesPager();
 		$limit = $this->opts->getValue( 'limit' );
-		$pager->mLimit = min( $limit, $this->getConfig()->get( 'FeedLimit' ) );
+		$pager->mLimit = min( $limit, $this->getConfig()->get( MainConfigNames::FeedLimit ) );
 
 		$feed->outHeader();
 		if ( $pager->getNumRows() > 0 ) {
@@ -588,8 +585,8 @@ class SpecialNewpages extends IncludableSpecialPage {
 
 	protected function feedTitle() {
 		$desc = $this->getDescription();
-		$code = $this->getConfig()->get( 'LanguageCode' );
-		$sitename = $this->getConfig()->get( 'Sitename' );
+		$code = $this->getConfig()->get( MainConfigNames::LanguageCode );
+		$sitename = $this->getConfig()->get( MainConfigNames::Sitename );
 
 		return "$sitename - $desc [$code]";
 	}

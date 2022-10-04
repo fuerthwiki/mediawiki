@@ -1,20 +1,27 @@
 <?php
 
 use MediaWiki\Config\ServiceOptions;
-use MediaWiki\MediaWikiServices;
 use MediaWiki\User\UserIdentity;
 use MediaWiki\User\UserIdentityValue;
 use MediaWiki\User\UserOptionsLookup;
 use MediaWiki\User\UserOptionsManager;
 use Psr\Log\NullLogger;
 use Wikimedia\Rdbms\DBConnRef;
+use Wikimedia\Rdbms\FakeResultWrapper;
 use Wikimedia\Rdbms\ILoadBalancer;
+use Wikimedia\Timestamp\ConvertibleTimestamp;
 
 /**
  * @group Database
  * @covers MediaWiki\User\UserOptionsManager
  */
 class UserOptionsManagerTest extends UserOptionsLookupTest {
+
+	protected function setUp(): void {
+		parent::setUp();
+		$this->tablesUsed[] = 'user';
+		$this->tablesUsed[] = 'user_properties';
+	}
 
 	/**
 	 * @param array $overrides supported keys:
@@ -25,7 +32,7 @@ class UserOptionsManagerTest extends UserOptionsLookupTest {
 	 * @return UserOptionsManager
 	 */
 	private function getManager( array $overrides = [] ) {
-		$services = MediaWikiServices::getInstance();
+		$services = $this->getServiceContainer();
 		return new UserOptionsManager(
 			new ServiceOptions(
 				UserOptionsManager::CONSTRUCTOR_OPTIONS,
@@ -41,7 +48,8 @@ class UserOptionsManagerTest extends UserOptionsLookupTest {
 			$services->getLanguageConverterFactory(),
 			$overrides['lb'] ?? $services->getDBLoadBalancer(),
 			new NullLogger(),
-			$overrides['hookContainer'] ?? $services->getHookContainer()
+			$overrides['hookContainer'] ?? $services->getHookContainer(),
+			$services->getUserFactory()
 		);
 	}
 
@@ -80,7 +88,6 @@ class UserOptionsManagerTest extends UserOptionsLookupTest {
 		$expected = [
 			// Note that the old, relaxed array_diff-approach considered null equal to false and ""
 			'null_vs_false' => false,
-			'null_vs_string' => '',
 			'language' => 'en',
 			'variant' => 'en',
 			'new_option' => 'new_value',
@@ -128,27 +135,13 @@ class UserOptionsManagerTest extends UserOptionsLookupTest {
 		$this->assertSame( 42, $manager->getIntOption( $user, 'int_option' ) );
 		$this->assertSame( true, $manager->getBoolOption( $user, 'bool_option' ) );
 		$manager->saveOptions( $user );
+		$this->assertSame( 'user_value', $manager->getOption( $user, 'string_option' ) );
+		$this->assertSame( 42, $manager->getIntOption( $user, 'int_option' ) );
+		$this->assertSame( true, $manager->getBoolOption( $user, 'bool_option' ) );
 		$manager = $this->getManager();
 		$this->assertSame( 'user_value', $manager->getOption( $user, 'string_option' ) );
 		$this->assertSame( 42, $manager->getIntOption( $user, 'int_option' ) );
 		$this->assertSame( true, $manager->getBoolOption( $user, 'bool_option' ) );
-	}
-
-	/**
-	 * @covers MediaWiki\User\UserOptionsManager::loadUserOptions
-	 */
-	public function testUserLoadOptionsHook() {
-		$this->filterDeprecated( '/UserLoadOptions/' );
-		$user = $this->getTestUser()->getUser();
-		$this->setTemporaryHook(
-			'UserLoadOptions',
-			static function ( User $hookUser, &$options ) use ( $user ) {
-				if ( $hookUser->equals( $user ) ) {
-					$options['from_hook'] = 'value_from_hook';
-				}
-			}
-		);
-		$this->assertSame( 'value_from_hook', $this->getManager()->getOption( $user, 'from_hook' ) );
 	}
 
 	/**
@@ -170,24 +163,6 @@ class UserOptionsManagerTest extends UserOptionsLookupTest {
 	/**
 	 * @covers MediaWiki\User\UserOptionsManager::saveOptions
 	 */
-	public function testUserSaveOptionsHookAbort() {
-		$this->filterDeprecated( '/UserSaveOptions/' );
-		$user = $this->getTestUser()->getUser();
-		$this->setTemporaryHook(
-			'UserSaveOptions',
-			static function () {
-				return false;
-			}
-		);
-		$manager = $this->getManager();
-		$manager->setOption( $user, 'will_be_aborted_by_hook', 'value' );
-		$manager->saveOptions( $user );
-		$this->assertNull( $this->getManager()->getOption( $user, 'will_be_aborted_by_hook' ) );
-	}
-
-	/**
-	 * @covers MediaWiki\User\UserOptionsManager::saveOptions
-	 */
 	public function testSaveUserOptionsHookAbort() {
 		$manager = $this->getManager( [
 			'hookContainer' => $this->createHookContainer( [
@@ -200,27 +175,6 @@ class UserOptionsManagerTest extends UserOptionsLookupTest {
 		$manager->setOption( $user, 'will_be_aborted_by_hook', 'value' );
 		$manager->saveOptions( $user );
 		$this->assertNull( $this->getManager()->getOption( $user, 'will_be_aborted_by_hook' ) );
-	}
-
-	/**
-	 * @covers MediaWiki\User\UserOptionsManager::saveOptions
-	 */
-	public function testUserSaveOptionsHookModify() {
-		$this->filterDeprecated( '/UserSaveOptions/' );
-		$user = $this->getTestUser()->getUser();
-		$this->setTemporaryHook(
-			'UserSaveOptions',
-			static function ( User $hookUser, &$options ) use ( $user ) {
-				if ( $hookUser->equals( $user ) ) {
-					$options['from_hook'] = 'value_from_hook';
-				}
-				return true;
-			}
-		);
-		$manager = $this->getManager();
-		$manager->saveOptions( $user );
-		$this->assertSame( 'value_from_hook', $manager->getOption( $user, 'from_hook' ) );
-		$this->assertSame( 'value_from_hook', $this->getManager()->getOption( $user, 'from_hook' ) );
 	}
 
 	/**
@@ -256,30 +210,6 @@ class UserOptionsManagerTest extends UserOptionsLookupTest {
 	/**
 	 * @covers MediaWiki\User\UserOptionsManager::saveOptions
 	 */
-	public function testUserSaveOptionsHookOriginal() {
-		$this->filterDeprecated( '/UserSaveOptions/' );
-		$user = $this->getTestUser()->getUser();
-		$manager = $this->getManager();
-		$originalLanguage = $manager->getOption( $user, 'language' );
-		$manager->setOption( $user, 'language', 'ru' );
-		$this->setTemporaryHook(
-			'UserSaveOptions',
-			function ( User $hookUser, &$options, $originalOptions ) use ( $user, $originalLanguage ) {
-				if ( $hookUser->equals( $user ) ) {
-					$this->assertSame( $originalLanguage, $originalOptions['language'] );
-					$this->assertSame( 'ru', $options['language'] );
-					$options['language'] = 'tr';
-				}
-				return true;
-			}
-		);
-		$manager->saveOptions( $user );
-		$this->assertSame( 'tr', $manager->getOption( $user, 'language' ) );
-	}
-
-	/**
-	 * @covers MediaWiki\User\UserOptionsManager::saveOptions
-	 */
 	public function testSaveUserOptionsHookOriginal() {
 		$user = UserIdentityValue::newRegistered( 42, 'Test' );
 		$manager = $this->getManager( [
@@ -302,61 +232,6 @@ class UserOptionsManagerTest extends UserOptionsLookupTest {
 		$manager->setOption( $user, 'language', 'ru' );
 		$manager->saveOptions( $user );
 		$this->assertSame( 'tr', $manager->getOption( $user, 'language' ) );
-	}
-
-	/**
-	 * @covers \MediaWiki\User\UserOptionsManager::saveOptions
-	 * @covers \MediaWiki\User\UserOptionsManager::loadUserOptions
-	 */
-	public function testLoadOptionsHookReflectsInOriginalOptions() {
-		$this->filterDeprecated( '/UserSaveOptions/' );
-		$this->filterDeprecated( '/UserLoadOptions/' );
-		$user = $this->getTestUser()->getUser();
-		$manager = $this->getManager();
-		$this->setTemporaryHook(
-			'UserLoadOptions',
-			static function ( User $hookUser, &$options ) use ( $user ) {
-				if ( $hookUser->equals( $user ) ) {
-					$options['from_load_hook'] = 'from_load_hook';
-				}
-			}
-		);
-		$this->setTemporaryHook(
-			'UserSaveOptions',
-			function ( User $hookUser, &$options, $originalOptions ) use ( $user ) {
-				if ( $hookUser->equals( $user ) ) {
-					$this->assertSame( 'from_load_hook', $options['from_load_hook'] );
-					$this->assertSame( 'from_load_hook', $originalOptions['from_load_hook'] );
-					$options['from_save_hook'] = 'from_save_hook';
-				}
-				return true;
-			}
-		);
-		$manager->saveOptions( $user );
-		$this->assertSame( 'from_load_hook', $manager->getOption( $user, 'from_load_hook' ) );
-		$this->assertSame( 'from_save_hook', $manager->getOption( $user, 'from_save_hook' ) );
-	}
-
-	/**
-	 * @covers \MediaWiki\User\UserOptionsManager::loadUserOptions
-	 */
-	public function testInfiniteRecursionOnUserLoadOptionsHook() {
-		$this->filterDeprecated( '/UserLoadOptions/' );
-		$user = $this->getTestUser()->getUser();
-		$manager = $this->getManager();
-		$recursionCounter = 0;
-		$this->setTemporaryHook(
-			'UserLoadOptions',
-			function ( User $hookUser ) use ( $user, $manager, &$recursionCounter ) {
-				if ( $hookUser->equals( $user ) ) {
-					$recursionCounter += 1;
-					$this->assertSame( 1, $recursionCounter );
-					$manager->loadUserOptions( $hookUser );
-				}
-			}
-		);
-		$manager->loadUserOptions( $user, UserOptionsManager::READ_LATEST );
-		$this->assertSame( 1, $recursionCounter );
 	}
 
 	/**
@@ -432,5 +307,25 @@ class UserOptionsManagerTest extends UserOptionsLookupTest {
 		$manager->setOption( $user, 'test_option', 'test_value' );
 		$manager->setOption( $user, 'test_option2', 'test_value2' );
 		$manager->saveOptions( $user );
+	}
+
+	/**
+	 * @covers \MediaWiki\User\UserOptionsManager::saveOptions
+	 */
+	public function testUpdatesUserTouched() {
+		$user = $this->getTestUser()->getUser();
+		$userTouched = $user->getDBTouched();
+		$newTouched = ConvertibleTimestamp::convert(
+			TS_MW,
+			intval( ConvertibleTimestamp::convert( TS_UNIX, $userTouched ) ) + 100
+		);
+		ConvertibleTimestamp::setFakeTime( $newTouched );
+
+		$manager = $this->getManager();
+		$manager->setOption( $user, 'test_option', 'test_value' );
+		$manager->saveOptions( $user );
+		$this->assertSame( $newTouched, $user->getDBTouched() );
+		$user->clearInstanceCache();
+		$this->assertSame( $newTouched, $user->getDBTouched() );
 	}
 }

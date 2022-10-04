@@ -21,6 +21,7 @@
  * @ingroup Feed
  */
 
+use MediaWiki\MainConfigNames;
 use MediaWiki\MediaWikiServices;
 use MediaWiki\Revision\RevisionRecord;
 use MediaWiki\Revision\SlotRecord;
@@ -42,20 +43,20 @@ class FeedUtils {
 	 * @return bool
 	 */
 	public static function checkFeedOutput( $type, $output = null ) {
-		global $wgFeed, $wgFeedClasses;
-
+		$feed = MediaWikiServices::getInstance()->getMainConfig()->get( MainConfigNames::Feed );
+		$feedClasses = MediaWikiServices::getInstance()->getMainConfig()->get( MainConfigNames::FeedClasses );
 		if ( $output === null ) {
 			// Todo update GoogleNewsSitemap and deprecate
 			global $wgOut;
 			$output = $wgOut;
 		}
 
-		if ( !$wgFeed ) {
+		if ( !$feed ) {
 			$output->addWikiMsg( 'feed-unavailable' );
 			return false;
 		}
 
-		if ( !isset( $wgFeedClasses[$type] ) ) {
+		if ( !isset( $feedClasses[$type] ) ) {
 			$output->addWikiMsg( 'feed-invalid' );
 			return false;
 		}
@@ -102,7 +103,7 @@ class FeedUtils {
 	 * @param Title $title
 	 * @param int $oldid Old revision's id
 	 * @param int $newid New revision's id
-	 * @param int $timestamp New revision's timestamp
+	 * @param string $timestamp New revision's timestamp
 	 * @param string $comment New revision's comment
 	 * @param string $actiontext Text of the action; in case of log event
 	 * @return string
@@ -123,7 +124,7 @@ class FeedUtils {
 	 * @param Title $title
 	 * @param int $oldid Old revision's id
 	 * @param int $newid New revision's id
-	 * @param int $timestamp New revision's timestamp
+	 * @param string $timestamp New revision's timestamp
 	 * @param string $formattedComment New revision's comment in HTML format
 	 * @param string $actiontext Text of the action; in case of log event
 	 * @return string
@@ -131,7 +132,7 @@ class FeedUtils {
 	public static function formatDiffRow2( $title, $oldid, $newid, $timestamp,
 		$formattedComment, $actiontext = ''
 	) {
-		global $wgFeedDiffCutoff;
+		$feedDiffCutoff = MediaWikiServices::getInstance()->getMainConfig()->get( MainConfigNames::FeedDiffCutoff );
 
 		// log entries
 		$unwrappedText = implode(
@@ -163,7 +164,7 @@ class FeedUtils {
 		if ( $oldid ) {
 			$diffText = '';
 			// Don't bother generating the diff if we won't be able to show it
-			if ( $wgFeedDiffCutoff > 0 ) {
+			if ( $feedDiffCutoff > 0 ) {
 				$revRecord = $revLookup->getRevisionById( $oldid );
 
 				if ( !$revRecord ) {
@@ -190,7 +191,7 @@ class FeedUtils {
 				}
 			}
 
-			if ( $wgFeedDiffCutoff <= 0 || ( strlen( $diffText ) > $wgFeedDiffCutoff ) ) {
+			if ( $feedDiffCutoff <= 0 || ( strlen( $diffText ) > $feedDiffCutoff ) ) {
 				// Omit large diffs
 				$diffText = self::getDiffLink( $title, $newid, $oldid );
 			} elseif ( $diffText === false ) {
@@ -207,7 +208,7 @@ class FeedUtils {
 			}
 		} else {
 			$revRecord = $revLookup->getRevisionById( $newid );
-			if ( $wgFeedDiffCutoff <= 0 || $revRecord === null ) {
+			if ( $feedDiffCutoff <= 0 || $revRecord === null ) {
 				$newContent = $contentHandlerFactory
 					->getContentHandler( $title->getContentModel() )
 					->makeEmptyContent();
@@ -219,7 +220,7 @@ class FeedUtils {
 				// only textual content has a "source view".
 				$text = $newContent->getText();
 
-				if ( $wgFeedDiffCutoff <= 0 || strlen( $text ) > $wgFeedDiffCutoff ) {
+				if ( $feedDiffCutoff <= 0 || strlen( $text ) > $feedDiffCutoff ) {
 					$html = null;
 				} else {
 					$html = nl2br( htmlspecialchars( $text ) );

@@ -1,6 +1,7 @@
 <?php
 
 use MediaWiki\EditPage\SpamChecker;
+use MediaWiki\MainConfigNames;
 use MediaWiki\Permissions\PermissionManager;
 
 /**
@@ -18,14 +19,14 @@ class EditPageConstraintsTest extends MediaWikiLangTestCase {
 	protected function setUp(): void {
 		parent::setUp();
 
-		$this->setContentLang( $this->getServiceContainer()->getContentLanguage() );
-
-		$this->setMwGlobals( [
-			'wgExtraNamespaces' => [
+		$contLang = $this->getServiceContainer()->getContentLanguage();
+		$this->overrideConfigValues( [
+			MainConfigNames::ExtraNamespaces => [
 				12312 => 'Dummy',
 				12313 => 'Dummy_talk',
 			],
-			'wgNamespaceContentModels' => [ 12312 => 'testing' ],
+			MainConfigNames::NamespaceContentModels => [ 12312 => 'testing' ],
+			MainConfigNames::LanguageCode => $contLang->getCode(),
 		] );
 		$this->mergeMwGlobalArrayValue(
 			'wgContentHandlers',
@@ -71,7 +72,8 @@ class EditPageConstraintsTest extends MediaWikiLangTestCase {
 		}
 		$this->assertNotNull( $title );
 
-		$page = $this->getServiceContainer()->getWikiPageFactory()->newFromTitle( $title );
+		$wikiPageFactory = $this->getServiceContainer()->getWikiPageFactory();
+		$page = $wikiPageFactory->newFromTitle( $title );
 
 		if ( $user == null ) {
 			$user = $this->getTestUser()->getUser();
@@ -90,7 +92,6 @@ class EditPageConstraintsTest extends MediaWikiLangTestCase {
 			);
 			$page->clear();
 
-			// sanity check
 			$content = $page->getContent();
 			$this->assertInstanceOf( TextContent::class, $content );
 			$currentText = $content->getText();
@@ -100,7 +101,7 @@ class EditPageConstraintsTest extends MediaWikiLangTestCase {
 			$this->assertEquals(
 				rtrim( $baseText ),
 				rtrim( $currentText ),
-				'Sanity check: page should have the text specified'
+				'page should have the text specified'
 			);
 		}
 
@@ -146,7 +147,7 @@ class EditPageConstraintsTest extends MediaWikiLangTestCase {
 			"Expected result code mismatch. $message"
 		);
 
-		return WikiPage::factory( $title );
+		return $wikiPageFactory->newFromTitle( $title );
 	}
 
 	/** AccidentalRecreationConstraint integration */
@@ -209,7 +210,7 @@ class EditPageConstraintsTest extends MediaWikiLangTestCase {
 		$user = $this->getTestUser()->getUser();
 
 		$permissionManager = $this->getServiceContainer()->getPermissionManager();
-		// Needs edit rights to pass EditRightConstraint and reach NewSectionMissingSummaryConstraint
+		// Needs edit rights to pass EditRightConstraint and reach NewSectionMissingSubjectConstraint
 		$permissionManager->overrideUserRightsForTesting( $user, [ 'edit' ] );
 
 		$edit = [
@@ -262,11 +263,11 @@ class EditPageConstraintsTest extends MediaWikiLangTestCase {
 			'format' => CONTENT_FORMAT_TEXT,
 		];
 
-		$title = Title::newFromText( 'Example', NS_MAIN );
+		$title = Title::makeTitle( NS_MAIN, 'Example' );
 		$this->assertSame(
 			CONTENT_MODEL_WIKITEXT,
 			$title->getContentModel(),
-			'Sanity check: title should start as wikitext content model'
+			'title should start as wikitext content model'
 		);
 
 		$this->assertEdit(
@@ -448,7 +449,7 @@ class EditPageConstraintsTest extends MediaWikiLangTestCase {
 			'wpSummary' => 'Summary'
 		];
 
-		$title = Title::newFromText( 'Example.jpg', NS_FILE );
+		$title = Title::makeTitle( NS_FILE, 'Example.jpg' );
 		$this->assertEdit(
 			$title,
 			null,
@@ -490,21 +491,21 @@ class EditPageConstraintsTest extends MediaWikiLangTestCase {
 		);
 	}
 
-	/** NewSectionMissingSummaryConstraint integration */
-	public function testNewSectionMissingSummaryConstraint() {
+	/** NewSectionMissingSubjectConstraint integration */
+	public function testNewSectionMissingSubjectConstraint() {
 		// Require the summary
 		$this->mergeMwGlobalArrayValue(
 			'wgDefaultUserOptions',
 			[ 'forceeditsummary' => 1 ]
 		);
 
-		$page = $this->getExistingTestPage( 'NewSectionMissingSummaryConstraint page does exist' );
+		$page = $this->getExistingTestPage( 'NewSectionMissingSubjectConstraint page does exist' );
 		$title = $page->getTitle();
 
 		$user = $this->getTestUser()->getUser();
 
 		$permissionManager = $this->getServiceContainer()->getPermissionManager();
-		// Needs edit rights to pass EditRightConstraint and reach NewSectionMissingSummaryConstraint
+		// Needs edit rights to pass EditRightConstraint and reach NewSectionMissingSubjectConstraint
 		$permissionManager->overrideUserRightsForTesting( $user, [ 'edit' ] );
 
 		$edit = [
@@ -525,9 +526,7 @@ class EditPageConstraintsTest extends MediaWikiLangTestCase {
 	/** PageSizeConstraint integration */
 	public function testPageSizeConstraintBeforeMerge() {
 		// Max size: 1 kibibyte
-		$this->setMwGlobals( [
-			'wgMaxArticleSize' => 1
-		] );
+		$this->overrideConfigValue( MainConfigNames::MaxArticleSize, 1 );
 
 		$edit = [
 			'wpTextbox1' => str_repeat( 'text', 1000 )
@@ -545,9 +544,7 @@ class EditPageConstraintsTest extends MediaWikiLangTestCase {
 	/** PageSizeConstraint integration */
 	public function testPageSizeConstraintAfterMerge() {
 		// Max size: 1 kibibyte
-		$this->setMwGlobals( [
-			'wgMaxArticleSize' => 1
-		] );
+		$this->overrideConfigValue( MainConfigNames::MaxArticleSize, 1 );
 
 		$edit = [
 			'wpSection' => 'new',

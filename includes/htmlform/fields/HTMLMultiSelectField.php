@@ -1,11 +1,16 @@
 <?php
 
+use MediaWiki\MainConfigNames;
+
 /**
  * Multi-select field
  *
  * @stable to extend
  */
 class HTMLMultiSelectField extends HTMLFormField implements HTMLNestedFilterable {
+	/* @var string */
+	private $mPlaceholder;
+
 	/**
 	 * @stable to call
 	 *
@@ -28,6 +33,11 @@ class HTMLMultiSelectField extends HTMLFormField implements HTMLNestedFilterable
 
 		if ( isset( $params['dropdown'] ) ) {
 			$this->mClass .= ' mw-htmlform-dropdown';
+			if ( isset( $params['placeholder'] ) ) {
+				$this->mPlaceholder = $params['placeholder'];
+			} elseif ( isset( $params['placeholder-message'] ) ) {
+				$this->mPlaceholder = $this->msg( $params['placeholder-message'] )->text();
+			}
 		}
 
 		if ( isset( $params['flatlist'] ) ) {
@@ -134,7 +144,7 @@ class HTMLMultiSelectField extends HTMLFormField implements HTMLNestedFilterable
 					[ 'for' => $attribs['id'] ],
 					$label
 				);
-			if ( $this->mParent->getConfig()->get( 'UseMediaWikiUIEverywhere' ) ) {
+			if ( $this->mParent->getConfig()->get( MainConfigNames::UseMediaWikiUIEverywhere ) ) {
 				$checkbox = Html::openElement( 'div', [ 'class' => 'mw-ui-checkbox' ] ) .
 					$checkbox .
 					Html::closeElement( 'div' );
@@ -235,9 +245,14 @@ class HTMLMultiSelectField extends HTMLFormField implements HTMLNestedFilterable
 		}
 
 		if ( !$hasSections && $out ) {
+			if ( $this->mPlaceholder ) {
+				$out[0]->setData( ( $out[0]->getData() ?: [] ) + [
+					'placeholder' => $this->mPlaceholder,
+				] );
+			}
 			// Directly return the only OOUI\CheckboxMultiselectInputWidget.
 			// This allows it to be made infusable and later tweaked by JS code.
-			return $out[ 0 ];
+			return $out[0];
 		}
 
 		return implode( '', $out );
@@ -257,6 +272,7 @@ class HTMLMultiSelectField extends HTMLFormField implements HTMLNestedFilterable
 		if ( $this->isSubmitAttempt( $request ) || $fromRequest ) {
 			// Checkboxes are just not added to the request arrays if they're not checked,
 			// so it's perfectly possible for there not to be an entry at all
+			// @phan-suppress-next-line PhanTypeMismatchReturnNullable getArray does not return null
 			return $fromRequest;
 		} else {
 			// That's ok, the user has not yet submitted the form, so show the defaults
@@ -279,10 +295,11 @@ class HTMLMultiSelectField extends HTMLFormField implements HTMLNestedFilterable
 	public function filterDataForSubmit( $data ) {
 		$data = HTMLFormField::forceToStringRecursive( $data );
 		$options = HTMLFormField::flattenOptions( $this->getOptions() );
+		$forcedOn = array_intersect( $this->mParams['disabled-options'], $this->getDefault() );
 
 		$res = [];
 		foreach ( $options as $opt ) {
-			$res["$opt"] = in_array( $opt, $data, true );
+			$res["$opt"] = in_array( $opt, $forcedOn, true ) || in_array( $opt, $data, true );
 		}
 
 		return $res;
