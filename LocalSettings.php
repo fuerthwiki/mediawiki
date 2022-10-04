@@ -196,6 +196,10 @@ $smwgNamespacesWithSemanticLinks[250] = true; # Seite
 
 $wgDefaultUserOptions['thumbsize'] = 2; //180px
 
+# Adding default search namespaces für Index and Seite (Proofread)
+$wgNamespacesToBeSearchedDefault[252] = true;
+$wgNamespacesToBeSearchedDefault[250] = true;
+
 # Map provider for semantic result formats by Red Rooster
 $srfgMapProvider='OpenStreetMap.HOT';
 
