@@ -42,7 +42,8 @@
 			"Sun8908",
 			"TKsdik8900",
 			"滝沢朔太郎",
-			"StarrySky"
+			"StarrySky",
+			"Amire80"
 		]
 	},
 	"tog-underline": "以底線識鏈接：",
@@ -733,7 +734,7 @@
 	"showhideselectedversions": "示／藏之擇",
 	"editundo": "悔",
 	"diff-empty": "（無異）",
-	"diff-multi-sameuser": "（$2多作未示之審有$1）",
+	"diff-multi-sameuser": "（多作未示之審有{{PLURAL:$1|$1次修訂}}）",
 	"diff-multi-manyusers": "（$2多作未示之審有$1）",
 	"searchresults": "得尋",
 	"searchresults-title": "「$1」得尋",
@@ -791,7 +792,7 @@
 	"prefs-editwatchlist": "治哨站",
 	"prefs-editwatchlist-clear": "清哨站",
 	"prefs-watchlist-days": "哨報有日",
-	"prefs-watchlist-days-max": "Maximum $1 {{PLURAL:$1|day|days}}",
+	"prefs-watchlist-days-max": "{{PLURAL:$1|最大有}}$1",
 	"prefs-watchlist-edits": "哨站有易",
 	"prefs-watchlist-edits-max": "最多之量：一千",
 	"prefs-watchlist-token": "哨幣：",

@@ -1,7 +1,7 @@
 = MediaWiki 1.35 =
 
-MediaWiki 1.35 should mostly work on PHP 8.0/8.1, however
-it is not currently actively supported. Testing (on a development wiki!) is
+MediaWiki 1.35 should mostly work on PHP 8.0/8.1, however it is not
+currently actively supported. Testing (on a development wiki!) is
 appreciated, and bugs with PHP 8.0/8.1 on MediaWiki 1.35 will be accepted.
 
 It is anticipated that in a later MediaWiki 1.35 point release, we can
@@ -9,12 +9,175 @@ declare 1.35 as supporting PHP 8.0/8.1.
 
 PHP 8.0 workboard: https://phabricator.wikimedia.org/tag/php_8.0_support/
 PHP 8.1 workboard: https://phabricator.wikimedia.org/tag/php_8.1_support/
+PHP 8.2 workboard: https://phabricator.wikimedia.org/tag/php_8.2_support/
 
-== MediaWiki 1.35.7 ==
+== MediaWiki 1.35.11 ==
 
 THIS IS NOT A RELEASE YET
 
+=== Changes since MediaWiki 1.35.10 ===
+* Localisation updates.
+
+== MediaWiki 1.35.10 ==
+
+This is a security and maintenance release of the MediaWiki 1.35 branch.
+
+=== Changes since MediaWiki 1.35.9 ===
+* Localisation updates.
+* (T324895) MWCallbackStream: Add explicit $stream property.
+* Remove /images .htaccess rules that are no longer relevent.
+* Disable php in .htaccess of images directory as a hardening measure.
+* (T322583) Include missing message parameter in message.
+* Fix phan error when Excimer is enabled.
+* (T274966) tests: Make pass on php8.0.
+* (T323373) Parser: Fix extractSections() behavior for PHP >= 8.0.
+* (T326021) Add matrix: to $wgUrlProtocols.
+* api/en.json: api-help-datatype-expiry add missing 'may'.
+* (T225218) Wait until the recent changes are updated.
+* (T328222) Pass empty string to strlen() if schema is null for
+  PostgresDatabase.
+* (T317329) OutputPage: Fix undefined ['host'] in ImagePreconnect code.
+* (T289926) SpecialRevisionDelete: Set default of '' for wpReason.
+* (T155582, T328503) Fix XML dumps for content types with non-string
+  getNativeData().
+* (T295958, T278847) MediaWiki-Docker: Switch PHP images to PHP7.4.
+* (T314099) revisiondelete: Replace dynamic property Status::$itemStatuses.
+* (T329198) ParamValidator: Improve paramvalidator-help-multi-max message.
+* (T292348) WikiImporter: do not fail if upload entry in dump lacks 'text'
+  tag.
+* (T329484) API: Fix query+allimages user parameter description.
+* (T330529) SpecialEditTags: Set default of '' for wpReason.
+* (T330526) htmlform: Handle null from HTMLFormField::getDefault in
+  multiselects.
+* (T285159, CVE-2023-29141) SECURITY: Do not apply autoblocks to untrusted
+  XFF headers.
+
+== MediaWiki 1.35.9 ==
+
+This is a security and maintenance release of the MediaWiki 1.35 branch.
+
+=== Changes since MediaWiki 1.35.8 ===
+* Localisation updates.
+* (T319000) WebInstaller: Don't try and run trim() on null.
+* (T320864) When calling mail(), use an array for headers.
+* (T311567) In ManualLogEntry, cast the comment to string.
+* (T323082) Upgrading wikimedia/xmp-reader (0.7.0 => 0.8.5).
+* Language: Handle ronna and quetta.
+* (T304515) LCStoreStaticArray: atomically replace the cache file.
+* (T324890, T324891, T324901) Parser: Allow dynamic properties on PHP 8.2.
+* (T322637) SECURITY: sqlite should not create DB file world-readable.
+
+== MediaWiki 1.35.8 ==
+
+This is a security and maintenance release of the MediaWiki 1.35 branch.
+
+=== Changes since MediaWiki 1.35.7 ===
+* Localisation updates.
+* (T311568) UploadBase::setTempFile() handle $tempPath being passed as null.
+* (T311559) SpecialListFiles: user parameter isn't always present.
+* (T311561) ImageListPager: Don't call htmlspecialchars() on null.
+* (T311920) SpecialBlockList: Prevent passing null to trim().
+* (T311921) SpecialUserrights: Don't pass null to str_replace.
+* (T311570) SpecialWithoutInterwiki: Don't pass null through to
+  Title::capitalize().
+* (T311574, T311576) SpecialLinkSearch: Don't pass null through to the parser.
+* (T312519, T312520) Parser::extensionSubstitution() Don't run substr() on null.
+* (T287564) populateInterwiki: Include not null columns iw_api/iw_wikiid.
+* (T312302) SpecialRedirect: Don't pass null to explode.
+* RemoveInvalidEmails: Fix quoting for postgres.
+* (T312678) import: UploadSourceAdapter::stream_read() don't pass null to
+  strlen().
+* (T312300) SpecialDiff: Don't pass null to explode().
+* (T312680) parser: Fix CoreParserFunctions::urlencode() null coalescence $arg.
+* (T289926) Handle null passed to wfShorthandToInteger() and Html::element().
+* (T289926) Ensure that strlen() does not get passed a (valid) null.
+* (T312301) SpecialDiff: Don't pass null to trim().
+* Hooks: Use more meaningful name for SkinAfterPortlet hook parameter.
+* (T289926) Ensure we don't pass null to mb_strlen.
+* (T312305, T311572, T311571, T311578) HtmlForm: Null coalescence in trim()
+  calls.
+* (T289926) site: Consistently return null from Site::getDomain().
+* (T307304, T289879) filebackend,jobqueue: Add signature for
+  FilterIterator::accept().
+* (T312183) rdbms: Adapt hasOrMadeRecentPrimaryChanges test mock for PHP 8.1.
+* Add application/vnd.ms-opentype to MIME list.
+* Allow composer/installers plugin in composer.json.
+* (T313663) Make HandlerTestTrait compatible with php8.1.
+* (T313663) [php8.1] Change override of $wgResourceBasePath for CSP tests.
+* Change type hints for BatchRowIterator and NotRecursiveIterator for
+  compatibility with PHP 8.1.
+* (T313663) [php8] Don't use strlen on potentially null string.
+* (T313663) [php8.1] Suppress test warning about providing null.
+* (T313663) Parser will use current timestamp instead of null if passed a
+  RevisionRecord that does not have a timestamp.
+* (T313663) Add explicit null check for $sha in FileBackend [php8.1].
+* (T313663) LogFormatter: Cast argument of ctype_digit to string [php8.1].
+* (T289879, T289926) Get rid of warnings on PHP 8.1.
+* rdbms: fix some PHP 8 warnings in Database/LoadBalancer/LBFactory.
+* (T313663) Avoid testing strlen on null in ApiQuerySiteinfo [php 8.1 compat].
+* Fix a couple deprecation warnings in the installer under PHP 8.1.
+* (T313663) Use default timezone UTC for SpecialWatchlistTest [php 8.1].
+* (T314096) Migrate use of ${var}-style string interpolation.
+* (T313663, T313662) Make default value for optional args {{PAGESINCAT:..}} be
+  '' not null.
+* (T314225) SpecialCategories: Null coalescene $par.
+* (T314099) User: Allow dynamic properties on PHP 8.2.
+* (T314404) SpecialGoToInterwiki: Null coalescene $par.
+* (T314397) SpecialBlock: Better handle null in getTargetUserTitle.
+* (T314099) phpunit: Fix trivial dynamic property usages in tests.
+* (T314405) UploadStash: Check if us_prop is set in the fileMetadata.
+* (T314550) SpecialMergeHistory: Set timestamp to '' if no mergepoint.
+* (T314551) SpecialMergeHistory: Set defaults for target and dest parameters.
+* api: Add rel=nofollow to help examples.
+* (T314824) tests: Update parser test after i18n change.
+* (T263927) Add autocomplete HTML attribute to common auth form fields.
+* (T307613) Validate length of user email on Special:ChangeEmail/
+  Special:CreateAccount.
+* (T314906, T314907) SpecialBlock: Set defaults for wpPageRestrictions and
+  wpNamespaceRestrictions.
+* (T315309) ImportStreamSource::newFromURL() Prevent passing null to fwrite.
+* (T315892) composer.json: Pin phpunit to 8.5.28.
+* (T229092) MigrateActors.php: ignore duplicate creations of actors.
+* (T313049) Bump wikimedia/parsoid to v0.12.3.
+* (T317750) session: Fix broken SessionTest case due to PHPUnit dependency
+  change.
+* (T318460) SpecialChangeEmail: Set default for returntoquery.
+* (T316304, CVE-2022-41767) SECURITY: reassignEdits doesn't update results
+  in an IP range check on Special:Contributions.
+* (T309894, CVE-2022-41765) SECURITY: HTMLUserTextField exposes existence
+  of hidden users.
+
+== MediaWiki 1.35.7 ==
+
+This is a security and maintenance release of the MediaWiki 1.35 branch.
+
 === Changes since MediaWiki 1.35.6 ===
+* Localisation updates.
+* (T289879) Type hints for ArrayAccess.
+* (T304783) TemplateParser: avoid warnings when called by NoLocalSettings.
+* Rebuilt vendor with composer 2.3.3.
+* (T289879) Address some deprecations for PHP 8.1.
+* Fix old_name in UserLogoutComplete hook.
+* (T286260, T307979) objectcache: normalize $exptime to a TTL in
+  APCUBagOStuff/WinCacheBagOStuff.
+* MediaSearchWidget should declare an explicit dependency on mediawiki.user
+  module.
+* (T288423) WikiImporter: Replace deprecated WikiRevision::setText.
+* (T309377, CVE-2022-29248, T311384, CVE-2022-27776) Updating guzzlehttp/guzzle
+  (6.5.5 => 6.5.8).
+* (T308471) SECURITY: Escape welcomeuser message passed to showSuccessPage().
+* (T311272) Call parent constructor of AddSite maintenance script first.
+* MediaWiki: Don't eagerly initialize action name.
+* (T289926) Avoid passing null to trim() in SkinTemplate.
+* (T307282) Avoid passing null to strcasecmp(), for PHP 8.1.
+* (T311552) ChangesListSpecialPage: Don't pass null to FormatJson::decode().
+* (T311569) FileBackend::isStoragePath() Handle being passed null.
+* (T311544) Pass int to ApiUsageException::newWithMessage()'s $httpCode param.
+* (T311678) SpecialEditWatchlist: Prevent passing null to strtolower().
+* (T281741) ChangeTags: Fix adding CSS classes for hidden tags.
+* (T296642) changetags: Fix management of a '0' tag.
+* (T311554) ChangeTags: Return early in formatSummaryRow() if $tags === null.
+* (T303033) Handle null in ChangeTags::modifyDisplayQuery.
 
 == MediaWiki 1.35.6 ==
 
@@ -733,7 +896,7 @@ For notes on 1.34.x and older releases, see HISTORY.
 
 ==== New external libraries ====
 * Added wikimedia/ip-utils 1.0.0.
-* Added wikimedia/parsoid 0.12.2.
+* Added wikimedia/parsoid 0.12.3.
 * Added wikimedia/services 2.0.1.
 * Added taylorhakes/promise-polyfill v8.1.3.
 * Added vuejs v2.6.11.
@@ -757,8 +920,8 @@ For notes on 1.34.x and older releases, see HISTORY.
 * Updated pear/net_smtp from 1.8.1 from to 1.9.1.
 * Updated psr/log from 1.0.2 to 1.1.3.
 * Updated jquery.i18n from 1.0.5 to 1.0.7.
-* Updated guzzlehttp/guzzle from 6.3.3 to 6.5.5.
-* Updated wikimedia/xmp-reader from 0.6.3 to 0.7.0.
+* Updated guzzlehttp/guzzle from 6.3.3 to 6.5.8.
+* Updated wikimedia/xmp-reader from 0.6.3 to 0.8.5.
   Fixes error log spam with too-large XMP data, and adds support for GPano tags.
 * Updated wikimedia/base-convert from v2.0.0 to v2.0.1.
 * Updated composer/semver from 1.5.0 to 1.7.2.

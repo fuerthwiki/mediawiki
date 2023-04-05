@@ -15,7 +15,9 @@
 			"לערי ריינהארט",
 			"아라",
 			"McDutchie",
-			"Balint36"
+			"Balint36",
+			"1233qwer1234qwer4",
+			"S4b1nuz E.656"
 		]
 	},
 	"tog-underline": "Sotlinee leams",
@@ -939,7 +941,7 @@
 	"deletepage": "Elimine pagjine",
 	"confirm": "Conferme",
 	"excontent": "il contignût al jere: '$1'",
-	"excontentauthor": "il contignût al jere: '$1' (e al veve contribuît dome '$2')",
+	"excontentauthor": "il contignût al jere: '$1' (e al veve contribuît dome '[[Special:Contributions/$2|$2]]')",
 	"exbeforeblank": "il contignût prime di disvuedâ al jere: '$1'",
 	"delete-confirm": "Elimine \"$1\"",
 	"delete-legend": "Elimine",
@@ -1063,7 +1065,7 @@
 	"movepagetalktext": "La pagjine di discussion corispuindinte e vegnarà ancje movude in automaticc, '''fûr che in chescj câs:'''\n* Il spostament de pagjine e je tra spazis dai nons diviers\n* Sot dal gnûf titul e esist za une pagjine di discussion (e no je vueide)\n* Tu âs gjavât la sponte te casele culì sot.\n\nIn chescj câs, tu varâs di movi o unî a man lis informazions contignudis te pagjine di discussion, se tu lu desideris.",
 	"movenologintext": "Tu âs di jessi un utent regjistrât e [[Special:UserLogin|jentrât]] par movi une pagjine.",
 	"movenotallowed": "No tu âs i permès che a coventin par movi lis pagjinis.",
-	"newtitle": "Al gnûf titul",
+	"newtitle": "Gnûf titul:",
 	"move-watch": "Ten di voli cheste pagjine",
 	"movepagebtn": "Môf pagjine",
 	"pagemovedsub": "Movude cun sucès",
