@@ -172,3 +172,5 @@ wfLoadExtension( 'WikiEditor' );
 # End of automatically generated settings.
 # Add more configuration options below.
 
+wfLoadExtension( 'SemanticMediaWiki' );
+enableSemantics( '$wgServer' );
