@@ -45,7 +45,8 @@ sftp-config.json
 /maintenance/.mweval_history
 /maintenance/.mwsql_history
 /maintenance/dev/data
-/LocalSettings.php
+#/LocalSettings.php <= Do not ignore this, because of SECRETS.php; ignore that!
+/SECRETS.php
 /includes/PlatformSettings.php
 
 # Building & testing
