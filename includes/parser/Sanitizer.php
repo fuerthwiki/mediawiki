@@ -158,7 +158,7 @@ class Sanitizer {
 		}
 
 		static $htmlpairsStatic, $htmlsingle, $htmlsingleonly, $htmlnest, $tabletags,
-			$htmllist, $listtags, $htmlsingleallowed, $htmlelementsStatic;
+			$htmllist, $listtags, $detailstags, $htmlsingleallowed, $htmlelementsStatic;
 
 		// Base our staticInitialised variable off of the global config state so that if the globals
 		// are changed (like in the screwed up test system) we will re-initialise the settings.
@@ -170,7 +170,7 @@ class Sanitizer {
 				'strike', 'strong', 'tt', 'var', 'div', 'center',
 				'blockquote', 'ol', 'ul', 'dl', 'table', 'caption', 'pre',
 				'ruby', 'rb', 'rp', 'rt', 'rtc', 'p', 'span', 'abbr', 'dfn',
-				'kbd', 'samp', 'data', 'time', 'mark'
+				'kbd', 'samp', 'data', 'time', 'mark', 'details', 'summary',
 			];
 			# These tags can be self-closed. For tags not also on
 			# $htmlsingleonly, a self-closed tag will be emitted as
@@ -191,7 +191,7 @@ class Sanitizer {
 			$htmlnest = [ # Tags that can be nested--??
 				'table', 'tr', 'td', 'th', 'div', 'blockquote', 'ol', 'ul',
 				'li', 'dl', 'dt', 'dd', 'font', 'big', 'small', 'sub', 'sup', 'span',
-				'var', 'kbd', 'samp', 'em', 'strong', 'q', 'ruby', 'bdo'
+				'var', 'kbd', 'samp', 'em', 'strong', 'q', 'ruby', 'bdo', 'details',
 			];
 			$tabletags = [ # Can only appear inside table, we will close them
 				'td', 'th', 'tr',
@@ -201,6 +201,9 @@ class Sanitizer {
 			];
 			$listtags = [ # Tags that can appear in a list
 				'li',
+			];
+			$detailstags = [ # Tags that can only appear in details
+				'summary'
 			];
 
 			if ( $wgAllowImageTag ) {
@@ -215,7 +218,7 @@ class Sanitizer {
 
 			# Convert them all to hashtables for faster lookup
 			$vars = [ 'htmlpairsStatic', 'htmlsingle', 'htmlsingleonly', 'htmlnest', 'tabletags',
-				'htmllist', 'listtags', 'htmlsingleallowed', 'htmlelementsStatic' ];
+				'htmllist', 'listtags', 'detailstags', 'htmlsingleallowed', 'htmlelementsStatic' ];
 			foreach ( $vars as $var ) {
 				$$var = array_fill_keys( $$var, true );
 			}
@@ -238,6 +241,7 @@ class Sanitizer {
 			'tabletags' => $tabletags,
 			'htmllist' => $htmllist,
 			'listtags' => $listtags,
+			'detailstags' => $detailstags,
 			'htmlsingleallowed' => $htmlsingleallowed,
 			'htmlelements' => $htmlelements,
 		];
@@ -1673,6 +1677,10 @@ class Sanitizer {
 
 			# HTML 5 section 4.6
 			'bdi' => $common,
+
+			# HTML 5 section 4.11
+			'details' => $merge( $common, [ 'open' ] ),
+			'summary' => $common,
 
 			# HTML5 elements, defined by:
 			# https://html.spec.whatwg.org/multipage/semantics.html#the-data-element
