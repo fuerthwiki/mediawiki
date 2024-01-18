@@ -1,0 +1,6 @@
+{
+    "require": {
+		"mediawiki/semantic-media-wiki": "^4.1.2",
+		"mediawiki/maps:": "^10.1"
+    }
+}
