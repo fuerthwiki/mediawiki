@@ -1,8 +1,6 @@
 <?php
 /** Tibetan (བོད་ཡིག)
  *
- * To improve a translation please visit https://translatewiki.net
- *
  * @file
  * @ingroup Languages
  */
@@ -19,3 +17,5 @@ $digitTransformTable = [
 	'8' => '༨', # U+0F28
 	'9' => '༩', # U+0F29
 ];
+
+$numberingSystem = 'tibt';

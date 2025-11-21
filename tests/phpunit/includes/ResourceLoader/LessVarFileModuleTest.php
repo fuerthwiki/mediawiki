@@ -4,7 +4,6 @@ namespace MediaWiki\Tests\ResourceLoader;
 
 use MediaWiki\ResourceLoader\LessVarFileModule;
 use ReflectionMethod;
-use ResourceLoaderTestCase;
 
 /**
  * @group ResourceLoader
@@ -44,7 +43,6 @@ class LessVarFileModuleTest extends ResourceLoaderTestCase {
 	 */
 	public function testEscapeMessage( $msg, $expected ) {
 		$method = new ReflectionMethod( LessVarFileModule::class, 'wrapAndEscapeMessage' );
-		$method->setAccessible( true );
 		$this->assertEquals( $expected, $method->invoke( null, $msg ) );
 	}
 
@@ -56,6 +54,7 @@ class LessVarFileModuleTest extends ResourceLoaderTestCase {
 			'styles' => [ 'less-messages.less' ],
 			'lessMessages' => [ 'pieday' ],
 		] );
+		$module->setConfig( $context->getResourceLoader()->getConfig() );
 		$module->setMessageBlob( '{"pieday":"March 14"}', 'qqx' );
 
 		$styles = $module->getStyles( $context );
@@ -70,6 +69,7 @@ class LessVarFileModuleTest extends ResourceLoaderTestCase {
 			'styles' => [ 'less-messages.less' ],
 			'lessMessages' => [ 'pieday' ],
 		] );
+		$module->setConfig( $context->getResourceLoader()->getConfig() );
 		$module->setMessageBlob( '{"something":"Else"}', 'qqx' );
 
 		$styles = $module->getStyles( $context );

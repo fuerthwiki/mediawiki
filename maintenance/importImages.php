@@ -11,31 +11,25 @@
  *      - fetch metadata from source wiki for each file to import.
  *      - commit the fetched metadata to the destination wiki while submitting.
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License along
- * with this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
- * http://www.gnu.org/copyleft/gpl.html
- *
+ * @license GPL-2.0-or-later
  * @file
  * @ingroup Maintenance
  * @author Rob Church <robchur@gmail.com>
  * @author Mij <mij@bitchx.it>
  */
 
+// @codeCoverageIgnoreStart
 require_once __DIR__ . '/Maintenance.php';
+// @codeCoverageIgnoreEnd
 
+use MediaWiki\ChangeTags\ChangeTags;
 use MediaWiki\MainConfigNames;
-use MediaWiki\MediaWikiServices;
+use MediaWiki\Maintenance\Maintenance;
+use MediaWiki\Specials\SpecialUpload;
+use MediaWiki\StubObject\StubGlobalUser;
+use MediaWiki\Title\Title;
+use MediaWiki\User\User;
+use Wikimedia\FileBackend\FSFile\FSFile;
 
 class ImportImages extends Maintenance {
 
@@ -118,18 +112,27 @@ class ImportImages extends Maintenance {
 		$this->addOption( 'unprotect', 'Unprotects all uploaded images' );
 		$this->addOption( 'source-wiki-url',
 			'If specified, take User and Comment data for each imported file from this URL. '
-				. 'For example, --source-wiki-url="http://en.wikipedia.org/',
+				. 'For example, --source-wiki-url="https://en.wikipedia.org/w/',
 			false,
 			true
 		);
 		$this->addOption( 'dry', "Dry run, don't import anything" );
 	}
 
+	/** @inheritDoc */
 	public function execute() {
-		$services = MediaWikiServices::getInstance();
+		$services = $this->getServiceContainer();
 		$permissionManager = $services->getPermissionManager();
 
-		$processed = $added = $ignored = $skipped = $overwritten = $failed = 0;
+		$found = 0;
+		$processed = 0;
+		$statistics = [
+			'ignored' => 0,
+			'added' => 0,
+			'skipped' => 0,
+			'overwritten' => 0,
+			'failed' => 0,
+		];
 
 		$this->output( "Importing Files\n\n" );
 
@@ -151,9 +154,9 @@ class ImportImages extends Maintenance {
 
 		# Search the path provided for candidates for import
 		$files = $this->findFiles( $dir, $extensions, $this->hasOption( 'search-recursively' ) );
-		if ( !$files ) {
+		if ( !$files->valid() ) {
 			$this->output( "No suitable files could be found for import.\n" );
-			return;
+			return false;
 		}
 
 		# Initialise the user for this operation
@@ -186,19 +189,20 @@ class ImportImages extends Maintenance {
 		}
 		$commentExt = $this->getOption( 'comment-ext' );
 		$summary = $this->getOption( 'summary', '' );
-
 		$license = $this->getOption( 'license', '' );
-
 		$sourceWikiUrl = $this->getOption( 'source-wiki-url' );
 
-		$tags = in_array( ChangeTags::TAG_SERVER_SIDE_UPLOAD, ChangeTags::getSoftwareTags() )
+		$tags = in_array(
+			ChangeTags::TAG_SERVER_SIDE_UPLOAD,
+			$this->getServiceContainer()->getChangeTagsStore()->getSoftwareTags()
+		)
 			? [ ChangeTags::TAG_SERVER_SIDE_UPLOAD ]
 			: [];
 
 		# Batch "upload" operation
-		$lbFactory = $services->getDBLoadBalancerFactory();
 		$restrictionStore = $services->getRestrictionStore();
 		foreach ( $files as $file ) {
+			$found++;
 			if ( $sleep && ( $processed > 0 ) ) {
 				sleep( $sleep );
 			}
@@ -207,7 +211,7 @@ class ImportImages extends Maintenance {
 
 			# Validate a title
 			$title = Title::makeTitleSafe( NS_FILE, $base );
-			if ( !is_object( $title ) ) {
+			if ( !$title ) {
 				$this->output(
 					"{$base} could not be imported; a valid title cannot be produced\n"
 				);
@@ -215,12 +219,12 @@ class ImportImages extends Maintenance {
 			}
 
 			if ( $from ) {
-				if ( $from == $title->getDBkey() ) {
-					$from = null;
-				} else {
-					$ignored++;
+				if ( $from !== $title->getDBkey() ) {
+					$statistics['ignored']++;
 					continue;
 				}
+				// Found the requested file, continue from here
+				$from = null;
 			}
 
 			if ( $checkUserBlock && ( ( $processed % $checkUserBlock ) == 0 ) ) {
@@ -229,7 +233,7 @@ class ImportImages extends Maintenance {
 					$this->output(
 						"{$user->getName()} is blocked from {$title->getPrefixedText()}! skipping.\n"
 					);
-					$skipped++;
+					$statistics['skipped']++;
 					continue;
 				}
 			}
@@ -243,7 +247,7 @@ class ImportImages extends Maintenance {
 					$svar = 'overwritten';
 				} else {
 					$this->output( "{$base} exists, skipping\n" );
-					$skipped++;
+					$statistics['skipped']++;
 					continue;
 				}
 			} else {
@@ -251,14 +255,12 @@ class ImportImages extends Maintenance {
 					$repo = $image->getRepo();
 					# XXX: we end up calculating this again when actually uploading. that sucks.
 					$sha1 = FSFile::getSha1Base36FromPath( $file );
-
 					$dupes = $repo->findBySha1( $sha1 );
-
 					if ( $dupes ) {
 						$this->output(
 							"{$base} already exists as {$dupes[0]->getName()}, skipping\n"
 						);
-						$skipped++;
+						$statistics['skipped']++;
 						continue;
 					}
 				}
@@ -270,17 +272,11 @@ class ImportImages extends Maintenance {
 			if ( $sourceWikiUrl ) {
 				/* find comment text directly from source wiki, through MW's API */
 				$real_comment = $this->getFileCommentFromSourceWiki( $sourceWikiUrl, $base );
-				if ( $real_comment === false ) {
-					$commentText = $comment;
-				} else {
-					$commentText = $real_comment;
-				}
+				$commentText = $real_comment !== false ? $real_comment : $comment;
 
 				/* find user directly from source wiki, through MW's API */
 				$real_user = $this->getFileUserFromSourceWiki( $sourceWikiUrl, $base );
-				if ( $real_user === false ) {
-					// don't change $wgUser
-				} else {
+				if ( $real_user !== false ) {
 					$realUser = User::newFromName( $real_user );
 					if ( $realUser === false ) {
 						# user does not exist in target wiki
@@ -337,7 +333,7 @@ class ImportImages extends Maintenance {
 					$this->output( "failed. (" .
 						$archive->getMessage( false, false, 'en' )->text() .
 						")\n" );
-					$failed++;
+					$statistics['failed']++;
 					continue;
 				}
 			}
@@ -349,57 +345,66 @@ class ImportImages extends Maintenance {
 
 			if ( $this->hasOption( 'dry' ) ) {
 				$this->output( "done.\n" );
-			} elseif ( $image->recordUpload3(
+			} else {
+				$uploadStatus = $image->recordUpload3(
 				// @phan-suppress-next-line PhanPossiblyUndeclaredVariable
-				$archive->value,
-				$summary,
-				$commentText,
-				$user,
-				// @phan-suppress-next-line PhanTypeMismatchArgumentNullable,PhanPossiblyUndeclaredVariable
-				$props,
-				$timestamp,
-				$tags
-			)->isOK() ) {
-				$this->output( "done.\n" );
+					$archive->value,
+					$summary,
+					$commentText,
+					$user,
+					// @phan-suppress-next-line PhanTypeMismatchArgumentNullable,PhanPossiblyUndeclaredVariable
+					$props,
+					$timestamp,
+					$tags
+				);
 
-				$doProtect = false;
+				if ( $uploadStatus->isOK() ) {
+					$this->output( "done.\n" );
 
-				$protectLevel = $this->getOption( 'protect' );
-				$restrictionLevels = $this->getConfig()->get( MainConfigNames::RestrictionLevels );
+					$doProtect = false;
 
-				if ( $protectLevel && in_array( $protectLevel, $restrictionLevels ) ) {
-					$doProtect = true;
-				}
-				if ( $this->hasOption( 'unprotect' ) ) {
-					$protectLevel = '';
-					$doProtect = true;
-				}
+					$protectLevel = $this->getOption( 'protect' );
+					$restrictionLevels = $this->getConfig()->get( MainConfigNames::RestrictionLevels );
 
-				if ( $doProtect ) {
-					# Protect the file
-					$this->output( "\nWaiting for replica DBs...\n" );
-					// Wait for replica DBs.
-					sleep( 2 ); # Why this sleep?
-					$lbFactory->waitForReplication();
-
-					$this->output( "\nSetting image restrictions ..." );
-
-					$cascade = false;
-					$restrictions = [];
-					foreach ( $restrictionStore->listApplicableRestrictionTypes( $title ) as $type ) {
-						$restrictions[$type] = $protectLevel;
+					if ( $protectLevel && in_array( $protectLevel, $restrictionLevels ) ) {
+						$doProtect = true;
+					}
+					if ( $this->hasOption( 'unprotect' ) ) {
+						$protectLevel = '';
+						$doProtect = true;
 					}
 
-					$page = $services->getWikiPageFactory()->newFromTitle( $title );
-					$status = $page->doUpdateRestrictions( $restrictions, [], $cascade, '', $user );
-					$this->output( ( $status->isOK() ? 'done' : 'failed' ) . "\n" );
+					if ( $doProtect ) {
+						# Protect the file
+						$this->output( "\nWaiting for replica DBs...\n" );
+						// Wait for replica DBs.
+						sleep( 2 ); # Why this sleep?
+						$this->waitForReplication();
+
+						$this->output( "\nSetting image restrictions ..." );
+
+						$cascade = false;
+						$restrictions = [];
+						foreach ( $restrictionStore->listApplicableRestrictionTypes( $title ) as $type ) {
+							$restrictions[$type] = $protectLevel;
+						}
+
+						$page = $services->getWikiPageFactory()->newFromTitle( $title );
+						$status = $page->doUpdateRestrictions( $restrictions, [], $cascade, '', $user );
+						$this->output( ( $status->isOK() ? 'done' : 'failed' ) . "\n" );
+					}
+				} elseif ( $uploadStatus->hasMessage( 'fileexists-no-change' ) ) {
+					$this->output( "skipped. (fileexists-no-change)\n" );
+					$svar = 'skipped';
+				} else {
+					$errors = $uploadStatus->getMessages( 'error' );
+					$firstErrorKey = ( $errors !== [] ) ? $errors[0]->getKey() : 'unknown error at recordUpload';
+					$this->output( "failed. ($firstErrorKey)\n" );
+					$svar = 'failed';
 				}
-			} else {
-				$this->output( "failed. (at recordUpload stage)\n" );
-				$svar = 'failed';
 			}
 
-			$$svar++;
+			$statistics[$svar]++;
 			$processed++;
 
 			if ( $limit && $processed >= $limit ) {
@@ -409,54 +414,48 @@ class ImportImages extends Maintenance {
 
 		# Print out some statistics
 		$this->output( "\n" );
-		foreach (
+		foreach ( array_merge(
 			[
-				'Found' => count( $files ),
+				'Found' => $found,
 				'Limit' => $limit,
-				'Ignored' => $ignored,
-				'Added' => $added,
-				'Skipped' => $skipped,
-				'Overwritten' => $overwritten,
-				'Failed' => $failed,
-			] as $desc => $number
-		) {
+			],
+			$statistics
+		) as $desc => $number ) {
 			if ( $number > 0 ) {
-				$this->output( "{$desc}: {$number}\n" );
+				$this->output( ucfirst( $desc ) . ": $number\n" );
 			}
 		}
+
+		// Return true if there are no failed imports (= zero exit code), or
+		// return false if there are any failed imports (= non-zero exit code)
+		return $statistics['failed'] === 0;
 	}
 
 	/**
 	 * Search a directory for files with one of a set of extensions
 	 *
 	 * @param string $dir Path to directory to search
-	 * @param array $exts Array of extensions to search for
+	 * @param array $exts Array of lowercase extensions to search for
 	 * @param bool $recurse Search subdirectories recursively
-	 * @return array|bool Array of filenames on success, or false on failure
+	 * @return \Generator<string> Generator that iterating filenames
 	 */
 	private function findFiles( $dir, $exts, $recurse = false ) {
-		if ( !is_dir( $dir ) ) {
-			return [];
-		}
-
-		$dhl = opendir( $dir );
+		$dhl = is_dir( $dir ) ? opendir( $dir ) : false;
 		if ( !$dhl ) {
-			return [];
+			return;
 		}
 
-		$files = [];
+		// phpcs:ignore Generic.CodeAnalysis.AssignmentInCondition.FoundInWhileCondition
 		while ( ( $file = readdir( $dhl ) ) !== false ) {
 			if ( is_file( $dir . '/' . $file ) ) {
 				$ext = pathinfo( $file, PATHINFO_EXTENSION );
 				if ( in_array( strtolower( $ext ), $exts ) ) {
-					$files[] = $dir . '/' . $file;
+					yield $dir . '/' . $file;
 				}
 			} elseif ( $recurse && is_dir( $dir . '/' . $file ) && $file !== '..' && $file !== '.' ) {
-				$files = array_merge( $files, $this->findFiles( $dir . '/' . $file, $exts, true ) );
+				yield from $this->findFiles( $dir . '/' . $file, $exts, true );
 			}
 		}
-
-		return $files;
 	}
 
 	/**
@@ -471,10 +470,10 @@ class ImportImages extends Maintenance {
 	 * @param string $file Base path
 	 * @param string $auxExtension The extension to be appended to the base path
 	 * @param int $maxStrip The maximum number of extensions to strip from the base path (default: 1)
-	 * @return string|bool
+	 * @return string|false
 	 */
 	private function findAuxFile( $file, $auxExtension, $maxStrip = 1 ) {
-		if ( strpos( $auxExtension, '.' ) !== 0 ) {
+		if ( !str_starts_with( $auxExtension, '.' ) ) {
 			$auxExtension = '.' . $auxExtension;
 		}
 
@@ -494,7 +493,7 @@ class ImportImages extends Maintenance {
 			}
 
 			$n = substr( $n, 0, $idx );
-			$maxStrip -= 1;
+			$maxStrip--;
 		}
 
 		return false;
@@ -507,12 +506,12 @@ class ImportImages extends Maintenance {
 	 * @param string $wiki_host
 	 * @param string $file
 	 *
-	 * @return string|bool
+	 * @return string|false
 	 */
 	private function getFileCommentFromSourceWiki( $wiki_host, $file ) {
 		$url = $wiki_host . '/api.php?action=query&format=xml&titles=File:'
 			. rawurlencode( $file ) . '&prop=imageinfo&&iiprop=comment';
-		$body = MediaWikiServices::getInstance()->getHttpRequestFactory()->get( $url, [], __METHOD__ );
+		$body = $this->getServiceContainer()->getHttpRequestFactory()->get( $url, [], __METHOD__ );
 		if ( preg_match( '#<ii comment="([^"]*)" />#', $body, $matches ) == 0 ) {
 			return false;
 		}
@@ -520,10 +519,11 @@ class ImportImages extends Maintenance {
 		return html_entity_decode( $matches[1] );
 	}
 
-	private function getFileUserFromSourceWiki( $wiki_host, $file ) {
+	/** @return string|false */
+	private function getFileUserFromSourceWiki( string $wiki_host, string $file ) {
 		$url = $wiki_host . '/api.php?action=query&format=xml&titles=File:'
 			. rawurlencode( $file ) . '&prop=imageinfo&&iiprop=user';
-		$body = MediaWikiServices::getInstance()->getHttpRequestFactory()->get( $url, [], __METHOD__ );
+		$body = $this->getServiceContainer()->getHttpRequestFactory()->get( $url, [], __METHOD__ );
 		if ( preg_match( '#<ii user="([^"]*)" />#', $body, $matches ) == 0 ) {
 			return false;
 		}
@@ -533,5 +533,7 @@ class ImportImages extends Maintenance {
 
 }
 
+// @codeCoverageIgnoreStart
 $maintClass = ImportImages::class;
 require_once RUN_MAINTENANCE_IF_MAIN;
+// @codeCoverageIgnoreEnd

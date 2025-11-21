@@ -2,21 +2,7 @@
 /**
  * Move a batch of pages.
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License along
- * with this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
- * http://www.gnu.org/copyleft/gpl.html
- *
+ * @license GPL-2.0-or-later
  * @file
  * @ingroup Maintenance
  * @author Tim Starling
@@ -26,9 +12,14 @@
  * e.g. immobile_namespace for namespaces which can't be moved
  */
 
-use MediaWiki\MediaWikiServices;
+use MediaWiki\Maintenance\Maintenance;
+use MediaWiki\StubObject\StubGlobalUser;
+use MediaWiki\Title\Title;
+use MediaWiki\User\User;
 
+// @codeCoverageIgnoreStart
 require_once __DIR__ . '/Maintenance.php';
+// @codeCoverageIgnoreEnd
 
 /**
  * Maintenance script to move a batch of pages.
@@ -43,7 +34,11 @@ class MoveBatch extends Maintenance {
 		$this->addOption( 'r', "Reason to move page", false, true );
 		$this->addOption( 'i', "Interval to sleep between moves" );
 		$this->addOption( 'noredirects', "Suppress creation of redirects" );
-		$this->addArg( 'listfile', 'List of pages to move, newline delimited', false );
+		$this->addArg(
+			'listfile',
+			'List of pages to move (newline delimited) in the format <existing page name>|<new name>',
+			false
+		);
 	}
 
 	public function execute() {
@@ -67,13 +62,14 @@ class MoveBatch extends Maintenance {
 		} else {
 			$user = User::newFromName( $username );
 		}
-		if ( !$user ) {
+		if ( !$user || !$user->isRegistered() ) {
 			$this->fatalError( "Invalid username" );
 		}
 		StubGlobalUser::setUser( $user );
 
+		$movePageFactory = $this->getServiceContainer()->getMovePageFactory();
+
 		# Setup complete, now start
-		$dbw = $this->getDB( DB_PRIMARY );
 		for ( $lineNum = 1; !feof( $file ); $lineNum++ ) {
 			$line = fgets( $file );
 			if ( $line === false ) {
@@ -92,14 +88,14 @@ class MoveBatch extends Maintenance {
 			}
 
 			$this->output( $source->getPrefixedText() . ' --> ' . $dest->getPrefixedText() );
-			$this->beginTransaction( $dbw, __METHOD__ );
-			$mp = MediaWikiServices::getInstance()->getMovePageFactory()
-				->newMovePage( $source, $dest );
+			$this->beginTransactionRound( __METHOD__ );
+			$mp = $movePageFactory->newMovePage( $source, $dest );
 			$status = $mp->move( $user, $reason, !$noRedirects );
 			if ( !$status->isOK() ) {
-				$this->output( "\nFAILED: " . $status->getMessage( false, false, 'en' )->text() );
+				$this->output( " FAILED\n" );
+				$this->error( $status );
 			}
-			$this->commitTransaction( $dbw, __METHOD__ );
+			$this->commitTransactionRound( __METHOD__ );
 			$this->output( "\n" );
 
 			if ( $interval ) {
@@ -109,5 +105,7 @@ class MoveBatch extends Maintenance {
 	}
 }
 
+// @codeCoverageIgnoreStart
 $maintClass = MoveBatch::class;
 require_once RUN_MAINTENANCE_IF_MAIN;
+// @codeCoverageIgnoreEnd

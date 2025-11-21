@@ -1,29 +1,25 @@
 <?php
 
-use MediaWiki\MainConfigNames;
 use Wikimedia\TestingAccessWrapper;
 
 /**
- * @covers AutoLoader
+ * @group Autoload
+ * @covers \AutoLoader
  */
 class AutoLoaderTest extends MediaWikiIntegrationTestCase {
 
+	/** @var string[] */
 	private $oldPsr4;
+	/** @var string[] */
 	private $oldClassFiles;
 
 	protected function setUp(): void {
 		parent::setUp();
 
-		// Fancy dance to trigger a rebuild of AutoLoader::$autoloadLocalClassesLower
 		$this->mergeMwGlobalArrayValue( 'wgAutoloadLocalClasses', [
 			'TestAutoloadedLocalClass' =>
 				__DIR__ . '/../data/autoloader/TestAutoloadedLocalClass.php',
-			'TestAutoloadedCamlClass' =>
-				__DIR__ . '/../data/autoloader/TestAutoloadedCamlClass.php',
-			'TestAutoloadedSerializedClass' =>
-				__DIR__ . '/../data/autoloader/TestAutoloadedSerializedClass.php',
 		] );
-		AutoLoader::resetAutoloadLocalClassesLower();
 		$this->mergeMwGlobalArrayValue( 'wgAutoloadClasses', [
 			'TestAutoloadedClass' => __DIR__ . '/../data/autoloader/TestAutoloadedClass.php',
 		] );
@@ -32,7 +28,7 @@ class AutoLoaderTest extends MediaWikiIntegrationTestCase {
 		$this->oldPsr4 = $access->psr4Namespaces;
 		$this->oldClassFiles = $access->classFiles;
 		AutoLoader::registerNamespaces( [
-			'Test\\MediaWiki\\AutoLoader\\' => __DIR__ . '/../data/autoloader/psr4'
+			'Test\\MediaWiki\\AutoLoader\\' => __DIR__ . '/../data/autoloader/psr4/'
 		] );
 		AutoLoader::registerClasses( [
 			'TestAnotherAutoloadedClass' => __DIR__ . '/../data/autoloader/TestAnotherAutoloadedClass.php',
@@ -63,25 +59,30 @@ class AutoLoaderTest extends MediaWikiIntegrationTestCase {
 		$this->assertTrue( class_exists( 'TestAutoloadedClass' ) );
 	}
 
-	public function testWrongCaseClass() {
-		$this->overrideConfigValue( MainConfigNames::AutoloadAttemptLowercase, true );
-
-		$this->assertTrue( class_exists( 'testautoLoadedcamlCLASS' ) );
-	}
-
-	public function testWrongCaseSerializedClass() {
-		$this->overrideConfigValue( MainConfigNames::AutoloadAttemptLowercase, true );
-
-		$dummySer = 'O:29:"testautoloadedserializedclass":0:{}';
-		$dummy = unserialize( $dummySer );
-		$this->assertSame(
-			get_class( $dummy ),
-			TestAutoloadedSerializedClass::class,
-			'load class case-insensitively'
-		);
-	}
-
 	public function testPsr4() {
 		$this->assertTrue( class_exists( 'Test\\MediaWiki\\AutoLoader\\TestFooBar' ) );
+	}
+
+	/**
+	 * See T398513
+	 * This does not test if the namespace matched, as not all classes follow PSR-4
+	 */
+	public function testCapitaliseFolder() {
+		global $wgAutoloadLocalClasses, $IP;
+
+		$error = [];
+		$prefixLen = strlen( $IP ) + 1;
+		foreach ( $wgAutoloadLocalClasses as $file ) {
+			$slash = strrpos( $file, '/' );
+			$filename = substr( $file, $slash + 1 );
+			$subPath = substr( $file, $prefixLen, $slash - $prefixLen );
+			if ( !str_starts_with( $subPath, 'includes/' ) ) {
+				continue;
+			}
+			if ( preg_match( '#/(?!libs)[^A-Z]#', $subPath ) ) {
+				$error[$filename] = $subPath;
+			}
+		}
+		$this->assertSame( [], $error, 'All folder with php classes must start with upper case' );
 	}
 }

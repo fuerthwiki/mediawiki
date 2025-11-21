@@ -1,9 +1,15 @@
 <?php
 
+namespace Wikimedia\Tests;
+
+use MediaWikiCoversValidator;
+use PHPUnit\Framework\TestCase;
+use Wikimedia\HtmlArmor\HtmlArmor;
+
 /**
- * @covers HtmlArmor
+ * @covers \Wikimedia\HtmlArmor\HtmlArmor
  */
-class HtmlArmorTest extends PHPUnit\Framework\TestCase {
+class HtmlArmorTest extends TestCase {
 
 	use MediaWikiCoversValidator;
 

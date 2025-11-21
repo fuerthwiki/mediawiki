@@ -6,26 +6,16 @@
  * (in 14-character format) restrict the search, and must bracket the damage.
  * There must be a majority of good timestamps in the search period.
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License along
- * with this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
- * http://www.gnu.org/copyleft/gpl.html
- *
+ * @license GPL-2.0-or-later
  * @file
  * @ingroup Maintenance
  */
 
+use MediaWiki\Maintenance\Maintenance;
+
+// @codeCoverageIgnoreStart
 require_once __DIR__ . '/Maintenance.php';
+// @codeCoverageIgnoreEnd
 
 /**
  * Maintenance script that fixes timestamp corruption caused by one or
@@ -50,7 +40,7 @@ class FixTimestamps extends Maintenance {
 		$grace = 60;
 
 		# Find bounding revision IDs
-		$dbw = $this->getDB( DB_PRIMARY );
+		$dbw = $this->getPrimaryDB();
 		$revisionTable = $dbw->tableName( 'revision' );
 		$res = $dbw->query( "SELECT MIN(rev_id) as minrev, MAX(rev_id) as maxrev FROM $revisionTable " .
 			"WHERE rev_timestamp BETWEEN '{$start}' AND '{$end}'", __METHOD__ );
@@ -124,5 +114,7 @@ class FixTimestamps extends Maintenance {
 	}
 }
 
+// @codeCoverageIgnoreStart
 $maintClass = FixTimestamps::class;
 require_once RUN_MAINTENANCE_IF_MAIN;
+// @codeCoverageIgnoreEnd

@@ -3,29 +3,18 @@
  * Delete revisions which refer to a nonexisting page.
  * Sometimes manual deletion done in a rush leaves crap in the database.
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License along
- * with this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
- * http://www.gnu.org/copyleft/gpl.html
- *
+ * @license GPL-2.0-or-later
  * @file
  * @ingroup Maintenance
  * @author Rob Church <robchur@gmail.com>
  * @todo More efficient cleanup of text records
  */
 
+// @codeCoverageIgnoreStart
 require_once __DIR__ . '/Maintenance.php';
+// @codeCoverageIgnoreEnd
 
+use MediaWiki\Maintenance\Maintenance;
 use Wikimedia\Rdbms\IDatabase;
 
 /**
@@ -46,7 +35,7 @@ class DeleteOrphanedRevisions extends Maintenance {
 
 		$report = $this->hasOption( 'report' );
 
-		$dbw = $this->getDB( DB_PRIMARY );
+		$dbw = $this->getPrimaryDB();
 		$this->beginTransaction( $dbw, __METHOD__ );
 
 		# Find all the orphaned revisions
@@ -91,12 +80,20 @@ class DeleteOrphanedRevisions extends Maintenance {
 	 * @param IDatabase $dbw Primary DB handle
 	 */
 	private function deleteRevs( array $id, $dbw ) {
-		$dbw->delete( 'revision', [ 'rev_id' => $id ], __METHOD__ );
+		$dbw->newDeleteQueryBuilder()
+			->deleteFrom( 'revision' )
+			->where( [ 'rev_id' => $id ] )
+			->caller( __METHOD__ )->execute();
 
 		// Delete from ip_changes should a record exist.
-		$dbw->delete( 'ip_changes', [ 'ipc_rev_id' => $id ], __METHOD__ );
+		$dbw->newDeleteQueryBuilder()
+			->deleteFrom( 'ip_changes' )
+			->where( [ 'ipc_rev_id' => $id ] )
+			->caller( __METHOD__ )->execute();
 	}
 }
 
+// @codeCoverageIgnoreStart
 $maintClass = DeleteOrphanedRevisions::class;
 require_once RUN_MAINTENANCE_IF_MAIN;
+// @codeCoverageIgnoreEnd

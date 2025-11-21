@@ -6,6 +6,10 @@ abstract class ConfigBuilderBase implements ConfigBuilder {
 
 	abstract protected function has( string $key ): bool;
 
+	/**
+	 * @param string $key
+	 * @param mixed $value
+	 */
 	abstract protected function update( string $key, $value );
 
 	/**
@@ -14,7 +18,7 @@ abstract class ConfigBuilderBase implements ConfigBuilder {
 	public function set(
 		string $key,
 		$newValue,
-		MergeStrategy $mergeStrategy = null
+		?MergeStrategy $mergeStrategy = null
 	): ConfigBuilder {
 		if ( $mergeStrategy && $this->has( $key ) && is_array( $newValue ) ) {
 			$oldValue = $this->get( $key );
@@ -42,7 +46,7 @@ abstract class ConfigBuilderBase implements ConfigBuilder {
 	public function setDefault(
 		string $key,
 		$defaultValue,
-		MergeStrategy $mergeStrategy = null
+		?MergeStrategy $mergeStrategy = null
 	): ConfigBuilder {
 		if ( $this->has( $key ) ) {
 			if ( $mergeStrategy && $defaultValue && is_array( $defaultValue ) ) {

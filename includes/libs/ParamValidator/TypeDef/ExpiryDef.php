@@ -32,10 +32,13 @@ class ExpiryDef extends TypeDef {
 	 */
 	public const PARAM_MAX = 'param-max';
 
+	/** @inheritDoc */
 	public function validate( $name, $value, array $settings, array $options ) {
+		$this->failIfNotString( $name, $value, $settings, $options );
+
 		try {
 			$expiry = self::normalizeExpiry( $value, TS_ISO_8601 );
-		} catch ( InvalidArgumentException $e ) {
+		} catch ( InvalidArgumentException ) {
 			$this->failure( 'badexpiry', $name, $value, $settings, $options );
 		}
 
@@ -62,6 +65,7 @@ class ExpiryDef extends TypeDef {
 		return $expiry;
 	}
 
+	/** @inheritDoc */
 	public function getHelpInfo( $name, array $settings, array $options ) {
 		$info = parent::getHelpInfo( $name, $settings, $options );
 
@@ -99,7 +103,7 @@ class ExpiryDef extends TypeDef {
 
 		// ConvertibleTimestamp::time() used so we can fake the current time in ExpiryDefTest.
 		$unix = strtotime( $expiry, ConvertibleTimestamp::time() );
-		if ( $unix === false ) {
+		if ( $unix === false || !self::isInMwRange( $unix ) ) {
 			// Invalid expiry.
 			throw new InvalidArgumentException( "Invalid expiry value: {$expiry}" );
 		}
@@ -114,6 +118,17 @@ class ExpiryDef extends TypeDef {
 		}
 
 		return $expiryConvertibleTimestamp;
+	}
+
+	/**
+	 * Check if a UNIX timestamp is in the range representable by MediaWiki 14 character strings
+	 *
+	 * @param int $unix
+	 * @return bool
+	 */
+	private static function isInMwRange( int $unix ): bool {
+		return $unix > strtotime( '0000-01-01T00:00:00Z' )
+			&& $unix < strtotime( '9999-12-31T00:00:00Z' );
 	}
 
 	/**
@@ -132,6 +147,7 @@ class ExpiryDef extends TypeDef {
 		return self::normalizeExpiry( $expiry, $style );
 	}
 
+	/** @inheritDoc */
 	public function checkSettings( string $name, $settings, array $options, array $ret ): array {
 		$ret = parent::checkSettings( $name, $settings, $options, $ret );
 

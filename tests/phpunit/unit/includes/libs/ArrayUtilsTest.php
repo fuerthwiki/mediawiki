@@ -1,8 +1,16 @@
 <?php
+
+namespace Wikimedia\Tests;
+
+use MediaWikiCoversValidator;
+use PHPUnit\Framework\Assert;
+use PHPUnit\Framework\TestCase;
+use Wikimedia\ArrayUtils\ArrayUtils;
+
 /**
- * @covers ArrayUtils
+ * @covers \Wikimedia\ArrayUtils\ArrayUtils
  */
-class ArrayUtilsTest extends PHPUnit\Framework\TestCase {
+class ArrayUtilsTest extends TestCase {
 
 	use MediaWikiCoversValidator;
 
@@ -20,11 +28,11 @@ class ArrayUtilsTest extends PHPUnit\Framework\TestCase {
 		);
 	}
 
-	public function provideFindLowerBound() {
-		$indexValueCallback = function ( $size ) {
-			return function ( $val ) use ( $size ) {
-				$this->assertTrue( $val >= 0 );
-				$this->assertTrue( $val < $size );
+	public static function provideFindLowerBound() {
+		$indexValueCallback = static function ( $size ) {
+			return static function ( $val ) use ( $size ) {
+				Assert::assertTrue( $val >= 0 );
+				Assert::assertTrue( $val < $size );
 				return $val;
 			};
 		};
@@ -134,7 +142,7 @@ class ArrayUtilsTest extends PHPUnit\Framework\TestCase {
 		$this->assertEquals( $expected, ArrayUtils::arrayDiffAssocRecursive( ...$args ) );
 	}
 
-	public function provideArrayDiffAssocRecursive() {
+	public static function provideArrayDiffAssocRecursive() {
 		return [
 			[
 				[],
@@ -309,7 +317,7 @@ class ArrayUtilsTest extends PHPUnit\Framework\TestCase {
 		$this->assertSame( $expected, $result );
 	}
 
-	public function provideCartesianProduct() {
+	public static function provideCartesianProduct() {
 		$ab = [ 'a', 'b' ];
 		$cd = [ 'c', 'd' ];
 		$ac = [ 'a', 'c' ];
@@ -352,7 +360,7 @@ class ArrayUtilsTest extends PHPUnit\Framework\TestCase {
 		];
 	}
 
-	public function provideConsistentSort() {
+	public static function provideConsistentSort() {
 		yield 'initial' => [
 			[
 				'tag1',
@@ -416,7 +424,7 @@ class ArrayUtilsTest extends PHPUnit\Framework\TestCase {
 		$this->assertSame( $expectList, array_values( $actual ) );
 	}
 
-	public function provideConsistentSortStability() {
+	public static function provideConsistentSortStability() {
 		yield 'initial' => [
 			[ 'tag1', 'tag2', 'tag3', 'tag4' ],
 			[
@@ -457,8 +465,7 @@ class ArrayUtilsTest extends PHPUnit\Framework\TestCase {
 		foreach ( $expected as $key => $_ ) {
 			$sortedTags = $serverTags;
 			ArrayUtils::consistentHashSort( $sortedTags, $key );
-			reset( $sortedTags );
-			$dest = $serverTags[key( $sortedTags )];
+			$dest = $serverTags[array_key_first( $sortedTags )];
 
 			$actual[$key] = $dest;
 		}

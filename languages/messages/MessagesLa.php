@@ -1,8 +1,6 @@
 <?php
 /** Latin (Latina)
  *
- * To improve a translation please visit https://translatewiki.net
- *
  * @file
  * @ingroup Languages
  *
@@ -95,6 +93,7 @@ $specialPageAliases = [
 	'Fewestrevisions'           => [ 'Paginae_minime_mutatae' ],
 	'FileDuplicateSearch'       => [ 'Quaerere_fasciculos_duplices', 'Quaerere_imagines_duplices' ],
 	'Import'                    => [ 'Importare', 'Paginas_importare' ],
+	'Interwiki'                 => [ 'Intervici' ],
 	'Invalidateemail'           => [ 'Adfimationem_inscriptionis_electronicae_abrogare' ],
 	'LinkSearch'                => [ 'Quaerere_nexus_externos' ],
 	'Listadmins'                => [ 'Magistratus' ],
@@ -130,6 +129,7 @@ $specialPageAliases = [
 	'Recentchanges'             => [ 'Nuper_mutata', 'Mutationes_recentes' ],
 	'Recentchangeslinked'       => [ 'Nuper_mutata_annexorum' ],
 	'Redirect'                  => [ 'Redirectio' ],
+	'Renameuser'                => [ 'Usorem_renominare' ],
 	'Revisiondelete'            => [ 'Emendationem_delere' ],
 	'Search'                    => [ 'Quaerere' ],
 	'Shortpages'                => [ 'Paginae_breves' ],

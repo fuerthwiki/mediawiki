@@ -25,6 +25,7 @@ sftp-config.json
 
 # MediaWiki install & usage
 /cache
+/logs
 /docs/coverage
 /docs/js
 /docs/latex
@@ -39,12 +40,13 @@ sftp-config.json
 /images/timeline
 ## Extension:Score
 /images/lilypond
+## Extension:Phonos
+/images/phonos-render
 ## Extension:TimedMediaHandler
 /images/transcoded
 /images/tmp
 /maintenance/.mweval_history
 /maintenance/.mwsql_history
-/maintenance/dev/data
 /LocalSettings.php
 /includes/PlatformSettings.php
 
@@ -54,10 +56,12 @@ node_modules/
 /resources/lib/.foreign
 /tests/phpunit/phpunit.phar
 .phpunit.result.cache
+phpunit*result.cache
 /tests/phpunit/.phpunit.result.cache
 phpunit.xml
 /tests/selenium/log
 .eslintcache
+.stylelintcache
 .api-testing.config.json
 .phan/local-config.php
 
@@ -90,3 +94,4 @@ Thumbs.db
 # Docker
 docker-compose.override.yml
 .env
+.devcontainer/*

@@ -1,8 +1,6 @@
 <?php
 /** Eastern Pwo, Karen languages (ဖၠုံလိက်' / Phlou)
  *
- * To improve a translation please visit https://translatewiki.net
- *
  * @file
  * @ingroup Languages
  */
@@ -21,3 +19,5 @@ $digitTransformTable = [
 	'8' => '၈',
 	'9' => '၉',
 ];
+
+$numberingSystem = 'mymr';

@@ -1,12 +1,12 @@
 # wdio-mediawiki
 
-A plugin for [WebdriverIO](http://webdriver.io/) providing utilities to simplify testing of MediaWiki features.
+A plugin for [WebdriverIO](https://webdriver.io) providing utilities to simplify testing of MediaWiki features.
 
 ## Getting Started
 
 ### Page
 
-The `Page` class is a base class for following the [Page Objects Pattern](http://webdriver.io/guide/testrunner/pageobjects.html).
+The `Page` class is a base class for following the [Page Objects Pattern](https://webdriver.io/docs/pageobjects).
 
 * `openTitle( title [, Object query [, string fragment ] ] )`
 
@@ -17,23 +17,30 @@ See [BlankPage](./BlankPage.js) and [specs/BlankPage](./specs/BlankPage.js) for 
 
 ### Api
 
-Utilities to interact with the MediaWiki API. Uses the [mwbot](https://github.com/Fannon/mwbot) library.
+Utilities to interact with the MediaWiki API.
 
-Actions are performed logged-in using `browser.config.mwUser` and `browser.config.mwPwd`,
+Actions are performed logged-in using `browser.options.capabilities[ 'mw:user' ]` and `browser.options.capabilities[ 'mw:pwd' ]`,
 which typically come from `MEDIAWIKI_USER` and `MEDIAWIKI_PASSWORD` environment variables.
 
-* `bot([string username [, string password [, string baseUrl ] ] ])`
-* `createAccount(MWBot bot, string username, string password)`
-* `blockUser(MWBot bot, [ string username [, string expiry ] ])`
-* `unblockUser(MWBot bot, [ string username ])`
+* `createApiClient([string username [, string password [, string baseUrl ] ] ])`
+* `createAccount(string username, string password)`
+* `blockUser(string username [, string expiry ] ])`
+* `unblockUser([ string username ])`
+* `addUserToGroup(string username, string groupName)`
+* `login (string username, pstring assword)`
+* `read (string title)`
+* `edit (string title, string text [, string summary])`
+* `delete (string title[, string reason])`
+* `request(object params)` - generic function to call the API
 
 Example:
 
 ```js
-bot = await Api.bot();
-await bot.edit( 'Some page', 'Some initial content' );
-await bot.edit( 'Some page', 'Some other content', 'Optional edit reason here' );
-await bot.delete( 'Some page', 'Some deletion reason here' );
+import { createApiClient } from 'wdio-mediawiki/Api.js';
+const api = await createApiClient();
+await api.edit( 'Some page', 'Some initial content' );
+await api.edit( 'Some page', 'Some other content', 'Optional edit reason here' );
+await api.delete( 'Some page', 'Some deletion reason here' );
 ```
 
 ### RunJobs
@@ -46,11 +53,12 @@ making assertions that depend on its outcome.
 `Util` is a collection of popular utility methods.
 
 * `getTestString([ string prefix ])`
+* `isTargetNotWikitext(string target)`
 * `waitForModuleState(string moduleName [, string moduleStatus [, number timeout ] ])`
 
 ## Versioning
 
-This package follows [Semantic Versioning guidelines](https://semver.org/) for its releases. In
+This package follows [Semantic Versioning guidelines](https://semver.org) for its releases. In
 particular, its major version must be bumped when compatibility is removed for a previous of
 MediaWiki.
 
@@ -65,11 +73,11 @@ co-exists with its deprecated equivalent for at least one release.
 
 ## Issue tracker
 
-Please report issues to [Phabricator](https://phabricator.wikimedia.org/tag/mediawiki-core-tests/).
+Please report issues to [Phabricator](https://phabricator.wikimedia.org/tag/mediawiki-core-tests).
 
 ## Contributing
 
 This module is maintained in the MediaWiki core repository and published from there as a
 package to npmjs.org. To simplify development and to ensure changes are verified
 automatically, MediaWiki core itself uses this module directly from the working copy
-using [npm Local Paths](https://docs.npmjs.com/files/package.json#local-paths).
+using [npm Local Paths](https://docs.npmjs.com/cli/v10/configuring-npm/package-json#local-paths).

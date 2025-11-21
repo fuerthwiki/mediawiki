@@ -1,13 +1,13 @@
 /* eslint-disable camelcase */
 ( function () {
 	QUnit.module( 'mediawiki.rcfilters - FilterItem' );
+	const rcfilters = require( 'mediawiki.rcfilters.filters.ui' );
 
-	QUnit.test( 'Initializing filter item', function ( assert ) {
-		var item,
-			group1 = new mw.rcfilters.dm.FilterGroup( 'group1' ),
-			group2 = new mw.rcfilters.dm.FilterGroup( 'group2' );
+	QUnit.test( 'Initializing filter item', ( assert ) => {
+		const group1 = new rcfilters.dm.FilterGroup( 'group1' ),
+			group2 = new rcfilters.dm.FilterGroup( 'group2' );
 
-		item = new mw.rcfilters.dm.FilterItem( 'filter1', group1 );
+		let item = new rcfilters.dm.FilterItem( 'filter1', group1 );
 		assert.strictEqual(
 			item.getName(),
 			'group1__filter1',
@@ -19,7 +19,7 @@
 			'Group name is retained.'
 		);
 
-		item = new mw.rcfilters.dm.FilterItem(
+		item = new rcfilters.dm.FilterItem(
 			'filter1',
 			group1,
 			{
@@ -38,27 +38,25 @@
 			'Description information is retained.'
 		);
 
-		item = new mw.rcfilters.dm.FilterItem(
+		item = new rcfilters.dm.FilterItem(
 			'filter1',
 			group1,
 			{
 				selected: true
 			}
 		);
-		assert.strictEqual(
+		assert.true(
 			item.isSelected(),
-			true,
 			'Item can be selected in the config.'
 		);
 		item.toggleSelected( true );
-		assert.strictEqual(
+		assert.true(
 			item.isSelected(),
-			true,
 			'Item can toggle its selected state.'
 		);
 
 		// Subsets
-		item = new mw.rcfilters.dm.FilterItem(
+		item = new rcfilters.dm.FilterItem(
 			'filter1',
 			group1,
 			{
@@ -70,31 +68,27 @@
 			[ 'sub1', 'sub2', 'sub3' ],
 			'Subset information is retained.'
 		);
-		assert.strictEqual(
+		assert.true(
 			item.existsInSubset( 'sub1' ),
-			true,
 			'Specific item exists in subset.'
 		);
-		assert.strictEqual(
+		assert.false(
 			item.existsInSubset( 'sub10' ),
-			false,
 			'Specific item does not exists in subset.'
 		);
-		assert.strictEqual(
+		assert.false(
 			item.isIncluded(),
-			false,
 			'Initial state of "included" is false.'
 		);
 
 		item.toggleIncluded( true );
-		assert.strictEqual(
+		assert.true(
 			item.isIncluded(),
-			true,
 			'Item toggles its included state.'
 		);
 
 		// Conflicts
-		item = new mw.rcfilters.dm.FilterItem(
+		item = new rcfilters.dm.FilterItem(
 			'filter1',
 			group1,
 			{
@@ -115,51 +109,47 @@
 			'Conflict information is retained.'
 		);
 		assert.strictEqual(
-			item.existsInConflicts( new mw.rcfilters.dm.FilterItem( 'conflict1', group2 ) ),
+			item.existsInConflicts( new rcfilters.dm.FilterItem( 'conflict1', group2 ) ),
 			true,
 			'Specific item exists in conflicts.'
 		);
 		assert.strictEqual(
-			item.existsInConflicts( new mw.rcfilters.dm.FilterItem( 'conflict10', group1 ) ),
+			item.existsInConflicts( new rcfilters.dm.FilterItem( 'conflict10', group1 ) ),
 			false,
 			'Specific item does not exists in conflicts.'
 		);
-		assert.strictEqual(
+		assert.false(
 			item.isConflicted(),
-			false,
 			'Initial state of "conflicted" is false.'
 		);
 
 		item.toggleConflicted( true );
-		assert.strictEqual(
+		assert.true(
 			item.isConflicted(),
-			true,
 			'Item toggles its conflicted state.'
 		);
 
 		// Fully covered
-		item = new mw.rcfilters.dm.FilterItem( 'filter1', group1 );
-		assert.strictEqual(
+		item = new rcfilters.dm.FilterItem( 'filter1', group1 );
+		assert.false(
 			item.isFullyCovered(),
-			false,
 			'Initial state of "full coverage" is false.'
 		);
 		item.toggleFullyCovered( true );
-		assert.strictEqual(
+		assert.true(
 			item.isFullyCovered(),
-			true,
 			'Item toggles its fully coverage state.'
 		);
 
 	} );
 
-	QUnit.test( 'Emitting events', function ( assert ) {
-		var group1 = new mw.rcfilters.dm.FilterGroup( 'group1' ),
-			item = new mw.rcfilters.dm.FilterItem( 'filter1', group1 ),
+	QUnit.test( 'Emitting events', ( assert ) => {
+		const group1 = new rcfilters.dm.FilterGroup( 'group1' ),
+			item = new rcfilters.dm.FilterItem( 'filter1', group1 ),
 			events = [];
 
 		// Listen to update events
-		item.on( 'update', function () {
+		item.on( 'update', () => {
 			events.push( item.getState() );
 		} );
 
@@ -185,18 +175,18 @@
 		);
 	} );
 
-	QUnit.test( 'get/set boolean value', function ( assert ) {
-		var group = new mw.rcfilters.dm.FilterGroup( 'group1', { type: 'boolean' } ),
-			item = new mw.rcfilters.dm.FilterItem( 'filter1', group );
+	QUnit.test( 'get/set boolean value', ( assert ) => {
+		const group = new rcfilters.dm.FilterGroup( 'group1', { type: 'boolean' } ),
+			item = new rcfilters.dm.FilterItem( 'filter1', group );
 
 		item.setValue( '1' );
 
-		assert.strictEqual( item.getValue(), true, 'Value is coerced to boolean' );
+		assert.true( item.getValue(), 'Value is coerced to boolean' );
 	} );
 
-	QUnit.test( 'get/set any value', function ( assert ) {
-		var group = new mw.rcfilters.dm.FilterGroup( 'group1', { type: 'any_value' } ),
-			item = new mw.rcfilters.dm.FilterItem( 'filter1', group );
+	QUnit.test( 'get/set any value', ( assert ) => {
+		const group = new rcfilters.dm.FilterGroup( 'group1', { type: 'any_value' } ),
+			item = new rcfilters.dm.FilterItem( 'filter1', group );
 
 		item.setValue( '1' );
 

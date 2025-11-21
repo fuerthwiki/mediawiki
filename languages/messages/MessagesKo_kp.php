@@ -1,8 +1,6 @@
 <?php
 /** Korean (Democratic People's Republic of Korea) (조선말)
  *
- * To improve a translation please visit https://translatewiki.net
- *
  * @file
  * @ingroup Languages
  */
@@ -28,4 +26,10 @@ $dateFormats = [
 	'juche bracket time' => 'H:i',
 	'juche bracket date' => '주체xoY년 (Y년) M월 j일 (D)',
 	'juche bracket both' => '주체xoY년 (Y년) M월 j일 (D) H:i',
+];
+
+$jsDateFormats = [
+	// Can't have both in the browser
+	'juche bracket date' => [ 'alias' => 'juche date' ],
+	'juche bracket both' => [ 'alias' => 'juche both' ],
 ];

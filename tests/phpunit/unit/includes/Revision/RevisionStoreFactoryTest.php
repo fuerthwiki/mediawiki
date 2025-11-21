@@ -2,12 +2,11 @@
 
 namespace MediaWiki\Tests\Unit\Revision;
 
-use ActorMigration;
-use CommentStore;
-use HashBagOStuff;
+use MediaWiki\CommentStore\CommentStore;
 use MediaWiki\Content\IContentHandlerFactory;
 use MediaWiki\Page\PageStore;
 use MediaWiki\Page\PageStoreFactory;
+use MediaWiki\RecentChanges\RecentChangeLookup;
 use MediaWiki\Revision\RevisionStore;
 use MediaWiki\Revision\RevisionStoreFactory;
 use MediaWiki\Revision\SlotRoleRegistry;
@@ -16,6 +15,7 @@ use MediaWiki\Storage\BlobStoreFactory;
 use MediaWiki\Storage\NameTableStore;
 use MediaWiki\Storage\NameTableStoreFactory;
 use MediaWiki\Storage\SqlBlobStore;
+use MediaWiki\Title\TitleFactory;
 use MediaWiki\User\ActorStore;
 use MediaWiki\User\ActorStoreFactory;
 use MediaWiki\User\UserIdentityLookup;
@@ -23,17 +23,17 @@ use MediaWikiUnitTestCase;
 use PHPUnit\Framework\MockObject\MockObject;
 use Psr\Log\LoggerInterface;
 use Psr\Log\NullLogger;
-use TitleFactory;
-use WANObjectCache;
+use Wikimedia\ObjectCache\HashBagOStuff;
+use Wikimedia\ObjectCache\WANObjectCache;
 use Wikimedia\Rdbms\ILBFactory;
 use Wikimedia\Rdbms\ILoadBalancer;
 use Wikimedia\TestingAccessWrapper;
 
+/**
+ * @covers \MediaWiki\Revision\RevisionStoreFactory
+ */
 class RevisionStoreFactoryTest extends MediaWikiUnitTestCase {
 
-	/**
-	 * @covers \MediaWiki\Revision\RevisionStoreFactory::__construct
-	 */
 	public function testValidConstruction_doesntCauseErrors() {
 		new RevisionStoreFactory(
 			$this->getMockLoadBalancerFactory(),
@@ -43,30 +43,28 @@ class RevisionStoreFactoryTest extends MediaWikiUnitTestCase {
 			$this->getHashWANObjectCache(),
 			new HashBagOStuff(),
 			$this->createMock( CommentStore::class ),
-			$this->createMock( ActorMigration::class ),
 			$this->getMockActorStoreFactory(),
 			new NullLogger(),
 			$this->createMock( IContentHandlerFactory::class ),
 			$this->getPageStoreFactory(),
 			$this->createMock( TitleFactory::class ),
-			$this->createHookContainer()
+			$this->createHookContainer(),
+			$this->createMock( RecentChangeLookup::class )
 		);
 		$this->assertTrue( true );
 	}
 
-	public function provideWikiIds() {
+	public static function provideWikiIds() {
 		yield [ false ];
 		yield [ 'somewiki' ];
 	}
 
 	/**
 	 * @dataProvider provideWikiIds
-	 * @covers \MediaWiki\Revision\RevisionStoreFactory::getRevisionStore
 	 */
 	public function testGetRevisionStore( $wikiId ) {
 		$cache = $this->getHashWANObjectCache();
 		$commentStore = $this->createMock( CommentStore::class );
-		$actorMigration = $this->createMock( ActorMigration::class );
 
 		$factory = new RevisionStoreFactory(
 			$this->getMockLoadBalancerFactory(),
@@ -76,13 +74,13 @@ class RevisionStoreFactoryTest extends MediaWikiUnitTestCase {
 			$cache,
 			new HashBagOStuff(),
 			$commentStore,
-			$actorMigration,
 			$this->getMockActorStoreFactory(),
 			new NullLogger(),
 			$this->createMock( IContentHandlerFactory::class ),
 			$this->getPageStoreFactory(),
 			$this->createMock( TitleFactory::class ),
-			$this->createHookContainer()
+			$this->createHookContainer(),
+			$this->createMock( RecentChangeLookup::class )
 		);
 
 		$store = $factory->getRevisionStore( $wikiId );
@@ -97,7 +95,6 @@ class RevisionStoreFactoryTest extends MediaWikiUnitTestCase {
 		// ensure all other required services are correctly set
 		$this->assertSame( $cache, $wrapper->cache );
 		$this->assertSame( $commentStore, $wrapper->commentStore );
-		$this->assertSame( $actorMigration, $wrapper->actorMigration );
 
 		$this->assertInstanceOf( ILoadBalancer::class, $wrapper->loadBalancer );
 		$this->assertInstanceOf( BlobStore::class, $wrapper->blobStore );

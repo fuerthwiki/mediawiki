@@ -2,28 +2,18 @@
 /**
  * Copy all jobs from one job queue system to another.
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License along
- * with this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
- * http://www.gnu.org/copyleft/gpl.html
- *
+ * @license GPL-2.0-or-later
  * @file
  * @ingroup Maintenance
  */
 
-use MediaWiki\MediaWikiServices;
+use MediaWiki\JobQueue\JobQueue;
+use MediaWiki\Maintenance\Maintenance;
+use MediaWiki\WikiMap\WikiMap;
 
+// @codeCoverageIgnoreStart
 require_once __DIR__ . '/Maintenance.php';
+// @codeCoverageIgnoreEnd
 
 /**
  * Copy all jobs from one job queue system to another.
@@ -56,7 +46,7 @@ class CopyJobQueue extends Maintenance {
 		}
 
 		$types = ( $this->getOption( 'type' ) === 'all' )
-			? MediaWikiServices::getInstance()->getJobQueueGroup()->getQueueTypes()
+			? $this->getServiceContainer()->getJobQueueGroup()->getQueueTypes()
 			: [ $this->getOption( 'type' ) ];
 
 		$dbDomain = WikiMap::getCurrentWikiDbDomain()->getId();
@@ -65,15 +55,15 @@ class CopyJobQueue extends Maintenance {
 			$src = JobQueue::factory( $baseConfig + $wgJobQueueMigrationConfig[$srcKey] );
 			$dst = JobQueue::factory( $baseConfig + $wgJobQueueMigrationConfig[$dstKey] );
 
-			list( $total, $totalOK ) = $this->copyJobs( $src, $dst, $src->getAllQueuedJobs() );
+			[ $total, $totalOK ] = $this->copyJobs( $src, $dst, $src->getAllQueuedJobs() );
 			$this->output( "Copied $totalOK/$total queued $type jobs.\n" );
 
-			list( $total, $totalOK ) = $this->copyJobs( $src, $dst, $src->getAllDelayedJobs() );
+			[ $total, $totalOK ] = $this->copyJobs( $src, $dst, $src->getAllDelayedJobs() );
 			$this->output( "Copied $totalOK/$total delayed $type jobs.\n" );
 		}
 	}
 
-	protected function copyJobs( JobQueue $src, JobQueue $dst, $jobs ) {
+	protected function copyJobs( JobQueue $src, JobQueue $dst, iterable $jobs ): array {
 		$total = 0;
 		$totalOK = 0;
 		$batch = [];
@@ -97,5 +87,7 @@ class CopyJobQueue extends Maintenance {
 	}
 }
 
+// @codeCoverageIgnoreStart
 $maintClass = CopyJobQueue::class;
 require_once RUN_MAINTENANCE_IF_MAIN;
+// @codeCoverageIgnoreEnd

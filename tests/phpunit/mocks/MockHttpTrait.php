@@ -1,28 +1,17 @@
 <?php
 /**
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License along
- * with this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
- * http://www.gnu.org/copyleft/gpl.html
+ * @license GPL-2.0-or-later
  */
 
 use MediaWiki\Config\ServiceOptions;
 use MediaWiki\Http\HttpRequestFactory;
 use MediaWiki\MainConfigNames;
+use MediaWiki\Status\Status;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Log\NullLogger;
+use Wikimedia\Http\MultiHttpClient;
 
 /**
  * Trait for test cases that need to mock HTTP requests.
@@ -38,7 +27,7 @@ trait MockHttpTrait {
 	 * @phpcs:ignore MediaWiki.Commenting.FunctionComment.ObjectTypeHintParam
 	 * @param object|callable $service
 	 */
-	abstract protected function setService( $name, $service );
+	abstract protected function setService( string $name, $service );
 
 	/**
 	 * Install a mock HttpRequestFactory in MediaWikiServices, for the duration
@@ -186,7 +175,7 @@ trait MockHttpTrait {
 			MWHttpRequest::class,
 			[ 'execute', 'setCallback', 'isRedirect', 'getFinalUrl',
 				'getResponseHeaders', 'getResponseHeader', 'setHeader',
-				'getStatus', 'getContent'
+				'getStatus', 'getContent', 'setOriginalRequest',
 			]
 		);
 

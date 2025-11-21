@@ -24,6 +24,11 @@ use Wikimedia\ParamValidator\TypeDef;
 class StringDef extends TypeDef {
 
 	/**
+	 * When this option is set, the empty string is considered a proper value.
+	 */
+	public const OPT_ALLOW_EMPTY = 'allowEmptyWhenRequired';
+
+	/**
 	 * (integer) Maximum length of a string in bytes.
 	 *
 	 * Failure codes:
@@ -45,6 +50,7 @@ class StringDef extends TypeDef {
 	 */
 	public const PARAM_MAX_CHARS = 'param-max-chars';
 
+	/** @var bool */
 	protected $allowEmptyWhenRequired = false;
 
 	/**
@@ -56,15 +62,21 @@ class StringDef extends TypeDef {
 	public function __construct( Callbacks $callbacks, array $options = [] ) {
 		parent::__construct( $callbacks );
 
-		$this->allowEmptyWhenRequired = !empty( $options['allowEmptyWhenRequired'] );
+		$this->allowEmptyWhenRequired = !empty( $options[ self::OPT_ALLOW_EMPTY ] );
 	}
 
+	/** @inheritDoc */
 	public function validate( $name, $value, array $settings, array $options ) {
-		if ( !$this->allowEmptyWhenRequired && $value === '' &&
+		$allowEmptyWhenRequired = $options[ self::OPT_ALLOW_EMPTY ]
+			?? $this->allowEmptyWhenRequired;
+
+		if ( !$allowEmptyWhenRequired && $value === '' &&
 			!empty( $settings[ParamValidator::PARAM_REQUIRED] )
 		) {
 			$this->failure( 'missingparam', $name, $value, $settings, $options );
 		}
+
+		$this->failIfNotString( $name, $value, $settings, $options );
 
 		$len = strlen( $value );
 		if ( isset( $settings[self::PARAM_MAX_BYTES] ) && $len > $settings[self::PARAM_MAX_BYTES] ) {
@@ -90,12 +102,12 @@ class StringDef extends TypeDef {
 		return $value;
 	}
 
+	/** @inheritDoc */
 	public function checkSettings( string $name, $settings, array $options, array $ret ): array {
 		$ret = parent::checkSettings( $name, $settings, $options, $ret );
 
-		$ret['allowedKeys'] = array_merge( $ret['allowedKeys'], [
-			self::PARAM_MAX_BYTES, self::PARAM_MAX_CHARS,
-		] );
+		$ret['allowedKeys'][] = self::PARAM_MAX_BYTES;
+		$ret['allowedKeys'][] = self::PARAM_MAX_CHARS;
 
 		$maxb = $settings[self::PARAM_MAX_BYTES] ?? PHP_INT_MAX;
 		if ( !is_int( $maxb ) ) {
@@ -127,6 +139,7 @@ class StringDef extends TypeDef {
 		return $ret;
 	}
 
+	/** @inheritDoc */
 	public function getParamInfo( $name, array $settings, array $options ) {
 		$info = parent::getParamInfo( $name, $settings, $options );
 
@@ -136,6 +149,7 @@ class StringDef extends TypeDef {
 		return $info;
 	}
 
+	/** @inheritDoc */
 	public function getHelpInfo( $name, array $settings, array $options ) {
 		$info = parent::getHelpInfo( $name, $settings, $options );
 

@@ -3,28 +3,18 @@
  * Makes several 'set', 'incr' and 'get' requests on every memcached
  * server and shows a report.
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License along
- * with this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
- * http://www.gnu.org/copyleft/gpl.html
- *
+ * @license GPL-2.0-or-later
  * @file
  * @ingroup Maintenance
  */
 
 use MediaWiki\MainConfigNames;
+use MediaWiki\Maintenance\Maintenance;
+use Wikimedia\ObjectCache\BagOStuff;
 
+// @codeCoverageIgnoreStart
 require_once __DIR__ . '/Maintenance.php';
+// @codeCoverageIgnoreEnd
 
 /**
  * Maintenance script that  makes several 'set', 'incr' and 'get' requests
@@ -108,10 +98,6 @@ class McTest extends Maintenance {
 		}
 	}
 
-	/**
-	 * @param BagOStuff $mcc
-	 * @param array $valueByKey
-	 */
 	private function benchmarkSingleKeyOps( BagOStuff $mcc, array $valueByKey ) {
 		$add = 0;
 		$set = 0;
@@ -174,10 +160,6 @@ class McTest extends Maintenance {
 		);
 	}
 
-	/**
-	 * @param BagOStuff $mcc
-	 * @param array $valueByKey
-	 */
 	private function benchmarkMultiKeyOpsImmediateBlocking( BagOStuff $mcc, array $valueByKey ) {
 		$keys = array_keys( $valueByKey );
 		$iterations = count( $valueByKey );
@@ -210,10 +192,6 @@ class McTest extends Maintenance {
 		);
 	}
 
-	/**
-	 * @param BagOStuff $mcc
-	 * @param array $valueByKey
-	 */
 	private function benchmarkMultiKeyOpsDeferredBlocking( BagOStuff $mcc, array $valueByKey ) {
 		$keys = array_keys( $valueByKey );
 		$iterations = count( $valueByKey );
@@ -248,5 +226,7 @@ class McTest extends Maintenance {
 	}
 }
 
+// @codeCoverageIgnoreStart
 $maintClass = McTest::class;
 require_once RUN_MAINTENANCE_IF_MAIN;
+// @codeCoverageIgnoreEnd

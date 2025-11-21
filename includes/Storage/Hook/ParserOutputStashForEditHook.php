@@ -2,10 +2,10 @@
 
 namespace MediaWiki\Storage\Hook;
 
-use Content;
-use ParserOutput;
-use User;
-use WikiPage;
+use MediaWiki\Content\Content;
+use MediaWiki\Page\WikiPage;
+use MediaWiki\Parser\ParserOutput;
+use MediaWiki\User\User;
 
 /**
  * This is a hook handler interface, see docs/Hooks.md.

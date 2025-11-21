@@ -1,26 +1,15 @@
 <?php
 /**
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License along
- * with this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
- * http://www.gnu.org/copyleft/gpl.html
- *
+ * @license GPL-2.0-or-later
  * @file
  */
 
-use MediaWiki\MediaWikiServices;
+use MediaWiki\JobQueue\Job;
+use MediaWiki\Maintenance\Maintenance;
 
+// @codeCoverageIgnoreStart
 require_once __DIR__ . '/Maintenance.php';
+// @codeCoverageIgnoreEnd
 
 /**
  * Report number of jobs currently waiting in primary database.
@@ -35,7 +24,7 @@ require_once __DIR__ . '/Maintenance.php';
  * @author Antoine Musso
  */
 class ShowJobs extends Maintenance {
-	protected static $stateMethods = [
+	private const STATE_METHODS = [
 		'unclaimed' => 'getAllQueuedJobs',
 		'delayed'   => 'getAllDelayedJobs',
 		'claimed'   => 'getAllAcquiredJobs',
@@ -57,14 +46,14 @@ class ShowJobs extends Maintenance {
 		$stateFilter = $this->getOption( 'status', '' );
 		$stateLimit = (float)$this->getOption( 'limit', INF );
 
-		$group = MediaWikiServices::getInstance()->getJobQueueGroup();
+		$group = $this->getServiceContainer()->getJobQueueGroup();
 
 		$filteredTypes = $typeFilter
 			? [ $typeFilter ]
 			: $group->getQueueTypes();
 		$filteredStates = $stateFilter
-			? array_intersect_key( self::$stateMethods, [ $stateFilter => 1 ] )
-			: self::$stateMethods;
+			? array_intersect_key( self::STATE_METHODS, [ $stateFilter => 1 ] )
+			: self::STATE_METHODS;
 
 		if ( $this->hasOption( 'list' ) ) {
 			$count = 0;
@@ -106,5 +95,7 @@ class ShowJobs extends Maintenance {
 	}
 }
 
+// @codeCoverageIgnoreStart
 $maintClass = ShowJobs::class;
 require_once RUN_MAINTENANCE_IF_MAIN;
+// @codeCoverageIgnoreEnd

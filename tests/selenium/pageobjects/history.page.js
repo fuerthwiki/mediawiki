@@ -1,14 +1,17 @@
-'use strict';
-
-const Page = require( 'wdio-mediawiki/Page' );
+import Page from 'wdio-mediawiki/Page.js';
 
 class HistoryPage extends Page {
-	get heading() { return $( '#firstHeading' ); }
-	get comment() { return $( '#pagehistory .comment' ); }
+	get heading() {
+		return $( '#firstHeading' );
+	}
 
-	open( title ) {
-		super.openTitle( title, { action: 'history' } );
+	get comment() {
+		return $( '#pagehistory .comment' );
+	}
+
+	async open( title ) {
+		return super.openTitle( title, { action: 'history' } );
 	}
 }
 
-module.exports = new HistoryPage();
+export default new HistoryPage();

@@ -1,8 +1,6 @@
 <?php
 /** Western Punjabi (پنجابی)
  *
- * To improve a translation please visit https://translatewiki.net
- *
  * @file
  * @ingroup Languages
  *
@@ -50,6 +48,8 @@ $digitTransformTable = [
 	'8' => '۸',
 	'9' => '۹',
 ];
+
+$numberingSystem = 'arabext';
 
 $namespaceAliases = [
 	'تصویر' => NS_FILE,

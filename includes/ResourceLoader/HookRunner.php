@@ -2,6 +2,7 @@
 
 namespace MediaWiki\ResourceLoader;
 
+use MediaWiki\Config\Config;
 use MediaWiki\HookContainer\HookContainer;
 
 /**
@@ -10,12 +11,15 @@ use MediaWiki\HookContainer\HookContainer;
  * @ingroup ResourceLoader
  */
 class HookRunner implements
+	\MediaWiki\ResourceLoader\Hook\ResourceLoaderBeforeResponseHook,
 	\MediaWiki\ResourceLoader\Hook\ResourceLoaderExcludeUserOptionsHook,
 	\MediaWiki\ResourceLoader\Hook\ResourceLoaderForeignApiModulesHook,
+	\MediaWiki\ResourceLoader\Hook\ResourceLoaderModifyEmbeddedSourceUrlsHook,
 	\MediaWiki\ResourceLoader\Hook\ResourceLoaderRegisterModulesHook,
 	\MediaWiki\ResourceLoader\Hook\ResourceLoaderSiteModulePagesHook,
 	\MediaWiki\ResourceLoader\Hook\ResourceLoaderSiteStylesModulePagesHook,
-	\MediaWiki\ResourceLoader\Hook\ResourceLoaderTestModulesHook
+	\MediaWiki\ResourceLoader\Hook\ResourceLoaderGetConfigVarsHook,
+	\MediaWiki\ResourceLoader\Hook\ResourceLoaderJqueryMsgModuleMagicWordsHook
 {
 	/** @var HookContainer */
 	private $container;
@@ -32,10 +36,19 @@ class HookRunner implements
 		);
 	}
 
+	/** @inheritDoc */
 	public function onResourceLoaderForeignApiModules( &$dependencies, $context ): void {
 		$this->container->run(
 			'ResourceLoaderForeignApiModules',
 			[ &$dependencies, $context ],
+			[ 'abortable' => false ]
+		);
+	}
+
+	public function onResourceLoaderModifyEmbeddedSourceUrls( array &$urls ): void {
+		$this->container->run(
+			'ResourceLoaderModifyEmbeddedSourceUrls',
+			[ &$urls ],
 			[ 'abortable' => false ]
 		);
 	}
@@ -48,6 +61,7 @@ class HookRunner implements
 		);
 	}
 
+	/** @inheritDoc */
 	public function onResourceLoaderSiteModulePages( $skin, array &$pages ): void {
 		$this->container->run(
 			'ResourceLoaderSiteModulePages',
@@ -56,6 +70,7 @@ class HookRunner implements
 		);
 	}
 
+	/** @inheritDoc */
 	public function onResourceLoaderSiteStylesModulePages( $skin, array &$pages ): void {
 		$this->container->run(
 			'ResourceLoaderSiteStylesModulePages',
@@ -64,10 +79,29 @@ class HookRunner implements
 		);
 	}
 
-	public function onResourceLoaderTestModules( array &$testModules, ResourceLoader $rl ): void {
+	/** @inheritDoc */
+	public function onResourceLoaderGetConfigVars( array &$vars, $skin, Config $config ): void {
 		$this->container->run(
-			'ResourceLoaderTestModules',
-			[ &$testModules, $rl ],
+			'ResourceLoaderGetConfigVars',
+			[ &$vars, $skin, $config ],
+			[ 'abortable' => false ]
+		);
+	}
+
+	public function onResourceLoaderJqueryMsgModuleMagicWords( Context $context,
+		array &$magicWords
+	): void {
+		$this->container->run(
+			'ResourceLoaderJqueryMsgModuleMagicWords',
+			[ $context, &$magicWords ],
+			[ 'abortable' => false ]
+		);
+	}
+
+	public function onResourceLoaderBeforeResponse( Context $context, array &$extraHeaders ): void {
+		$this->container->run(
+			'ResourceLoaderBeforeResponse',
+			[ $context, &$extraHeaders ],
 			[ 'abortable' => false ]
 		);
 	}

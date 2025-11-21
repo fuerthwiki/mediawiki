@@ -1,17 +1,18 @@
+// @ts-check
 /* eslint no-underscore-dangle: "off" */
 /**
- * URI Processor for RCFilters
+ * URI Processor for RCFilters.
  *
- * @class mw.rcfilters.UriProcessor
- *
- * @constructor
+ * @class UriProcessor
+ * @memberof mw.rcfilters
+ * @ignore
  * @param {mw.rcfilters.dm.FiltersViewModel} filtersModel Filters view model
  * @param {Object} [config] Configuration object
- * @cfg {boolean} [normalizeTarget] Dictates whether or not to go through the
+ * @param {boolean} [config.normalizeTarget] Dictates whether or not to go through the
  *  title normalization to separate title subpage/parts into the target= url
  *  parameter
  */
-var UriProcessor = function MwRcfiltersController( filtersModel, config ) {
+const UriProcessor = function MwRcfiltersController( filtersModel, config ) {
 	config = config || {};
 	this.filtersModel = filtersModel;
 
@@ -26,7 +27,7 @@ OO.initClass( UriProcessor );
 /**
  * Replace the url history through replaceState
  *
- * @param {mw.Uri} newUri New URI to replace
+ * @param {URL} newUri New URI to replace
  */
 UriProcessor.static.replaceState = function ( newUri ) {
 	window.history.replaceState(
@@ -39,7 +40,7 @@ UriProcessor.static.replaceState = function ( newUri ) {
 /**
  * Push the url to history through pushState
  *
- * @param {mw.Uri} newUri New URI to push
+ * @param {URL} newUri New URI to push
  */
 UriProcessor.static.pushState = function ( newUri ) {
 	window.history.pushState(
@@ -54,32 +55,32 @@ UriProcessor.static.pushState = function ( newUri ) {
 /**
  * Get the version that this URL query is tagged with.
  *
- * @param {Object} [uriQuery] URI query
+ * @param {URLSearchParams} [uriQuery] URI query
  * @return {number} URL version
  */
 UriProcessor.prototype.getVersion = function ( uriQuery ) {
-	uriQuery = uriQuery || new mw.Uri().query;
+	uriQuery = uriQuery || new URL( location.href ).searchParams;
 
-	return Number( uriQuery.urlversion || 1 );
+	return Number( uriQuery.get( 'urlversion' ) || 1 );
 };
 
 /**
- * Get an updated mw.Uri object based on the model state
+ * Get an updated URL object based on the model state
  *
- * @param {mw.Uri} [uri] An external URI to build the new uri
+ * @param {URL} [url] An external URI to build the new uri
  *  with. This is mainly for tests, to be able to supply external query
  *  parameters and make sure they are retained.
- * @return {mw.Uri} Updated Uri
+ * @return {URL} Updated Uri
  */
-UriProcessor.prototype.getUpdatedUri = function ( uri ) {
-	var normalizedUri = this._normalizeTargetInUri( uri || new mw.Uri() ),
-		unrecognizedParams = this.getUnrecognizedParams( normalizedUri.query );
+UriProcessor.prototype.getUpdatedUri = function ( url ) {
+	const normalizedURL = this._normalizeTargetInUri( url || new URL( location.href ) ),
+		unrecognizedParams = this.getUnrecognizedParams( normalizedURL.searchParams );
 
-	normalizedUri.query = this.filtersModel.getMinimizedParamRepresentation(
+	let query = this.filtersModel.getMinimizedParamRepresentation(
 		$.extend(
 			true,
 			{},
-			normalizedUri.query,
+			this._urlSearchParamsToObject( normalizedURL.searchParams ),
 			// The representation must be expanded so it can
 			// override the uri query params but we then output
 			// a minimized version for the entire URI representation
@@ -87,72 +88,73 @@ UriProcessor.prototype.getUpdatedUri = function ( uri ) {
 			this.filtersModel.getExpandedParamRepresentation()
 		)
 	);
+	normalizedURL.search = new URLSearchParams( query ).toString();
 
 	// Reapply unrecognized params and url version
-	normalizedUri.query = $.extend(
+	query = $.extend(
 		true,
 		{},
-		normalizedUri.query,
-		unrecognizedParams,
+		this._urlSearchParamsToObject( normalizedURL.searchParams ),
+		this._urlSearchParamsToObject( unrecognizedParams ),
 		{ urlversion: '2' }
 	);
+	normalizedURL.search = new URLSearchParams( query ).toString();
 
-	return normalizedUri;
+	return normalizedURL;
 };
 
 /**
  * Move the subpage to the target parameter
  *
- * @param {mw.Uri} uri
- * @return {mw.Uri}
+ * @param {URL} url
+ * @return {URL}
  * @private
  */
-UriProcessor.prototype._normalizeTargetInUri = function ( uri ) {
-	var parts,
-		// matches [/wiki/]SpecialNS:RCL/[Namespace:]Title/Subpage/Subsubpage/etc
-		re = /^((?:\/.+?\/)?.*?:.*?)\/(.*)$/;
+UriProcessor.prototype._normalizeTargetInUri = function ( url ) {
+	// matches [/wiki/]SpecialNS:RCL/[Namespace:]Title/Subpage/Subsubpage/etc
+	const re = /^((?:\/.+?\/)?.*?:.*?)\/(.*)$/;
 
 	if ( !this.normalizeTarget ) {
-		return uri;
+		return url;
 	}
 
 	// target in title param
-	if ( uri.query.title ) {
-		parts = uri.query.title.match( re );
-		if ( parts ) {
-			uri.query.title = parts[ 1 ];
-			uri.query.target = parts[ 2 ];
+	const title = url.searchParams.get( 'title' );
+	if ( title ) {
+		const titleParts = title.match( re );
+		if ( titleParts ) {
+			url.searchParams.set( 'title', titleParts[ 1 ] );
+			url.searchParams.set( 'target', titleParts[ 2 ] );
 		}
 	}
 
 	// target in path
-	parts = mw.Uri.decode( uri.path ).match( re );
-	if ( parts ) {
-		uri.path = parts[ 1 ];
-		uri.query.target = parts[ 2 ];
+	const pathParts = decodeURIComponent( url.pathname.replace( /\+/g, '%20' ) ).match( re );
+	if ( pathParts ) {
+		url.pathname = pathParts[ 1 ];
+		url.searchParams.set( 'target', pathParts[ 2 ] );
 	}
 
-	return uri;
+	return url;
 };
 
 /**
  * Get an object representing given parameters that are unrecognized by the model
  *
- * @param  {Object} params Full params object
- * @return {Object} Unrecognized params
+ * @param  {URLSearchParams} params Full params object
+ * @return {URLSearchParams} Unrecognized params
  */
 UriProcessor.prototype.getUnrecognizedParams = function ( params ) {
 	// Start with full representation
-	var givenParamNames = Object.keys( params ),
-		unrecognizedParams = $.extend( true, {}, params );
+	const unrecognizedParams = new URLSearchParams( params );
 
 	// Extract unrecognized parameters
-	Object.keys( this.filtersModel.getEmptyParameterState() ).forEach( function ( paramName ) {
+	for ( const paramName in this.filtersModel.getEmptyParameterState() ) {
 		// Remove recognized params
-		if ( givenParamNames.indexOf( paramName ) > -1 ) {
-			delete unrecognizedParams[ paramName ];
+		if ( params.has( paramName ) ) {
+			unrecognizedParams.delete( paramName );
 		}
-	} );
+	}
 
 	return unrecognizedParams;
 };
@@ -168,16 +170,18 @@ UriProcessor.prototype.getUnrecognizedParams = function ( params ) {
  * @param {Object} [params] Extra parameters to add to the API call
  */
 UriProcessor.prototype.updateURL = function ( params ) {
-	var currentUri = new mw.Uri(),
-		updatedUri = this.getUpdatedUri();
+	const currentURL = new URL( location.href ),
+		updatedURL = this.getUpdatedUri();
 
-	updatedUri.extend( params || {} );
+	Object.keys( params || {} ).forEach( ( k ) => {
+		updatedURL.searchParams.set( k, params[ k ] );
+	} );
 
 	if (
-		this.getVersion( currentUri.query ) !== 2 ||
-		this.isNewState( currentUri.query, updatedUri.query )
+		this.getVersion( currentURL.searchParams ) !== 2 ||
+		this.isNewState( currentURL.searchParams, updatedURL.searchParams )
 	) {
-		this.constructor.static.replaceState( updatedUri );
+		this.constructor.static.replaceState( updatedURL );
 	}
 };
 
@@ -191,12 +195,12 @@ UriProcessor.prototype.updateURL = function ( params ) {
  * After initialization, the model updates the URL, not the
  * other way around.
  *
- * @param {Object} [uriQuery] URI query
+ * @param {URLSearchParams} [uriQuery] URI query
  */
 UriProcessor.prototype.updateModelBasedOnQuery = function ( uriQuery ) {
-	uriQuery = uriQuery || this._normalizeTargetInUri( new mw.Uri() ).query;
+	uriQuery = uriQuery || this._normalizeTargetInUri( new URL( location.href ) ).searchParams;
 	this.filtersModel.updateStateFromParams(
-		this._getNormalizedQueryParams( uriQuery )
+		this._urlSearchParamsToObject( this._getNormalizedQueryParams( uriQuery ) )
 	);
 };
 
@@ -204,58 +208,36 @@ UriProcessor.prototype.updateModelBasedOnQuery = function ( uriQuery ) {
  * Compare two URI queries to decide whether they are different
  * enough to represent a new state.
  *
- * @param {Object} currentUriQuery Current Uri query
- * @param {Object} updatedUriQuery Updated Uri query
+ * @param {URLSearchParams} currentUriQuery Current Uri query
+ * @param {URLSearchParams} updatedUriQuery Updated Uri query
  * @return {boolean} This is a new state
  */
 UriProcessor.prototype.isNewState = function ( currentUriQuery, updatedUriQuery ) {
-	var currentParamState, updatedParamState,
-		notEquivalent = function ( obj1, obj2 ) {
-			var keys = Object.keys( obj1 ).concat( Object.keys( obj2 ) );
-			return keys.some( function ( key ) {
-				return obj1[ key ] != obj2[ key ]; // eslint-disable-line eqeqeq
-			} );
-		};
+	const notEquivalent = function ( obj1, obj2 ) {
+		const keys = Object.keys( obj1 ).concat( Object.keys( obj2 ) );
+		return keys.some(
+			( key ) => obj1[ key ] != obj2[ key ] // eslint-disable-line eqeqeq
+		);
+	};
 
 	// Compare states instead of parameters
 	// This will allow us to always have a proper check of whether
 	// the requested new url is one to change or not, regardless of
 	// actual parameter visibility/representation in the URL
-	currentParamState = $.extend(
+	const currentParamState = $.extend(
 		true,
 		{},
-		this.filtersModel.getMinimizedParamRepresentation( currentUriQuery ),
-		this.getUnrecognizedParams( currentUriQuery )
+		this.filtersModel.getMinimizedParamRepresentation( this._urlSearchParamsToObject( currentUriQuery ) ),
+		this._urlSearchParamsToObject( this.getUnrecognizedParams( currentUriQuery ) )
 	);
-	updatedParamState = $.extend(
+	const updatedParamState = $.extend(
 		true,
 		{},
-		this.filtersModel.getMinimizedParamRepresentation( updatedUriQuery ),
-		this.getUnrecognizedParams( updatedUriQuery )
+		this.filtersModel.getMinimizedParamRepresentation( this._urlSearchParamsToObject( updatedUriQuery ) ),
+		this._urlSearchParamsToObject( this.getUnrecognizedParams( updatedUriQuery ) )
 	);
 
 	return notEquivalent( currentParamState, updatedParamState );
-};
-
-/**
- * Check whether the given query has parameters that are
- * recognized as parameters we should load the system with
- *
- * @param {mw.Uri} [uriQuery] Given URI query
- * @return {boolean} Query contains valid recognized parameters
- */
-UriProcessor.prototype.doesQueryContainRecognizedParams = function ( uriQuery ) {
-	var anyValidInUrl,
-		validParameterNames = Object.keys( this.filtersModel.getEmptyParameterState() );
-
-	uriQuery = uriQuery || new mw.Uri().query;
-
-	anyValidInUrl = Object.keys( uriQuery ).some( function ( parameter ) {
-		return validParameterNames.indexOf( parameter ) > -1;
-	} );
-
-	// URL version 2 is allowed to be empty or within nonrecognized params
-	return anyValidInUrl || this.getVersion( uriQuery ) === 2;
 };
 
 /**
@@ -265,8 +247,8 @@ UriProcessor.prototype.doesQueryContainRecognizedParams = function ( uriQuery ) 
  * Always merge in the hidden parameter defaults.
  *
  * @private
- * @param {Object} uriQuery Current URI query
- * @return {Object} Normalized parameters
+ * @param {URLSearchParams} uriQuery Current URI query
+ * @return {URLSearchParams} Normalized parameters
  */
 UriProcessor.prototype._getNormalizedQueryParams = function ( uriQuery ) {
 	// Check whether we are dealing with urlversion=2
@@ -277,18 +259,34 @@ UriProcessor.prototype._getNormalizedQueryParams = function ( uriQuery ) {
 	// wiki default.
 	// Any subsequent change of the URL through the RCFilters
 	// system will receive 'urlversion=2'
-	var base = this.getVersion( uriQuery ) === 2 ?
+	const base = this.getVersion( uriQuery ) === 2 ?
 		{} :
 		this.filtersModel.getDefaultParams();
 
-	return $.extend(
+	const query = $.extend(
 		true,
 		{},
 		this.filtersModel.getMinimizedParamRepresentation(
-			$.extend( true, {}, base, uriQuery )
+			$.extend( true, {}, base, this._urlSearchParamsToObject( uriQuery ) )
 		),
 		{ urlversion: '2' }
 	);
+	return new URLSearchParams( query );
+};
+
+/**
+ * Converts URLSearchParams to object.
+ *
+ * @param {URLSearchParams} params
+ * @return {Object}
+ */
+UriProcessor.prototype._urlSearchParamsToObject = function ( params ) {
+	// ES2019 'Object.fromEntries' method is shorter
+	const object = {};
+	for ( const [ k, v ] of params.entries() ) {
+		object[ k ] = v;
+	}
+	return object;
 };
 
 module.exports = UriProcessor;

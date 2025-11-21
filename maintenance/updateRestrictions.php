@@ -5,26 +5,16 @@
  * schema change. All remaining page_restriction column values are moved
  * to the new table.
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License along
- * with this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
- * http://www.gnu.org/copyleft/gpl.html
- *
+ * @license GPL-2.0-or-later
  * @file
  * @ingroup Maintenance
  */
 
+use MediaWiki\Maintenance\Maintenance;
+
+// @codeCoverageIgnoreStart
 require_once __DIR__ . '/Maintenance.php';
+// @codeCoverageIgnoreEnd
 
 /**
  * Maintenance script that updates page_restrictions table from
@@ -39,6 +29,7 @@ class UpdateRestrictions extends Maintenance {
 		$this->setBatchSize( 1000 );
 	}
 
+	/** @inheritDoc */
 	public function execute() {
 		$dbw = $this->getDB( DB_PRIMARY );
 		$batchSize = $this->getBatchSize();
@@ -47,15 +38,17 @@ class UpdateRestrictions extends Maintenance {
 			$this->fatalError( "page_restrictions table does not exist" );
 		}
 
-		if ( !$dbw->fieldExists( 'page', 'page_restrictions' ) ) {
+		if ( !$dbw->fieldExists( 'page', 'page_restrictions', __METHOD__ ) ) {
 			$this->output( "Migration is not needed.\n" );
 			return true;
 		}
 
 		$encodedExpiry = $dbw->getInfinity();
 
-		$maxPageId = $dbw->selectField( 'page', 'MAX(page_id)', '', __METHOD__ );
-		$escapedEmptyBlobValue = $dbw->addQuotes( '' );
+		$maxPageId = $dbw->newSelectQueryBuilder()
+			->select( 'MAX(page_id)' )
+			->from( 'page' )
+			->caller( __METHOD__ )->fetchField();
 
 		$batchMinPageId = 0;
 
@@ -64,16 +57,15 @@ class UpdateRestrictions extends Maintenance {
 
 			$this->output( "...processing page IDs from $batchMinPageId to $batchMaxPageId.\n" );
 
-			$res = $dbw->select(
-				'page',
-				[ 'page_id', 'page_restrictions' ],
-				[
-					"page_restrictions != $escapedEmptyBlobValue",
-					'page_id > ' . $dbw->addQuotes( $batchMinPageId ),
-					'page_id <= ' . $dbw->addQuotes( $batchMaxPageId ),
-				],
-				__METHOD__
-			);
+			$res = $dbw->newSelectQueryBuilder()
+				->select( [ 'page_id', 'page_restrictions' ] )
+				->from( 'page' )
+				->where( [
+					$dbw->expr( 'page_restrictions', '!=', '' ),
+					$dbw->expr( 'page_id', '>', $batchMinPageId ),
+					$dbw->expr( 'page_id', '<=', $batchMaxPageId ),
+				] )
+				->caller( __METHOD__ )->fetchResultSet();
 
 			// No pages have legacy protection settings in the current batch
 			if ( !$res->numRows() ) {
@@ -105,15 +97,19 @@ class UpdateRestrictions extends Maintenance {
 
 			// Insert new format protection settings for the pages in the current batch.
 			// Use INSERT IGNORE to ignore conflicts with new format settings that might exist for the page
-			$dbw->insert(
-				'page_restrictions',
-				$batch,
-				__METHOD__,
-				[ 'IGNORE' ]
-			);
+			$dbw->newInsertQueryBuilder()
+				->insertInto( 'page_restrictions' )
+				->ignore()
+				->rows( $batch )
+				->caller( __METHOD__ )->execute();
 
 			// Clear out the legacy page.page_restrictions blob for this batch
-			$dbw->update( 'page', [ 'page_restrictions' => '' ], [ 'page_id' => $pageIds ], __METHOD__ );
+			$dbw->newUpdateQueryBuilder()
+				->update( 'page' )
+				->set( [ 'page_restrictions' => '' ] )
+				->where( [ 'page_id' => $pageIds ] )
+				->caller( __METHOD__ )
+				->execute();
 
 			$this->commitTransaction( $dbw, __METHOD__ );
 
@@ -157,5 +153,7 @@ class UpdateRestrictions extends Maintenance {
 	}
 }
 
+// @codeCoverageIgnoreStart
 $maintClass = UpdateRestrictions::class;
 require_once RUN_MAINTENANCE_IF_MAIN;
+// @codeCoverageIgnoreEnd

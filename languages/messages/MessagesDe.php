@@ -1,8 +1,6 @@
 <?php
 /** German (Deutsch)
  *
- * To improve a translation please visit https://translatewiki.net
- *
  * @file
  * @ingroup Languages
  */
@@ -44,17 +42,21 @@ $specialPageAliases = [
 	'Allpages'                  => [ 'Alle_Seiten' ],
 	'Ancientpages'              => [ 'Älteste_Seiten' ],
 	'ApiHelp'                   => [ 'API-Hilfe' ],
+	'ApiSandbox'                => [ 'API-Spielwiese' ],
 	'Badtitle'                  => [ 'Ungültiger_Seitenname' ],
 	'Blankpage'                 => [ 'Leerseite', 'Leere_Seite' ],
 	'Block'                     => [ 'Sperren' ],
 	'BlockList'                 => [ 'Liste_der_Sperren', 'Gesperrte_IP-Adressen', 'Gesperrte_IPs', 'Sperrliste' ],
 	'Booksources'               => [ 'ISBN-Suche' ],
+	'BotPasswords'              => [ 'Botpasswörter' ],
 	'BrokenRedirects'           => [ 'Defekte_Weiterleitungen', 'Kaputte_Weiterleitungen' ],
 	'Categories'                => [ 'Kategorien' ],
+	'ChangeCredentials'         => [ 'Anmeldeinformationen_ändern' ],
 	'ChangeEmail'               => [ 'E-Mail-Adresse_ändern' ],
 	'ChangePassword'            => [ 'Passwort_ändern', 'Passwort_zurücksetzen' ],
 	'ComparePages'              => [ 'Seiten_vergleichen' ],
 	'Confirmemail'              => [ 'E-Mail_bestätigen', 'E-Mail_bestaetigen' ],
+	'Contribute'                => [ 'Beitragen' ],
 	'Contributions'             => [ 'Beiträge' ],
 	'CreateAccount'             => [ 'Benutzerkonto_anlegen' ],
 	'Deadendpages'              => [ 'Sackgassenseiten' ],
@@ -69,6 +71,7 @@ $specialPageAliases = [
 	'FileDuplicateSearch'       => [ 'Dateiduplikatsuche', 'Datei-Duplikat-Suche' ],
 	'Filepath'                  => [ 'Dateipfad' ],
 	'Import'                    => [ 'Importieren' ],
+	'Interwiki'                 => [ 'Interwikitabelle', 'Interwiki-Tabelle' ],
 	'Invalidateemail'           => [ 'E-Mail_nicht_bestätigen', 'E-Mail_nicht_bestaetigen' ],
 	'JavaScriptTest'            => [ 'JavaScript-Test' ],
 	'LinkSearch'                => [ 'Weblinksuche', 'Weblink-Suche' ],
@@ -96,6 +99,7 @@ $specialPageAliases = [
 	'Movepage'                  => [ 'Verschieben' ],
 	'Mycontributions'           => [ 'Meine_Beiträge' ],
 	'MyLanguage'                => [ 'Meine_Sprache' ],
+	'Mylog'                     => [ 'Mein_Logbuch' ],
 	'Mypage'                    => [ 'Meine_Benutzerseite' ],
 	'Mytalk'                    => [ 'Meine_Diskussionsseite' ],
 	'Myuploads'                 => [ 'Meine_hochgeladenen_Dateien' ],
@@ -104,6 +108,7 @@ $specialPageAliases = [
 	'NewSection'                => [ 'Neuer_Abschnitt' ],
 	'PageLanguage'              => [ 'Seitensprache' ],
 	'PagesWithProp'             => [ 'Seiten_mit_Eigenschaften' ],
+	'PasswordPolicies'          => [ 'Passwortrichtlinien' ],
 	'PasswordReset'             => [ 'Passwort_neu_vergeben' ],
 	'PermanentLink'             => [ 'Permanenter_Link', 'Permalink' ],
 	'Preferences'               => [ 'Einstellungen' ],
@@ -117,6 +122,8 @@ $specialPageAliases = [
 	'Recentchanges'             => [ 'Letzte_Änderungen' ],
 	'Recentchangeslinked'       => [ 'Änderungen_an_verlinkten_Seiten' ],
 	'Redirect'                  => [ 'Weiterleitung' ],
+	'RemoveCredentials'         => [ 'Anmeldeinformationen_entfernen' ],
+	'Renameuser'                => [ 'Benutzer_umbenennen' ],
 	'ResetTokens'               => [ 'Tokens_zurücksetzen' ],
 	'Revisiondelete'            => [ 'Versionslöschung' ],
 	'RunJobs'                   => [ 'Aufträge_ausführen' ],
@@ -219,7 +226,7 @@ $magicWords = [
 	'img_upright'               => [ '1', 'hochkant', 'hochkant=$1', 'hochkant $1', 'hochkant_$1', 'upright', 'upright=$1', 'upright $1' ],
 	'index'                     => [ '1', '__INDEXIEREN__', '__INDIZIEREN__', '__INDEX__' ],
 	'int'                       => [ '0', 'NACHRICHT:', 'INT:' ],
-	'language'                  => [ '0', '#SPRACHE:', '#LANGUAGE:' ],
+	'language'                  => [ '0', '#SPRACHE', '#LANGUAGE' ],
 	'lc'                        => [ '0', 'KLEIN:', 'LC:' ],
 	'lcfirst'                   => [ '0', 'INITIAL_KLEIN:', 'LCFIRST:' ],
 	'localday'                  => [ '1', 'LOKALER_KALENDERTAG', 'LOKALER_TAG', 'LOCALDAY' ],

@@ -1,31 +1,21 @@
 <?php
 /**
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License along
- * with this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
- * http://www.gnu.org/copyleft/gpl.html
- *
+ * @license GPL-2.0-or-later
  * @file
- * @ingroup Maintenance
  */
 
+use MediaWiki\Maintenance\Maintenance;
+
+// @codeCoverageIgnoreStart
 require_once __DIR__ . '/Maintenance.php';
+// @codeCoverageIgnoreEnd
 
 /**
- * Maintenance script for finding the files that contain classes
+ * Find the files that contain classes
  *
- * @ingroup Maintenance
  * @since 1.37
+ * @ingroup Autoload
+ * @ingroup Maintenance
  */
 class FindClasses extends Maintenance {
 
@@ -35,19 +25,25 @@ class FindClasses extends Maintenance {
 	}
 
 	public function execute() {
-		$input = file( 'php://stdin' );
+		$stdin = $this->getStdin();
 
-		foreach ( $input as $line ) {
+		while ( !feof( $stdin ) ) {
+			$line = fgets( $stdin );
+			if ( $line === false ) {
+				break;
+			}
 			$class = trim( $line );
 			$filename = AutoLoader::find( $class );
 			if ( $filename ) {
-				print "$filename\n";
+				$this->output( "$filename\n" );
 			} elseif ( $class ) {
-				print "#$class\n";
+				$this->output( "#$class\n" );
 			}
 		}
 	}
 }
 
+// @codeCoverageIgnoreStart
 $maintClass = FindClasses::class;
 require_once RUN_MAINTENANCE_IF_MAIN;
+// @codeCoverageIgnoreEnd

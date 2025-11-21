@@ -2,34 +2,20 @@
 /**
  * Mutable RevisionRecord implementation, for building new revision entries programmatically.
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License along
- * with this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
- * http://www.gnu.org/copyleft/gpl.html
- *
+ * @license GPL-2.0-or-later
  * @file
  */
 
 namespace MediaWiki\Revision;
 
-use CommentStoreComment;
-use Content;
 use InvalidArgumentException;
+use MediaWiki\CommentStore\CommentStoreComment;
+use MediaWiki\Content\Content;
 use MediaWiki\Page\PageIdentity;
+use MediaWiki\Page\PageIdentityValue;
 use MediaWiki\Storage\RevisionSlotsUpdate;
 use MediaWiki\User\UserIdentity;
-use MWException;
-use MWTimestamp;
+use MediaWiki\Utils\MWTimestamp;
 
 /**
  * Mutable RevisionRecord implementation, for building new revision entries programmatically.
@@ -86,7 +72,8 @@ class MutableRevisionRecord extends RevisionRecord {
 		$newRevisionRecord->setId( $revision->getId( $revision->getWikiId() ) );
 		$newRevisionRecord->setPageId( $revision->getPageId( $revision->getWikiId() ) );
 		$newRevisionRecord->setParentId( $revision->getParentId( $revision->getWikiId() ) );
-		$newRevisionRecord->setUser( $revision->getUser() );
+		$newRevisionRecord->setUser( $revision->getUser( RevisionRecord::RAW ) );
+		$newRevisionRecord->setComment( $revision->getComment( RevisionRecord::RAW ) );
 
 		foreach ( $revision->getSlots()->getSlots() as $slot ) {
 			$newRevisionRecord->setSlot( $slot );
@@ -104,8 +91,6 @@ class MutableRevisionRecord extends RevisionRecord {
 	 *
 	 * @param PageIdentity $page The page this RevisionRecord is associated with.
 	 * @param false|string $wikiId Relevant wiki id or self::LOCAL for the current one.
-	 *
-	 * @throws MWException
 	 */
 	public function __construct( PageIdentity $page, $wikiId = self::LOCAL ) {
 		$slots = new MutableRevisionSlots( [], function () {
@@ -234,22 +219,6 @@ class MutableRevisionRecord extends RevisionRecord {
 	}
 
 	/**
-	 * Set revision hash, for optimization. Prevents getSha1() from re-calculating the hash.
-	 *
-	 * @note This should only be used if the calling code is sure that the given hash is correct
-	 * for the revision's content, and there is no chance of the content being manipulated
-	 * later. When in doubt, this method should not be called.
-	 *
-	 * @param string $sha1 SHA1 hash as a base36 string.
-	 * @return self
-	 */
-	public function setSha1( string $sha1 ) {
-		$this->mSha1 = $sha1;
-
-		return $this;
-	}
-
-	/**
 	 * Set nominal revision size, for optimization. Prevents getSize() from re-calculating the size.
 	 *
 	 * @note This should only be used if the calling code is sure that the given size is correct
@@ -338,6 +307,12 @@ class MutableRevisionRecord extends RevisionRecord {
 		}
 
 		$this->mPageId = $pageId;
+		$this->mPage = new PageIdentityValue(
+			$pageId,
+			$this->mPage->getNamespace(),
+			$this->mPage->getDBkey(),
+			$this->mPage->getWikiId()
+		);
 
 		return $this;
 	}
@@ -351,9 +326,7 @@ class MutableRevisionRecord extends RevisionRecord {
 	 */
 	public function getSize() {
 		// If not known, re-calculate and remember. Will be reset when slots change.
-		if ( $this->mSize === null ) {
-			$this->mSize = $this->mSlots->computeSize();
-		}
+		$this->mSize ??= $this->mSlots->computeSize();
 
 		return $this->mSize;
 	}
@@ -366,23 +339,15 @@ class MutableRevisionRecord extends RevisionRecord {
 	 * @return string The revision hash, may be computed on the fly if not yet known.
 	 */
 	public function getSha1() {
-		// If not known, re-calculate and remember. Will be reset when slots change.
-		if ( $this->mSha1 === null ) {
-			$this->mSha1 = $this->mSlots->computeSha1();
-		}
-
-		return $this->mSha1;
+		return $this->mSlots->computeSha1();
 	}
 
 	/**
 	 * Returns the slots defined for this revision as a MutableRevisionSlots instance,
 	 * which can be modified to defined the slots for this revision.
-	 *
-	 * @return MutableRevisionSlots
 	 */
-	public function getSlots(): RevisionSlots {
-		// Overwritten just guarantee the more narrow return type.
-		// TODO Update return typehint once full return type covariance is allowed (PHP 7.4+, T278139)
+	public function getSlots(): MutableRevisionSlots {
+		// Overwritten just to guarantee the more narrow return type.
 		// @phan-suppress-next-line PhanTypeMismatchReturnSuperType
 		return parent::getSlots();
 	}
@@ -393,7 +358,6 @@ class MutableRevisionRecord extends RevisionRecord {
 	 */
 	private function resetAggregateValues() {
 		$this->mSize = null;
-		$this->mSha1 = null;
 	}
 
 }

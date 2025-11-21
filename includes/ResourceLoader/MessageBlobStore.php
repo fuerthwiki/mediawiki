@@ -1,20 +1,6 @@
 <?php
 /**
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License along
- * with this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
- * http://www.gnu.org/copyleft/gpl.html
- *
+ * @license GPL-2.0-or-later
  * @file
  * @author Roan Kattouw
  * @author Trevor Parscal
@@ -22,22 +8,13 @@
 
 namespace MediaWiki\ResourceLoader;
 
-use FormatJson;
+use MediaWiki\Json\FormatJson;
 use MediaWiki\MediaWikiServices;
 use Psr\Log\LoggerAwareInterface;
 use Psr\Log\LoggerInterface;
 use Psr\Log\NullLogger;
-use WANObjectCache;
+use Wikimedia\ObjectCache\WANObjectCache;
 use Wikimedia\Rdbms\Database;
-
-/**
- * PHP 7.2 hack to work around the issue described at https://phabricator.wikimedia.org/T166010#5962098
- * Load the ResourceLoader class when MessageBlobStore is loaded.
- * phpcs:disable Generic.Files.OneObjectStructurePerFile.MultipleFound
- * phpcs:disable MediaWiki.Files.ClassMatchesFilename.NotMatch
- */
-class ResourceLoader72Hack extends ResourceLoader {
-}
 
 /**
  * This class generates message blobs for use by ResourceLoader.
@@ -82,7 +59,7 @@ class MessageBlobStore implements LoggerAwareInterface {
 	 * @since 1.27
 	 * @param LoggerInterface $logger
 	 */
-	public function setLogger( LoggerInterface $logger ) {
+	public function setLogger( LoggerInterface $logger ): void {
 		$this->logger = $logger;
 	}
 
@@ -137,8 +114,6 @@ class MessageBlobStore implements LoggerAwareInterface {
 	}
 
 	/**
-	 * Global check key for ::clear()
-	 *
 	 * @param WANObjectCache $cache
 	 * @return string Cache key
 	 */
@@ -182,10 +157,11 @@ class MessageBlobStore implements LoggerAwareInterface {
 	protected function recacheMessageBlob( $cacheKey, Module $module, $lang ) {
 		$blob = $this->generateMessageBlob( $module, $lang );
 		$cache = $this->wanCache;
+		$dbr = MediaWikiServices::getInstance()->getConnectionProvider()->getReplicaDatabase();
 		$cache->set( $cacheKey, $blob,
 			// Add part of a day to TTL to avoid all modules expiring at once
 			$cache::TTL_WEEK + mt_rand( 0, $cache::TTL_DAY ),
-			Database::getCacheSetOptions( wfGetDB( DB_REPLICA ) )
+			Database::getCacheSetOptions( $dbr )
 		);
 		return $blob;
 	}
@@ -208,18 +184,8 @@ class MessageBlobStore implements LoggerAwareInterface {
 	/**
 	 * Invalidate cache keys for all known modules.
 	 *
-	 * Used by purgeMessageBlobStore.php
-	 */
-	public function clear() {
-		self::clearGlobalCacheEntry( $this->wanCache );
-	}
-
-	/**
-	 * Invalidate cache keys for all known modules.
-	 *
-	 * Used by LocalisationCache and DatabaseUpdater after regenerating l10n cache.
-	 *
-	 * @param WANObjectCache $cache
+	 * Used by LocalisationCache, DatabaseUpdater and purgeMessageBlobStore.php script
+	 * after regenerating l10n cache.
 	 */
 	public static function clearGlobalCacheEntry( WANObjectCache $cache ) {
 		// Disable holdoff TTL because:
@@ -283,6 +249,3 @@ class MessageBlobStore implements LoggerAwareInterface {
 		return $json;
 	}
 }
-
-/** @deprecated since 1.39 */
-class_alias( MessageBlobStore::class, 'MessageBlobStore' );

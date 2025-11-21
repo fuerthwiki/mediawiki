@@ -1,27 +1,18 @@
 <?php
 /**
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License along
- * with this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
- * http://www.gnu.org/copyleft/gpl.html
- *
+ * @license GPL-2.0-or-later
  * @file
  * @ingroup Maintenance
  */
 
+// @codeCoverageIgnoreStart
 require_once __DIR__ . '/Maintenance.php';
+// @codeCoverageIgnoreEnd
 
-use MediaWiki\MediaWikiServices;
+use MediaWiki\Maintenance\Maintenance;
+use MediaWiki\Title\Title;
+use Wikimedia\Diff\Diff;
+use Wikimedia\Diff\UnifiedDiffFormatter;
 
 /**
  * @ingroup Maintenance
@@ -37,33 +28,35 @@ class CompareParserCache extends Maintenance {
 	public function execute() {
 		$pages = $this->getOption( 'maxpages' );
 
-		$dbr = $this->getDB( DB_REPLICA );
+		$dbr = $this->getReplicaDB();
 
 		$totalsec = 0.0;
 		$scanned = 0;
 		$withcache = 0;
 		$withdiff = 0;
-		$services = MediaWikiServices::getInstance();
+		$services = $this->getServiceContainer();
 		$parserCache = $services->getParserCache();
 		$renderer = $services->getRevisionRenderer();
 		$wikiPageFactory = $services->getWikiPageFactory();
 		while ( $pages-- > 0 ) {
-			$row = $dbr->selectRow( 'page',
+			$row = $dbr->newSelectQueryBuilder()
 				// @todo Title::selectFields() or Title::getQueryInfo() or something
-				[
-					'page_namespace', 'page_title', 'page_id',
-					'page_len', 'page_is_redirect', 'page_latest',
-				],
-				[
+				->select( [
+					'page_namespace',
+					'page_title',
+					'page_id',
+					'page_len',
+					'page_is_redirect',
+					'page_latest',
+				] )
+				->from( 'page' )
+				->where( [
 					'page_namespace' => $this->getOption( 'namespace' ),
 					'page_is_redirect' => 0,
-					'page_random >= ' . wfRandom()
-				],
-				__METHOD__,
-				[
-					'ORDER BY' => 'page_random',
-				]
-			);
+					$dbr->expr( 'page_random', '>=', wfRandom() ),
+				] )
+				->orderBy( 'page_random' )
+				->caller( __METHOD__ )->fetchRow();
 
 			if ( !$row ) {
 				continue;
@@ -74,7 +67,6 @@ class CompareParserCache extends Maintenance {
 			$page = $wikiPageFactory->newFromTitle( $title );
 			$revision = $page->getRevisionRecord();
 			$parserOptions = $page->makeParserOptions( 'canonical' );
-
 			$parserOutputOld = $parserCache->get( $page, $parserOptions );
 
 			if ( $parserOutputOld ) {
@@ -89,13 +81,15 @@ class CompareParserCache extends Maintenance {
 
 				$this->output( "Found cache entry found for '{$title->getPrefixedText()}'..." );
 
-				$oldHtml = trim( preg_replace( '#<!-- .+-->#Us', '', $parserOutputOld->getText() ) );
-				$newHtml = trim( preg_replace( '#<!-- .+-->#Us', '', $parserOutputNew->getText() ) );
+				$oldHtml = trim( preg_replace( '#<!-- .+-->#Us', '',
+					$parserOutputOld->getRawText() ) );
+				$newHtml = trim( preg_replace( '#<!-- .+-->#Us', '',
+					$parserOutputNew->getRawText() ) );
 				$diffs = new Diff( explode( "\n", $oldHtml ), explode( "\n", $newHtml ) );
 				$formatter = new UnifiedDiffFormatter();
 				$unifiedDiff = $formatter->format( $diffs );
 
-				if ( strlen( $unifiedDiff ) ) {
+				if ( $unifiedDiff !== '' ) {
 					$this->output( "differences found:\n\n$unifiedDiff\n\n" );
 					++$withdiff;
 				} else {
@@ -114,5 +108,7 @@ class CompareParserCache extends Maintenance {
 	}
 }
 
+// @codeCoverageIgnoreStart
 $maintClass = CompareParserCache::class;
 require_once RUN_MAINTENANCE_IF_MAIN;
+// @codeCoverageIgnoreEnd

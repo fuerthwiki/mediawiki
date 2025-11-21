@@ -1,15 +1,17 @@
 <?php
 
-namespace Wikimedia\ParamValidator\TypeDef;
+namespace Wikimedia\Tests\ParamValidator\TypeDef;
 
+use InvalidArgumentException;
 use Wikimedia\Message\DataMessageValue;
 use Wikimedia\ParamValidator\ParamValidator;
 use Wikimedia\ParamValidator\SimpleCallbacks;
+use Wikimedia\ParamValidator\TypeDef\TimestampDef;
 use Wikimedia\ParamValidator\ValidationException;
 use Wikimedia\Timestamp\ConvertibleTimestamp;
 
 /**
- * @covers Wikimedia\ParamValidator\TypeDef\TimestampDef
+ * @covers \Wikimedia\ParamValidator\TypeDef\TimestampDef
  */
 class TimestampDefTest extends TypeDefTestCase {
 
@@ -22,12 +24,12 @@ class TimestampDefTest extends TypeDefTestCase {
 		if ( $ok ) {
 			$this->assertTrue( true ); // dummy
 		} else {
-			$this->expectException( \InvalidArgumentException::class );
+			$this->expectException( InvalidArgumentException::class );
 		}
 		$this->getInstance( new SimpleCallbacks( [] ), $options );
 	}
 
-	public function provideConstructorOptions(): array {
+	public static function provideConstructorOptions(): array {
 		return [
 			'Basic test' => [ [], true ],
 			'Default format ConvertibleTimestamp' => [ [ 'defaultFormat' => 'ConvertibleTimestamp' ], true ],
@@ -53,7 +55,7 @@ class TimestampDefTest extends TypeDefTestCase {
 		parent::testValidate( $value, $expect, $settings, $options, $expectConds );
 	}
 
-	public function provideValidate() {
+	public static function provideValidate() {
 		$specific = new ConvertibleTimestamp( 1517630706 );
 		$specificMs = new ConvertibleTimestamp( 1517630706.999 );
 		$now = new ConvertibleTimestamp( 1559764242 );
@@ -109,7 +111,7 @@ class TimestampDefTest extends TypeDefTestCase {
 		];
 	}
 
-	public function provideCheckSettings() {
+	public static function provideCheckSettings() {
 		$keys = [ 'Y', TimestampDef::PARAM_TIMESTAMP_FORMAT ];
 
 		return [
@@ -176,7 +178,7 @@ class TimestampDefTest extends TypeDefTestCase {
 		];
 	}
 
-	public function provideStringifyValue() {
+	public static function provideStringifyValue() {
 		$specific = new ConvertibleTimestamp( '20180203040506' );
 
 		return [
@@ -187,7 +189,7 @@ class TimestampDefTest extends TypeDefTestCase {
 		];
 	}
 
-	public function provideGetInfo() {
+	public static function provideGetInfo() {
 		return [
 			'Basic test' => [
 				[],

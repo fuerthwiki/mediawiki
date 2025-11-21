@@ -1,8 +1,6 @@
 <?php
 /** Georgian (ქართული)
  *
- * To improve a translation please visit https://translatewiki.net
- *
  * @file
  * @ingroup Languages
  */
@@ -62,6 +60,7 @@ $specialPageAliases = [
 	'Export'                    => [ 'ექსპორტი' ],
 	'FileDuplicateSearch'       => [ 'ფაილის_დუბლიკატის_ძიება' ],
 	'Import'                    => [ 'იმპორტი' ],
+	'Interwiki'                 => [ 'ინტერვიკი' ],
 	'LinkSearch'                => [ 'ბმულის_ძიება' ],
 	'Listadmins'                => [ 'ადმინისტრატორების_სია' ],
 	'Listbots'                  => [ 'ბოტების_სია' ],

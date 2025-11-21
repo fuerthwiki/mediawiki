@@ -1,8 +1,6 @@
 <?php
 /** Tagalog (Tagalog)
  *
- * To improve a translation please visit https://translatewiki.net
- *
  * @file
  * @ingroup Languages
  *
@@ -75,6 +73,7 @@ $specialPageAliases = [
 	'FileDuplicateSearch'       => [ 'Paghahanap_ng_kamukhang_talaksan' ],
 	'Filepath'                  => [ 'Daanan_ng_talaksan' ],
 	'Import'                    => [ 'Pag-aangkat' ],
+	'Interwiki'                 => [ 'Kawing-wiki' ],
 	'Invalidateemail'           => [ 'Hindi_tanggap_na_e-liham' ],
 	'JavaScriptTest'            => [ 'Pagsubok_sa_JavaScript' ],
 	'LinkSearch'                => [ 'Paghahanap_ng_kawing' ],
@@ -114,6 +113,7 @@ $specialPageAliases = [
 	'Randomredirect'            => [ 'Pagtuturo_papunta_sa_alin_mang_pahina' ],
 	'Recentchanges'             => [ 'Mga_huling_binago', 'HulingBinago' ],
 	'Recentchangeslinked'       => [ 'Nakakawing_ng_kamakailang_pagbabago', 'Kaugnay_na_mga_pagbabago' ],
+	'Renameuser'                => [ 'Muling_pangalan_ang_tagagamit' ],
 	'Revisiondelete'            => [ 'Pagbura_ng_pagbabago' ],
 	'Search'                    => [ 'Maghanap' ],
 	'Shortpages'                => [ 'Maikling_mga_pahina' ],

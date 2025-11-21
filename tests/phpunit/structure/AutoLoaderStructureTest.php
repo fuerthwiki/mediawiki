@@ -1,5 +1,9 @@
 <?php
 
+/**
+ * @group Autoload
+ * @coversNothing
+ */
 class AutoLoaderStructureTest extends MediaWikiIntegrationTestCase {
 	/**
 	 * Assert that there were no classes loaded that are not registered with the AutoLoader.
@@ -22,7 +26,7 @@ class AutoLoaderStructureTest extends MediaWikiIntegrationTestCase {
 		$matches = [];
 		preg_match_all( '/
 				^ [\t ]* (?:
-					(?:final\s+)? (?:abstract\s+)? (?:class|interface|trait) \s+
+					(?:final\s+)? (?:abstract\s+)? (?:class|interface|trait|enum) \s+
 					(?P<class> \w+)
 				|
 					class_alias \s* \( \s*
@@ -82,15 +86,10 @@ class AutoLoaderStructureTest extends MediaWikiIntegrationTestCase {
 		$expected = AutoLoader::getClassFiles();
 		$actual = [];
 
-		$psr4Namespaces = [];
-		foreach ( AutoLoader::CORE_NAMESPACES as $ns => $path ) {
-			$psr4Namespaces[rtrim( $ns, '\\' ) . '\\'] = self::fixSlashes( rtrim( $path, '/' ) );
-		}
-
 		foreach ( $expected as $class => $file ) {
 			// Only prefix $IP if it doesn't have it already.
 			// Generally local classes don't have it, and those from extensions and test suites do.
-			if ( substr( $file, 0, 1 ) != '/' && substr( $file, 1, 1 ) != ':' ) {
+			if ( $file[0] !== '/' && $file[1] !== ':' ) {
 				$filePath = self::fixSlashes( "$IP/$file" );
 			} else {
 				$filePath = self::fixSlashes( $file );
@@ -110,21 +109,6 @@ class AutoLoaderStructureTest extends MediaWikiIntegrationTestCase {
 			[ $classesInFile, $aliasesInFile ] = self::parseFile( $contents );
 
 			foreach ( $classesInFile as $className => $ignore ) {
-				// Skip if it's a PSR4 class
-				$parts = explode( '\\', $className );
-				for ( $i = count( $parts ) - 1; $i > 0; $i-- ) {
-					$ns = implode( '\\', array_slice( $parts, 0, $i ) ) . '\\';
-					if ( isset( $psr4Namespaces[$ns] ) ) {
-						$expectedPath = $psr4Namespaces[$ns] . '/'
-							. implode( '/', array_slice( $parts, $i ) )
-							. '.php';
-						if ( $filePath === $expectedPath ) {
-							continue 2;
-						}
-					}
-				}
-
-				// Nope, add it.
 				$actual[$className] = $file;
 			}
 
@@ -150,7 +134,6 @@ class AutoLoaderStructureTest extends MediaWikiIntegrationTestCase {
 		$path = __DIR__ . '/../../..';
 		$oldAutoload = file_get_contents( $path . '/autoload.php' );
 		$generator = new AutoloadGenerator( $path, 'local' );
-		$generator->setPsr4Namespaces( AutoLoader::CORE_NAMESPACES );
 		$generator->initMediaWikiDefault();
 		$newAutoload = $generator->getAutoload( 'maintenance/generateLocalAutoload.php' );
 

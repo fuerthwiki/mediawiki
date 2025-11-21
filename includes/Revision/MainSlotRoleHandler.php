@@ -2,33 +2,19 @@
 /**
  * This file is part of MediaWiki.
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License along
- * with this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
- * http://www.gnu.org/copyleft/gpl.html
- *
+ * @license GPL-2.0-or-later
  * @file
  */
 
 namespace MediaWiki\Revision;
 
 use MediaWiki\Content\IContentHandlerFactory;
+use MediaWiki\Exception\MWUnknownContentModelException;
 use MediaWiki\HookContainer\HookContainer;
 use MediaWiki\HookContainer\HookRunner;
 use MediaWiki\Linker\LinkTarget;
 use MediaWiki\Page\PageIdentity;
-use MWUnknownContentModelException;
-use TitleFactory;
+use MediaWiki\Title\TitleFactory;
 
 /**
  * A SlotRoleHandler for the main slot. While most slot roles serve a specific purpose and
@@ -71,13 +57,14 @@ class MainSlotRoleHandler extends SlotRoleHandler {
 		HookContainer $hookContainer,
 		TitleFactory $titleFactory
 	) {
-		parent::__construct( 'main', CONTENT_MODEL_WIKITEXT );
+		parent::__construct( SlotRecord::MAIN, CONTENT_MODEL_WIKITEXT );
 		$this->namespaceContentModels = $namespaceContentModels;
 		$this->contentHandlerFactory = $contentHandlerFactory;
 		$this->hookRunner = new HookRunner( $hookContainer );
 		$this->titleFactory = $titleFactory;
 	}
 
+	/** @inheritDoc */
 	public function supportsArticleCount() {
 		return true;
 	}
@@ -90,10 +77,9 @@ class MainSlotRoleHandler extends SlotRoleHandler {
 	 * @throws MWUnknownContentModelException
 	 */
 	public function isAllowedModel( $model, PageIdentity $page ) {
-		$title = $this->titleFactory->castFromPageIdentity( $page );
+		$title = $this->titleFactory->newFromPageIdentity( $page );
 		$handler = $this->contentHandlerFactory->getContentHandler( $model );
 
-		// @phan-suppress-next-line PhanTypeMismatchArgumentNullable castFrom does not return null here
 		return $handler->canBeUsedOn( $title );
 	}
 
@@ -112,17 +98,17 @@ class MainSlotRoleHandler extends SlotRoleHandler {
 
 		// Hook can determine default model
 		if ( $page instanceof PageIdentity ) {
-			$title = $this->titleFactory->castFromPageIdentity( $page );
+			$title = $this->titleFactory->newFromPageIdentity( $page );
 		} else {
-			$title = $this->titleFactory->castFromLinkTarget( $page );
+			$title = $this->titleFactory->newFromLinkTarget( $page );
 		}
-		// @phan-suppress-next-line PhanTypeMismatchArgumentNullable castFrom notnull/Type mismatch on pass-by-ref args
+		// @phan-suppress-next-line PhanTypeMismatchArgument Type mismatch on pass-by-ref args
 		if ( !$this->hookRunner->onContentHandlerDefaultModelFor( $title, $model ) && $model !== null ) {
 			return $model;
 		}
 
 		// Could this page contain code based on the title?
-		$isCodePage = $ns === NS_MEDIAWIKI && preg_match( '!\.(css|js|json)$!u', $title->getText(), $m );
+		$isCodePage = $ns === NS_MEDIAWIKI && preg_match( '!\.(css|js|json|vue)$!u', $title->getText(), $m );
 		if ( $isCodePage ) {
 			$ext = $m[1];
 		}
@@ -130,7 +116,7 @@ class MainSlotRoleHandler extends SlotRoleHandler {
 		// Is this a user subpage containing code?
 		$isCodeSubpage = $ns === NS_USER
 			&& !$isCodePage
-			&& preg_match( "/\\/.*\\.(js|css|json)$/", $title->getText(), $m );
+			&& preg_match( "/\\/.*\\.(js|css|json|vue)$/", $title->getText(), $m );
 
 		if ( $isCodeSubpage ) {
 			$ext = $m[1];
@@ -148,6 +134,8 @@ class MainSlotRoleHandler extends SlotRoleHandler {
 					return CONTENT_MODEL_CSS;
 				case 'json':
 					return CONTENT_MODEL_JSON;
+				case 'vue':
+					return CONTENT_MODEL_VUE;
 				default:
 					return $model ?? CONTENT_MODEL_TEXT;
 			}

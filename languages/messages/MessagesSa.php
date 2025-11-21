@@ -1,8 +1,6 @@
 <?php
 /** Sanskrit (संस्कृतम्)
  *
- * To improve a translation please visit https://translatewiki.net
- *
  * @file
  * @ingroup Languages
  *
@@ -41,6 +39,8 @@ $digitTransformTable = [
 	'8' => '८', # U+096E
 	'9' => '९', # U+096F
 ];
+
+$numberingSystem = 'deva';
 
 $linkPrefixExtension = false;
 
@@ -116,6 +116,7 @@ $specialPageAliases = [
 	'FileDuplicateSearch'       => [ 'समानसञ्चिकान्वेषणम्', 'अनुकृतसंचिकाशोध' ],
 	'Filepath'                  => [ 'सञ्चिकापथः', 'संचिकापथ' ],
 	'Import'                    => [ 'आयापयतु', 'आयात' ],
+	'Interwiki'                 => [ 'आंन्तरविकि' ],
 	'Invalidateemail'           => [ 'विपत्रेऽमान्यम्', 'अमान्यविपत्र' ],
 	'LinkSearch'                => [ 'परिसन्धेः_अन्वेषणम्', 'सम्बन्धन्‌शोध' ],
 	'Listadmins'                => [ 'प्रबन्धकावलिः', 'प्रचालकसूची' ],
@@ -230,7 +231,7 @@ $1', 'सङ्कुचितचित्र=$1', 'अङ्गुष्ठ=$1'
 	'img_upright'               => [ '1', 'शीर्षदक्षिणतः', 'शीर्षदक्षिणतः=$1', 'शीर्षदक्षिणतः_$1', 'उन्नत', 'उन्नत=$1', 'उन्नत $1', 'upright', 'upright=$1', 'upright $1' ],
 	'img_width'                 => [ '1', '$1अणवः', '$1पिट', '$1px' ],
 	'index'                     => [ '1', '__अनुक्रमणी__', '__अनुक्रमणिका__', '__INDEX__' ],
-	'language'                  => [ '0', '#भाषा', '#भाषा:', '#LANGUAGE:' ],
+	'language'                  => [ '0', '#भाषा', '#भाषा', '#LANGUAGE' ],
 	'localday'                  => [ '1', 'स्थानिकदिवसः', 'स्थानिकदिवसे', 'LOCALDAY' ],
 	'localday2'                 => [ '1', 'स्थानिकदिवसः२', 'स्थानिकदिवसे२', 'LOCALDAY2' ],
 	'localdayname'              => [ '1', 'स्थानिकदिवसनाम', 'स्थानिकदिवसेनाम', 'LOCALDAYNAME' ],
@@ -276,7 +277,7 @@ $1', 'सङ्कुचितचित्र=$1', 'अङ्गुष्ठ=$1'
 	'sitename'                  => [ '1', 'स्थाननाम', 'स्थलनाम', 'SITENAME' ],
 	'special'                   => [ '0', 'विशेषः', 'विशेष', 'special' ],
 	'staticredirect'            => [ '1', '__अनित्यपुनर्निर्देशनम्__', '__अनित्यपुनर्निदेशन__', '__STATICREDIRECT__' ],
-	'subjectpagename'           => [ '1',  'विषयपृष्ठनाम', 'लेखपृष्ठनाम', 'SUBJECTPAGENAME', 'ARTICLEPAGENAME' ],
+	'subjectpagename'           => [ '1', 'विषयपृष्ठनाम', 'लेखपृष्ठनाम', 'SUBJECTPAGENAME', 'ARTICLEPAGENAME' ],
 	'subjectspace'              => [ '1', 'विषयस्थानम्', 'लेखस्थानम्', 'विषयविश्व', 'लेखविश्व', 'SUBJECTSPACE', 'ARTICLESPACE' ],
 	'subpagename'               => [ '1', 'उपपृष्ठनाम', 'SUBPAGENAME' ],
 	'tag'                       => [ '0', 'अङ्कनम्', 'वीजक', 'tag' ],

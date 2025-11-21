@@ -3,29 +3,17 @@
 /**
  * Update list of upper case differences between JS and PHP
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License along
- * with this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
- * http://www.gnu.org/copyleft/gpl.html
- *
+ * @license GPL-2.0-or-later
  * @file
  * @ingroup Maintenance
  */
 
-use MediaWiki\MediaWikiServices;
+use MediaWiki\Maintenance\Maintenance;
 use MediaWiki\Shell\Shell;
 
+// @codeCoverageIgnoreStart
 require_once __DIR__ . '/../Maintenance.php';
+// @codeCoverageIgnoreEnd
 
 /**
  * Update list of upper case differences between JS and PHP
@@ -60,13 +48,14 @@ class GeneratePhpCharToUpperMappings extends Maintenance {
 		$jsUpperChars = json_decode( $result->getStdout() );
 		'@phan-var string[] $jsUpperChars';
 
+		$contentLanguage = $this->getServiceContainer()->getContentLanguage();
 		for ( $i = 0; $i <= 0x10ffff; $i++ ) {
 			if ( $i >= 0xd800 && $i <= 0xdfff ) {
 				// Skip surrogate pairs
 				continue;
 			}
 			$char = \UtfNormal\Utils::codepointToUtf8( $i );
-			$phpUpper = MediaWikiServices::getInstance()->getContentLanguage()->ucfirst( $char );
+			$phpUpper = $contentLanguage->ucfirst( $char );
 			$jsUpper = $jsUpperChars[$i];
 			if ( $jsUpper !== $phpUpper ) {
 				if ( $char === $phpUpper ) {
@@ -94,5 +83,7 @@ class GeneratePhpCharToUpperMappings extends Maintenance {
 	}
 }
 
+// @codeCoverageIgnoreStart
 $maintClass = GeneratePhpCharToUpperMappings::class;
 require_once RUN_MAINTENANCE_IF_MAIN;
+// @codeCoverageIgnoreEnd

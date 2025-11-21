@@ -2,8 +2,8 @@
 
 namespace MediaWiki\Storage\Hook;
 
-use ParserOptions;
-use WikiPage;
+use MediaWiki\Page\WikiPage;
+use MediaWiki\Parser\ParserOptions;
 
 /**
  * This is a hook handler interface, see docs/Hooks.md.

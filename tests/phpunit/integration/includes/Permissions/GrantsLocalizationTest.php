@@ -2,19 +2,20 @@
 
 namespace MediaWiki\Tests\Integration\Permissions;
 
+use MediaWiki\Html\Html;
+use MediaWiki\Message\Message;
 use MediaWiki\Permissions\GrantsLocalization;
+use MediaWiki\SpecialPage\SpecialPage;
 use MediaWikiIntegrationTestCase;
-use Message;
-use SpecialPage;
+use Wikimedia\HtmlArmor\HtmlArmor;
 
 /**
  * @author Zabe
  *
- * @coversDefaultClass \MediaWiki\Permissions\GrantsLocalization
+ * @covers \MediaWiki\Permissions\GrantsLocalization
  */
 class GrantsLocalizationTest extends MediaWikiIntegrationTestCase {
-	/** @var GrantsLocalization */
-	private $grantsLocalization;
+	private GrantsLocalization $grantsLocalization;
 
 	protected function setUp(): void {
 		parent::setUp();
@@ -23,8 +24,7 @@ class GrantsLocalizationTest extends MediaWikiIntegrationTestCase {
 	}
 
 	/**
-	 * @covers ::getGrantDescription
-	 * @dataProvider grantDescriptions
+	 * @dataProvider provideGrantDescriptions
 	 */
 	public function testGetGrantDescription( string $grant ) {
 		$message = new Message( 'grant-' . $grant );
@@ -38,15 +38,12 @@ class GrantsLocalizationTest extends MediaWikiIntegrationTestCase {
 		);
 	}
 
-	public function grantDescriptions() {
+	public static function provideGrantDescriptions() {
 		yield [ 'blockusers' ];
 		yield [ 'createeditmovepage' ];
 		yield [ 'delete' ];
 	}
 
-	/**
-	 * @covers ::getGrantDescription
-	 */
 	public function testGetNonExistingGrantDescription() {
 		$message = ( new Message( 'grant-generic' ) )->params( 'foo' );
 		$this->assertSame(
@@ -59,44 +56,39 @@ class GrantsLocalizationTest extends MediaWikiIntegrationTestCase {
 		);
 	}
 
-	/**
-	 * @covers ::getGrantDescriptions
-	 */
 	public function testGetGrantDescriptions() {
 		$this->assertSame(
 			[
-				( new Message( 'grant-blockusers' ) )->inLanguage( 'de' )->text(),
-				( new Message( 'grant-delete' ) )->inLanguage( 'de' )->text()
+				'blockusers' => ( new Message( 'grant-blockusers' ) )->inLanguage( 'de' )->text(),
+				'delete' => ( new Message( 'grant-delete' ) )->inLanguage( 'de' )->text(),
 			],
 			$this->grantsLocalization->getGrantDescriptions(
 				[
 					'blockusers',
-					'delete'
+					'delete',
 				],
 				'de'
 			)
 		);
 	}
 
-	/**
-	 * @covers ::getGrantsLink
-	 */
 	public function testGetGrantsLink() {
 		$this->assertSame(
 			$this->getServiceContainer()->getLinkRenderer()->makeKnownLink(
 				SpecialPage::getTitleFor( 'Listgrants', false, 'delete' ),
-				( new Message( 'grant-delete' ) )->text()
+				new HtmlArmor(
+					( new Message( 'grant-delete' ) )->escaped() . ' ' .
+					Html::element( 'span', [ 'class' => 'mw-grant mw-grantriskgroup-vandalism' ],
+						( new Message( 'grantriskgroup-vandalism' ) )->text() )
+				)
 			),
 			$this->grantsLocalization->getGrantsLink( 'delete' )
 		);
 	}
 
-	/**
-	 * @covers ::getGrantsWikiText
-	 */
 	public function testGetGrantsWikiText() {
 		$this->assertSame(
-			"*<span class=\"mw-grantgroup\">Perform high volume activity</span>\n:High-volume editing\n\n",
+			"*<span class=\"mw-grantgroup\">Perform high volume activity</span>\n:High-volume (bot) access\n\n",
 			$this->grantsLocalization->getGrantsWikiText( [ 'highvolume' ] )
 		);
 	}

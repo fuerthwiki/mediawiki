@@ -1,28 +1,17 @@
 <?php
 
 /**
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License along
- * with this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
- * http://www.gnu.org/copyleft/gpl.html
- *
+ * @license GPL-2.0-or-later
  * @file
  * @ingroup Maintenance
  */
 
+// @codeCoverageIgnoreStart
 require_once __DIR__ . '/Maintenance.php';
+// @codeCoverageIgnoreEnd
 
-use MediaWiki\MediaWikiServices;
+use MediaWiki\Maintenance\Maintenance;
+use MediaWiki\User\User;
 
 class BlockUsers extends Maintenance {
 
@@ -100,7 +89,7 @@ class BlockUsers extends Maintenance {
 
 		$this->addOption(
 			'disable-hardblock',
-			'Don\'t block logged in accounts from a blocked IP address',
+			'Don\'t block logged in accounts from a blocked IP address (will still block temporary accounts)',
 			false
 		);
 
@@ -119,7 +108,7 @@ class BlockUsers extends Maintenance {
 		$expiry = $this->getOption( 'expiry', 'indefinite' );
 
 		if ( $performerName ) {
-			$performer = User::newFromName( $performerName );
+			$performer = $this->getServiceContainer()->getUserFactory()->newFromName( $performerName );
 		} else {
 			$performer = User::newSystemUser( User::MAINTENANCE_SCRIPT_USER, [ 'steal' => true ] );
 		}
@@ -140,8 +129,8 @@ class BlockUsers extends Maintenance {
 		}
 
 		# Handle each entry
-		$blockUserFactory = MediaWikiServices::getInstance()->getBlockUserFactory();
-		$unblockUserFactory = MediaWikiServices::getInstance()->getUnblockUserFactory();
+		$blockUserFactory = $this->getServiceContainer()->getBlockUserFactory();
+		$unblockUserFactory = $this->getServiceContainer()->getUnblockUserFactory();
 		$action = $unblocking ? "Unblocking" : "Blocking";
 		for ( $linenum = 1; !feof( $file ); $linenum++ ) {
 			$line = trim( fgets( $file ) );
@@ -177,9 +166,13 @@ class BlockUsers extends Maintenance {
 				$errorsText = $res->getMessage()->text();
 				$this->output( "{$action} '{$line}' failed ({$errorsText}).\n" );
 			}
+
+			$this->waitForReplication();
 		}
 	}
 }
 
+// @codeCoverageIgnoreStart
 $maintClass = BlockUsers::class;
 require_once RUN_MAINTENANCE_IF_MAIN;
+// @codeCoverageIgnoreEnd

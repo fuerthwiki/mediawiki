@@ -1,31 +1,27 @@
 <?php
 /**
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License along
- * with this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
- * http://www.gnu.org/copyleft/gpl.html
- *
+ * @license GPL-2.0-or-later
  * @file
- * @ingroup Maintenance
  */
 
+use MediaWiki\Maintenance\Maintenance;
+use MediaWiki\Registration\ExtensionRegistry;
+use MediaWiki\ResourceLoader\ForeignResourceManager;
+
+// @codeCoverageIgnoreStart
 require_once __DIR__ . '/Maintenance.php';
+// @codeCoverageIgnoreEnd
 
 /**
  * Manage foreign resources registered with ResourceLoader.
  *
+ * This uses the MediaWiki\ResourceLoader\ForeignResourceManager class internally.
+ * See also ForeignResourceStructureTest, which runs the "verify" action in CI.
+ *
  * @ingroup Maintenance
+ * @ingroup ResourceLoader
  * @since 1.32
+ * @see https://www.mediawiki.org/wiki/Manual:ManageForeignResources.php
  */
 class ManageForeignResources extends Maintenance {
 	public function __construct() {
@@ -35,7 +31,7 @@ Manage foreign resources registered with ResourceLoader.
 
 This helps developers with downloading, verifying, and updating local copies of
 upstream libraries registered as ResourceLoader modules. See
-resources/lib/foreign-resources.yaml.
+https://www.mediawiki.org/wiki/Foreign_resources
 
 Use the "update" action to download urls specified in foreign-resources.yaml,
 and unpack them to the resources directory. This will also verify them against
@@ -50,10 +46,16 @@ publish one themselves. Add or update the urls foreign-resources.yaml as needed,
 but omit (or leave empty) the "integrity" key. Then, run the "make-sri" action
 for the module and copy the integrity into the file. Then, you can use "verify"
 or "update" normally.
+
+The "make-cdx" option generates a CycloneDX SBOM file.
 TEXT
 		);
-		$this->addArg( 'action', 'One of "update", "verify" or "make-sri"', true );
+		$this->addArg( 'action', 'One of "update", "verify", "make-sri" or "make-cdx"', true );
 		$this->addArg( 'module', 'Name of a single module (Default: all)', false );
+		$this->addOption( 'extension', 'Manage foreign resources for the given extension, instead of core',
+			false, true );
+		$this->addOption( 'skin', 'Manage foreign resources for the given skin, instead of core',
+			false, true );
 		$this->addOption( 'verbose', 'Be verbose', false, false, 'v' );
 	}
 
@@ -62,9 +64,18 @@ TEXT
 	 */
 	public function execute() {
 		global $IP;
+
+		$component = $this->getOption( 'extension' ) ?? $this->getOption( 'skin' ) ?? '#core';
+		$foreignResourcesDirs = ExtensionRegistry::getInstance()->getAttribute( 'ForeignResourcesDir' )
+			+ [ '#core' => "{$IP}/resources/lib" ];
+		if ( !array_key_exists( $component, $foreignResourcesDirs ) ) {
+			$this->fatalError( "Unknown component: $component\n" );
+		}
+		$foreignResourcesFile = "{$foreignResourcesDirs[$component]}/foreign-resources.yaml";
+
 		$frm = new ForeignResourceManager(
-			"{$IP}/resources/lib/foreign-resources.yaml",
-			"{$IP}/resources/lib",
+			$foreignResourcesFile,
+			dirname( $foreignResourcesFile ),
 			function ( $text ) {
 				$this->output( $text );
 			},
@@ -89,5 +100,7 @@ TEXT
 	}
 }
 
+// @codeCoverageIgnoreStart
 $maintClass = ManageForeignResources::class;
 require_once RUN_MAINTENANCE_IF_MAIN;
+// @codeCoverageIgnoreEnd

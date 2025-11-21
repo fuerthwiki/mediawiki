@@ -1,8 +1,6 @@
 <?php
 /** Haitian (Kreyòl ayisyen)
  *
- * To improve a translation please visit https://translatewiki.net
- *
  * @file
  * @ingroup Languages
  */
@@ -64,6 +62,7 @@ $specialPageAliases = [
 	'FileDuplicateSearch'       => [ 'ChacheFichyeDoub' ],
 	'Filepath'                  => [ 'ChemenFichye' ],
 	'Import'                    => [ 'Enpòte' ],
+	'Interwiki'                 => [ 'Entèwiki' ],
 	'Invalidateemail'           => [ 'EnvalideImèl' ],
 	'LinkSearch'                => [ 'ChacheLyen' ],
 	'Listadmins'                => [ 'LisAdmin' ],
@@ -103,6 +102,7 @@ $specialPageAliases = [
 	'Randomredirect'            => [ 'RedireksyonOaza' ],
 	'Recentchanges'             => [ 'ChanjmanResan' ],
 	'Recentchangeslinked'       => [ 'LyenChanjmanResan', 'ChanjmanAk' ],
+	'Renameuser'                => [ 'RenonmenItilizatè' ],
 	'Revisiondelete'            => [ 'RevizyonSiprime' ],
 	'Search'                    => [ 'Chache', 'Fouye' ],
 	'Shortpages'                => [ 'PajKout' ],

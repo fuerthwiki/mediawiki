@@ -1,21 +1,7 @@
 <?php
 
 /**
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License along
- * with this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
- * http://www.gnu.org/copyleft/gpl.html
- *
+ * @license GPL-2.0-or-later
  * Attribution notice: when this file was created, much of its content was taken
  * from the Revision.php file as present in release 1.30. Refer to the history
  * of that file for original authorship (that file was removed entirely in 1.37,
@@ -26,19 +12,21 @@
 
 namespace MediaWiki\Revision;
 
-use ActorMigration;
-use BagOStuff;
-use CommentStore;
+use MediaWiki\CommentStore\CommentStore;
 use MediaWiki\Content\IContentHandlerFactory;
+use MediaWiki\DAO\WikiAwareEntity;
 use MediaWiki\HookContainer\HookContainer;
 use MediaWiki\Page\PageStoreFactory;
+use MediaWiki\RecentChanges\RecentChangeLookup;
 use MediaWiki\Storage\BlobStoreFactory;
 use MediaWiki\Storage\NameTableStoreFactory;
+use MediaWiki\Title\TitleFactory;
+use MediaWiki\User\ActorStore;
 use MediaWiki\User\ActorStoreFactory;
 use Psr\Log\LoggerInterface;
-use TitleFactory;
-use WANObjectCache;
 use Wikimedia\Assert\Assert;
+use Wikimedia\ObjectCache\BagOStuff;
+use Wikimedia\ObjectCache\WANObjectCache;
 use Wikimedia\Rdbms\ILBFactory;
 
 /**
@@ -55,57 +43,21 @@ use Wikimedia\Rdbms\ILBFactory;
  */
 class RevisionStoreFactory {
 
-	/** @var BlobStoreFactory */
-	private $blobStoreFactory;
-	/** @var ILBFactory */
-	private $dbLoadBalancerFactory;
-	/** @var WANObjectCache */
-	private $cache;
-	/** @var BagOStuff */
-	private $localCache;
-	/** @var LoggerInterface */
-	private $logger;
+	private BlobStoreFactory $blobStoreFactory;
+	private ILBFactory $dbLoadBalancerFactory;
+	private WANObjectCache $cache;
+	private BagOStuff $localCache;
+	private LoggerInterface $logger;
+	private CommentStore $commentStore;
+	private ActorStoreFactory $actorStoreFactory;
+	private NameTableStoreFactory $nameTables;
+	private SlotRoleRegistry $slotRoleRegistry;
+	private IContentHandlerFactory $contentHandlerFactory;
+	private PageStoreFactory $pageStoreFactory;
+	private TitleFactory $titleFactory;
+	private HookContainer $hookContainer;
+	private RecentChangeLookup $recentChangeLookup;
 
-	/** @var CommentStore */
-	private $commentStore;
-	/** @var ActorMigration */
-	private $actorMigration;
-	/** @var ActorStoreFactory */
-	private $actorStoreFactory;
-	/** @var NameTableStoreFactory */
-	private $nameTables;
-
-	/** @var SlotRoleRegistry */
-	private $slotRoleRegistry;
-
-	/** @var IContentHandlerFactory */
-	private $contentHandlerFactory;
-
-	/** @var PageStoreFactory */
-	private $pageStoreFactory;
-
-	/** @var TitleFactory */
-	private $titleFactory;
-
-	/** @var HookContainer */
-	private $hookContainer;
-
-	/**
-	 * @param ILBFactory $dbLoadBalancerFactory
-	 * @param BlobStoreFactory $blobStoreFactory
-	 * @param NameTableStoreFactory $nameTables
-	 * @param SlotRoleRegistry $slotRoleRegistry
-	 * @param WANObjectCache $cache
-	 * @param BagOStuff $localCache
-	 * @param CommentStore $commentStore
-	 * @param ActorMigration $actorMigration
-	 * @param ActorStoreFactory $actorStoreFactory
-	 * @param LoggerInterface $logger
-	 * @param IContentHandlerFactory $contentHandlerFactory
-	 * @param PageStoreFactory $pageStoreFactory
-	 * @param TitleFactory $titleFactory
-	 * @param HookContainer $hookContainer
-	 */
 	public function __construct(
 		ILBFactory $dbLoadBalancerFactory,
 		BlobStoreFactory $blobStoreFactory,
@@ -114,13 +66,13 @@ class RevisionStoreFactory {
 		WANObjectCache $cache,
 		BagOStuff $localCache,
 		CommentStore $commentStore,
-		ActorMigration $actorMigration,
 		ActorStoreFactory $actorStoreFactory,
 		LoggerInterface $logger,
 		IContentHandlerFactory $contentHandlerFactory,
 		PageStoreFactory $pageStoreFactory,
 		TitleFactory $titleFactory,
-		HookContainer $hookContainer
+		HookContainer $hookContainer,
+		RecentChangeLookup $recentChangeLookup
 	) {
 		$this->dbLoadBalancerFactory = $dbLoadBalancerFactory;
 		$this->blobStoreFactory = $blobStoreFactory;
@@ -129,13 +81,13 @@ class RevisionStoreFactory {
 		$this->cache = $cache;
 		$this->localCache = $localCache;
 		$this->commentStore = $commentStore;
-		$this->actorMigration = $actorMigration;
 		$this->actorStoreFactory = $actorStoreFactory;
 		$this->logger = $logger;
 		$this->contentHandlerFactory = $contentHandlerFactory;
 		$this->pageStoreFactory = $pageStoreFactory;
 		$this->titleFactory = $titleFactory;
 		$this->hookContainer = $hookContainer;
+		$this->recentChangeLookup = $recentChangeLookup;
 	}
 
 	/**
@@ -145,8 +97,57 @@ class RevisionStoreFactory {
 	 *
 	 * @return RevisionStore for the given wikiId with all necessary services
 	 */
-	public function getRevisionStore( $dbDomain = false ) {
+	public function getRevisionStore( $dbDomain = false ): RevisionStore {
+		return $this->getStore(
+			$dbDomain,
+			$this->actorStoreFactory->getActorStore( $dbDomain )
+		);
+	}
+
+	/**
+	 * @since 1.42
+	 *
+	 * @param false|string $dbDomain DB domain of the relevant wiki or false for the current one
+	 *
+	 * @return RevisionStore for the given wikiId with all necessary services
+	 */
+	public function getRevisionStoreForImport( $dbDomain = false ): RevisionStore {
+		return $this->getStore(
+			$dbDomain,
+			$this->actorStoreFactory->getActorStoreForImport( $dbDomain )
+		);
+	}
+
+	/**
+	 * @since 1.43
+	 *
+	 * @param false|string $dbDomain DB domain of the relevant wiki or false for the current one
+	 *
+	 * @return RevisionStore for the given wikiId with all necessary services
+	 */
+	public function getRevisionStoreForUndelete( $dbDomain = false ): RevisionStore {
+		return $this->getStore(
+			$dbDomain,
+			$this->actorStoreFactory->getActorStoreForUndelete( $dbDomain )
+		);
+	}
+
+	/**
+	 * @param false|string $dbDomain
+	 * @param ActorStore $actorStore
+	 *
+	 * @return RevisionStore
+	 */
+	private function getStore( $dbDomain, ActorStore $actorStore ) {
 		Assert::parameterType( [ 'string', 'false' ], $dbDomain, '$dbDomain' );
+		if (
+			// FIXME: We can't normalize the domain in tests, as RevisionStoreDbTest relies on this behaviour to test
+			// cross-wikiness, in absence of a better way (T261848).
+			!defined( 'MW_PHPUNIT_TEST' ) &&
+			is_string( $dbDomain ) && $this->dbLoadBalancerFactory->getLocalDomainID() === $dbDomain
+		) {
+			$dbDomain = WikiAwareEntity::LOCAL;
+		}
 
 		$store = new RevisionStore(
 			$this->dbLoadBalancerFactory->getMainLB( $dbDomain ),
@@ -157,12 +158,12 @@ class RevisionStoreFactory {
 			$this->nameTables->getContentModels( $dbDomain ),
 			$this->nameTables->getSlotRoles( $dbDomain ),
 			$this->slotRoleRegistry,
-			$this->actorMigration,
-			$this->actorStoreFactory->getActorStore( $dbDomain ),
+			$actorStore,
 			$this->contentHandlerFactory,
 			$this->pageStoreFactory->getPageStore( $dbDomain ),
 			$this->titleFactory,
 			$this->hookContainer,
+			$this->recentChangeLookup,
 			$dbDomain
 		);
 

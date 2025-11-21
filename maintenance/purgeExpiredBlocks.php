@@ -1,35 +1,22 @@
 <?php
 /**
- * Remove expired blocks from the ipblocks and ipblocks_restrictions tables
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
- *
- * @copyright GPLv2 http://www.gnu.org/copyleft/gpl.html
- * @ingroup Maintenance
+ * @license GPL-2.0-or-later
+ * @file
  */
 
-use MediaWiki\MediaWikiServices;
+use MediaWiki\Maintenance\Maintenance;
 
+// @codeCoverageIgnoreStart
 require_once __DIR__ . '/Maintenance.php';
+// @codeCoverageIgnoreEnd
 
-/*
- * Maintenance script to remove expired blocks
+/**
+ * Remove expired blocks from the block and ipblocks_restrictions tables
  *
  * @since 1.35
+ * @ingroup Maintenance
  * @author DannyS712
  */
-
 class PurgeExpiredBlocks extends Maintenance {
 	public function __construct() {
 		parent::__construct();
@@ -39,11 +26,13 @@ class PurgeExpiredBlocks extends Maintenance {
 	public function execute() {
 		$this->output( "Purging expired blocks...\n" );
 
-		MediaWikiServices::getInstance()->getDatabaseBlockStore()->purgeExpiredBlocks();
+		$this->getServiceContainer()->getDatabaseBlockStore()->purgeExpiredBlocks();
 
 		$this->output( "Done purging expired blocks.\n" );
 	}
 }
 
+// @codeCoverageIgnoreStart
 $maintClass = PurgeExpiredBlocks::class;
 require_once RUN_MAINTENANCE_IF_MAIN;
+// @codeCoverageIgnoreEnd

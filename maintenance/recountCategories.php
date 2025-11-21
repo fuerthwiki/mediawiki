@@ -2,36 +2,21 @@
 /**
  * Refreshes category counts.
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License along
- * with this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
- * http://www.gnu.org/copyleft/gpl.html
- *
+ * @license GPL-2.0-or-later
  * @file
  * @ingroup Maintenance
  */
 
-require_once __DIR__ . '/Maintenance.php';
+use MediaWiki\Maintenance\Maintenance;
+use Wikimedia\Rdbms\RawSQLExpression;
 
-use MediaWiki\MediaWikiServices;
+// @codeCoverageIgnoreStart
+require_once __DIR__ . '/Maintenance.php';
+// @codeCoverageIgnoreEnd
 
 /**
  * Maintenance script that refreshes category membership counts in the category
  * table.
- *
- * (The populateCategory.php script will also recalculate counts, but
- * recountCategories only updates rows that need to be updated, making it more
- * efficient.)
  *
  * @ingroup Maintenance
  */
@@ -99,6 +84,7 @@ TEXT
 
 			// do the work, batch by batch
 			$affectedRows = 0;
+			// phpcs:ignore Generic.CodeAnalysis.AssignmentInCondition.FoundInWhileCondition
 			while ( ( $result = $this->doWork( $mode ) ) !== false ) {
 				$affectedRows += $result;
 				usleep( $this->getOption( 'throttle', 0 ) * 1000 );
@@ -132,36 +118,39 @@ TEXT
 		}
 	}
 
-	protected function doWork( $mode ) {
+	protected function doWork( string $mode ): int|false {
 		$this->output( "Finding up to {$this->getBatchSize()} drifted rows " .
 			"greater than cat_id {$this->minimumId}...\n" );
 
-		$countingConds = [ 'cl_to = cat_title' ];
+		$dbr = $this->getDB( DB_REPLICA, 'vslow' );
+
+		$queryBuilder = $dbr->newSelectQueryBuilder()
+			->select( 'COUNT(*)' )
+			->from( 'categorylinks' )
+			->join( 'linktarget', null, 'cl_target_id = lt_id' )
+			->where( [
+				new RawSQLExpression( 'lt_title = cat_title' ),
+				'lt_namespace' => NS_CATEGORY,
+			] );
+
 		if ( $mode === 'subcats' ) {
-			$countingConds['cl_type'] = 'subcat';
+			$queryBuilder->andWhere( [ 'cl_type' => 'subcat' ] );
 		} elseif ( $mode === 'files' ) {
-			$countingConds['cl_type'] = 'file';
+			$queryBuilder->andWhere( [ 'cl_type' => 'file' ] );
 		}
 
-		$dbr = $this->getDB( DB_REPLICA, 'vslow' );
-		$countingSubquery = $dbr->selectSQLText( 'categorylinks',
-			'COUNT(*)',
-			$countingConds,
-			__METHOD__ );
+		$countingSubquery = $queryBuilder->caller( __METHOD__ )->getSQL();
 
 		// First, let's find out which categories have drifted and need to be updated.
 		// The query counts the categorylinks for each category on the replica DB,
 		// but this data can't be used for updating the master, so we don't include it
 		// in the results.
-		$idsToUpdate = $dbr->selectFieldValues( 'category',
-			'cat_id',
-			[
-				'cat_id > ' . (int)$this->minimumId,
-				"cat_{$mode} != ($countingSubquery)"
-			],
-			__METHOD__,
-			[ 'LIMIT' => $this->getBatchSize() ]
-		);
+		$idsToUpdate = $dbr->newSelectQueryBuilder()
+			->select( 'cat_id' )
+			->from( 'category' )
+			->where( [ $dbr->expr( 'cat_id', '>', (int)$this->minimumId ), "cat_{$mode} != ($countingSubquery)" ] )
+			->limit( $this->getBatchSize() )
+			->caller( __METHOD__ )->fetchFieldValues();
 		if ( !$idsToUpdate ) {
 			return false;
 		}
@@ -175,11 +164,12 @@ TEXT
 		$this->minimumId = end( $idsToUpdate );
 
 		// Now, on master, find the correct counts for these categories.
-		$dbw = $this->getDB( DB_PRIMARY );
-		$res = $dbw->select( 'category',
-			[ 'cat_id', 'count' => "($countingSubquery)" ],
-			[ 'cat_id' => $idsToUpdate ],
-			__METHOD__ );
+		$dbw = $this->getPrimaryDB();
+		$res = $dbw->newSelectQueryBuilder()
+			->select( [ 'cat_id', 'count' => "($countingSubquery)" ] )
+			->from( 'category' )
+			->where( [ 'cat_id' => $idsToUpdate ] )
+			->caller( __METHOD__ )->fetchResultSet();
 
 		// Update the category counts on the rows we just identified.
 		// This logic is equivalent to Category::refreshCounts, except here, we
@@ -188,21 +178,25 @@ TEXT
 		// cleanupEmptyCategories.php.
 		$affectedRows = 0;
 		foreach ( $res as $row ) {
-			$dbw->update( 'category',
-				[ "cat_{$mode}" => $row->count ],
-				[
+			$dbw->newUpdateQueryBuilder()
+				->update( 'category' )
+				->set( [ "cat_{$mode}" => $row->count ] )
+				->where( [
 					'cat_id' => $row->cat_id,
-					"cat_{$mode} != " . (int)( $row->count ),
-				],
-				__METHOD__ );
+					$dbw->expr( "cat_{$mode}", '!=', (int)$row->count ),
+				] )
+				->caller( __METHOD__ )
+				->execute();
 			$affectedRows += $dbw->affectedRows();
 		}
 
-		MediaWikiServices::getInstance()->getDBLoadBalancerFactory()->waitForReplication();
+		$this->waitForReplication();
 
 		return $affectedRows;
 	}
 }
 
+// @codeCoverageIgnoreStart
 $maintClass = RecountCategories::class;
 require_once RUN_MAINTENANCE_IF_MAIN;
+// @codeCoverageIgnoreEnd

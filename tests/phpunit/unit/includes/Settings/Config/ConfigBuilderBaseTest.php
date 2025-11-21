@@ -2,11 +2,12 @@
 
 namespace MediaWiki\Tests\Unit\Settings\Config;
 
-use Config;
-use HashConfig;
+use MediaWiki\Config\Config;
+use MediaWiki\Config\HashConfig;
 use MediaWiki\Settings\Config\ConfigBuilder;
 use MediaWiki\Settings\Config\ConfigBuilderBase;
 use MediaWiki\Settings\Config\GlobalConfigBuilder;
+use MediaWikiCoversValidator;
 use PHPUnit\Framework\TestCase;
 
 /**
@@ -14,6 +15,7 @@ use PHPUnit\Framework\TestCase;
  */
 class ConfigBuilderBaseTest extends TestCase {
 	use ConfigSinkTestTrait;
+	use MediaWikiCoversValidator;
 
 	/** @var ConfigBuilder */
 	private $builder;
@@ -25,6 +27,7 @@ class ConfigBuilderBaseTest extends TestCase {
 		// Similar to ArrayConfigBuilder, but without optimizations,
 		// so we can use the generic implementations.
 		$this->builder = new class() extends ConfigBuilderBase {
+			/** @var array */
 			private $config = [];
 
 			public function build(): Config {
@@ -49,14 +52,14 @@ class ConfigBuilderBaseTest extends TestCase {
 		return $this->builder;
 	}
 
-	protected function assertKeyHasValue( string $key, $value ) {
+	protected function assertKeyHasValue( string $key, mixed $value ): void {
 		$this->assertSame( $value, $this->builder->get( $key ) );
 	}
 
 	public function testBuild() {
 		$builder = new GlobalConfigBuilder();
 		$builder
-			->set( 'foo',  'bar' )
+			->set( 'foo', 'bar' )
 			->set( 'baz', 'quu' );
 		$this->assertSame( 'bar', $builder->build()->get( 'foo' ) );
 		$this->assertSame( 'quu', $builder->build()->get( 'baz' ) );

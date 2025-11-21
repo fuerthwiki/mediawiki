@@ -3,29 +3,25 @@
  * with a selection widget that can determine how long the page will be watched.
  * If a page is being watched then a dropdown with expiry options is included.
  *
- * @class
+ * @exports mediawiki.watchstar.widgets
  * @extends OO.ui.Widget
  * @param {string} action One of 'watch', 'unwatch'
  * @param {string} pageTitle Title of page that this widget will watch or unwatch
+ * @param {string|null} expiry ISO 8601 timestamp of the expiry to be pre-selected, or 'infinity'
  * @param {Function} updateWatchLink
  * @param {Object} config Configuration object
  */
-function WatchlistExpiryWidget( action, pageTitle, updateWatchLink, config ) {
-	var dataExpiryOptions = require( './data.json' ).options,
-		messageLabel,
-		dropdownLabel,
-		expiryDropdown,
-		onDropdownChange,
-		api,
-		$link,
+function WatchlistExpiryWidget( action, pageTitle, expiry, updateWatchLink, config ) {
+	const dataExpiryOptions = require( './data.json' ).options,
 		expiryOptions = [];
+	let expiryDropdown;
 
 	config = config || {};
-	$link = config.$link;
+	const $link = config.$link;
 
-	WatchlistExpiryWidget.parent.call( this, config );
+	WatchlistExpiryWidget.super.call( this, config );
 
-	messageLabel = new OO.ui.LabelWidget( {
+	const messageLabel = new OO.ui.LabelWidget( {
 		label: config.message
 	} );
 
@@ -39,7 +35,7 @@ function WatchlistExpiryWidget( action, pageTitle, updateWatchLink, config ) {
 	 * avoid listening to every keystroke for the entire session.
 	 */
 	function addTabKeyListener() {
-		$( window ).one( 'keydown.watchlistExpiry', function ( e ) {
+		$( window ).one( 'keydown.watchlistExpiry', ( e ) => {
 			if ( ( e.keyCode || e.which ) !== OO.ui.Keys.TAB ) {
 				return;
 			}
@@ -65,11 +61,11 @@ function WatchlistExpiryWidget( action, pageTitle, updateWatchLink, config ) {
 	if ( action === 'watch' ) {
 		addTabKeyListener();
 
-		Object.keys( dataExpiryOptions ).forEach( function ( key ) {
+		for ( const key in dataExpiryOptions ) {
 			expiryOptions.push( { data: dataExpiryOptions[ key ], label: key } );
-		} );
+		}
 
-		dropdownLabel = new OO.ui.LabelWidget( {
+		const dropdownLabel = new OO.ui.LabelWidget( {
 			label: mw.message( 'addedwatchexpiry-options-label' ).parseDom(),
 			classes: [ 'mw-WatchlistExpiryWidgetwatchlist-dropdown-label' ]
 		} );
@@ -77,25 +73,28 @@ function WatchlistExpiryWidget( action, pageTitle, updateWatchLink, config ) {
 			options: expiryOptions,
 			classes: [ 'mw-watchexpiry' ]
 		} );
-		onDropdownChange = function ( value ) {
-			var notif = mw.notification,
+
+		expiryDropdown.setValue( mw.user.options.get( 'watchstar-expiry', 'infinite' ) );
+		const onDropdownChange = function ( value ) {
+			const notif = mw.notification,
 				optionSelectedLabel = expiryDropdown.dropdownWidget.label;
 
 			if ( typeof $link !== 'undefined' ) {
-				updateWatchLink( $link, 'watch', 'loading' );
+				updateWatchLink( $link, 'watch', 'loading', expiry );
 			}
 
 			// Pause the mw.notify so that we can wait for watch request to finish
 			notif.pause();
-			api = new mw.Api();
+			const api = new mw.Api();
 			api.watch( pageTitle, value )
-				.done( function ( watchResponse ) {
-					var message,
-						mwTitle = mw.Title.newFromText( pageTitle );
+				.done( ( watchResponse ) => {
+					let message;
+					const mwTitle = mw.Title.newFromText( pageTitle ),
+						isInfinity = mw.util.isInfinity( value );
 					if ( mwTitle.isTalkPage() ) {
-						message = value === 'infinite' ? 'addedwatchindefinitelytext-talk' : 'addedwatchexpirytext-talk';
+						message = isInfinity ? 'addedwatchindefinitelytext-talk' : 'addedwatchexpirytext-talk';
 					} else {
-						message = value === 'infinite' ? 'addedwatchindefinitelytext' : 'addedwatchexpirytext';
+						message = isInfinity ? 'addedwatchindefinitelytext' : 'addedwatchexpirytext';
 					}
 
 					// The following messages can be used here:
@@ -111,9 +110,9 @@ function WatchlistExpiryWidget( action, pageTitle, updateWatchLink, config ) {
 
 					updateWatchLink( mwTitle, 'unwatch', 'idle', watchResponse.expiry, value );
 				} )
-				.fail( function ( code, data ) {
+				.fail( ( code, data ) => {
 					// Format error message
-					var $msg = api.getErrorMessage( data );
+					const $msg = api.getErrorMessage( data );
 
 					// Report to user about the error
 					mw.notify( $msg, {

@@ -2,29 +2,15 @@
 /**
  * Value object representing a content slot associated with a page revision.
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License along
- * with this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
- * http://www.gnu.org/copyleft/gpl.html
- *
+ * @license GPL-2.0-or-later
  * @file
  */
 
 namespace MediaWiki\Revision;
 
-use Content;
 use InvalidArgumentException;
 use LogicException;
+use MediaWiki\Content\Content;
 use OutOfBoundsException;
 use Wikimedia\Assert\Assert;
 use Wikimedia\NonSerializable\NonSerializableTrait;
@@ -72,10 +58,7 @@ class SlotRecord {
 
 		return new SlotRecord(
 			$row,
-			/**
-			 * @return never
-			 */
-			static function () {
+			static function (): never {
 				throw new SuppressedDataException( 'Content suppressed!' );
 			}
 		);
@@ -310,6 +293,8 @@ class SlotRecord {
 	 *
 	 * @throws SuppressedDataException if access to the content is not allowed according
 	 * to the audience check performed by RevisionRecord::getSlot().
+	 * @throws BadRevisionException if the revision is permanently missing
+	 * @throws RevisionAccessException for other storage access errors
 	 *
 	 * @return Content The slot's content. This is a direct reference to the internal instance,
 	 * copy before exposing to application logic!
@@ -319,7 +304,7 @@ class SlotRecord {
 			return $this->content;
 		}
 
-		$obj = call_user_func( $this->content, $this );
+		$obj = ( $this->content )( $this );
 
 		Assert::postcondition(
 			$obj instanceof Content,
@@ -358,7 +343,7 @@ class SlotRecord {
 
 		// NOTE: allow callbacks, but don't trust plain string callables from the database!
 		if ( !is_string( $value ) && is_callable( $value ) ) {
-			$value = call_user_func( $value, $this );
+			$value = $value( $this );
 			$this->setField( $name, $value );
 		}
 
@@ -540,7 +525,7 @@ class SlotRecord {
 	public function getSize() {
 		try {
 			$size = $this->getIntField( 'content_size' );
-		} catch ( IncompleteRevisionException $ex ) {
+		} catch ( IncompleteRevisionException ) {
 			$size = $this->getContent()->getSize();
 			$this->setField( 'content_size', $size );
 		}
@@ -556,7 +541,7 @@ class SlotRecord {
 	public function getSha1() {
 		try {
 			$sha1 = $this->getStringField( 'content_sha1' );
-		} catch ( IncompleteRevisionException $ex ) {
+		} catch ( IncompleteRevisionException ) {
 			$sha1 = null;
 		}
 
@@ -584,7 +569,7 @@ class SlotRecord {
 	public function getModel() {
 		try {
 			$model = $this->getStringField( 'model_name' );
-		} catch ( IncompleteRevisionException $ex ) {
+		} catch ( IncompleteRevisionException ) {
 			$model = $this->getContent()->getModel();
 			$this->setField( 'model_name', $model );
 		}

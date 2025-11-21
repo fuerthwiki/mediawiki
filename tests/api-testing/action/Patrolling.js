@@ -2,7 +2,7 @@
 
 const { action, assert, utils } = require( 'api-testing' );
 
-describe( 'The patrol action', function testEditPatrolling() {
+describe( 'The patrol action', () => {
 	let alice, mindy, edit, rc;
 	const pageTitle = utils.title( 'Patroll_' );
 
@@ -25,7 +25,7 @@ describe( 'The patrol action', function testEditPatrolling() {
 			},
 			'POST'
 		);
-		assert.equal( error.code, 'permissiondenied' );
+		assert.equal( error.code, 'noautopatrol' );
 
 		rc = await mindy.getChangeEntry(
 			{

@@ -1,8 +1,6 @@
 <?php
 /** Ladino (Ladino)
  *
- * To improve a translation please visit https://translatewiki.net
- *
  * @file
  * @ingroup Languages
  *
@@ -101,6 +99,7 @@ $specialPageAliases = [
 	'FileDuplicateSearch'       => [ 'BuscarDosyasDobles' ],
 	'Filepath'                  => [ 'Pozisyón_de_dosya' ],
 	'Import'                    => [ 'AktarearAriento' ],
+	'Interwiki'                 => [ 'Interviki' ],
 	'Invalidateemail'           => [ 'DesverdadearLetral' ],
 	'LinkSearch'                => [ 'Busqueda_de_atamientos' ],
 	'Listadmins'                => [ 'ListaDeAdministradores' ],

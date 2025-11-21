@@ -1,14 +1,15 @@
 <?php
 
-namespace Wikimedia\ParamValidator\TypeDef;
+namespace Wikimedia\Tests\ParamValidator\TypeDef;
 
 use Wikimedia\Message\DataMessageValue;
 use Wikimedia\ParamValidator\ParamValidator;
 use Wikimedia\ParamValidator\SimpleCallbacks;
+use Wikimedia\ParamValidator\TypeDef\StringDef;
 use Wikimedia\ParamValidator\ValidationException;
 
 /**
- * @covers Wikimedia\ParamValidator\TypeDef\StringDef
+ * @covers \Wikimedia\ParamValidator\TypeDef\StringDef
  */
 class StringDefTest extends TypeDefTestCase {
 
@@ -16,7 +17,7 @@ class StringDefTest extends TypeDefTestCase {
 		return new StringDef( $callbacks, $options );
 	}
 
-	public function provideValidate() {
+	public static function provideValidate() {
 		$req = [
 			ParamValidator::PARAM_REQUIRED => true,
 		];
@@ -38,7 +39,15 @@ class StringDefTest extends TypeDefTestCase {
 				),
 				$req,
 			],
-			'Empty, required, allowed' => [ '', '', $req, [ 'allowEmptyWhenRequired' => true ] ],
+			'Not a string' => [
+				[ 1, 2, 3 ],
+				new ValidationException(
+					DataMessageValue::new( 'paramvalidator-needstring', [], 'needstring' ),
+					'test', '', []
+				),
+				$req,
+			],
+			'Empty, required, allowed' => [ '', '', $req, [ StringDef::OPT_ALLOW_EMPTY => true ] ],
 			'Max bytes, ok' => [ 'abcd', 'abcd', $maxBytes ],
 			'Max bytes, exceeded' => [
 				'abcde',
@@ -86,7 +95,7 @@ class StringDefTest extends TypeDefTestCase {
 		];
 	}
 
-	public function provideCheckSettings() {
+	public static function provideCheckSettings() {
 		$keys = [ 'Y', StringDef::PARAM_MAX_BYTES, StringDef::PARAM_MAX_CHARS ];
 
 		return [
@@ -191,7 +200,7 @@ class StringDefTest extends TypeDefTestCase {
 		];
 	}
 
-	public function provideGetInfo() {
+	public static function provideGetInfo() {
 		return [
 			'Basic test' => [
 				[],

@@ -1,10 +1,18 @@
 <?php
 
+use MediaWiki\Json\FormatJson;
+use MediaWiki\Maintenance\Maintenance;
+use MediaWiki\Registration\ExtensionProcessor;
+use MediaWiki\Registration\ExtensionRegistry;
+use Wikimedia\Composer\ComposerJson;
+
+// @codeCoverageIgnoreStart
 require_once __DIR__ . '/Maintenance.php';
+// @codeCoverageIgnoreEnd
 
 class ConvertExtensionToRegistration extends Maintenance {
 
-	protected $custom = [
+	private const CUSTOM_GLOBALS = [
 		'MessagesDirs' => 'handleMessagesDirs',
 		'ExtensionMessagesFiles' => 'handleExtensionMessagesFiles',
 		'AutoloadClasses' => 'removeAbsolutePath',
@@ -18,28 +26,22 @@ class ConvertExtensionToRegistration extends Maintenance {
 
 	/**
 	 * Things that were formerly globals and should still be converted
-	 *
-	 * @var string[]
 	 */
-	protected $formerGlobals = [
+	private const FORMER_GLOBALS = [
 		'TrackingCategories',
 	];
 
 	/**
 	 * No longer supported globals (with reason) should not be converted and emit a warning
-	 *
-	 * @var string[]
 	 */
-	protected $noLongerSupportedGlobals = [
+	private const NO_LONGER_SUPPORTED_GLOBALS = [
 		'SpecialPageGroups' => 'deprecated', // Deprecated 1.21, removed in 1.26
 	];
 
 	/**
 	 * Keys that should be put at the top of the generated JSON file (T86608)
-	 *
-	 * @var string[]
 	 */
-	protected $promote = [
+	private const PROMOTE_ATTRIBUTES = [
 		'name',
 		'namemsg',
 		'version',
@@ -51,7 +53,9 @@ class ConvertExtensionToRegistration extends Maintenance {
 		'type',
 	];
 
-	private $json, $dir, $hasWarning = false;
+	private array $json;
+	private string $dir;
+	private bool $hasWarning = false;
 
 	public function __construct() {
 		parent::__construct();
@@ -62,11 +66,10 @@ class ConvertExtensionToRegistration extends Maintenance {
 		$this->addOption( 'config-prefix', 'Custom prefix for configuration settings', false, true );
 	}
 
-	protected function getAllGlobals() {
+	protected function getAllGlobals(): array {
 		$processor = new ReflectionClass( ExtensionProcessor::class );
 		$settings = $processor->getProperty( 'globalSettings' );
-		$settings->setAccessible( true );
-		return array_merge( $settings->getValue(), $this->formerGlobals );
+		return array_merge( $settings->getValue(), self::FORMER_GLOBALS );
 	}
 
 	public function execute() {
@@ -74,7 +77,7 @@ class ConvertExtensionToRegistration extends Maintenance {
 		// fatal unless an array is already set. So set an empty value.
 		// And use the weird $__settings name to avoid any conflicts
 		// with real poorly named settings.
-		$__settings = array_merge( $this->getAllGlobals(), array_keys( $this->custom ) );
+		$__settings = array_merge( $this->getAllGlobals(), array_keys( self::CUSTOM_GLOBALS ) );
 		foreach ( $__settings as $var ) {
 			$var = 'wg' . $var;
 			$$var = [];
@@ -100,7 +103,7 @@ class ConvertExtensionToRegistration extends Maintenance {
 
 		foreach ( $vars as $name => $value ) {
 			$realName = substr( $name, 2 ); // Strip 'wg'
-			if ( $realName === false ) {
+			if ( $realName === '' ) {
 				continue;
 			}
 
@@ -109,28 +112,28 @@ class ConvertExtensionToRegistration extends Maintenance {
 				continue;
 			}
 
-			if ( isset( $this->custom[$realName] ) ) {
-				call_user_func_array( [ $this, $this->custom[$realName] ],
-					[ $realName, $value, $vars ] );
+			if ( isset( self::CUSTOM_GLOBALS[$realName] ) ) {
+				$method = self::CUSTOM_GLOBALS[$realName];
+				$this->$method( $realName, $value, $vars );
 			} elseif ( in_array( $realName, $globalSettings ) ) {
 				$this->json[$realName] = $value;
-			} elseif ( array_key_exists( $realName, $this->noLongerSupportedGlobals ) ) {
+			} elseif ( array_key_exists( $realName, self::NO_LONGER_SUPPORTED_GLOBALS ) ) {
 				$this->output( 'Warning: Skipped global "' . $name . '" (' .
-					$this->noLongerSupportedGlobals[$realName] . '). ' .
+					self::NO_LONGER_SUPPORTED_GLOBALS[$realName] . '). ' .
 					"Please update the entry point before convert to registration.\n" );
 				$this->hasWarning = true;
-			} elseif ( strpos( $name, $configPrefix ) === 0 ) {
+			} elseif ( str_starts_with( $name, $configPrefix ) ) {
 				$configName = substr( $name, strlen( $configPrefix ) );
 
 				$isPath = false;
 				if ( is_array( $value ) ) {
 					foreach ( $value as $k => $v ) {
-						if ( strpos( $v, $this->dir ) !== false ) {
+						if ( str_contains( $v, $this->dir ) ) {
 							$value[$k] = $this->stripPath( $v, $this->dir );
 							$isPath = true;
 						}
 					}
-				} elseif ( is_string( $value ) && strpos( $value, $this->dir ) !== false ) {
+				} elseif ( is_string( $value ) && str_contains( $value, $this->dir ) ) {
 					$value = $this->stripPath( $value, $this->dir );
 					$isPath = true;
 				}
@@ -141,7 +144,7 @@ class ConvertExtensionToRegistration extends Maintenance {
 				if ( $isPath ) {
 					$this->json['config'][$configName]['path'] = true;
 				}
-			} elseif ( $configPrefix !== 'wg' && strpos( $name, 'wg' ) === 0 ) {
+			} elseif ( $configPrefix !== 'wg' && str_starts_with( $name, 'wg' ) ) {
 				// Warn about this
 				$this->output( 'Warning: Skipped global "' . $name . '" (' .
 					'config prefix is "' . $configPrefix . '"). ' .
@@ -158,7 +161,7 @@ class ConvertExtensionToRegistration extends Maintenance {
 
 		// Move some keys to the top
 		$out = [];
-		foreach ( $this->promote as $key ) {
+		foreach ( self::PROMOTE_ATTRIBUTES as $key ) {
 			if ( isset( $this->json[$key] ) ) {
 				$out[$key] = $this->json[$key];
 				unset( $this->json[$key] );
@@ -182,7 +185,7 @@ class ConvertExtensionToRegistration extends Maintenance {
 		}
 	}
 
-	protected function handleExtensionFunctions( $realName, $value ) {
+	protected function handleExtensionFunctions( string $realName, array $value ) {
 		foreach ( $value as $func ) {
 			if ( $func instanceof Closure ) {
 				$this->fatalError( "Error: Closures cannot be converted to JSON. " .
@@ -199,7 +202,7 @@ class ConvertExtensionToRegistration extends Maintenance {
 		$this->json[$realName] = $value;
 	}
 
-	protected function handleMessagesDirs( $realName, $value ) {
+	protected function handleMessagesDirs( string $realName, array $value, array $_ ) {
 		foreach ( $value as $key => $dirs ) {
 			foreach ( (array)$dirs as $dir ) {
 				$this->json[$realName][$key][] = $this->stripPath( $dir, $this->dir );
@@ -207,7 +210,7 @@ class ConvertExtensionToRegistration extends Maintenance {
 		}
 	}
 
-	protected function handleExtensionMessagesFiles( $realName, $value, $vars ) {
+	protected function handleExtensionMessagesFiles( string $realName, array $value, array $vars ) {
 		foreach ( $value as $key => $file ) {
 			$strippedFile = $this->stripPath( $file, $this->dir );
 			if ( isset( $vars['wgMessagesDirs'][$key] ) ) {
@@ -222,10 +225,10 @@ class ConvertExtensionToRegistration extends Maintenance {
 		}
 	}
 
-	private function stripPath( $val, $dir ) {
+	private function stripPath( string $val, string $dir ): string {
 		if ( $val === $dir ) {
 			$val = '';
-		} elseif ( strpos( $val, $dir ) === 0 ) {
+		} elseif ( str_starts_with( $val, $dir ) ) {
 			// +1 is for the trailing / that won't be in $this->dir
 			$val = substr( $val, strlen( $dir ) + 1 );
 		}
@@ -233,7 +236,7 @@ class ConvertExtensionToRegistration extends Maintenance {
 		return $val;
 	}
 
-	protected function removeAbsolutePath( $realName, $value ) {
+	protected function removeAbsolutePath( string $realName, array $value ) {
 		$out = [];
 		foreach ( $value as $key => $val ) {
 			$out[$key] = $this->stripPath( $val, $this->dir );
@@ -241,13 +244,13 @@ class ConvertExtensionToRegistration extends Maintenance {
 		$this->json[$realName] = $out;
 	}
 
-	protected function removeAutodiscoveredParserTestFiles( $realName, $value ) {
+	protected function removeAutodiscoveredParserTestFiles( string $realName, array $value ) {
 		$out = [];
 		foreach ( $value as $key => $val ) {
 			$path = $this->stripPath( $val, $this->dir );
 			// When path starts with tests/parser/ the file would be autodiscovered with
 			// extension registry, so no need to add it to extension.json
-			if ( substr( $path, 0, 13 ) !== 'tests/parser/' || substr( $path, -4 ) !== '.txt' ) {
+			if ( !str_starts_with( $path, 'tests/parser/' ) || !str_ends_with( $path, '.txt' ) ) {
 				$out[$key] = $path;
 			}
 		}
@@ -255,9 +258,14 @@ class ConvertExtensionToRegistration extends Maintenance {
 		if ( $out ) {
 			$this->json[$realName] = $out;
 		}
+		// FIXME: the ParserTestFiles key was deprecated in
+		// MW 1.30 and removed in MW 1.40.  If not all entries were filtered
+		// out by the above, we *should* recommend the user move the
+		// parser tests under `tests/parser` *not* generate an extension.json
+		// with a ParserTestFiles key that will no longer validate.
 	}
 
-	protected function handleCredits( $realName, $value ) {
+	protected function handleCredits( string $realName, array $value ) {
 		$keys = array_keys( $value );
 		$this->json['type'] = $keys[0];
 		$values = array_values( $value );
@@ -268,7 +276,7 @@ class ConvertExtensionToRegistration extends Maintenance {
 		}
 	}
 
-	public function handleHooks( $realName, $value ) {
+	public function handleHooks( string $realName, array $value ) {
 		foreach ( $value as $hookName => &$handlers ) {
 			if ( $hookName === 'UnitTestsList' ) {
 				$this->output( "Note: the UnitTestsList hook is no longer necessary as " .
@@ -332,12 +340,12 @@ class ConvertExtensionToRegistration extends Maintenance {
 		}
 	}
 
-	protected function needsComposerAutoloader( $path ) {
+	protected function needsComposerAutoloader( string $path ): bool {
 		$path .= '/composer.json';
 		if ( file_exists( $path ) ) {
-			// assume, that the composer.json file is in the root of the extension path
+			// assume that the composer.json file is in the root of the extension path
 			$composerJson = new ComposerJson( $path );
-			// check, if there are some dependencies in the require section
+			// check if there are some dependencies in the require section
 			if ( $composerJson->getRequiredDependencies() ) {
 				return true;
 			}
@@ -346,5 +354,7 @@ class ConvertExtensionToRegistration extends Maintenance {
 	}
 }
 
+// @codeCoverageIgnoreStart
 $maintClass = ConvertExtensionToRegistration::class;
 require_once RUN_MAINTENANCE_IF_MAIN;
+// @codeCoverageIgnoreEnd

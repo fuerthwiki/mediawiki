@@ -1,20 +1,6 @@
 <?php
 /**
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License along
- * with this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
- * http://www.gnu.org/copyleft/gpl.html
- *
+ * @license GPL-2.0-or-later
  * @file
  * @author Kunal Mehta
  */
@@ -22,10 +8,10 @@
 namespace MediaWiki\ResourceLoader;
 
 use MediaWiki\MediaWikiServices;
+use MediaWiki\Request\WebRequest;
+use MediaWiki\User\User;
 use MediaWiki\User\UserIdentity;
 use MediaWiki\User\UserRigorOptions;
-use User;
-use WebRequest;
 
 /**
  * A mutable version of Context.
@@ -66,6 +52,8 @@ class DerivativeContext extends Context {
 	protected $version = self::INHERIT_VALUE;
 	/** @var int|bool */
 	protected $raw = self::INHERIT_VALUE;
+	/** @var int|bool */
+	protected $sourcemap = self::INHERIT_VALUE;
 	/** @var int|callable|null */
 	protected $contentOverrideCallback = self::INHERIT_VALUE;
 
@@ -162,18 +150,15 @@ class DerivativeContext extends Context {
 		}
 		if ( $this->userObj === null ) {
 			$username = $this->getUser();
+			$userFactory = MediaWikiServices::getInstance()->getUserFactory();
 			if ( $username ) {
-				$this->userObj = User::newFromName( $username ) ?: new User;
-			} else {
-				$this->userObj = new User;
+				$this->userObj = $userFactory->newFromName( $username, UserRigorOptions::RIGOR_VALID );
 			}
+			$this->userObj ??= $userFactory->newAnonymous();
 		}
 		return $this->userObj;
 	}
 
-	/**
-	 * @param string|null $user
-	 */
 	public function setUser( ?string $user ) {
 		$this->user = $user;
 		$this->hash = null;
@@ -201,9 +186,6 @@ class DerivativeContext extends Context {
 		return $this->only;
 	}
 
-	/**
-	 * @param string|null $only
-	 */
 	public function setOnly( ?string $only ) {
 		$this->only = $only;
 		$this->hash = null;
@@ -216,9 +198,6 @@ class DerivativeContext extends Context {
 		return $this->version;
 	}
 
-	/**
-	 * @param string|null $version
-	 */
 	public function setVersion( ?string $version ) {
 		$this->version = $version;
 		$this->hash = null;
@@ -235,6 +214,17 @@ class DerivativeContext extends Context {
 		$this->raw = $raw;
 	}
 
+	public function isSourceMap(): bool {
+		if ( $this->sourcemap === self::INHERIT_VALUE ) {
+			return $this->context->isSourceMap();
+		}
+		return $this->sourcemap;
+	}
+
+	public function setIsSourceMap( bool $sourcemap ) {
+		$this->sourcemap = $sourcemap;
+	}
+
 	public function getRequest(): WebRequest {
 		return $this->context->getRequest();
 	}
@@ -243,6 +233,7 @@ class DerivativeContext extends Context {
 		return $this->context->getResourceLoader();
 	}
 
+	/** @inheritDoc */
 	public function getContentOverrideCallback() {
 		if ( $this->contentOverrideCallback === self::INHERIT_VALUE ) {
 			return $this->context->getContentOverrideCallback();
@@ -261,6 +252,3 @@ class DerivativeContext extends Context {
 	}
 
 }
-
-/** @deprecated since 1.39 */
-class_alias( DerivativeContext::class, 'DerivativeResourceLoaderContext' );

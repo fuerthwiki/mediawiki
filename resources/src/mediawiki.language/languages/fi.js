@@ -3,17 +3,10 @@
  * @author Santhosh Thottingal
  */
 
-mw.language.convertGrammar = function ( word, form ) {
-	var grammarForms, aou, origWord;
-
-	grammarForms = mw.language.getData( 'fi', 'grammarForms' );
-	if ( grammarForms && grammarForms[ form ] ) {
-		return grammarForms[ form ][ word ];
-	}
-
+mw.language.convertGrammarMapping.fi = function ( word, form ) {
 	// vowel harmony flag
-	aou = /[aou][^äöy]*$/i.test( word );
-	origWord = word;
+	let aou = /[aou][^äöy]*$/i.test( word );
+	const origWord = word;
 	if ( /wiki$/i.test( word ) ) {
 		aou = false;
 	}

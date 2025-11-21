@@ -1,6 +1,4 @@
-'use strict';
-
-const Page = require( 'wdio-mediawiki/Page' );
+import Page from 'wdio-mediawiki/Page.js';
 
 class WatchlistPage extends Page {
 	get titles() {
@@ -8,10 +6,10 @@ class WatchlistPage extends Page {
 			.$$( '.mw-changeslist-line .mw-title' );
 	}
 
-	open() {
-		super.openTitle( 'Special:Watchlist' );
+	async open() {
+		return super.openTitle( 'Special:Watchlist' );
 	}
 
 }
 
-module.exports = new WatchlistPage();
+export default new WatchlistPage();

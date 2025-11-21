@@ -2,32 +2,21 @@
 /**
  * Corrects wrong values in the `page_latest` field in the database.
  *
- * Copyright © 2005 Brion Vibber <brion@pobox.com>
+ * Copyright © 2005 Brooke Vibber <bvibber@wikimedia.org>
  * https://www.mediawiki.org/
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License along
- * with this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
- * http://www.gnu.org/copyleft/gpl.html
- *
+ * @license GPL-2.0-or-later
  * @file
  * @ingroup Maintenance
  */
 
-use MediaWiki\MediaWikiServices;
-use MediaWiki\Revision\RevisionLookup;
+use MediaWiki\Maintenance\Maintenance;
+use MediaWiki\Title\Title;
+use Wikimedia\Rdbms\IDBAccessObject;
 
+// @codeCoverageIgnoreStart
 require_once __DIR__ . '/Maintenance.php';
+// @codeCoverageIgnoreEnd
 
 /**
  * Maintenance script to correct wrong values in the `page_latest` field
@@ -46,10 +35,10 @@ class AttachLatest extends Maintenance {
 
 	public function execute() {
 		$this->output( "Looking for pages with page_latest set to 0...\n" );
-		$dbw = $this->getDB( DB_PRIMARY );
+		$dbw = $this->getPrimaryDB();
 		$conds = [ 'page_latest' => 0 ];
 		if ( $this->hasOption( 'regenerate-all' ) ) {
-			$conds = '';
+			$conds = [];
 		}
 		$result = $dbw->newSelectQueryBuilder()
 			->select( [ 'page_id', 'page_namespace', 'page_title' ] )
@@ -58,9 +47,8 @@ class AttachLatest extends Maintenance {
 			->caller( __METHOD__ )
 			->fetchResultSet();
 
-		$services = MediaWikiServices::getInstance();
-		$lbFactory = $services->getDBLoadBalancerFactory();
-		$dbDomain = $lbFactory->getLocalDomainID();
+		$services = $this->getServiceContainer();
+		$dbDomain = $services->getDBLoadBalancerFactory()->getLocalDomainID();
 		$wikiPageFactory = $services->getWikiPageFactory();
 		$revisionLookup = $services->getRevisionLookup();
 
@@ -70,7 +58,7 @@ class AttachLatest extends Maintenance {
 			$title = Title::makeTitle( $row->page_namespace, $row->page_title );
 			$name = $title->getPrefixedText();
 			$latestTime = $dbw->newSelectQueryBuilder()
-				->select( 'MAX(rev_timestamp' )
+				->select( 'MAX(rev_timestamp)' )
 				->from( 'revision' )
 				->where( [ 'rev_page' => $pageId ] )
 				->caller( __METHOD__ )
@@ -80,7 +68,7 @@ class AttachLatest extends Maintenance {
 				continue;
 			}
 
-			$revRecord = $revisionLookup->getRevisionByTimestamp( $title, $latestTime, RevisionLookup::READ_LATEST );
+			$revRecord = $revisionLookup->getRevisionByTimestamp( $title, $latestTime, IDBAccessObject::READ_LATEST );
 			if ( $revRecord === null ) {
 				$this->output(
 					"$dbDomain $pageId [[$name]] latest time $latestTime, can't find revision id\n"
@@ -93,7 +81,7 @@ class AttachLatest extends Maintenance {
 			if ( $this->hasOption( 'fix' ) ) {
 				$page = $wikiPageFactory->newFromTitle( $title );
 				$page->updateRevisionOn( $dbw, $revRecord );
-				$lbFactory->waitForReplication();
+				$this->waitForReplication();
 			}
 			$n++;
 		}
@@ -104,5 +92,7 @@ class AttachLatest extends Maintenance {
 	}
 }
 
+// @codeCoverageIgnoreStart
 $maintClass = AttachLatest::class;
 require_once RUN_MAINTENANCE_IF_MAIN;
+// @codeCoverageIgnoreEnd

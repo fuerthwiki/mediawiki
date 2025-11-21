@@ -2,7 +2,7 @@
 
 namespace Wikimedia\WRStats;
 
-use BagOStuff;
+use Wikimedia\ObjectCache\BagOStuff;
 
 /**
  * An adaptor allowing WRStats to store data in MediaWiki's BagOStuff
@@ -14,13 +14,14 @@ class BagOStuffStatsStore implements StatsStore {
 	/** @var BagOStuff */
 	private $cache;
 
-	/**
-	 * @param BagOStuff $cache
-	 */
 	public function __construct( BagOStuff $cache ) {
 		$this->cache = $cache;
 	}
 
+	/**
+	 * @inheritDoc
+	 * @suppress PhanParamTooFewUnpack
+	 */
 	public function makeKey( $prefix, $internals, $entity ) {
 		if ( $entity->isGlobal() ) {
 			return $this->cache->makeGlobalKey(
@@ -31,6 +32,7 @@ class BagOStuffStatsStore implements StatsStore {
 		}
 	}
 
+	/** @inheritDoc */
 	public function incr( array $values, $ttl ) {
 		foreach ( $values as $key => $value ) {
 			$this->cache->incrWithInit(
@@ -47,6 +49,7 @@ class BagOStuffStatsStore implements StatsStore {
 		$this->cache->deleteMulti( $keys, BagOStuff::WRITE_BACKGROUND );
 	}
 
+	/** @inheritDoc */
 	public function query( array $keys ) {
 		return $this->cache->getMulti( $keys );
 	}

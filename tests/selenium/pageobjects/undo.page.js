@@ -1,22 +1,22 @@
-'use strict';
-
-const Page = require( 'wdio-mediawiki/Page' );
+import Page from 'wdio-mediawiki/Page.js';
 
 class UndoPage extends Page {
 
-	get save() { return $( '#wpSave' ); }
+	get save() {
+		return $( '#wpSave' );
+	}
 
-	undo( title, previousRev, undoRev ) {
-		super.openTitle( title, {
+	async undo( title, previousRev, undoRev ) {
+		await super.openTitle( title, {
 			action: 'edit',
 			undoafter: previousRev,
 			undo: undoRev,
 			// T276783: suppress welcome dialog that would prevent save if VisualEditor is installed
 			vehidebetadialog: 1
 		} );
-		this.save.click();
+		await this.save.click();
 	}
 
 }
 
-module.exports = new UndoPage();
+export default new UndoPage();

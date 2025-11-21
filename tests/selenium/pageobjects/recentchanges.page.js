@@ -1,15 +1,22 @@
-'use strict';
-
-const Page = require( 'wdio-mediawiki/Page' );
+import Page from 'wdio-mediawiki/Page.js';
 
 class RecentChangesPage extends Page {
-	get changesList() { return $( '.mw-changeslist' ); }
-	get titles() { return this.changesList.$$( '.mw-changeslist-title' ); }
+	get changesList() {
+		return $( '.mw-changeslist' );
+	}
 
-	open() {
-		super.openTitle( 'Special:RecentChanges' );
+	get liveUpdates() {
+		return $( '.mw-rcfilters-ui-liveUpdateButtonWidget' );
+	}
+
+	get titles() {
+		return this.changesList.$$( '.mw-changeslist-title' );
+	}
+
+	async open() {
+		return super.openTitle( 'Special:RecentChanges', { hidebots: 0 } );
 	}
 
 }
 
-module.exports = new RecentChangesPage();
+export default new RecentChangesPage();

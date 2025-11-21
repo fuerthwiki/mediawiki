@@ -1,43 +1,108 @@
-'use strict';
+// This file is used at Selenium/Explanation/Page object pattern
+// https://www.mediawiki.org/wiki/Selenium/Explanation/Page_object_pattern
 
-const assert = require( 'assert' );
-const CreateAccountPage = require( 'wdio-mediawiki/CreateAccountPage' );
-const UserLoginPage = require( 'wdio-mediawiki/LoginPage' );
-const Api = require( 'wdio-mediawiki/Api' );
-const Util = require( 'wdio-mediawiki/Util' );
+import CreateAccountPage from 'wdio-mediawiki/CreateAccountPage.js';
+import EditPage from '../pageobjects/edit.page.js';
+import LoginPage from 'wdio-mediawiki/LoginPage.js';
+import BlockPage from '../pageobjects/block.page.js';
+import { createApiClient } from 'wdio-mediawiki/Api.js';
+import { getTestString } from 'wdio-mediawiki/Util.js';
 
-describe( 'User', function () {
-	let password, username, bot;
+describe( 'User', () => {
+	let password, username, apiClient;
 
 	before( async () => {
-		bot = await Api.bot();
+		apiClient = await createApiClient();
 	} );
 
-	beforeEach( async function () {
+	beforeEach( async () => {
 		await browser.deleteAllCookies();
-		username = Util.getTestString( 'User-' );
-		password = Util.getTestString();
+		username = getTestString( 'User-' );
+		password = getTestString();
 	} );
 
-	it( 'should be able to create account', async function () {
+	it( 'should be able to create account', async () => {
 		// create
 		await CreateAccountPage.createAccount( username, password );
 
 		// check
-		assert.strictEqual( await CreateAccountPage.heading.getText(), `Welcome, ${username}!` );
+		await expect( CreateAccountPage.heading ).toHaveText( `Welcome, ${ username }!` );
 	} );
 
-	it( 'should be able to log in @daily', async function () {
+	it( 'should be able to log in', async () => {
 		// create
-		await Api.createAccount( bot, username, password );
+		await apiClient.createAccount( username, password );
 
 		// log in
-		await UserLoginPage.login( username, password );
+		await LoginPage.login( username, password );
 
 		// check
-		const actualUsername = await browser.execute( async () => {
-			return mw.config.get( 'wgUserName' );
-		} );
-		assert.strictEqual( await actualUsername, username );
+		const actualUsername = await LoginPage.getActualUsername();
+		expect( actualUsername ).toBe( username );
+	} );
+
+	it( 'named user should see extra signup form fields when creating an account', async () => {
+		await apiClient.createAccount( username, password );
+		await LoginPage.login( username, password );
+
+		await CreateAccountPage.open();
+
+		await expect( CreateAccountPage.username ).toExist();
+		await expect( CreateAccountPage.password ).toExist();
+		await expect( CreateAccountPage.tempPasswordInput ).toExist(
+			{ message: 'Named users should have the option to have a temporary password sent on signup (T328718)' }
+		);
+		await expect( CreateAccountPage.reasonInput ).toExist(
+			{ message: 'Named users should have to provide a reason for their account creation (T328718)' }
+		);
+	} );
+
+	it( 'temporary user should not see signup form fields relevant to named users', async () => {
+		const pageTitle = getTestString( 'TempUserSignup-TestPage-' );
+		const pageText = getTestString();
+
+		await EditPage.edit( pageTitle, pageText );
+		await EditPage.openCreateAccountPageAsTempUser();
+
+		await expect( CreateAccountPage.username ).toExist();
+		await expect( CreateAccountPage.password ).toExist();
+		await expect( CreateAccountPage.tempPasswordInput ).not.toExist(
+			{ message: 'Temporary users should not have the option to have a temporary password sent on signup (T328718)' }
+		);
+		await expect( CreateAccountPage.reasonInput ).not.toExist(
+			{ message: 'Temporary users should not have to provide a reason for their account creation (T328718)' }
+		);
+	} );
+
+	it( 'temporary user should be able to create account', async () => {
+		const pageTitle = getTestString( 'TempUserSignup-TestPage-' );
+		const pageText = getTestString();
+
+		await EditPage.edit( pageTitle, pageText );
+		await EditPage.openCreateAccountPageAsTempUser();
+
+		await CreateAccountPage.submitForm( username, password );
+		await browser.waitUntil(
+			async () => ( await LoginPage.getActualUsername() ) === username,
+			{
+				timeoutMsg: 'expected user is not logged in'
+			}
+		);
+
+		const actualUsername = await LoginPage.getActualUsername();
+		await expect( actualUsername ).toBe( username );
+		await expect( CreateAccountPage.heading ).toHaveText( `Welcome, ${ username }!` );
+	} );
+
+	it( 'should be able to block a user', async () => {
+		await apiClient.createAccount( username, password );
+
+		await LoginPage.loginAdmin();
+
+		const expiry = '31 hours';
+		const reason = getTestString();
+		await BlockPage.block( username, expiry, reason );
+
+		await expect( BlockPage.messages ).toHaveText( expect.stringContaining( 'Block added' ) );
 	} );
 } );

@@ -2,33 +2,23 @@
 /**
  * Benchmark %MediaWiki hooks.
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License along
- * with this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
- * http://www.gnu.org/copyleft/gpl.html
- *
+ * @license GPL-2.0-or-later
  * @file
  * @ingroup Benchmark
  */
 
 use MediaWiki\MainConfigSchema;
+use MediaWiki\Maintenance\Benchmarker;
+use MediaWiki\Registration\ExtensionRegistry;
 use MediaWiki\Settings\Config\ArrayConfigBuilder;
 use MediaWiki\Settings\Config\NullIniSink;
 use MediaWiki\Settings\SettingsBuilder;
 use MediaWiki\Settings\Source\PhpSettingsSource;
 use MediaWiki\Settings\Source\ReflectionSchemaSource;
 
+// @codeCoverageIgnoreStart
 require_once __DIR__ . '/../includes/Benchmarker.php';
+// @codeCoverageIgnoreEnd
 
 /**
  * Maintenance script that benchmarks loading of settings files.
@@ -42,7 +32,7 @@ class BenchmarkSettings extends Benchmarker {
 		$this->addDescription( 'Benchmark loading settings files.' );
 	}
 
-	private function newSettingsBuilder() {
+	private function newSettingsBuilder(): SettingsBuilder {
 		$extReg = new ExtensionRegistry();
 		$configBuilder = new ArrayConfigBuilder();
 		$phpIniSink = new NullIniSink();
@@ -69,23 +59,6 @@ class BenchmarkSettings extends Benchmarker {
 			},
 			'function' => static function () {
 				include MW_INSTALL_PATH . '/includes/DefaultSettings.php';
-			}
-		];
-
-		$benches['DefaultSettings.php + config-merge-strategies.php'] = [
-			'setup' => static function () {
-				// do this once beforehand
-				include MW_INSTALL_PATH . '/includes/DefaultSettings.php';
-			},
-			'function' => function () {
-				include MW_INSTALL_PATH . '/includes/DefaultSettings.php';
-				$settingsBuilder = $this->newSettingsBuilder();
-				$settingsBuilder->load(
-					new PhpSettingsSource(
-						MW_INSTALL_PATH . '/includes/config-merge-strategies.php'
-					)
-				);
-				$settingsBuilder->apply();
 			}
 		];
 
@@ -137,7 +110,7 @@ class BenchmarkSettings extends Benchmarker {
 				$settingsBuilder->load(
 					new PhpSettingsSource( MW_INSTALL_PATH . '/includes/config-schema.php' )
 				);
-				$settingsBuilder->finalize(); // applies some dynamic defaults
+				$settingsBuilder->enterRegistrationStage(); // applies some dynamic defaults
 
 				// phpcs:ignore MediaWiki.Usage.ForbiddenFunctions.extract
 				extract( $GLOBALS );
@@ -152,5 +125,7 @@ class BenchmarkSettings extends Benchmarker {
 	}
 }
 
+// @codeCoverageIgnoreStart
 $maintClass = BenchmarkSettings::class;
 require_once RUN_MAINTENANCE_IF_MAIN;
+// @codeCoverageIgnoreEnd

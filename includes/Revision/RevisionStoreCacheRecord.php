@@ -2,27 +2,13 @@
 /**
  * A RevisionStoreRecord loaded from the cache.
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License along
- * with this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
- * http://www.gnu.org/copyleft/gpl.html
- *
+ * @license GPL-2.0-or-later
  * @file
  */
 
 namespace MediaWiki\Revision;
 
-use CommentStoreComment;
+use MediaWiki\CommentStore\CommentStoreComment;
 use MediaWiki\Page\PageIdentity;
 use MediaWiki\Permissions\Authority;
 use MediaWiki\User\UserIdentity;
@@ -88,7 +74,7 @@ class RevisionStoreCacheRecord extends RevisionStoreRecord {
 	 *
 	 * @return UserIdentity The identity of the revision author, null if access is forbidden.
 	 */
-	public function getUser( $audience = self::FOR_PUBLIC, Authority $performer = null ) {
+	public function getUser( $audience = self::FOR_PUBLIC, ?Authority $performer = null ) {
 		if ( $this->mCallback ) {
 			$this->loadFreshRow();
 		}
@@ -101,7 +87,7 @@ class RevisionStoreCacheRecord extends RevisionStoreRecord {
 	 * @throws RevisionAccessException if the row could not be loaded
 	 */
 	private function loadFreshRow() {
-		list( $freshRevDeleted, $freshUser ) = call_user_func( $this->mCallback, $this->mId );
+		[ $freshRevDeleted, $freshUser ] = ( $this->mCallback )( $this->mId );
 
 		// Set to null to ensure we do not make unnecessary queries for subsequent getter calls,
 		// and to allow the closure to be freed.

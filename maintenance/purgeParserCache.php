@@ -1,35 +1,24 @@
 <?php
 /**
- * Remove old objects from the parser cache.
- * This only works when the parser cache is in an SQL database.
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License along
- * with this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
- * http://www.gnu.org/copyleft/gpl.html
- *
+ * @license GPL-2.0-or-later
  * @file
- * @ingroup Maintenance
  */
 
+// @codeCoverageIgnoreStart
 require_once __DIR__ . '/Maintenance.php';
+// @codeCoverageIgnoreEnd
 
 use MediaWiki\MainConfigNames;
-use MediaWiki\MediaWikiServices;
+use MediaWiki\Maintenance\Maintenance;
 use Wikimedia\Timestamp\ConvertibleTimestamp;
 
 /**
- * Maintenance script to remove old objects from the parser cache.
+ * Remove expired objects from the parser cache database.
+ *
+ * By default, this does not need to be run. The default parser cache
+ * backend is CACHE_DB (SqlBagOStuff), and by default that automatically
+ * performs incremental purges in the background of write requests.
+ * Check your wiki's $wgParserCacheType setting to determine if you need to run this script.
  *
  * @ingroup Maintenance
  */
@@ -41,7 +30,9 @@ class PurgeParserCache extends Maintenance {
 	/** @var null|float */
 	private $lastTimestamp;
 
+	/** @var int */
 	private $tmpCount = 0;
+	/** @var float */
 	private $usleep = 0;
 
 	public function __construct() {
@@ -90,10 +81,10 @@ class PurgeParserCache extends Maintenance {
 
 		$this->output( "Deleting objects expiring before " . $humanDate . "\n" );
 
-		$pc = MediaWikiServices::getInstance()->getParserCache()->getCacheStorage();
+		$pc = $this->getServiceContainer()->getParserCache()->getCacheStorage();
 		$success = $pc->deleteObjectsExpiringBefore(
 			$timestamp,
-			[ $this, 'showProgressAndWait' ],
+			$this->showProgressAndWait( ... ),
 			INF,
 			// Note that "0" can be a valid server tag, and must not be discarded or changed to null.
 			$this->getOption( 'tag', null )
@@ -105,7 +96,7 @@ class PurgeParserCache extends Maintenance {
 		$this->output( "\nDone\n" );
 	}
 
-	public function showProgressAndWait( $percent ) {
+	private function showProgressAndWait( int $percent ) {
 		// Parser caches involve mostly-unthrottled writes of large blobs. This is sometimes prone
 		// to replication lag. As such, while our purge queries are simple primary key deletes,
 		// we want to avoid adding significant load to the replication stream, by being
@@ -140,5 +131,7 @@ class PurgeParserCache extends Maintenance {
 	}
 }
 
+// @codeCoverageIgnoreStart
 $maintClass = PurgeParserCache::class;
 require_once RUN_MAINTENANCE_IF_MAIN;
+// @codeCoverageIgnoreEnd

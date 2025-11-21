@@ -2,11 +2,11 @@
 
 namespace MediaWiki\Storage\Hook;
 
-use CommentStoreComment;
+use MediaWiki\CommentStore\CommentStoreComment;
+use MediaWiki\Page\WikiPage;
 use MediaWiki\Revision\RevisionRecord;
 use MediaWiki\Storage\EditResult;
 use MediaWiki\User\UserIdentity;
-use WikiPage;
 
 /**
  * This is a hook handler interface, see docs/Hooks.md.

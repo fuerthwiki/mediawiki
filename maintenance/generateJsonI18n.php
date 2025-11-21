@@ -6,26 +6,17 @@
  * Usage:
  *    php generateJsonI18n.php ExtensionName.i18n.php i18n/
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License along
- * with this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
- * http://www.gnu.org/copyleft/gpl.html
- *
+ * @license GPL-2.0-or-later
  * @file
  * @ingroup Maintenance
  */
 
+use MediaWiki\Json\FormatJson;
+use MediaWiki\Maintenance\Maintenance;
+
+// @codeCoverageIgnoreStart
 require_once __DIR__ . '/Maintenance.php';
+// @codeCoverageIgnoreEnd
 
 /**
  * Maintenance script to generate JSON i18n files from a PHP i18n file.
@@ -46,7 +37,7 @@ class GenerateJsonI18n extends Maintenance {
 	}
 
 	public function execute() {
-		global $IP;
+		global $wgExtensionDirectory;
 
 		$phpfile = $this->getArg( 0 );
 		$jsondir = $this->getArg( 1 );
@@ -57,7 +48,7 @@ class GenerateJsonI18n extends Maintenance {
 			if ( $phpfile ) {
 				$this->fatalError( "The phpfile is already specified, conflicts with --extension." );
 			}
-			$phpfile = "$IP/extensions/$extension/$extension.i18n.php";
+			$phpfile = "$wgExtensionDirectory/$extension/$extension.i18n.php";
 		}
 
 		if ( !$phpfile ) {
@@ -92,7 +83,7 @@ class GenerateJsonI18n extends Maintenance {
 		}
 	}
 
-	public function transformI18nFile( $phpfile, $jsondir = null ) {
+	public function transformI18nFile( string $phpfile, ?string $jsondir = null ) {
 		if ( !$jsondir ) {
 			// Assume the json directory should be in the same directory as the
 			// .i18n.php file.
@@ -113,7 +104,7 @@ class GenerateJsonI18n extends Maintenance {
 		include $phpfile;
 		$phpfileContents = file_get_contents( $phpfile );
 
-		// @phan-suppress-next-line PhanImpossibleCondition Set by include of php file
+		// @phan-suppress-next-line PhanImpossibleCondition,MediaWikiNoIssetIfDefined Set by include of php file
 		if ( !isset( $messages ) ) {
 			$this->fatalError( "PHP file $phpfile does not define \$messages array" );
 		}
@@ -191,5 +182,7 @@ class GenerateJsonI18n extends Maintenance {
 	}
 }
 
+// @codeCoverageIgnoreStart
 $maintClass = GenerateJsonI18n::class;
 require_once RUN_MAINTENANCE_IF_MAIN;
+// @codeCoverageIgnoreEnd

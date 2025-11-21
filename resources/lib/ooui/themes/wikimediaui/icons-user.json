@@ -12,19 +12,25 @@
 			"global": true
 		},
 		"destructive": {
-			"color": "#d33"
+			"color": "#d73333"
 		},
 		"error": {
-			"color": "#d33"
+			"color": "#d73333"
 		},
 		"warning": {
-			"color": "#fc3"
+			"color": "#ab7f2a"
 		},
 		"success": {
 			"color": "#14866d"
 		}
 	},
 	"images": {
+		"bookmarkList": {
+			"file": {
+				"ltr": "images/icons/bookmarkList-ltr.svg",
+				"rtl": "images/icons/bookmarkList-rtl.svg"
+			}
+		},
 		"userAdd": {
 			"file": {
 				"ltr": "images/icons/userAdd-ltr.svg",
@@ -52,10 +58,28 @@
 				"rtl": "images/icons/userGroup-rtl.svg"
 			}
 		},
+		"userRights": {
+			"file": {
+				"ltr": "images/icons/userRights-ltr.svg",
+				"rtl": "images/icons/userRights-rtl.svg"
+			}
+		},
 		"userTalk": {
 			"file": {
 				"ltr": "images/icons/userTalk-ltr.svg",
 				"rtl": "images/icons/userTalk-rtl.svg"
+			}
+		},
+		"userTemporary": {
+			"file": {
+				"ltr": "images/icons/userTemporary-ltr.svg",
+				"rtl": "images/icons/userTemporary-rtl.svg"
+			}
+		},
+		"userTemporaryLocation": {
+			"file": {
+				"ltr": "images/icons/userTemporaryLocation-ltr.svg",
+				"rtl": "images/icons/userTemporaryLocation-rtl.svg"
 			}
 		},
 		"watchlist": {

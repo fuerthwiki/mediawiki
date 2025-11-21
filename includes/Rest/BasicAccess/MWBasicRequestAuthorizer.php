@@ -12,8 +12,7 @@ use MediaWiki\Rest\RequestInterface;
  * @internal
  */
 class MWBasicRequestAuthorizer extends BasicRequestAuthorizer {
-	/** @var Authority */
-	private $authority;
+	private Authority $authority;
 
 	public function __construct(
 		RequestInterface $request,
@@ -24,11 +23,13 @@ class MWBasicRequestAuthorizer extends BasicRequestAuthorizer {
 		$this->authority = $authority;
 	}
 
+	/** @inheritDoc */
 	protected function isReadAllowed() {
 		return $this->authority->isAllowed( 'read' );
 	}
 
+	/** @inheritDoc */
 	protected function isWriteAllowed() {
-		return $this->authority->isAllowed( 'writeapi' );
+		return true;
 	}
 }

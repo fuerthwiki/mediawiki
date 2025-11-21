@@ -2,26 +2,16 @@
 /**
  * Benchmark %MediaWiki hooks.
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License along
- * with this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
- * http://www.gnu.org/copyleft/gpl.html
- *
+ * @license GPL-2.0-or-later
  * @file
  * @ingroup Benchmark
  */
 
+use MediaWiki\Maintenance\Benchmarker;
+
+// @codeCoverageIgnoreStart
 require_once __DIR__ . '/../includes/Benchmarker.php';
+// @codeCoverageIgnoreEnd
 
 /**
  * Maintenance script that benchmarks %MediaWiki hooks.
@@ -29,6 +19,7 @@ require_once __DIR__ . '/../includes/Benchmarker.php';
  * @ingroup Benchmark
  */
 class BenchmarkHooks extends Benchmarker {
+	/** @inheritDoc */
 	protected $defaultCount = 10;
 
 	public function __construct() {
@@ -44,17 +35,16 @@ class BenchmarkHooks extends Benchmarker {
 			'Loaded 100 hooks' => 100,
 		];
 		$benches = [];
+		$hookContainer = $this->getHookContainer();
 		foreach ( $cases as $label => $load ) {
 			$benches[$label] = [
-				'setup' => function () use ( $load ) {
-					global $wgHooks;
-					$wgHooks['Test'] = [];
+				'setup' => function () use ( $load, $hookContainer ) {
 					for ( $i = 1; $i <= $load; $i++ ) {
-						$wgHooks['Test'][] = [ $this, 'test' ];
+						$hookContainer->register( 'Test', [ $this, 'test' ] );
 					}
 				},
-				'function' => static function () {
-					Hooks::run( 'Test' );
+				'function' => static function () use ( $hookContainer ) {
+					$hookContainer->run( 'Test' );
 				}
 			];
 		}
@@ -69,5 +59,7 @@ class BenchmarkHooks extends Benchmarker {
 	}
 }
 
+// @codeCoverageIgnoreStart
 $maintClass = BenchmarkHooks::class;
 require_once RUN_MAINTENANCE_IF_MAIN;
+// @codeCoverageIgnoreEnd

@@ -3,14 +3,17 @@
 namespace MediaWiki\Tests\Unit\Revision;
 
 use InvalidArgumentException;
+use MediaWiki\Content\TextContent;
+use MediaWiki\Content\TextContentHandler;
+use MediaWiki\Content\WikitextContent;
 use MediaWiki\Revision\RevisionAccessException;
 use MediaWiki\Revision\RevisionSlots;
 use MediaWiki\Revision\SlotRecord;
 use MediaWikiUnitTestCase;
-use TextContent;
-use TextContentHandler;
-use WikitextContent;
 
+/**
+ * @covers \MediaWiki\Revision\RevisionSlots
+ */
 class RevisionSlotsTest extends MediaWikiUnitTestCase {
 
 	/**
@@ -20,7 +23,7 @@ class RevisionSlotsTest extends MediaWikiUnitTestCase {
 	 * @param string $text
 	 * @return TextContent
 	 */
-	protected function getTextContent( $text ) {
+	protected static function getTextContent( $text ) {
 		return new class( $text ) extends TextContent {
 			public function getContentHandler() {
 				return new TextContentHandler();
@@ -32,11 +35,11 @@ class RevisionSlotsTest extends MediaWikiUnitTestCase {
 	 * @param SlotRecord[] $slots
 	 * @return RevisionSlots
 	 */
-	protected function newRevisionSlots( $slots = [] ) {
+	protected static function newRevisionSlots( $slots = [] ) {
 		return new RevisionSlots( $slots );
 	}
 
-	public function provideConstructorFailue() {
+	public static function provideConstructorFailue() {
 		yield 'not an array or callable' => [
 			'foo'
 		];
@@ -48,9 +51,6 @@ class RevisionSlotsTest extends MediaWikiUnitTestCase {
 	/**
 	 * @dataProvider provideConstructorFailue
 	 * @param array $slots
-	 *
-	 * @covers \MediaWiki\Revision\RevisionSlots::__construct
-	 * @covers \MediaWiki\Revision\RevisionSlots::setSlotsInternal
 	 */
 	public function testConstructorFailue( $slots ) {
 		$this->expectException( InvalidArgumentException::class );
@@ -58,13 +58,10 @@ class RevisionSlotsTest extends MediaWikiUnitTestCase {
 		new RevisionSlots( $slots );
 	}
 
-	/**
-	 * @covers \MediaWiki\Revision\RevisionSlots::getSlot
-	 */
 	public function testGetSlot() {
 		$mainSlot = SlotRecord::newUnsaved( SlotRecord::MAIN, new WikitextContent( 'A' ) );
 		$auxSlot = SlotRecord::newUnsaved( 'aux', new WikitextContent( 'B' ) );
-		$slots = $this->newRevisionSlots( [ $mainSlot, $auxSlot ] );
+		$slots = self::newRevisionSlots( [ $mainSlot, $auxSlot ] );
 
 		$this->assertSame( $mainSlot, $slots->getSlot( SlotRecord::MAIN ) );
 		$this->assertSame( $auxSlot, $slots->getSlot( 'aux' ) );
@@ -72,13 +69,10 @@ class RevisionSlotsTest extends MediaWikiUnitTestCase {
 		$slots->getSlot( 'nothere' );
 	}
 
-	/**
-	 * @covers \MediaWiki\Revision\RevisionSlots::hasSlot
-	 */
 	public function testHasSlot() {
 		$mainSlot = SlotRecord::newUnsaved( SlotRecord::MAIN, new WikitextContent( 'A' ) );
 		$auxSlot = SlotRecord::newUnsaved( 'aux', new WikitextContent( 'B' ) );
-		$slots = $this->newRevisionSlots( [ $mainSlot, $auxSlot ] );
+		$slots = self::newRevisionSlots( [ $mainSlot, $auxSlot ] );
 
 		$this->assertTrue( $slots->hasSlot( SlotRecord::MAIN ) );
 		$this->assertTrue( $slots->hasSlot( 'aux' ) );
@@ -86,15 +80,12 @@ class RevisionSlotsTest extends MediaWikiUnitTestCase {
 		$this->assertFalse( $slots->hasSlot( 'xyz' ) );
 	}
 
-	/**
-	 * @covers \MediaWiki\Revision\RevisionSlots::getContent
-	 */
 	public function testGetContent() {
 		$mainContent = new WikitextContent( 'A' );
 		$auxContent = new WikitextContent( 'B' );
 		$mainSlot = SlotRecord::newUnsaved( SlotRecord::MAIN, $mainContent );
 		$auxSlot = SlotRecord::newUnsaved( 'aux', $auxContent );
-		$slots = $this->newRevisionSlots( [ $mainSlot, $auxSlot ] );
+		$slots = self::newRevisionSlots( [ $mainSlot, $auxSlot ] );
 
 		$this->assertSame( $mainContent, $slots->getContent( SlotRecord::MAIN ) );
 		$this->assertSame( $auxContent, $slots->getContent( 'aux' ) );
@@ -102,53 +93,38 @@ class RevisionSlotsTest extends MediaWikiUnitTestCase {
 		$slots->getContent( 'nothere' );
 	}
 
-	/**
-	 * @covers \MediaWiki\Revision\RevisionSlots::getSlotRoles
-	 */
 	public function testGetSlotRoles_someSlots() {
 		$mainSlot = SlotRecord::newUnsaved( SlotRecord::MAIN, new WikitextContent( 'A' ) );
 		$auxSlot = SlotRecord::newUnsaved( 'aux', new WikitextContent( 'B' ) );
-		$slots = $this->newRevisionSlots( [ $mainSlot, $auxSlot ] );
+		$slots = self::newRevisionSlots( [ $mainSlot, $auxSlot ] );
 
-		$this->assertSame( [ 'main', 'aux' ], $slots->getSlotRoles() );
+		$this->assertSame( [ SlotRecord::MAIN, 'aux' ], $slots->getSlotRoles() );
 	}
 
-	/**
-	 * @covers \MediaWiki\Revision\RevisionSlots::getSlotRoles
-	 */
 	public function testGetSlotRoles_noSlots() {
-		$slots = $this->newRevisionSlots( [] );
+		$slots = self::newRevisionSlots( [] );
 
 		$this->assertSame( [], $slots->getSlotRoles() );
 	}
 
-	/**
-	 * @covers \MediaWiki\Revision\RevisionSlots::getSlots
-	 */
 	public function testGetSlots() {
 		$mainSlot = SlotRecord::newUnsaved( SlotRecord::MAIN, new WikitextContent( 'A' ) );
 		$auxSlot = SlotRecord::newUnsaved( 'aux', new WikitextContent( 'B' ) );
 		$slotsArray = [ $mainSlot, $auxSlot ];
-		$slots = $this->newRevisionSlots( $slotsArray );
+		$slots = self::newRevisionSlots( $slotsArray );
 
-		$this->assertEquals( [ 'main' => $mainSlot, 'aux' => $auxSlot ], $slots->getSlots() );
+		$this->assertEquals( [ SlotRecord::MAIN => $mainSlot, 'aux' => $auxSlot ], $slots->getSlots() );
 	}
 
-	/**
-	 * @covers \MediaWiki\Revision\RevisionSlots::getSlots
-	 */
 	public function testGetNonDerivedSlots() {
 		$mainSlot = SlotRecord::newUnsaved( SlotRecord::MAIN, new WikitextContent( 'A' ) );
 		$auxSlot = SlotRecord::newDerived( 'aux', new WikitextContent( 'B' ) );
 		$slotsArray = [ $mainSlot, $auxSlot ];
-		$slots = $this->newRevisionSlots( $slotsArray );
+		$slots = self::newRevisionSlots( $slotsArray );
 
-		$this->assertEquals( [ 'main' => $mainSlot ], $slots->getPrimarySlots() );
+		$this->assertEquals( [ SlotRecord::MAIN => $mainSlot ], $slots->getPrimarySlots() );
 	}
 
-	/**
-	 * @covers \MediaWiki\Revision\RevisionSlots::getInheritedSlots
-	 */
 	public function testGetInheritedSlots() {
 		$mainSlot = SlotRecord::newUnsaved( SlotRecord::MAIN, new WikitextContent( 'A' ) );
 		$auxSlot = SlotRecord::newInherited(
@@ -158,14 +134,11 @@ class RevisionSlotsTest extends MediaWikiUnitTestCase {
 			)
 		);
 		$slotsArray = [ $mainSlot, $auxSlot ];
-		$slots = $this->newRevisionSlots( $slotsArray );
+		$slots = self::newRevisionSlots( $slotsArray );
 
 		$this->assertEquals( [ 'aux' => $auxSlot ], $slots->getInheritedSlots() );
 	}
 
-	/**
-	 * @covers \MediaWiki\Revision\RevisionSlots::getOriginalSlots
-	 */
 	public function testGetOriginalSlots() {
 		$mainSlot = SlotRecord::newUnsaved( SlotRecord::MAIN, new WikitextContent( 'A' ) );
 		$auxSlot = SlotRecord::newInherited(
@@ -175,12 +148,12 @@ class RevisionSlotsTest extends MediaWikiUnitTestCase {
 			)
 		);
 		$slotsArray = [ $mainSlot, $auxSlot ];
-		$slots = $this->newRevisionSlots( $slotsArray );
+		$slots = self::newRevisionSlots( $slotsArray );
 
-		$this->assertEquals( [ 'main' => $mainSlot ], $slots->getOriginalSlots() );
+		$this->assertEquals( [ SlotRecord::MAIN => $mainSlot ], $slots->getOriginalSlots() );
 	}
 
-	public function provideComputeSize() {
+	public static function provideComputeSize() {
 		yield [ 1, [ 'A' ] ];
 		yield [ 2, [ 'AA' ] ];
 		yield [ 4, [ 'AA', 'X', 'H' ] ];
@@ -188,19 +161,18 @@ class RevisionSlotsTest extends MediaWikiUnitTestCase {
 
 	/**
 	 * @dataProvider provideComputeSize
-	 * @covers \MediaWiki\Revision\RevisionSlots::computeSize
 	 */
 	public function testComputeSize( $expected, $contentStrings ) {
 		$slotsArray = [];
 		foreach ( $contentStrings as $key => $contentString ) {
 			$slotsArray[] = SlotRecord::newUnsaved( strval( $key ), new WikitextContent( $contentString ) );
 		}
-		$slots = $this->newRevisionSlots( $slotsArray );
+		$slots = self::newRevisionSlots( $slotsArray );
 
 		$this->assertSame( $expected, $slots->computeSize() );
 	}
 
-	public function provideComputeSha1() {
+	public static function provideComputeSha1() {
 		yield [ 'ctqm7794fr2dp1taki8a88ovwnvmnmj', [ 'A' ] ];
 		yield [ 'eyq8wiwlcofnaiy4eid97gyfy60uw51', [ 'AA' ] ];
 		yield [ 'lavctqfpxartyjr31f853drgfl4kj1g', [ 'AA', 'X', 'H' ] ];
@@ -208,7 +180,6 @@ class RevisionSlotsTest extends MediaWikiUnitTestCase {
 
 	/**
 	 * @dataProvider provideComputeSha1
-	 * @covers \MediaWiki\Revision\RevisionSlots::computeSha1
 	 * @note this test is a bit brittle as the hashes are hardcoded, perhaps just check that strings
 	 *       are returned and different Slots objects return different strings?
 	 */
@@ -217,26 +188,26 @@ class RevisionSlotsTest extends MediaWikiUnitTestCase {
 		foreach ( $contentStrings as $key => $contentString ) {
 			$slotsArray[] = SlotRecord::newUnsaved(
 				strval( $key ),
-				$this->getTextContent( $contentString )
+				self::getTextContent( $contentString )
 			);
 		}
-		$slots = $this->newRevisionSlots( $slotsArray );
+		$slots = self::newRevisionSlots( $slotsArray );
 
 		$this->assertSame( $expected, $slots->computeSha1() );
 	}
 
-	public function provideHasSameContent() {
-		$fooX = SlotRecord::newUnsaved( 'x', $this->getTextContent( 'Foo' ) );
-		$barZ = SlotRecord::newUnsaved( 'z', $this->getTextContent( 'Bar' ) );
-		$fooY = SlotRecord::newUnsaved( 'y', $this->getTextContent( 'Foo' ) );
+	public static function provideHasSameContent() {
+		$fooX = SlotRecord::newUnsaved( 'x', self::getTextContent( 'Foo' ) );
+		$barZ = SlotRecord::newUnsaved( 'z', self::getTextContent( 'Bar' ) );
+		$fooY = SlotRecord::newUnsaved( 'y', self::getTextContent( 'Foo' ) );
 		$barZS = SlotRecord::newSaved( 7, 7, 'xyz', $barZ );
-		$barZ2 = SlotRecord::newUnsaved( 'z', $this->getTextContent( 'Baz' ) );
+		$barZ2 = SlotRecord::newUnsaved( 'z', self::getTextContent( 'Baz' ) );
 
-		$a = $this->newRevisionSlots( [ 'x' => $fooX, 'z' => $barZ ] );
-		$a2 = $this->newRevisionSlots( [ 'x' => $fooX, 'z' => $barZ ] );
-		$a3 = $this->newRevisionSlots( [ 'x' => $fooX, 'z' => $barZS ] );
-		$b = $this->newRevisionSlots( [ 'y' => $fooY, 'z' => $barZ ] );
-		$c = $this->newRevisionSlots( [ 'x' => $fooX, 'z' => $barZ2 ] );
+		$a = self::newRevisionSlots( [ 'x' => $fooX, 'z' => $barZ ] );
+		$a2 = self::newRevisionSlots( [ 'x' => $fooX, 'z' => $barZ ] );
+		$a3 = self::newRevisionSlots( [ 'x' => $fooX, 'z' => $barZS ] );
+		$b = self::newRevisionSlots( [ 'y' => $fooY, 'z' => $barZ ] );
+		$c = self::newRevisionSlots( [ 'x' => $fooX, 'z' => $barZ2 ] );
 
 		yield 'same instance' => [ $a, $a, true ];
 		yield 'same slots' => [ $a, $a2, true ];
@@ -248,25 +219,24 @@ class RevisionSlotsTest extends MediaWikiUnitTestCase {
 
 	/**
 	 * @dataProvider provideHasSameContent
-	 * @covers \MediaWiki\Revision\RevisionSlots::hasSameContent
 	 */
 	public function testHasSameContent( RevisionSlots $a, RevisionSlots $b, $same ) {
 		$this->assertSame( $same, $a->hasSameContent( $b ) );
 		$this->assertSame( $same, $b->hasSameContent( $a ) );
 	}
 
-	public function provideGetRolesWithDifferentContent() {
-		$fooX = SlotRecord::newUnsaved( 'x', $this->getTextContent( 'Foo' ) );
-		$barZ = SlotRecord::newUnsaved( 'z', $this->getTextContent( 'Bar' ) );
-		$fooY = SlotRecord::newUnsaved( 'y', $this->getTextContent( 'Foo' ) );
+	public static function provideGetRolesWithDifferentContent() {
+		$fooX = SlotRecord::newUnsaved( 'x', self::getTextContent( 'Foo' ) );
+		$barZ = SlotRecord::newUnsaved( 'z', self::getTextContent( 'Bar' ) );
+		$fooY = SlotRecord::newUnsaved( 'y', self::getTextContent( 'Foo' ) );
 		$barZS = SlotRecord::newSaved( 7, 7, 'xyz', $barZ );
-		$barZ2 = SlotRecord::newUnsaved( 'z', $this->getTextContent( 'Baz' ) );
+		$barZ2 = SlotRecord::newUnsaved( 'z', self::getTextContent( 'Baz' ) );
 
-		$a = $this->newRevisionSlots( [ 'x' => $fooX, 'z' => $barZ ] );
-		$a2 = $this->newRevisionSlots( [ 'x' => $fooX, 'z' => $barZ ] );
-		$a3 = $this->newRevisionSlots( [ 'x' => $fooX, 'z' => $barZS ] );
-		$b = $this->newRevisionSlots( [ 'y' => $fooY, 'z' => $barZ ] );
-		$c = $this->newRevisionSlots( [ 'x' => $fooX, 'z' => $barZ2 ] );
+		$a = self::newRevisionSlots( [ 'x' => $fooX, 'z' => $barZ ] );
+		$a2 = self::newRevisionSlots( [ 'x' => $fooX, 'z' => $barZ ] );
+		$a3 = self::newRevisionSlots( [ 'x' => $fooX, 'z' => $barZS ] );
+		$b = self::newRevisionSlots( [ 'y' => $fooY, 'z' => $barZ ] );
+		$c = self::newRevisionSlots( [ 'x' => $fooX, 'z' => $barZ2 ] );
 
 		yield 'same instance' => [ $a, $a, [] ];
 		yield 'same slots' => [ $a, $a2, [] ];
@@ -278,7 +248,6 @@ class RevisionSlotsTest extends MediaWikiUnitTestCase {
 
 	/**
 	 * @dataProvider provideGetRolesWithDifferentContent
-	 * @covers \MediaWiki\Revision\RevisionSlots::getRolesWithDifferentContent
 	 */
 	public function testGetRolesWithDifferentContent( RevisionSlots $a, RevisionSlots $b, $roles ) {
 		$this->assertArrayEquals( $roles, $a->getRolesWithDifferentContent( $b ) );

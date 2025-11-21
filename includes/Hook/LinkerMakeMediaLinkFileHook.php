@@ -2,8 +2,8 @@
 
 namespace MediaWiki\Hook;
 
-use File;
-use Title;
+use MediaWiki\FileRepo\File\File;
+use MediaWiki\Title\Title;
 
 /**
  * This is a hook handler interface, see docs/Hooks.md.

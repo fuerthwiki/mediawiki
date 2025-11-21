@@ -1,30 +1,20 @@
 <?php
 /**
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License along
- * with this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
- * http://www.gnu.org/copyleft/gpl.html
+ * @license GPL-2.0-or-later
  * @file
  */
 
 namespace MediaWiki\Storage;
 
+use InvalidArgumentException;
 use Psr\Log\LoggerInterface;
-use WANObjectCache;
+use Wikimedia\ObjectCache\WANObjectCache;
 use Wikimedia\Rdbms\ILBFactory;
 
 class NameTableStoreFactory {
+	/** @var array<string,mixed> */
 	private static $info;
+	/** @var array<string,array<string,NameTableStore>> */
 	private $stores = [];
 
 	/** @var ILBFactory */
@@ -36,7 +26,7 @@ class NameTableStoreFactory {
 	/** @var LoggerInterface */
 	private $logger;
 
-	private static function getTableInfo() {
+	private static function getTableInfo(): array {
 		if ( self::$info ) {
 			return self::$info;
 		}
@@ -92,9 +82,9 @@ class NameTableStoreFactory {
 	public function get( $tableName, $wiki = false ): NameTableStore {
 		$infos = self::getTableInfo();
 		if ( !isset( $infos[$tableName] ) ) {
-			throw new \InvalidArgumentException( "Invalid table name \$tableName" );
+			throw new InvalidArgumentException( "Invalid table name \$tableName" );
 		}
-		if ( $wiki === $this->lbFactory->getLocalDomainID() ) {
+		if ( $wiki !== false && $wiki === $this->lbFactory->getLocalDomainID() ) {
 			$wiki = false;
 		}
 
@@ -108,9 +98,7 @@ class NameTableStoreFactory {
 			$this->cache,
 			$this->logger,
 			$tableName,
-			// @phan-suppress-next-line PhanTypeMismatchArgumentNullable False positive
 			$info['idField'],
-			// @phan-suppress-next-line PhanTypeMismatchArgumentNullable False positive
 			$info['nameField'],
 			$info['normalizationCallback'] ?? null,
 			$wiki,

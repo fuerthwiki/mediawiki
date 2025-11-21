@@ -1,8 +1,6 @@
 <?php
 /** Manipuri/Meitei (ꯃꯤꯇꯩ ꯂꯣꯟ)
  *
- * To improve a translation please visit https://translatewiki.net
- *
  * @file
  * @ingroup Languages
  */
@@ -38,3 +36,5 @@ $digitTransformTable = [
 	'8' => '꯸', # U+ABF8
 	'9' => '꯹', # U+ABF9
 ];
+
+$numberingSystem = 'mtei';

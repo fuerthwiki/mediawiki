@@ -1,10 +1,16 @@
 <?php
 
+use MediaWiki\Maintenance\Maintenance;
+use MediaWiki\Parser\ParserOptions;
 use MediaWiki\Settings\SettingsBuilder;
+use MediaWiki\Title\Title;
+use MediaWiki\User\User;
 use Wikimedia\Parsoid\ParserTests\Test as ParserTest;
 use Wikimedia\ScopedCallback;
 
 require_once __DIR__ . '/../../maintenance/Maintenance.php';
+
+define( 'MW_AUTOLOAD_TEST_CLASSES', true );
 
 class ParserFuzzTest extends Maintenance {
 	/** @var ParserTestRunner */
@@ -26,11 +32,10 @@ class ParserFuzzTest extends Maintenance {
 		$this->addOption( 'seed', 'Start the fuzz test from the specified seed', false, true );
 	}
 
-	public function finalSetup( SettingsBuilder $settingsBuilder = null ) {
+	public function finalSetup( SettingsBuilder $settingsBuilder ) {
 		// Make RequestContext::resetMain() happy
-		define( 'MW_PARSER_TEST', 1 );
+		define( 'MW_PHPUNIT_TEST', true );
 
-		self::requireTestsAutoloader();
 		TestSetup::applyInitialConfig();
 	}
 
@@ -65,7 +70,6 @@ class ParserFuzzTest extends Maintenance {
 			'config' => [],
 		], [], '' );
 
-		// @phan-suppress-next-line PhanTypeMismatchArgumentInternal
 		ini_set( 'memory_limit', $this->memoryLimit * 1048576 * 2 );
 
 		$numTotal = 0;
@@ -165,7 +169,7 @@ class ParserFuzzTest extends Maintenance {
 		$length = 0;
 		try {
 			$length = strlen( @serialize( $var ) );
-		} catch ( Exception $e ) {
+		} catch ( Exception ) {
 		}
 		return $length;
 	}

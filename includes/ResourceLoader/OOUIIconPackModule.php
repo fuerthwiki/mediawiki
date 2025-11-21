@@ -1,20 +1,6 @@
 <?php
 /**
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License along
- * with this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
- * http://www.gnu.org/copyleft/gpl.html
- *
+ * @license GPL-2.0-or-later
  * @file
  */
 
@@ -29,7 +15,7 @@ use InvalidArgumentException;
  * @since 1.34
  */
 class OOUIIconPackModule extends OOUIImageModule {
-	public function __construct( array $options = [], $localBasePath = null ) {
+	public function __construct( array $options = [], ?string $localBasePath = null ) {
 		parent::__construct( $options, $localBasePath );
 
 		if ( !isset( $this->definition['icons'] ) || !$this->definition['icons'] ) {
@@ -46,6 +32,7 @@ class OOUIIconPackModule extends OOUIImageModule {
 		return $this->definition['icons'];
 	}
 
+	/** @inheritDoc */
 	protected function loadOOUIDefinition( $theme, $unused ): array {
 		// This is shared between instances of this class, so we only have to load the JSON files once
 		static $data = [];
@@ -54,7 +41,7 @@ class OOUIIconPackModule extends OOUIImageModule {
 			$data[$theme] = [];
 			// Load and merge the JSON data for all "icons-foo" modules
 			foreach ( self::$knownImagesModules as $module ) {
-				if ( substr( $module, 0, 5 ) === 'icons' ) {
+				if ( str_starts_with( $module, 'icons' ) ) {
 					$moreData = $this->readJSONFile( $this->getThemeImagesPath( $theme, $module ) );
 					if ( $moreData ) {
 						$data[$theme] = array_replace_recursive( $data[$theme], $moreData );
@@ -67,7 +54,7 @@ class OOUIIconPackModule extends OOUIImageModule {
 
 		// Filter out the data for all other icons, leaving only the ones we want for this module
 		$iconsNames = $this->getIcons();
-		foreach ( array_keys( $definition['images'] ) as $iconName ) {
+		foreach ( $definition['images'] as $iconName => $_ ) {
 			if ( !in_array( $iconName, $iconsNames ) ) {
 				unset( $definition['images'][$iconName] );
 			}
@@ -76,15 +63,10 @@ class OOUIIconPackModule extends OOUIImageModule {
 		return $definition;
 	}
 
+	/** @inheritDoc */
 	public static function extractLocalBasePath( array $options, $localBasePath = null ) {
 		global $IP;
-		if ( $localBasePath === null ) {
-			$localBasePath = $IP;
-		}
 		// Ignore any 'localBasePath' present in $options, this always refers to files in MediaWiki core
-		return $localBasePath;
+		return $localBasePath ?? $IP;
 	}
 }
-
-/** @deprecated since 1.39 */
-class_alias( OOUIIconPackModule::class, 'ResourceLoaderOOUIIconPackModule' );

@@ -1,20 +1,6 @@
 <?php
 /**
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License along
- * with this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
- * http://www.gnu.org/copyleft/gpl.html
- *
+ * @license GPL-2.0-or-later
  * @file
  * @author Trevor Parscal
  * @author Roan Kattouw
@@ -22,20 +8,20 @@
 
 namespace MediaWiki\ResourceLoader;
 
-use Config;
-use Exception;
 use FileContentsHasher;
-use JSParser;
+use InvalidArgumentException;
 use LogicException;
+use MediaWiki\Config\Config;
 use MediaWiki\HookContainer\HookContainer;
 use MediaWiki\MainConfigNames;
 use MediaWiki\MediaWikiServices;
+use Peast\Peast;
+use Peast\Syntax\Exception as PeastSyntaxException;
 use Psr\Log\LoggerAwareInterface;
 use Psr\Log\LoggerInterface;
 use Psr\Log\NullLogger;
 use RuntimeException;
 use Wikimedia\RelPath;
-use Wikimedia\RequestTimeout\TimeoutException;
 
 /**
  * Abstraction for ResourceLoader modules, with name registration and maxage functionality.
@@ -51,6 +37,8 @@ abstract class Module implements LoggerAwareInterface {
 	/** @var LoggerInterface */
 	protected $logger;
 
+	private ?VueComponentParser $vueComponentParser = null;
+
 	/**
 	 * Script and style modules form a hierarchy of trustworthiness, with core modules
 	 * like skins and jQuery as most trustworthy, and user scripts as least trustworthy. We can
@@ -62,8 +50,6 @@ abstract class Module implements LoggerAwareInterface {
 
 	/** @var string|null Module name */
 	protected $name = null;
-	/** @var string[] What client platforms the module targets (e.g. desktop, mobile) */
-	protected $targets = [ 'desktop' ];
 	/** @var string[]|null Skin names */
 	protected $skins = null;
 
@@ -78,11 +64,6 @@ abstract class Module implements LoggerAwareInterface {
 
 	/** @var HookRunner|null */
 	private $hookRunner;
-
-	/** @var callback Function of (module name, variant) to get indirect file dependencies */
-	private $depLoadCallback;
-	/** @var callback Function of (module name, variant) to get indirect file dependencies */
-	private $depSaveCallback;
 
 	/** @var string|bool Deprecation string or true if deprecated; false otherwise */
 	protected $deprecated = false;
@@ -124,7 +105,7 @@ abstract class Module implements LoggerAwareInterface {
 	public const ORIGIN_ALL = 10;
 
 	/** @var int Cache version for user-script JS validation errors from validateScriptFile(). */
-	private const USERJSPARSE_CACHE_VERSION = 2;
+	private const USERJSPARSE_CACHE_VERSION = 4;
 
 	/**
 	 * Get this module's name. This is set when the module is registered
@@ -160,23 +141,10 @@ abstract class Module implements LoggerAwareInterface {
 	}
 
 	/**
-	 * Inject the functions that load/save the indirect file path dependency list from storage
-	 *
-	 * @param callable $loadCallback Function of (module name, variant)
-	 * @param callable $saveCallback Function of (module name, variant, current paths, stored paths)
-	 * @since 1.35
-	 */
-	public function setDependencyAccessCallbacks( callable $loadCallback, callable $saveCallback ) {
-		$this->depLoadCallback = $loadCallback;
-		$this->depSaveCallback = $saveCallback;
-	}
-
-	/**
 	 * Get this module's origin. This is set when the module is registered
 	 * with ResourceLoader::register()
 	 *
-	 * @return int ResourceLoaderModule class constant, the subclass default
-	 *     if not set manually
+	 * @return int Module class constant, the subclass default if not set manually
 	 */
 	public function getOrigin() {
 		return $this->origin;
@@ -192,32 +160,29 @@ abstract class Module implements LoggerAwareInterface {
 	}
 
 	/**
-	 * Get JS representing deprecation information for the current module if available
+	 * Get the deprecation warning, if any
 	 *
-	 * @param Context $context
-	 * @return string JavaScript code
+	 * @since 1.41
+	 * @return string|null
 	 */
-	public function getDeprecationInformation( Context $context ) {
-		$deprecationInfo = $this->deprecated;
-		if ( !$deprecationInfo ) {
-			return '';
+	public function getDeprecationWarning() {
+		if ( !$this->deprecated ) {
+			return null;
 		}
-
 		$name = $this->getName();
 		$warning = 'This page is using the deprecated ResourceLoader module "' . $name . '".';
-		if ( is_string( $deprecationInfo ) ) {
-			$warning .= "\n" . $deprecationInfo;
+		if ( is_string( $this->deprecated ) ) {
+			$warning .= "\n" . $this->deprecated;
 		}
-		return 'mw.log.warn(' . $context->encodeJson( $warning ) . ');';
+		return $warning;
 	}
 
 	/**
 	 * Get all JS for this module for a given language and skin.
 	 * Includes all relevant JS except loader scripts.
 	 *
-	 * For "plain" script modules, this should return a string with JS code. For multi-file modules
-	 * where require() is used to load one file from another file, this should return an array
-	 * structured as follows:
+	 * For multi-file modules where require() is used to load one file from
+	 * another file, this should return an array structured as follows:
 	 * [
 	 *     'files' => [
 	 *         'file1.js' => [ 'type' => 'script', 'content' => 'JS code' ],
@@ -227,9 +192,28 @@ abstract class Module implements LoggerAwareInterface {
 	 *     'main' => 'file1.js'
 	 * ]
 	 *
+	 * For plain concatenated scripts, this can either return a string, or an
+	 * associative array similar to the one used for package files:
+	 * [
+	 *     'plainScripts' => [
+	 *         [ 'content' => 'JS code' ],
+	 *         [ 'content' => 'JS code' ],
+	 *     ],
+	 * ]
+	 *
 	 * @stable to override
 	 * @param Context $context
-	 * @return string|array JavaScript code (string), or multi-file structure described above (array)
+	 * @return string|array JavaScript code (string), or multi-file array with the
+	 *   following keys:
+	 *     - files: An associative array mapping file name to file info structure
+	 *     - main: The name of the main script, a key in the files array
+	 *     - plainScripts: An array of file info structures to be concatenated and
+	 *       executed when the module is loaded.
+	 *   Each file info structure has the following keys:
+	 *     - type: May be "script", "script-vue" or "data". Optional, default "script".
+	 *     - content: The string content of the file
+	 *     - filePath: A FilePath object describing the location of the source file.
+	 *       This will be used to construct the source map during minification.
 	 */
 	public function getScript( Context $context ) {
 		// Stub, override expected
@@ -271,7 +255,7 @@ abstract class Module implements LoggerAwareInterface {
 	 * @since 1.27
 	 * @param LoggerInterface $logger
 	 */
-	public function setLogger( LoggerInterface $logger ) {
+	public function setLogger( LoggerInterface $logger ): void {
 		$this->logger = $logger;
 	}
 
@@ -279,7 +263,7 @@ abstract class Module implements LoggerAwareInterface {
 	 * @since 1.27
 	 * @return LoggerInterface
 	 */
-	protected function getLogger() {
+	protected function getLogger(): LoggerInterface {
 		if ( !$this->logger ) {
 			$this->logger = new NullLogger();
 		}
@@ -297,55 +281,12 @@ abstract class Module implements LoggerAwareInterface {
 	/**
 	 * Get a HookRunner for running core hooks.
 	 *
-	 * @internal For use only within core ResourceLoaderModule subclasses. Hook interfaces may be removed
+	 * @internal For use only within core Module subclasses. Hook interfaces may be removed
 	 *   without notice.
 	 * @return HookRunner
 	 */
 	protected function getHookRunner(): HookRunner {
 		return $this->hookRunner;
-	}
-
-	/**
-	 * Get alternative script URLs for legacy debug mode.
-	 *
-	 * The default behavior is to return a `load.php?only=scripts&module=<name>` URL.
-	 *
-	 * Module classes that merely wrap one or more other script files in production mode, may
-	 * override this method to return an array of raw URLs for those underlying scripts,
-	 * if those are individually web-accessible.
-	 *
-	 * The mw.loader client will load and execute each URL consecutively. This has the caveat of
-	 * executing legacy debug scripts in the global scope, which is why non-package file modules
-	 * tend to use file closures (T50886).
-	 *
-	 * This function MUST NOT be called, unless all the following are true:
-	 *
-	 * 1. We're in debug mode,
-	 * 2. There is no `only=` parameter in the context,
-	 * 3. self::supportsURLLoading() has returned true.
-	 *
-	 * Point 2 prevents an infinite loop since we use the `only=` mechanism in the return value.
-	 * Overrides must similarly return with `only`, or return or a non-load.php URL.
-	 *
-	 * @stable to override
-	 * @param Context $context
-	 * @return string[]
-	 */
-	public function getScriptURLsForDebug( Context $context ) {
-		$rl = $context->getResourceLoader();
-		$derivative = new DerivativeContext( $context );
-		$derivative->setModules( [ $this->getName() ] );
-		$derivative->setOnly( 'scripts' );
-
-		$url = $rl->createLoaderURL(
-			$this->getSource(),
-			$derivative
-		);
-
-		// Expand debug URL in case we are another wiki's module source (T255367)
-		$url = $rl->expandUrl( $this->getConfig()->get( MainConfigNames::Server ), $url );
-
-		return [ $url ];
 	}
 
 	/**
@@ -386,7 +327,6 @@ abstract class Module implements LoggerAwareInterface {
 	 * 2. There is no `only=` parameter and,
 	 * 3. self::supportsURLLoading() returns true.
 	 *
-	 * See also getScriptURLsForDebug().
 	 *
 	 * @stable to override
 	 * @param Context $context
@@ -420,7 +360,11 @@ abstract class Module implements LoggerAwareInterface {
 	}
 
 	/**
-	 * Get the group this module is in.
+	 * Specifies the group this module is in.
+	 *
+	 * Return one of the Module::GROUP_ constants for reserved group names with special behavior,
+	 * or a freeform string.
+	 * Refer to https://www.mediawiki.org/wiki/ResourceLoader/Architecture#Groups for documentation.
 	 *
 	 * @stable to override
 	 * @return string|null Group name
@@ -454,19 +398,9 @@ abstract class Module implements LoggerAwareInterface {
 	 * @param Context|null $context
 	 * @return string[] List of module names as strings
 	 */
-	public function getDependencies( Context $context = null ) {
+	public function getDependencies( ?Context $context = null ) {
 		// Stub, override expected
 		return [];
-	}
-
-	/**
-	 * Get target(s) for the module, eg ['desktop'] or ['desktop', 'mobile']
-	 *
-	 * @stable to override
-	 * @return string[]
-	 */
-	public function getTargets() {
-		return $this->targets;
 	}
 
 	/**
@@ -521,12 +455,12 @@ abstract class Module implements LoggerAwareInterface {
 	 * If the client does not support ES6, attempting to load a module that requires ES6 will
 	 * result in an error.
 	 *
-	 * @stable to override
+	 * @deprecated since 1.41, ignored by ResourceLoader
 	 * @since 1.36
 	 * @return bool
 	 */
 	public function requiresES6() {
-		return false;
+		return true;
 	}
 
 	/**
@@ -540,19 +474,16 @@ abstract class Module implements LoggerAwareInterface {
 	 * @see Module::setFileDependencies()
 	 * @see Module::saveFileDependencies()
 	 * @param Context $context
-	 * @return string[] List of absolute file paths
+	 * @return string[] List of relative file paths
 	 */
 	protected function getFileDependencies( Context $context ) {
 		$variant = self::getVary( $context );
 
 		if ( !isset( $this->fileDeps[$variant] ) ) {
-			if ( $this->depLoadCallback ) {
-				$this->fileDeps[$variant] =
-					call_user_func( $this->depLoadCallback, $this->getName(), $variant );
-			} else {
-				$this->getLogger()->info( __METHOD__ . ": no callback registered" );
-				$this->fileDeps[$variant] = [];
-			}
+			$depStore = $context->getResourceLoader()->getDependencyStore();
+			$moduleName = $this->getName();
+			$styleDependencies = $depStore->retrieve( "$moduleName|$variant" );
+			$this->fileDeps[$variant] = $styleDependencies['paths'];
 		}
 
 		return $this->fileDeps[$variant];
@@ -566,7 +497,7 @@ abstract class Module implements LoggerAwareInterface {
 	 * @see Module::getFileDependencies()
 	 * @see Module::saveFileDependencies()
 	 * @param Context $context
-	 * @param string[] $paths List of absolute file paths
+	 * @param string[] $paths List of relative file paths
 	 */
 	public function setFileDependencies( Context $context, array $paths ) {
 		$variant = self::getVary( $context );
@@ -581,37 +512,25 @@ abstract class Module implements LoggerAwareInterface {
 	 * @since 1.27
 	 */
 	protected function saveFileDependencies( Context $context, array $curFileRefs ) {
-		if ( !$this->depSaveCallback ) {
-			$this->getLogger()->info( __METHOD__ . ": no callback registered" );
+		// Pitfalls and performance considerations:
+		// 1. Don't keep updating the tracked paths due to duplicates or sorting.
+		// 2. Use relative paths to avoid ghost entries when $IP changes. (T111481)
+		// 3. Don't needlessly replace tracked paths with the same value
+		//    just because $IP changed (e.g. when upgrading a wiki).
+		// 4. Don't create an endless replace loop on every request for this
+		//    module when '../' is used anywhere. Even though both are expanded
+		//    (one expanded by getFileDependencies from the DB, the other is
+		//    still raw as originally read by RL), the latter has not
+		//    been normalized yet.
 
-			return;
-		}
+		$paths = self::getRelativePaths( $curFileRefs );
+		$priorPaths = $this->getFileDependencies( $context );
 
-		try {
-			// Pitfalls and performance considerations:
-			// 1. Don't keep updating the tracked paths due to duplicates or sorting.
-			// 2. Use relative paths to avoid ghost entries when $IP changes. (T111481)
-			// 3. Don't needlessly replace tracked paths with the same value
-			//    just because $IP changed (e.g. when upgrading a wiki).
-			// 4. Don't create an endless replace loop on every request for this
-			//    module when '../' is used anywhere. Even though both are expanded
-			//    (one expanded by getFileDependencies from the DB, the other is
-			//    still raw as originally read by RL), the latter has not
-			//    been normalized yet.
-			call_user_func(
-				$this->depSaveCallback,
-				$this->getName(),
-				self::getVary( $context ),
-				self::getRelativePaths( $curFileRefs ),
-				self::getRelativePaths( $this->getFileDependencies( $context ) )
-			);
-		} catch ( TimeoutException $e ) {
-			throw $e;
-		} catch ( Exception $e ) {
-			$this->getLogger()->warning(
-				__METHOD__ . ": failed to update dependencies: {$e->getMessage()}",
-				[ 'exception' => $e ]
-			);
+		if ( array_diff( $paths, $priorPaths ) || array_diff( $priorPaths, $paths ) ) {
+			$depStore = $context->getResourceLoader()->getDependencyStore();
+			$variant = self::getVary( $context );
+			$moduleName = $this->getName();
+			$depStore->storeMulti( [ "$moduleName|$variant" => $paths ] );
 		}
 	}
 
@@ -653,6 +572,7 @@ abstract class Module implements LoggerAwareInterface {
 	 * @since 1.27
 	 * @param Context $context
 	 * @return string|null JSON blob or null if module has no messages
+	 * @return-taint none -- do not propagate taint from $context->getLanguage()
 	 */
 	protected function getMessageBlob( Context $context ) {
 		if ( !$this->getMessages() ) {
@@ -753,7 +673,6 @@ abstract class Module implements LoggerAwareInterface {
 	 * @param Context $context
 	 * @return array Keyed by url, values must be an array containing
 	 *  at least an 'as' key. Optionally a 'media' key as well.
-	 *
 	 */
 	protected function getPreloadLinks( Context $context ) {
 		return [];
@@ -796,8 +715,10 @@ abstract class Module implements LoggerAwareInterface {
 	 * @return array
 	 */
 	final protected function buildContent( Context $context ) {
-		$stats = MediaWikiServices::getInstance()->getStatsdDataFactory();
-		$statStart = microtime( true );
+		$statsFactory = MediaWikiServices::getInstance()->getStatsFactory();
+		$timer = $statsFactory->getTiming( 'resourceloader_build_seconds' )
+			->setLabel( 'name', strtr( $this->getName(), '.', '_' ) )
+			->start();
 
 		// This MUST build both scripts and styles, regardless of whether $context->getOnly()
 		// is 'scripts' or 'styles' because the result is used by getVersionHash which
@@ -808,23 +729,9 @@ abstract class Module implements LoggerAwareInterface {
 		$content = [];
 
 		// Scripts
-		if ( $context->getDebug() === $context::DEBUG_LEGACY && !$context->getOnly() && $this->supportsURLLoading() ) {
-			// In legacy debug mode, let supporting modules like FileModule replace the bundled
-			// script closure with an array of alternative script URLs to consecutively load instead.
-			// See self::getScriptURLsForDebug() more details.
-			$scripts = $this->getScriptURLsForDebug( $context );
-		} else {
-			$scripts = $this->getScript( $context );
-			// Make the script safe to concatenate by making sure there is at least one
-			// trailing new line at the end of the content. Previously, this looked for
-			// a semi-colon instead, but that breaks concatenation if the semicolon
-			// is inside a comment like "// foo();". Instead, simply use a
-			// line break as separator which matches JavaScript native logic for implicitly
-			// ending statements even if a semi-colon is missing.
-			// Bugs: T29054, T162719.
-			if ( is_string( $scripts ) ) {
-				$scripts = ResourceLoader::ensureNewline( $scripts );
-			}
+		$scripts = $this->getScript( $context );
+		if ( is_string( $scripts ) ) {
+			$scripts = [ 'plainScripts' => [ [ 'content' => $scripts ] ] ];
 		}
 		$content['scripts'] = $scripts;
 
@@ -840,7 +747,7 @@ abstract class Module implements LoggerAwareInterface {
 					'url' => $this->getStyleURLsForDebug( $context )
 				];
 			} else {
-				// Minify CSS before embedding in mw.loader.implement call
+				// Minify CSS before embedding in mw.loader.impl call
 				// (unless in debug mode)
 				if ( !$context->getDebug() ) {
 					foreach ( $stylePairs as $media => $style ) {
@@ -882,10 +789,12 @@ abstract class Module implements LoggerAwareInterface {
 			$content['headers'] = $headers;
 		}
 
-		$statTiming = microtime( true ) - $statStart;
-		$statName = strtr( $this->getName(), '.', '_' );
-		$stats->timing( "resourceloader_build.all", 1000 * $statTiming );
-		$stats->timing( "resourceloader_build.$statName", 1000 * $statTiming );
+		$deprecationWarning = $this->getDeprecationWarning();
+		if ( $deprecationWarning !== null ) {
+			$content['deprecationWarning'] = $deprecationWarning;
+		}
+
+		$timer->stop();
 
 		return $content;
 	}
@@ -1034,9 +943,21 @@ abstract class Module implements LoggerAwareInterface {
 	}
 
 	/**
+	 * Whether to skip the structure test ResourcesTest::testRespond() for this
+	 * module.
+	 *
+	 * @since 1.42
+	 * @stable to override
+	 * @return bool
+	 */
+	public function shouldSkipStructureTest() {
+		return $this->getGroup() === self::GROUP_PRIVATE;
+	}
+
+	/**
 	 * Validate a user-provided JavaScript blob.
 	 *
-	 * @param string $fileName
+	 * @param string $fileName Page title
 	 * @param string $contents JavaScript code
 	 * @return string JavaScript code, either the original content or a replacement
 	 *  that uses `mw.log.error()` to communicate a syntax error.
@@ -1046,10 +967,14 @@ abstract class Module implements LoggerAwareInterface {
 			return $contents;
 		}
 		$cache = MediaWikiServices::getInstance()->getMainWANObjectCache();
-		// Cache potentially slow parsing of JavaScript code during the
-		// critical path. This happens lazily when responding to requests
-		// for modules=site, modules=user, and Gadgets.
+		// Cache potentially slow parsing of JavaScript code during the critical path.
+		// This happens during load.php requests for modules=site, modules=user, and Gadgets.
 		$error = $cache->getWithSetCallback(
+			// A content hash is included in the cache key so that this is immediately
+			// correct and re-computed after edits without relying on TTL or purges.
+			//
+			// We avoid accidental or abusive conflicts with other pages by including the
+			// wiki (makeKey vs makeGlobalKey) and page, because hashes are not unique.
 			$cache->makeKey(
 				'resourceloader-userjsparse',
 				self::USERJSPARSE_CACHE_VERSION,
@@ -1057,16 +982,11 @@ abstract class Module implements LoggerAwareInterface {
 				$fileName
 			),
 			$cache::TTL_WEEK,
-			static function () use ( $contents, $fileName ) {
-				$parser = new JSParser();
+			static function () use ( $contents ) {
 				try {
-					// Ignore compiler warnings (T77169)
-					// phpcs:ignore Generic.PHP.NoSilencedErrors.Discouraged
-					@$parser->parse( $contents, $fileName, 1 );
-				} catch ( TimeoutException $e ) {
-					throw $e;
-				} catch ( Exception $e ) {
-					return $e->getMessage();
+					Peast::ES2017( $contents )->parse();
+				} catch ( PeastSyntaxException $e ) {
+					return $e->getMessage() . " on line " . $e->getPosition()->getLine();
 				}
 				// Cache success as null
 				return null;
@@ -1076,17 +996,44 @@ abstract class Module implements LoggerAwareInterface {
 		if ( $error ) {
 			// Send the error to the browser console client-side.
 			// By returning this as replacement for the actual script,
-			// we ensure user-provided scripts are safe to include in a batch
-			// request, without risk of a syntax error in this blob breaking
-			// the response itself.
+			// we ensure user-provided scripts are safe to serve to a browser,
+			// without breaking unrelated modules in the same response.
 			return 'mw.log.error(' .
 				json_encode(
-					'JavaScript parse error (scripts need to be valid ECMAScript 5): ' .
-					$error
+					"Parse error: $error in $fileName"
 				) .
 				');';
 		}
 		return $contents;
+	}
+
+	/**
+	 * @param Context $context
+	 * @param string $content
+	 * @return array
+	 * @throws InvalidArgumentException If the input is invalid
+	 */
+	protected function parseVueContent( Context $context, string $content ): array {
+		$this->vueComponentParser ??= new VueComponentParser;
+		$parsedComponent = $this->vueComponentParser->parse(
+			$content,
+			[ 'minifyTemplate' => !$context->getDebug() ]
+		);
+		$encodedTemplate = json_encode( $parsedComponent['template'] );
+		if ( $context->getDebug() ) {
+			// Replace \n (backslash-n) with space + backslash-n + backslash-newline in debug mode
+			// The \n has to be preserved to prevent Vue parser issues (T351771)
+			// We only replace \n if not preceded by a backslash, to avoid breaking '\\n'
+			$encodedTemplate = preg_replace( '/(?<!\\\\)\\\\n/', " \\n\\\n", $encodedTemplate );
+			// Expand \t to real tabs in debug mode
+			$encodedTemplate = strtr( $encodedTemplate, [ "\\t" => "\t" ] );
+		}
+		return [
+			'script' => $parsedComponent['script'] .
+				";\nmodule.exports.template = $encodedTemplate;",
+			'style' => $parsedComponent['style'] ?? '',
+			'styleLang' => $parsedComponent['styleLang'] ?? 'css'
+		];
 	}
 
 	/**
@@ -1115,6 +1062,3 @@ abstract class Module implements LoggerAwareInterface {
 		] );
 	}
 }
-
-/** @deprecated since 1.39 */
-class_alias( Module::class, 'ResourceLoaderModule' );

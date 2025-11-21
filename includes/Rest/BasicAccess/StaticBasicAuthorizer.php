@@ -11,6 +11,7 @@ use MediaWiki\Rest\RequestInterface;
  * @internal
  */
 class StaticBasicAuthorizer implements BasicAuthorizerInterface {
+	/** @var string|null */
 	private $value;
 
 	/**
@@ -24,6 +25,7 @@ class StaticBasicAuthorizer implements BasicAuthorizerInterface {
 		$this->value = $value;
 	}
 
+	/** @inheritDoc */
 	public function authorize( RequestInterface $request, Handler $handler ) {
 		return $this->value;
 	}

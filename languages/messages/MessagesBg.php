@@ -1,8 +1,6 @@
 <?php
 /** Bulgarian (български)
  *
- * To improve a translation please visit https://translatewiki.net
- *
  * @file
  * @ingroup Languages
  */
@@ -59,6 +57,7 @@ $specialPageAliases = [
 	'FileDuplicateSearch'       => [ 'Повтарящи_се_файлове' ],
 	'Filepath'                  => [ 'Път_към_файл' ],
 	'Import'                    => [ 'Внасяне' ],
+	'Interwiki'                 => [ 'Междууикита' ],
 	'Invalidateemail'           => [ 'Отмяна_на_е-поща' ],
 	'LinkSearch'                => [ 'Търсене_на_външни_препратки' ],
 	'Listadmins'                => [ 'Администратори' ],
@@ -94,6 +93,7 @@ $specialPageAliases = [
 	'Randomredirect'            => [ 'Случайно_пренасочване' ],
 	'Recentchanges'             => [ 'Последни_промени' ],
 	'Recentchangeslinked'       => [ 'Свързани_промени' ],
+	'Renameuser'                => [ 'Преименуване' ],
 	'Revisiondelete'            => [ 'Изтриване_на_версии' ],
 	'Search'                    => [ 'Търсене' ],
 	'Shortpages'                => [ 'Кратки_страници' ],
@@ -162,7 +162,7 @@ $magicWords = [
 	'img_width'                 => [ '1', '$1пкс', '$1п', '$1px' ],
 	'index'                     => [ '1', '__ИНДЕКСИРАНЕ__', '__INDEX__' ],
 	'int'                       => [ '0', 'ВЪТР:', 'INT:' ],
-	'language'                  => [ '0', '#ЕЗИК:', '#LANGUAGE:' ],
+	'language'                  => [ '0', '#ЕЗИК', '#LANGUAGE' ],
 	'lc'                        => [ '0', 'МБ:', 'LC:' ],
 	'lcfirst'                   => [ '0', 'МБПЪРВА:', 'LCFIRST:' ],
 	'localurl'                  => [ '0', 'ЛОКАЛЕНАДРЕС:', 'LOCALURL:' ],

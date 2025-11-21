@@ -5,8 +5,8 @@ namespace MediaWiki\Tests\Unit\CommentFormatter;
 use MediaWiki\CommentFormatter\CommentBatch;
 use MediaWiki\CommentFormatter\CommentFormatter;
 use MediaWiki\CommentFormatter\CommentItem;
+use MediaWiki\Title\TitleValue;
 use MediaWikiUnitTestCase;
-use TitleValue;
 
 /**
  * Trivial unit test with the universe mocked.
@@ -16,10 +16,12 @@ use TitleValue;
  * @covers \MediaWiki\CommentFormatter\StringCommentIterator
  */
 class CommentBatchTest extends MediaWikiUnitTestCase {
+	/** @var array */
 	private $calls;
 
 	private function getFormatter() {
 		return new class( $this->calls ) extends CommentFormatter {
+			/** @var array */
 			private $calls;
 
 			public function __construct( &$calls ) {
@@ -92,7 +94,7 @@ class CommentBatchTest extends MediaWikiUnitTestCase {
 		);
 	}
 
-	public function provideUseBlock() {
+	public static function provideUseBlock() {
 		return [
 			[
 				null,
@@ -120,7 +122,7 @@ class CommentBatchTest extends MediaWikiUnitTestCase {
 		$this->assertSame( [ $expected ], $this->calls );
 	}
 
-	public function provideUseParentheses() {
+	public static function provideUseParentheses() {
 		return [
 			[
 				null,
@@ -148,7 +150,7 @@ class CommentBatchTest extends MediaWikiUnitTestCase {
 		$this->assertSame( [ $expected ], $this->calls );
 	}
 
-	public function provideSelfLinkTarget() {
+	public static function provideSelfLinkTarget() {
 		return [
 			[
 				null,
@@ -172,7 +174,7 @@ class CommentBatchTest extends MediaWikiUnitTestCase {
 		$this->assertSame( [ $expected ], $this->calls );
 	}
 
-	public function provideEnableSectionLinks() {
+	public static function provideEnableSectionLinks() {
 		return [
 			[
 				null,
@@ -200,7 +202,7 @@ class CommentBatchTest extends MediaWikiUnitTestCase {
 		$this->assertSame( [ $expected ], $this->calls );
 	}
 
-	public function provideDisableSectionLinks() {
+	public static function provideDisableSectionLinks() {
 		return [
 			[
 				null,
@@ -224,7 +226,7 @@ class CommentBatchTest extends MediaWikiUnitTestCase {
 		$this->assertSame( [ $expected ], $this->calls );
 	}
 
-	public function provideSamePage() {
+	public static function provideSamePage() {
 		return [
 			[
 				null,
@@ -252,7 +254,7 @@ class CommentBatchTest extends MediaWikiUnitTestCase {
 		$this->assertSame( [ $expected ], $this->calls );
 	}
 
-	public function provideWikiId() {
+	public static function provideWikiId() {
 		return [
 			[
 				null,

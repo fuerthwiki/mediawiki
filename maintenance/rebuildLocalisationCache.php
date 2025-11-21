@@ -10,21 +10,7 @@
  * Use --force to rebuild all files, even the ones that are not out of date.
  * Use --threads=N to fork more threads.
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License along
- * with this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
- * http://www.gnu.org/copyleft/gpl.html
- *
+ * @license GPL-2.0-or-later
  * @file
  * @ingroup Maintenance
  */
@@ -33,11 +19,13 @@ use MediaWiki\Config\ServiceOptions;
 use MediaWiki\Languages\LanguageNameUtils;
 use MediaWiki\Logger\LoggerFactory;
 use MediaWiki\MainConfigNames;
-use MediaWiki\MediaWikiServices;
+use MediaWiki\Maintenance\Maintenance;
 use MediaWiki\ResourceLoader\MessageBlobStore;
 use MediaWiki\Settings\SettingsBuilder;
 
+// @codeCoverageIgnoreStart
 require_once __DIR__ . '/Maintenance.php';
+// @codeCoverageIgnoreEnd
 
 /**
  * Maintenance script to rebuild the localisation cache.
@@ -85,7 +73,7 @@ class RebuildLocalisationCache extends Maintenance {
 		);
 	}
 
-	public function finalSetup( SettingsBuilder $settingsBuilder = null ) {
+	public function finalSetup( SettingsBuilder $settingsBuilder ) {
 		# This script needs to be run to build the initial l10n cache. But if
 		# LanguageCode is not 'en', it won't be able to run because there is
 		# no l10n cache. Break the cycle by forcing the LanguageCode setting to 'en'.
@@ -122,7 +110,7 @@ class RebuildLocalisationCache extends Maintenance {
 		}
 
 		// XXX Copy-pasted from ServiceWiring.php. Do we need a factory for this one caller?
-		$services = MediaWikiServices::getInstance();
+		$services = $this->getServiceContainer();
 		$lc = new LocalisationCacheBulkLoad(
 			new ServiceOptions(
 				LocalisationCache::CONSTRUCTOR_OPTIONS,
@@ -188,7 +176,7 @@ class RebuildLocalisationCache extends Maintenance {
 
 					$numRebuilt = $this->doRebuild( $codes, $lc, $force );
 					// Report the number of rebuilt langs to the parent.
-					$msg = strval( $numRebuilt ) . "\n";
+					$msg = "$numRebuilt\n";
 					socket_write( $socketpair[1], $msg, strlen( $msg ) );
 					// Child exits.
 					return;
@@ -278,9 +266,11 @@ class RebuildLocalisationCache extends Maintenance {
 	 * @param bool $forced
 	 */
 	public function setForce( $forced = true ) {
-		$this->mOptions['force'] = $forced;
+		$this->setOption( 'force', $forced );
 	}
 }
 
+// @codeCoverageIgnoreStart
 $maintClass = RebuildLocalisationCache::class;
 require_once RUN_MAINTENANCE_IF_MAIN;
+// @codeCoverageIgnoreEnd

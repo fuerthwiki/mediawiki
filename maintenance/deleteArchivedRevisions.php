@@ -4,26 +4,16 @@
  *
  * Shamelessly stolen from deleteOldRevisions.php by Rob Church :)
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License along
- * with this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
- * http://www.gnu.org/copyleft/gpl.html
- *
+ * @license GPL-2.0-or-later
  * @file
  * @ingroup Maintenance
  */
 
+use MediaWiki\Maintenance\Maintenance;
+
+// @codeCoverageIgnoreStart
 require_once __DIR__ . '/Maintenance.php';
+// @codeCoverageIgnoreEnd
 
 /**
  * Maintenance script to delete archived (deleted from public) revisions
@@ -40,7 +30,7 @@ class DeleteArchivedRevisions extends Maintenance {
 	}
 
 	public function execute() {
-		$dbw = $this->getDB( DB_PRIMARY );
+		$dbw = $this->getPrimaryDB();
 
 		if ( !$this->hasOption( 'delete' ) ) {
 			$count = $dbw->newSelectQueryBuilder()
@@ -55,7 +45,10 @@ class DeleteArchivedRevisions extends Maintenance {
 		}
 
 		$this->output( "Deleting archived revisions..." );
-		$dbw->delete( 'archive', '*', __METHOD__ );
+		$dbw->newDeleteQueryBuilder()
+			->deleteFrom( 'archive' )
+			->where( '*' )
+			->caller( __METHOD__ )->execute();
 		$count = $dbw->affectedRows();
 		$this->output( "done. $count revisions deleted.\n" );
 
@@ -65,5 +58,7 @@ class DeleteArchivedRevisions extends Maintenance {
 	}
 }
 
+// @codeCoverageIgnoreStart
 $maintClass = DeleteArchivedRevisions::class;
 require_once RUN_MAINTENANCE_IF_MAIN;
+// @codeCoverageIgnoreEnd

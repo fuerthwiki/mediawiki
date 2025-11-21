@@ -2,8 +2,8 @@
 
 namespace MediaWiki\Storage\Hook;
 
-use User;
-use WikiPage;
+use MediaWiki\Page\WikiPage;
+use MediaWiki\User\User;
 
 /**
  * This is a hook handler interface, see docs/Hooks.md.

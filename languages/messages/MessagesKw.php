@@ -1,8 +1,6 @@
 <?php
 /** Cornish (kernowek)
  *
- * To improve a translation please visit https://translatewiki.net
- *
  * @file
  * @ingroup Languages
  *
@@ -87,6 +85,7 @@ $specialPageAliases = [
 	'Fewestrevisions'           => [ 'AnLyhaAmendyansow' ],
 	'Filepath'                  => [ 'HynsAnFolen' ],
 	'Import'                    => [ 'Ymperthi' ],
+	'Interwiki'                 => [ 'Yntrawiki' ],
 	'Invalidateemail'           => [ 'DigomposaEbost' ],
 	'JavaScriptTest'            => [ 'PrevyansJavaScript' ],
 	'LinkSearch'                => [ 'HwilasKevrennow' ],
@@ -127,6 +126,7 @@ $specialPageAliases = [
 	'Randomredirect'            => [ 'DaskedyansDreJons' ],
 	'Recentchanges'             => [ 'Chanjyow_a-dhiwedhes' ],
 	'Recentchangeslinked'       => [ 'ChanjyowKelmys' ],
+	'Renameuser'                => [ 'DashenwelDevnydhyer' ],
 	'Revisiondelete'            => [ 'DileaAmendyans' ],
 	'Search'                    => [ 'Hwilas' ],
 	'Shortpages'                => [ 'FolennowBerr' ],
@@ -181,7 +181,7 @@ $magicWords = [
 	'img_thumbnail'             => [ '1', 'skeusennik', 'thumb', 'thumbnail' ],
 	'img_top'                   => [ '1', 'gwartha', 'top' ],
 	'index'                     => [ '1', '__MENEGVA__', '__INDEX__' ],
-	'language'                  => [ '0', '#YETH:', '#LANGUAGE:' ],
+	'language'                  => [ '0', '#YETH', '#LANGUAGE' ],
 	'noindex'                   => [ '1', '__HEBMENEGVA__', '__NOINDEX__' ],
 	'numberingroup'             => [ '1', 'NIVERYNBAGAS', 'NUMBERINGROUP', 'NUMINGROUP' ],
 	'numberofactiveusers'       => [ '1', 'NIVERADHEVNYDHYORYONVYW', 'NUMBEROFACTIVEUSERS' ],

@@ -2,7 +2,8 @@
 
 namespace MediaWiki\Tests\Maintenance;
 
-use Maintenance;
+use MediaWiki\Maintenance\Maintenance;
+use MediaWiki\Maintenance\MaintenanceFatalError;
 use MediaWikiIntegrationTestCase;
 use Wikimedia\TestingAccessWrapper;
 
@@ -19,6 +20,12 @@ abstract class MaintenanceBaseTestCase extends MediaWikiIntegrationTestCase {
 		parent::setUp();
 
 		$this->maintenance = $this->createMaintenance();
+		// This is smelly, but maintenance scripts usually produce output, so
+		// we anticipate and ignore with a regex that will catch everything.
+		//
+		// If you call $this->expectOutputRegex in your subclass, this guard
+		// is overridden, and your specific pattern will be respected.
+		$this->expectOutputRegex( '/.*/' );
 	}
 
 	/**
@@ -28,15 +35,6 @@ abstract class MaintenanceBaseTestCase extends MediaWikiIntegrationTestCase {
 	protected function tearDown(): void {
 		if ( $this->maintenance ) {
 			$this->maintenance->cleanupChanneled();
-		}
-
-		// This is smelly, but maintenance scripts usually produce output, so
-		// we anticipate and ignore with a regex that will catch everything.
-		//
-		// If you call $this->expectOutputRegex in your subclass, this guard
-		// won't be triggered, and your specific pattern will be respected.
-		if ( !$this->hasExpectationOnOutput() ) {
-			$this->expectOutputRegex( '/.*/' );
 		}
 
 		parent::tearDown();
@@ -81,13 +79,30 @@ abstract class MaintenanceBaseTestCase extends MediaWikiIntegrationTestCase {
 	 *   after shutdown simulation.
 	 */
 	protected function assertOutputPrePostShutdown( $preShutdownOutput, $expectNLAppending ) {
-		$this->assertEquals( $preShutdownOutput, $this->getActualOutput(),
+		$this->assertEquals( $preShutdownOutput, $this->getActualOutputForAssertion(),
 				"Output before shutdown simulation" );
 
 		$this->maintenance->cleanupChanneled();
 
 		$postShutdownOutput = $preShutdownOutput . ( $expectNLAppending ? "\n" : "" );
 		$this->expectOutputString( $postShutdownOutput );
+	}
+
+	/**
+	 * Expects that a call to Maintenance::fatalError occurs. When Maintenance::fatalError
+	 * is called, an exception is thrown which is marked as expected through this method.
+	 *
+	 * If you wish to assert on the error message provided to Maintenance::fatalError,
+	 * then use ::expectOutputString or ::expectOutputRegex.
+	 *
+	 * @param ?int $expectedCode The expected error code provided to Maintenance::fatalError
+	 * @since 1.43
+	 */
+	protected function expectCallToFatalError( ?int $expectedCode = null ) {
+		$this->expectException( MaintenanceFatalError::class );
+		if ( $expectedCode !== null ) {
+			$this->expectExceptionCode( $expectedCode );
+		}
 	}
 
 }

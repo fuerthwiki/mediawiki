@@ -1,6 +1,4 @@
-'use strict';
-
-const fs = require( 'fs' );
+import { mkdir } from 'fs/promises';
 
 /**
  * @since 1.1.0
@@ -26,7 +24,7 @@ function testTitle( title ) {
  * @return {string} Full path of screenshot/video file
  */
 function filePath( title, extension ) {
-	return `${browser.config.screenshotPath}/${testTitle( title )}-${makeFilenameDate()}.${extension}`;
+	return `${ browser.options.capabilities[ 'mw:screenshotPath' ] }/${ testTitle( title ) }-${ makeFilenameDate() }.${ extension }`;
 }
 
 /**
@@ -34,19 +32,16 @@ function filePath( title, extension ) {
  *
  * @since 1.0.0
  * @param {string} title Description (will be sanitised and used as file name)
- * @return {string} File path
+ * @return {Promise<string>} File path
  */
-function saveScreenshot( title ) {
+async function saveScreenshot( title ) {
 	// Create sensible file name for current test title
 	const path = filePath( title, 'png' );
-	// Ensure directory exists, based on WebDriverIO#saveScreenshotSync()
-	try {
-		fs.statSync( browser.config.screenshotPath );
-	} catch ( err ) {
-		fs.mkdirSync( browser.config.screenshotPath );
-	}
+
+	// eslint-disable-next-line security/detect-non-literal-fs-filename
+	await mkdir( browser.options.capabilities[ 'mw:screenshotPath' ], { recursive: true } );
 	// Create and save screenshot
-	browser.saveScreenshot( path );
+	await browser.saveScreenshot( path );
 	return path;
 }
 
@@ -56,22 +51,25 @@ function saveScreenshot( title ) {
  * @param {string} title Test title
  * @return {Object} ffmpeg object is returned so it could be used in stopVideo()
  */
-function startVideo( ffmpeg, title ) {
+async function startVideo( ffmpeg, title ) {
 	if ( process.env.DISPLAY && process.env.DISPLAY.startsWith( ':' ) ) {
 		const videoPath = filePath( title, 'mp4' );
-		const { spawn } = require( 'child_process' );
+		const { spawn } = await import( 'child_process' );
 		ffmpeg = spawn( 'ffmpeg', [
 			'-f', 'x11grab', //  grab the X11 display
-			'-video_size', '1920x1080', // video size
+			'-video_size', '1280x1024', // video size
 			'-i', process.env.DISPLAY, // input file url
 			'-loglevel', 'error', // log only errors
 			'-y', // overwrite output files without asking
 			'-pix_fmt', 'yuv420p', // QuickTime Player support, "Use -pix_fmt yuv420p for compatibility with outdated media players"
 			videoPath // output file
 		] );
+		ffmpeg.on( 'error', ( e ) => {
+			console.error( `Could not start ffmpeg or could not kill it, check the error ${ e }` );
+		} );
 		const logBuffer = function ( buffer, prefix ) {
 			const lines = buffer.toString().trim().split( '\n' );
-			lines.forEach( function ( line ) {
+			lines.forEach( ( line ) => {
 				console.log( prefix + line );
 			} );
 		};
@@ -95,7 +93,7 @@ function stopVideo( ffmpeg ) {
 	}
 }
 
-module.exports = {
+export {
 	makeFilenameDate,
 	saveScreenshot,
 	startVideo,

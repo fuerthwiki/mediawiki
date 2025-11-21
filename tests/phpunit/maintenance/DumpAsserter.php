@@ -270,12 +270,7 @@ class DumpAsserter {
 		Assert::assertEquals( XMLReader::ELEMENT, $this->xml->nodeType, "Node type" );
 		$actualAttributes = $this->getAttributeArray( $this->xml );
 
-		$attributes = array_map(
-			function ( $v ) {
-				return $this->resolveVars( $v );
-			},
-			$attributes
-		);
+		$attributes = array_map( $this->resolveVars( ... ), $attributes );
 		$actualAttributes = array_intersect_key( $actualAttributes, $attributes );
 
 		Assert::assertEquals( $attributes, $actualAttributes, "Attributes" );
@@ -314,7 +309,7 @@ class DumpAsserter {
 	}
 
 	/**
-	 * Asserts that the xml reader is at an closing element of given name, and optionally
+	 * Asserts that the xml reader is at a closing element of given name, and optionally
 	 * skips past it. If the reader is at a whitespace element, the whitespace is
 	 * skipped first.
 	 *
@@ -483,7 +478,7 @@ class DumpAsserter {
 		$this->skipWhitespace();
 	}
 
-	public function assertText( $id, $text_id, $text_bytes, $text ) {
+	public function assertText( string $id, string $text_id, int|false $text_bytes, string|false $text ) {
 		$this->assertNodeStart( "text", false );
 		if ( $text_bytes !== false ) {
 			Assert::assertEquals( $this->xml->getAttribute( "bytes" ), $text_bytes,
@@ -557,10 +552,8 @@ class DumpAsserter {
 	 *
 	 * @return int
 	 */
-	public function getLineNumber( XMLReader $xml = null ) {
-		if ( !$xml ) {
-			$xml = $this->xml;
-		}
+	public function getLineNumber( ?XMLReader $xml = null ) {
+		$xml ??= $this->xml;
 
 		if ( $xml->nodeType == XMLReader::NONE ) {
 			return 0;
@@ -678,11 +671,11 @@ class DumpAsserter {
 	 */
 	public function stripTestTags( $text ) {
 		$text = preg_replace( '@<!--.*?-->@s', '', $text );
-		$text = preg_replace( '@</?test:[^>]+>@s', '', $text );
+		$text = preg_replace( '@</?test:[^>]+>@', '', $text );
 		return $text;
 	}
 
-	private function getAttributeArray( XMLReader $xml = null ) {
+	private function getAttributeArray( ?XMLReader $xml = null ): ?array {
 		if ( !$xml ) {
 			$xml = $this->xml;
 		}

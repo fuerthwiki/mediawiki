@@ -11,16 +11,10 @@ use MediaWiki\Settings\Source\SettingsFileUtils;
  */
 class LocalSettingsLoader {
 
-	/** @var SettingsBuilder */
-	private $settingsBuilder;
+	private SettingsBuilder $settingsBuilder;
 
-	/** @var string */
-	private $baseDir;
+	private string $baseDir;
 
-	/**
-	 * @param SettingsBuilder $settingsBuilder
-	 * @param string $baseDir
-	 */
 	public function __construct( SettingsBuilder $settingsBuilder, string $baseDir ) {
 		$this->settingsBuilder = $settingsBuilder;
 		$this->baseDir = $baseDir;
@@ -51,9 +45,12 @@ class LocalSettingsLoader {
 			$$var = $config->get( $key ); // XXX: slow?! Can we get the entire array in one go?
 		}
 
-		// make available some non-config globals available
-		// phpcs:ignore MediaWiki.VariableAnalysis.UnusedGlobalVariables.UnusedGlobal$wgCommandLineMode
-		global $wgCommandLineMode;
+		// Non-config globals available to LocalSettings
+		//
+		// NOTE: Keep in sync with Installer::getExistingLocalSettings
+		//
+		// phpcs:ignore MediaWiki.VariableAnalysis.UnusedGlobalVariables, MediaWiki.Usage.DeprecatedGlobalVariables
+		global $wgCommandLineMode, $wgConf;
 
 		// make additional variables available
 		// phpcs:ignore MediaWiki.VariableAnalysis.MisleadingGlobalNames.Misleading$wgSettings

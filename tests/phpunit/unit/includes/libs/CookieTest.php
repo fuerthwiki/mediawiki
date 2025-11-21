@@ -1,13 +1,20 @@
 <?php
 
+namespace Wikimedia\Tests;
+
+use Cookie;
+use MediaWikiCoversValidator;
+use PHPUnit\Framework\TestCase;
+use Wikimedia\TestingAccessWrapper;
+
 /**
- * @covers Cookie
+ * @covers \Cookie
  */
-class CookieTest extends \PHPUnit\Framework\TestCase {
+class CookieTest extends TestCase {
+	use MediaWikiCoversValidator;
 
 	/**
-	 * @dataProvider cookieDomains
-	 * @covers Cookie::validateCookieDomain
+	 * @dataProvider provideCookieDomains
 	 */
 	public function testValidateCookieDomain( $expected, $domain, $origin = null ) {
 		if ( $origin ) {
@@ -20,7 +27,7 @@ class CookieTest extends \PHPUnit\Framework\TestCase {
 		$this->assertEquals( $expected, $ok, $msg );
 	}
 
-	public static function cookieDomains() {
+	public static function provideCookieDomains() {
 		return [
 			[ false, "org" ],
 			[ false, ".org" ],
@@ -46,6 +53,38 @@ class CookieTest extends \PHPUnit\Framework\TestCase {
 			[ false, "example.com", "www.example.com" ],
 			[ true, "127.0.0.1", "127.0.0.1" ],
 			[ false, "127.0.0.1", "localhost" ],
+		];
+	}
+
+	/**
+	 * @dataProvider provideDomains
+	 */
+	public function testCanServeDomain( string $domain, bool $expected ) {
+		$cookie = new Cookie( '', '', [ 'domain' => '.example.com' ] );
+		/** @var Cookie $cookie */
+		$cookie = TestingAccessWrapper::newFromObject( $cookie );
+		$this->assertSame( $expected, $cookie->canServeDomain( $domain ) );
+	}
+
+	/**
+	 * @dataProvider provideDomains
+	 */
+	public function testCanServeDomainWithoutDomain( string $domain ) {
+		$cookie = new Cookie( '', '', [ 'domain' => '.' ] );
+		/** @var Cookie $cookie */
+		$cookie = TestingAccessWrapper::newFromObject( $cookie );
+		$this->assertFalse( $cookie->canServeDomain( $domain ) );
+	}
+
+	public static function provideDomains() {
+		return [
+			[ '', false ],
+			[ '.', false ],
+			[ 'example.com', false ],
+			[ 'example.com.', false ],
+			[ '.Example.com', true ],
+			[ '.example.com.', false ],
+			[ 'www.Example.com', true ],
 		];
 	}
 

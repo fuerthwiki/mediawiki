@@ -2,29 +2,23 @@
 /**
  * Make a page edit.
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License along
- * with this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
- * http://www.gnu.org/copyleft/gpl.html
- *
+ * @license GPL-2.0-or-later
  * @file
  * @ingroup Maintenance
  */
 
-use MediaWiki\MediaWikiServices;
+use MediaWiki\CommentStore\CommentStoreComment;
+use MediaWiki\Content\ContentHandler;
+use MediaWiki\Language\RawMessage;
+use MediaWiki\Maintenance\Maintenance;
 use MediaWiki\Revision\SlotRecord;
+use MediaWiki\StubObject\StubGlobalUser;
+use MediaWiki\Title\Title;
+use MediaWiki\User\User;
 
+// @codeCoverageIgnoreStart
 require_once __DIR__ . '/Maintenance.php';
+// @codeCoverageIgnoreEnd
 
 /**
  * Maintenance script to make a page edit.
@@ -53,6 +47,7 @@ class EditCLI extends Maintenance {
 		$this->addArg( 'title', 'Title of article to edit' );
 	}
 
+	/** @inheritDoc */
 	public function execute() {
 		$userName = $this->getOption( 'user', false );
 		$summary = $this->getOption( 'summary', '' );
@@ -93,7 +88,7 @@ class EditCLI extends Maintenance {
 			$this->fatalError( "Page already exists" );
 		}
 
-		$page = MediaWikiServices::getInstance()->getWikiPageFactory()->newFromTitle( $title );
+		$page = $this->getServiceContainer()->getWikiPageFactory()->newFromTitle( $title );
 
 		if ( $remove ) {
 			if ( $slot === SlotRecord::MAIN ) {
@@ -131,11 +126,13 @@ class EditCLI extends Maintenance {
 			$this->output( "failed\n" );
 		}
 		if ( !$status->isGood() ) {
-			$this->output( $status->getMessage( false, false, 'en' )->text() . "\n" );
+			$this->error( $status );
 		}
 		return $status->isOK();
 	}
 }
 
+// @codeCoverageIgnoreStart
 $maintClass = EditCLI::class;
 require_once RUN_MAINTENANCE_IF_MAIN;
+// @codeCoverageIgnoreEnd

@@ -3,7 +3,7 @@
 namespace Wikimedia\WRStats;
 
 /**
- * In memory stats store.
+ * In-memory stats store.
  */
 class ArrayStatsStore implements StatsStore {
 	/**
@@ -12,13 +12,15 @@ class ArrayStatsStore implements StatsStore {
 	 */
 	private $data = [];
 
+	/** @inheritDoc */
 	public function makeKey( $prefix, $internals, $entity ) {
 		$globality = $entity->isGlobal() ? 'global' : 'local';
 		return implode( ':',
-			array_merge( [ $globality ], $prefix, $internals, $entity->getComponents() )
+			[ $globality, ...$prefix, ...$internals, ...$entity->getComponents() ]
 		);
 	}
 
+	/** @inheritDoc */
 	public function incr( array $values, $ttl ) {
 		foreach ( $values as $key => $value ) {
 			if ( !isset( $this->data[$key] ) ) {
@@ -34,6 +36,7 @@ class ArrayStatsStore implements StatsStore {
 		}
 	}
 
+	/** @inheritDoc */
 	public function query( array $keys ) {
 		$values = [];
 		foreach ( $keys as $key ) {

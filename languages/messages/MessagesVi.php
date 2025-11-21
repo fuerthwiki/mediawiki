@@ -1,8 +1,6 @@
 <?php
 /** Vietnamese (Tiếng Việt)
  *
- * To improve a translation please visit https://translatewiki.net
- *
  * @file
  * @ingroup Languages
  *
@@ -90,6 +88,7 @@ $specialPageAliases = [
 	'FileDuplicateSearch'       => [ 'Tìm_tập_tin_trùng' ],
 	'Filepath'                  => [ 'Đường_dẫn_tập_tin', 'Đường_dẫn_file' ],
 	'Import'                    => [ 'Nhập' ],
+	'Interwiki'                 => [ 'Liên_wiki' ],
 	'Invalidateemail'           => [ 'Hủy_thư', 'Hủy_thư_điện_tử', 'Huỷ_thư', 'Huỷ_thư_điện_tử', 'Tắt_thư' ],
 	'JavaScriptTest'            => [ 'Thử_JavaScript' ],
 	'LinkSearch'                => [ 'Tìm_liên_kết' ],
@@ -137,6 +136,7 @@ $specialPageAliases = [
 	'Recentchanges'             => [ 'Thay_đổi_gần_đây' ],
 	'Recentchangeslinked'       => [ 'Thay_đổi_liên_quan' ],
 	'Redirect'                  => [ 'Đổi_hướng' ],
+	'Renameuser'                => [ 'Đổi_tên_thành_viên', 'Đổi_tên_người_dùng' ],
 	'ResetTokens'               => [ 'Đặt_lại_dấu_hiệu' ],
 	'Revisiondelete'            => [ 'Xóa_phiên_bản', 'Xoá_phiên_bản' ],
 	'RunJobs'                   => [ 'Chạy_việc' ],
@@ -233,7 +233,7 @@ $magicWords = [
 	'img_upright'               => [ '1', 'đứng', 'đứng=$1', 'đứng_$1', 'upright', 'upright=$1', 'upright $1' ],
 	'index'                     => [ '1', '__CHỈ_MỤC__', '__CHỈMỤC__', '__INDEX__' ],
 	'int'                       => [ '0', 'NỘI:', 'INT:' ],
-	'language'                  => [ '0', '#NGÔN_NGỮ:', '#NGÔNNGỮ:', '#LANGUAGE:' ],
+	'language'                  => [ '0', '#NGÔN_NGỮ', '#NGÔNNGỮ', '#LANGUAGE' ],
 	'lc'                        => [ '0', 'CHỮ_HOA:', 'CHỮHOA:', 'LC:' ],
 	'lcfirst'                   => [ '0', 'CHỮ_ĐẦU_HOA:', 'CHỮĐẦUHOA:', 'LCFIRST:' ],
 	'localday'                  => [ '1', 'NGÀY_ĐỊA_PHƯƠNG', 'NGÀYĐỊAPHƯƠNG', 'LOCALDAY' ],

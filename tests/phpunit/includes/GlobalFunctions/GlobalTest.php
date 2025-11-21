@@ -27,6 +27,7 @@ class GlobalTest extends MediaWikiIntegrationTestCase {
 	 * @covers ::wfArrayDiff2
 	 */
 	public function testWfArrayDiff2( $a, $b, $expected ) {
+		$this->expectDeprecationAndContinue( '/wfArrayDiff2/' );
 		$this->assertEquals(
 			$expected, wfArrayDiff2( $a, $b )
 		);
@@ -81,19 +82,6 @@ class GlobalTest extends MediaWikiIntegrationTestCase {
 		$this->assertEquals(
 			"%E7%89%B9%E5%88%A5:Contributions/Foobar",
 			wfUrlencode( "\xE7\x89\xB9\xE5\x88\xA5:Contributions/Foobar" ) );
-	}
-
-	/**
-	 * @covers ::wfExpandIRI
-	 */
-	public function testExpandIRI() {
-		$this->assertEquals(
-			"https://te.wikibooks.org/wiki/ఉబుంటు_వాడుకరి_మార్గదర్శని",
-			wfExpandIRI( "https://te.wikibooks.org/wiki/"
-				. "%E0%B0%89%E0%B0%AC%E0%B1%81%E0%B0%82%E0%B0%9F%E0%B1%81_"
-				. "%E0%B0%B5%E0%B0%BE%E0%B0%A1%E0%B1%81%E0%B0%95%E0%B0%B0%E0%B0%BF_"
-				. "%E0%B0%AE%E0%B0%BE%E0%B0%B0%E0%B1%8D%E0%B0%97%E0%B0%A6%E0%B0%B0"
-				. "%E0%B1%8D%E0%B0%B6%E0%B0%A8%E0%B0%BF" ) );
 	}
 
 	public static function provideArrayToCGI() {
@@ -151,7 +139,7 @@ class GlobalTest extends MediaWikiIntegrationTestCase {
 			[ 'foo=bar&qwerty=asdf', [ 'foo' => 'bar', 'qwerty' => 'asdf' ] ], // multiple value
 			[ 'foo=A%26B%3D5%2B6%40%21%22%27', [ 'foo' => 'A&B=5+6@!"\'' ] ], // urldecoding test
 			[ 'foo[bar]=baz', [ 'foo' => [ 'bar' => 'baz' ] ] ],
-			[ 'foo%5Bbar%5D=baz', [ 'foo' => [ 'bar' => 'baz' ] ] ],  // urldecoding test 2
+			[ 'foo%5Bbar%5D=baz', [ 'foo' => [ 'bar' => 'baz' ] ] ], // urldecoding test 2
 			[
 				'foo%5Bbar%5D=baz&foo%5Bqwerty%5D=asdf',
 				[ 'foo' => [ 'bar' => 'baz', 'qwerty' => 'asdf' ] ]
@@ -267,7 +255,7 @@ class GlobalTest extends MediaWikiIntegrationTestCase {
 		$this->assertSame( $expected, wfPercent( $input, $accuracy, $round ) );
 	}
 
-	public function provideWfPercentTest() {
+	public static function provideWfPercentTest() {
 		return [
 			[ 6 / 7, '0.86%', 2, false ],
 			[ 3 / 3, '1%' ],
@@ -282,7 +270,6 @@ class GlobalTest extends MediaWikiIntegrationTestCase {
 	}
 
 	/**
-	 * test @see wfShorthandToInteger()
 	 * @dataProvider provideShorthand
 	 * @covers ::wfShorthandToInteger
 	 */
@@ -360,7 +347,7 @@ class GlobalTest extends MediaWikiIntegrationTestCase {
 	 * @param string $expectedText Text after merge has been completed
 	 * @param string $expectedMergeAttemptResult Diff3 output if conflicts occur
 	 *
-	 * @dataProvider provideMerge()
+	 * @dataProvider provideMerge
 	 * @group medium
 	 * @covers ::wfMerge
 	 */
@@ -370,7 +357,7 @@ class GlobalTest extends MediaWikiIntegrationTestCase {
 		$this->markTestSkippedIfNoDiff3();
 
 		$mergedText = null;
-		$attemptMergeResult = null;
+		$mergeAttemptResult = null;
 		$isMerged = wfMerge( $old, $mine, $yours, $mergedText, $mergeAttemptResult );
 
 		$msg = 'Merge should be a ';
@@ -452,10 +439,12 @@ class GlobalTest extends MediaWikiIntegrationTestCase {
 
 	/**
 	 * Same tests as the UrlUtils method to ensure they don't fall out of sync
-	 * @dataProvider UrlUtilsProviders::provideMatchesDomainList
+	 * @dataProvider \MediaWiki\Tests\Unit\Utils\UrlUtilsProviders::provideMatchesDomainList
 	 * @covers ::wfMatchesDomainList
 	 */
 	public function testWfMatchesDomainList( $url, $domains, $expected ) {
+		$this->hideDeprecated( 'wfMatchesDomainList' );
+
 		$actual = wfMatchesDomainList( $url, $domains );
 		$this->assertEquals( $expected, $actual );
 	}

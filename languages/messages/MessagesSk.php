@@ -1,8 +1,6 @@
 <?php
 /** Slovak (slovenčina)
  *
- * To improve a translation please visit https://translatewiki.net
- *
  * @file
  * @ingroup Languages
  *
@@ -52,6 +50,7 @@ $specialPageAliases = [
 	'BotPasswords'              => [ 'HesláPreBotov' ],
 	'BrokenRedirects'           => [ 'PokazenéPresmerovania' ],
 	'Categories'                => [ 'Kategórie' ],
+	'ChangeContentModel'        => [ 'ZmeniťModelObsahuStránky' ],
 	'ChangeCredentials'         => [ 'ZmenaPrihlasovacíchÚdajov' ],
 	'ChangeEmail'               => [ 'ZmenaEmailu' ],
 	'ChangePassword'            => [ 'ZmenaHesla' ],
@@ -63,6 +62,7 @@ $specialPageAliases = [
 	'DeletedContributions'      => [ 'ZmazanéPríspevky' ],
 	'Diff'                      => [ 'Rozdiel' ],
 	'DoubleRedirects'           => [ 'DvojitéPresmerovania' ],
+	'EditRecovery'              => [ 'ObnovenieÚpravy' ],
 	'Emailuser'                 => [ 'EmailPoužívateľovi' ],
 	'ExpandTemplates'           => [ 'SubstituovaťŠablóny' ],
 	'Export'                    => [ 'ExportovaťStránky' ],
@@ -99,6 +99,7 @@ $specialPageAliases = [
 	'Mytalk'                    => [ 'MojaDiskusia' ],
 	'Newimages'                 => [ 'NovéSúbory' ],
 	'Newpages'                  => [ 'NovéStránky' ],
+	'PageInfo'                  => [ 'InformácieOStránke' ],
 	'PagesWithProp'             => [ 'StránkySVlastnosťou' ],
 	'PasswordPolicies'          => [ 'PravidláPreHeslá' ],
 	'PasswordReset'             => [ 'ObnovaHesla' ],
@@ -115,6 +116,7 @@ $specialPageAliases = [
 	'Recentchangeslinked'       => [ 'SúvisiacePoslednéÚpravy' ],
 	'Redirect'                  => [ 'Presmerovanie' ],
 	'RemoveCredentials'         => [ 'OdstráneniePrihlasovacíchÚdajov' ],
+	'Renameuser'                => [ 'PremenovaťPoužívateľa' ],
 	'ResetTokens'               => [ 'ObnovaKľúčov' ],
 	'Revisiondelete'            => [ 'ZmazaťRevíziu' ],
 	'Search'                    => [ 'Hľadanie' ],
@@ -123,6 +125,7 @@ $specialPageAliases = [
 	'Statistics'                => [ 'Štatistika' ],
 	'Tags'                      => [ 'Značky' ],
 	'TrackingCategories'        => [ 'SledovacieKategórie' ],
+	'Unblock'                   => [ 'Odblokovanie' ],
 	'Uncategorizedcategories'   => [ 'NekategorizovanéKategórie' ],
 	'Uncategorizedimages'       => [ 'NekategorizovanéSúbory' ],
 	'Uncategorizedpages'        => [ 'NekategorizovanéStránky' ],
@@ -239,7 +242,7 @@ $magicWords = [
 	'img_right'                 => [ '1', 'vpravo', 'right' ],
 	'img_thumbnail'             => [ '1', 'náhľad', 'náhľadobrázka', 'thumb', 'thumbnail' ],
 	'img_width'                 => [ '1', '$1bod', '$1px' ],
-	'language'                  => [ '0', '#JAZYK:', '#LANGUAGE:' ],
+	'language'                  => [ '0', '#JAZYK', '#LANGUAGE' ],
 	'msg'                       => [ '0', 'SPRÁVA:', 'MSG:' ],
 	'namespace'                 => [ '1', 'MENNÝPRIESTOR', 'NAMESPACE' ],
 	'namespacee'                => [ '1', 'MENNÝPRIESTORE', 'NAMESPACEE' ],

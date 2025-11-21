@@ -1,20 +1,6 @@
 <?php
 /**
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License along
- * with this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
- * http://www.gnu.org/copyleft/gpl.html
- *
+ * @license GPL-2.0-or-later
  * @file
  */
 
@@ -33,7 +19,11 @@ use Wikimedia\IPUtils;
 class UDPTransport {
 	// Limit to 64 KiB
 	public const MAX_PAYLOAD_SIZE = 65507;
-	private $host, $port, $prefix, $domain;
+	private string $host;
+	private int $port;
+	/** @var bool|string */
+	private $prefix;
+	private int $domain;
 
 	/**
 	 * @param string $host IP address to send to
@@ -51,7 +41,6 @@ class UDPTransport {
 	/**
 	 * @param string $info In the format of "udp://host:port/prefix"
 	 * @return UDPTransport
-	 * @throws InvalidArgumentException
 	 */
 	public static function newFromString( $info ) {
 		if ( preg_match( '!^udp:(?://)?\[([0-9a-fA-F:]+)\]:(\d+)(?:/(.*))?$!', $info, $m ) ) {
@@ -87,7 +76,7 @@ class UDPTransport {
 				$text = substr( $text, 0, self::MAX_PAYLOAD_SIZE - 1 );
 			}
 
-			if ( substr( $text, -1 ) != "\n" ) {
+			if ( !str_ends_with( $text, "\n" ) ) {
 				$text .= "\n";
 			}
 		} elseif ( strlen( $text ) > self::MAX_PAYLOAD_SIZE ) {

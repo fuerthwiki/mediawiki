@@ -2,6 +2,8 @@
 
 namespace MediaWiki\Rest\Handler;
 
+use MediaWiki\Content\TextContent;
+use MediaWiki\Parser\ParserFactory;
 use MediaWiki\Rest\Handler;
 use MediaWiki\Rest\LocalizedHttpException;
 use MediaWiki\Rest\StringStream;
@@ -10,17 +12,12 @@ use MediaWiki\Revision\RevisionLookup;
 use MediaWiki\Revision\RevisionRecord;
 use MediaWiki\Revision\SlotRecord;
 use MediaWiki\Revision\SuppressedDataException;
-use Parser;
-use TextContent;
 use Wikimedia\Message\MessageValue;
 use Wikimedia\ParamValidator\ParamValidator;
 
 class CompareHandler extends Handler {
-	/** @var RevisionLookup */
-	private $revisionLookup;
-
-	/** @var Parser */
-	private $parser;
+	private RevisionLookup $revisionLookup;
+	private ParserFactory $parserFactory;
 
 	/** @var RevisionRecord[] */
 	private $revisions = [];
@@ -30,12 +27,13 @@ class CompareHandler extends Handler {
 
 	public function __construct(
 		RevisionLookup $revisionLookup,
-		Parser $parser
+		ParserFactory $parserFactory
 	) {
 		$this->revisionLookup = $revisionLookup;
-		$this->parser = $parser;
+		$this->parserFactory = $parserFactory;
 	}
 
+	/** @inheritDoc */
 	public function execute() {
 		$fromRev = $this->getRevisionOrThrow( 'from' );
 		$toRev = $this->getRevisionOrThrow( 'to' );
@@ -114,11 +112,11 @@ class CompareHandler extends Handler {
 		return $rev->userCan( RevisionRecord::DELETED_TEXT, $this->getAuthority() );
 	}
 
-	private function getRole() {
+	private function getRole(): string {
 		return SlotRecord::MAIN;
 	}
 
-	private function getRevisionText( $paramName ) {
+	private function getRevisionText( string $paramName ): string {
 		if ( !isset( $this->textCache[$paramName] ) ) {
 			$revision = $this->getRevision( $paramName );
 			try {
@@ -136,10 +134,10 @@ class CompareHandler extends Handler {
 						),
 						400 );
 				}
-			} catch ( SuppressedDataException $e ) {
+			} catch ( SuppressedDataException ) {
 				throw new LocalizedHttpException(
 					new MessageValue( 'rest-compare-inaccessible', [ $paramName ] ), 403 );
-			} catch ( RevisionAccessException $e ) {
+			} catch ( RevisionAccessException ) {
 				throw new LocalizedHttpException(
 					new MessageValue( 'rest-compare-nonexistent', [ $paramName ] ), 404 );
 			}
@@ -168,7 +166,7 @@ class CompareHandler extends Handler {
 	 */
 	private function getSectionInfo( $paramName ) {
 		$text = $this->getRevisionText( $paramName );
-		$parserSections = $this->parser->getFlatSectionInfo( $text );
+		$parserSections = $this->parserFactory->getInstance()->getFlatSectionInfo( $text );
 		$sections = [];
 		foreach ( $parserSections as $i => $parserSection ) {
 			// Skip section zero, which comes before the first heading, since
@@ -184,17 +182,31 @@ class CompareHandler extends Handler {
 		return $sections;
 	}
 
+	/**
+	 * @inheritDoc
+	 */
+	public function needsWriteAccess() {
+		return false;
+	}
+
+	protected function getResponseBodySchemaFileName( string $method ): ?string {
+		return 'includes/Rest/Handler/Schema/RevisionCompare.json';
+	}
+
+	/** @inheritDoc */
 	public function getParamSettings() {
 		return [
 			'from' => [
 				ParamValidator::PARAM_TYPE => 'integer',
 				ParamValidator::PARAM_REQUIRED => true,
 				Handler::PARAM_SOURCE => 'path',
+				Handler::PARAM_DESCRIPTION => new MessageValue( 'rest-param-desc-compare-from' ),
 			],
 			'to' => [
 				ParamValidator::PARAM_TYPE => 'integer',
 				ParamValidator::PARAM_REQUIRED => true,
 				Handler::PARAM_SOURCE => 'path',
+				Handler::PARAM_DESCRIPTION => new MessageValue( 'rest-param-desc-compare-to' ),
 			],
 		];
 	}

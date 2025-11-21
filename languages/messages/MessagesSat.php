@@ -1,8 +1,6 @@
 <?php
 /** ᱥᱟᱱᱛᱟᱲᱤ (Santali)
  *
- * To improve a translation please visit https://translatewiki.net
- *
  * @file
  * @ingroup Languages
  */
@@ -38,3 +36,5 @@ $digitTransformTable = [
 	'8' => '᱘',
 	'9' => '᱙',
 ];
+
+$numberingSystem = 'olck';

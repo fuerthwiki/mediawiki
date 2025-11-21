@@ -1,5 +1,22 @@
 <?php
 /**
+ * @license GPL-2.0-or-later
+ * @file
+ */
+
+use MediaWiki\Maintenance\Maintenance;
+use MediaWiki\RecentChanges\RecentChange;
+use MediaWiki\Revision\SlotRecord;
+use MediaWiki\Search\SearchUpdate;
+use MediaWiki\Title\Title;
+use MediaWiki\WikiMap\WikiMap;
+use Wikimedia\Rdbms\IDBAccessObject;
+
+// @codeCoverageIgnoreStart
+require_once __DIR__ . '/Maintenance.php';
+// @codeCoverageIgnoreEnd
+
+/**
  * Periodic off-peak updating of the search index.
  *
  * Usage: php updateSearchIndex.php [-s START] [-e END] [-p POSFILE] [-l LOCKTIME] [-q]
@@ -9,33 +26,7 @@
  * LOCKTIME is how long the searchindex and revision tables will be locked for
  * -q means quiet
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License along
- * with this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
- * http://www.gnu.org/copyleft/gpl.html
- *
- * @file
- * @ingroup Maintenance
- */
-
-use MediaWiki\MediaWikiServices;
-use MediaWiki\Revision\SlotRecord;
-
-require_once __DIR__ . '/Maintenance.php';
-
-/**
- * Maintenance script for periodic off-peak updating of the search index.
- *
+ * @ingroup Search
  * @ingroup Maintenance
  */
 class UpdateSearchIndex extends Maintenance {
@@ -59,6 +50,7 @@ class UpdateSearchIndex extends Maintenance {
 		);
 	}
 
+	/** @inheritDoc */
 	public function getDbType() {
 		return Maintenance::DB_ADMIN;
 	}
@@ -85,12 +77,12 @@ class UpdateSearchIndex extends Maintenance {
 		}
 	}
 
-	private function doUpdateSearchIndex( $start, $end ) {
+	private function doUpdateSearchIndex( string $start, string $end ) {
 		global $wgDisableSearchUpdate;
 
 		$wgDisableSearchUpdate = false;
 
-		$dbw = $this->getDB( DB_PRIMARY );
+		$dbw = $this->getPrimaryDB();
 
 		$this->output( "Updating searchindex between $start and $end\n" );
 
@@ -98,19 +90,16 @@ class UpdateSearchIndex extends Maintenance {
 		$start = $dbw->timestamp( $start );
 		$end = $dbw->timestamp( $end );
 
-		$res = $dbw->select(
-			[ 'recentchanges', 'page' ],
-			'rc_cur_id',
-			[
-				'rc_type != ' . $dbw->addQuotes( RC_LOG ),
-				'rc_timestamp BETWEEN ' . $dbw->addQuotes( $start ) . ' AND ' . $dbw->addQuotes( $end )
-			],
-			__METHOD__,
-			[],
-			[
-				'page' => [ 'JOIN', 'rc_cur_id=page_id AND rc_this_oldid=page_latest' ]
-			]
-		);
+		$res = $dbw->newSelectQueryBuilder()
+			->select( 'rc_cur_id' )
+			->from( 'recentchanges' )
+			->join( 'page', null, 'rc_cur_id=page_id AND rc_this_oldid=page_latest' )
+			->where( [
+				$dbw->expr( 'rc_source', '!=', RecentChange::SRC_LOG ),
+				$dbw->expr( 'rc_timestamp', '>=', $start ),
+				$dbw->expr( 'rc_timestamp', '<=', $end ),
+			] )
+			->caller( __METHOD__ )->fetchResultSet();
 
 		foreach ( $res as $row ) {
 			$this->updateSearchIndexForPage( (int)$row->rc_cur_id );
@@ -125,12 +114,12 @@ class UpdateSearchIndex extends Maintenance {
 	 */
 	private function updateSearchIndexForPage( int $pageId ) {
 		// Get current revision
-		$rev = MediaWikiServices::getInstance()
+		$rev = $this->getServiceContainer()
 			->getRevisionLookup()
 			->getRevisionByPageId( $pageId, 0, IDBAccessObject::READ_LATEST );
 		$title = null;
 		if ( $rev ) {
-			$titleObj = Title::newFromLinkTarget( $rev->getPageAsLinkTarget() );
+			$titleObj = Title::newFromPageIdentity( $rev->getPage() );
 			$title = $titleObj->getPrefixedDBkey();
 			$this->output( "$title..." );
 			# Update searchindex
@@ -143,5 +132,7 @@ class UpdateSearchIndex extends Maintenance {
 	}
 }
 
+// @codeCoverageIgnoreStart
 $maintClass = UpdateSearchIndex::class;
 require_once RUN_MAINTENANCE_IF_MAIN;
+// @codeCoverageIgnoreEnd

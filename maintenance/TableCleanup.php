@@ -2,26 +2,17 @@
 /**
  * Generic class to cleanup a database table.
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License along
- * with this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
- * http://www.gnu.org/copyleft/gpl.html
- *
+ * @license GPL-2.0-or-later
  * @file
  * @ingroup Maintenance
  */
 
+use MediaWiki\Maintenance\Maintenance;
+use MediaWiki\WikiMap\WikiMap;
+
+// @codeCoverageIgnoreStart
 require_once __DIR__ . '/Maintenance.php';
+// @codeCoverageIgnoreEnd
 
 /**
  * Generic class to cleanup a database table. Already subclasses Maintenance.
@@ -29,6 +20,7 @@ require_once __DIR__ . '/Maintenance.php';
  * @ingroup Maintenance
  */
 class TableCleanup extends Maintenance {
+	/** @var array */
 	protected $defaultParams = [
 		'table' => 'page',
 		'conds' => [],
@@ -36,10 +28,16 @@ class TableCleanup extends Maintenance {
 		'callback' => 'processRow',
 	];
 
+	/** @var bool */
 	protected $dryrun = false;
+	/** @var int */
 	protected $reportInterval = 100;
 
-	protected $processed, $updated, $count, $startTime, $table;
+	protected int $processed;
+	protected int $updated;
+	protected int $count;
+	protected float $startTime;
+	protected string $table;
 
 	public function __construct() {
 		parent::__construct();
@@ -62,7 +60,7 @@ class TableCleanup extends Maintenance {
 		$this->runTable( $this->defaultParams );
 	}
 
-	protected function init( $count, $table ) {
+	protected function init( int $count, string $table ) {
 		$this->processed = 0;
 		$this->updated = 0;
 		$this->count = $count;
@@ -105,41 +103,45 @@ class TableCleanup extends Maintenance {
 
 	/**
 	 * @param array $params
-	 * @throws MWException
 	 */
 	public function runTable( $params ) {
-		$dbr = $this->getDB( DB_REPLICA );
+		$dbr = $this->getReplicaDB();
 
 		if ( array_diff( array_keys( $params ),
 			[ 'table', 'conds', 'index', 'callback' ] )
 		) {
-			throw new MWException( __METHOD__ . ': Missing parameter ' . implode( ', ', $params ) );
+			$this->fatalError( __METHOD__ . ': Missing parameter ' . implode( ', ', $params ) );
 		}
 
 		$table = $params['table'];
 		// count(*) would melt the DB for huge tables, we can estimate here
-		$count = $dbr->estimateRowCount( $table, '*', '', __METHOD__ );
+		$count = $dbr->newSelectQueryBuilder()
+			->table( $table )
+			->caller( __METHOD__ )
+			->estimateRowCount();
 		$this->init( $count, $table );
 		$this->output( "Processing $table...\n" );
 
 		$index = (array)$params['index'];
 		$indexConds = [];
-		$options = [
-			'ORDER BY' => implode( ',', $index ),
-			'LIMIT' => $this->getBatchSize()
-		];
 		$callback = [ $this, $params['callback'] ];
 
 		while ( true ) {
 			$conds = array_merge( $params['conds'], $indexConds );
-			$res = $dbr->select( $table, '*', $conds, __METHOD__, $options );
+			$res = $dbr->newSelectQueryBuilder()
+				->select( '*' )
+				->from( $table )
+				->where( $conds )
+				->orderBy( implode( ',', $index ) )
+				->limit( $this->getBatchSize() )
+				->caller( __METHOD__ )->fetchResultSet();
 			if ( !$res->numRows() ) {
 				// Done
 				break;
 			}
 
 			foreach ( $res as $row ) {
-				call_user_func( $callback, $row );
+				$callback( $row );
 			}
 
 			if ( $res->numRows() < $this->getBatchSize() ) {

@@ -1,14 +1,20 @@
 <?php
 
-namespace Wikimedia\WRStats;
+namespace Wikimedia\Tests\WRStats;
 
-use HashBagOStuff;
+use MediaWikiCoversValidator;
 use PHPUnit\Framework\TestCase;
+use Wikimedia\ObjectCache\HashBagOStuff;
+use Wikimedia\WRStats\BagOStuffStatsStore;
+use Wikimedia\WRStats\EntityKey;
+use Wikimedia\WRStats\GlobalEntityKey;
+use Wikimedia\WRStats\LocalEntityKey;
 
 /**
  * @covers \Wikimedia\WRStats\BagOStuffStatsStore
  */
 class BagOStuffStatsStoreTest extends TestCase {
+	use MediaWikiCoversValidator;
 
 	/**
 	 * @var HashBagOStuff
@@ -35,7 +41,7 @@ class BagOStuffStatsStoreTest extends TestCase {
 		return new BagOStuffStatsStore( $this->cache );
 	}
 
-	public function provideMakeKey() {
+	public static function provideMakeKey() {
 		yield [ [ 'prefix' ], [ 'internals' ], new LocalEntityKey( [ 'key' ] ), 'local:prefix:internals:key' ];
 		yield [ [ 'prefix' ], [ 'internals' ], new GlobalEntityKey( [ 'key' ] ), 'global:prefix:internals:key' ];
 		yield [ [ 'p', 'q' ], [ 'i', 'j' ], new GlobalEntityKey( [ 'k', 'h' ] ), 'global:p:q:i:j:k:h' ];

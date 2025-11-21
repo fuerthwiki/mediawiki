@@ -1,8 +1,6 @@
 <?php
 /** Malayalam (മലയാളം)
  *
- * To improve a translation please visit https://translatewiki.net
- *
  * @file
  * @ingroup Languages
  *
@@ -114,6 +112,7 @@ $specialPageAliases = [
 	'FileDuplicateSearch'       => [ 'പ്രമാണത്തിന്റെ_അപരനുള്ള_തിരച്ചിൽ' ],
 	'Filepath'                  => [ 'പ്രമാണവിലാസം' ],
 	'Import'                    => [ 'ഇറക്കുമതി' ],
+	'Interwiki'                 => [ 'അന്തർ‌വിക്കി' ],
 	'Invalidateemail'           => [ 'ഇമെയിൽഅസാധുവാക്കുക' ],
 	'JavaScriptTest'            => [ 'ജാവാസ്ക്രിപ്റ്റ്പരീക്ഷണം' ],
 	'LinkSearch'                => [ 'കണ്ണികൾ_തിരയുക' ],
@@ -159,6 +158,7 @@ $specialPageAliases = [
 	'Recentchanges'             => [ 'സമീപകാലമാറ്റങ്ങൾ' ],
 	'Recentchangeslinked'       => [ 'ബന്ധപ്പെട്ട_മാറ്റങ്ങൾ' ],
 	'Redirect'                  => [ 'തിരിച്ചുവിടൽ' ],
+	'Renameuser'                => [ 'ഉപയോക്തൃപുനർനാമകരണം' ],
 	'ResetTokens'               => [ 'ചീട്ട്പുനഃസജ്ജീകരിക്കുക' ],
 	'Revisiondelete'            => [ 'നാൾപ്പതിപ്പ്_മായ്ക്കൽ' ],
 	'RunJobs'                   => [ 'പ്രവൃത്തിനടപ്പാക്കൽ' ],
@@ -232,7 +232,7 @@ $magicWords = [
 	'fullurle'                  => [ '0', 'പൂർണ്ണവിലാസംസമഗ്രം:', 'FULLURLE:' ],
 	'gender'                    => [ '0', 'ലിംഗം:', 'GENDER:' ],
 	'grammar'                   => [ '0', 'വ്യാകരണം:', 'GRAMMAR:' ],
-	'hiddencat'                 => [ '1', '‌‌__മറഞ്ഞിരിക്കുംവർഗ്ഗം__', '__HIDDENCAT__' ],
+	'hiddencat'                 => [ '1', '__മറഞ്ഞിരിക്കുംവർഗ്ഗം__', '__HIDDENCAT__' ],
 	'img_alt'                   => [ '1', 'പകരം=$1', 'alt=$1' ],
 	'img_baseline'              => [ '1', 'താഴെയുള്ളവര', 'baseline' ],
 	'img_border'                => [ '1', 'അതിർവര', 'border' ],
@@ -257,9 +257,9 @@ $magicWords = [
 	'img_top'                   => [ '1', 'മേലെ', 'top' ],
 	'img_upright'               => [ '1', 'നേരേകുത്തനെ', 'നേരേകുത്തനെ=$1', 'നേരേകുത്തനെ_$1', 'upright', 'upright=$1', 'upright $1' ],
 	'img_width'                 => [ '1', '$1ബിന്ദു', '$1px' ],
-	'index'                     => [ '1', '‌‌__സൂചിക__', '__INDEX__' ],
+	'index'                     => [ '1', '__സൂചിക__', '__INDEX__' ],
 	'int'                       => [ '0', 'സമ്പർക്കം:', 'INT:' ],
-	'language'                  => [ '0', '#ഭാഷ:', '#LANGUAGE:' ],
+	'language'                  => [ '0', '#ഭാഷ', '#LANGUAGE' ],
 	'localday'                  => [ '1', 'പ്രാദേശികദിവസം', 'LOCALDAY' ],
 	'localday2'                 => [ '1', 'പ്രാദേശികദിവസം2', 'LOCALDAY2' ],
 	'localdayname'              => [ '1', 'പ്രാദേശികദിവസത്തിന്റെപേര്‌', 'LOCALDAYNAME' ],
@@ -334,7 +334,7 @@ $magicWords = [
 	'sitename'                  => [ '1', 'സൈറ്റിന്റെപേര്', 'SITENAME' ],
 	'special'                   => [ '0', 'പ്രത്യേകം', 'special' ],
 	'speciale'                  => [ '0', 'സവിശേഷം', 'speciale' ],
-	'staticredirect'            => [ '1', '_സ്ഥിരസ്ഥിതതിരിച്ചുവിടൽ_', '__STATICREDIRECT__' ],
+	'staticredirect'            => [ '1', '__സ്ഥിരസ്ഥിതതിരിച്ചുവിടൽ__', '__STATICREDIRECT__' ],
 	'stylepath'                 => [ '0', 'സ്റ്റൈൽപഥം', 'STYLEPATH' ],
 	'subjectpagename'           => [ '1', 'ലേഖനതാളിന്റെപേര്‌', 'SUBJECTPAGENAME', 'ARTICLEPAGENAME' ],
 	'subjectpagenamee'          => [ '1', 'ലേഖനതാളിന്റെപേര്‌സമഗ്രം', 'SUBJECTPAGENAMEE', 'ARTICLEPAGENAMEE' ],

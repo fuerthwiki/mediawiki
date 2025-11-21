@@ -2,28 +2,21 @@
 /**
  * Maintenance script to wrap all old-style passwords in a layered type
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License along
- * with this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
- * http://www.gnu.org/copyleft/gpl.html
- *
+ * @license GPL-2.0-or-later
  * @file
  * @ingroup Maintenance
  */
 
-require_once __DIR__ . '/Maintenance.php';
+use MediaWiki\Maintenance\Maintenance;
+use MediaWiki\Password\LayeredParameterizedPassword;
+use MediaWiki\Password\ParameterizedPassword;
+use MediaWiki\User\User;
+use Wikimedia\Rdbms\IExpression;
+use Wikimedia\Rdbms\LikeValue;
 
-use MediaWiki\MediaWikiServices;
+// @codeCoverageIgnoreStart
+require_once __DIR__ . '/Maintenance.php';
+// @codeCoverageIgnoreEnd
 
 /**
  * Maintenance script to wrap all passwords of a certain type in a specified layered
@@ -41,11 +34,11 @@ class WrapOldPasswords extends Maintenance {
 			'Password type to wrap passwords in (must inherit LayeredParameterizedPassword)', true, true );
 		$this->addOption( 'verbose', 'Enables verbose output', false, false, 'v' );
 		$this->addOption( 'update', 'Actually wrap passwords', false, false, 'u' );
-		$this->setBatchSize( 100 );
+		$this->setBatchSize( 3 );
 	}
 
 	public function execute() {
-		$passwordFactory = MediaWikiServices::getInstance()->getPasswordFactory();
+		$passwordFactory = $this->getServiceContainer()->getPasswordFactory();
 
 		$typeInfo = $passwordFactory->getTypes();
 		$layeredType = $this->getOption( 'type' );
@@ -67,30 +60,38 @@ class WrapOldPasswords extends Maintenance {
 		$update = $this->hasOption( 'update' );
 
 		// Get a list of password types that are applicable
-		$dbw = $this->getDB( DB_PRIMARY );
-		$typeCond = 'user_password' . $dbw->buildLike( ":$firstType:", $dbw->anyString() );
+		$dbw = $this->getPrimaryDB();
 
 		$count = 0;
 		$minUserId = 0;
-		$lbFactory = MediaWikiServices::getInstance()->getDBLoadBalancerFactory();
-		do {
+		while ( true ) {
 			if ( $update ) {
 				$this->beginTransaction( $dbw, __METHOD__ );
 			}
 
-			$res = $dbw->select( 'user',
-				[ 'user_id', 'user_name', 'user_password' ],
-				[
-					'user_id > ' . $dbw->addQuotes( $minUserId ),
-					$typeCond
-				],
-				__METHOD__,
-				[
-					'ORDER BY' => 'user_id',
-					'LIMIT' => $this->getBatchSize(),
-					'LOCK IN SHARE MODE',
-				]
-			);
+			$start = microtime( true );
+			$res = $dbw->newSelectQueryBuilder()
+				->select( [ 'user_id', 'user_name', 'user_password' ] )
+				->lockInShareMode()
+				->from( 'user' )
+				->where( [
+					$dbw->expr( 'user_id', '>', $minUserId ),
+					$dbw->expr(
+						'user_password',
+						IExpression::LIKE,
+						new LikeValue( ":$firstType:", $dbw->anyString() )
+					),
+				] )
+				->orderBy( 'user_id' )
+				->limit( $this->getBatchSize() )
+				->caller( __METHOD__ )->fetchResultSet();
+
+			if ( $res->numRows() === 0 ) {
+				if ( $update ) {
+					$this->commitTransaction( $dbw, __METHOD__ );
+				}
+				break;
+			}
 
 			/** @var User[] $updateUsers */
 			$updateUsers = [];
@@ -114,11 +115,12 @@ class WrapOldPasswords extends Maintenance {
 				$count++;
 				if ( $update ) {
 					$updateUsers[] = $user;
-					$dbw->update( 'user',
-						[ 'user_password' => $layeredPassword->toString() ],
-						[ 'user_id' => $row->user_id ],
-						__METHOD__
-					);
+					$dbw->newUpdateQueryBuilder()
+						->update( 'user' )
+						->set( [ 'user_password' => $layeredPassword->toString() ] )
+						->where( [ 'user_id' => $row->user_id ] )
+						->caller( __METHOD__ )
+						->execute();
 				}
 
 				$minUserId = $row->user_id;
@@ -126,23 +128,33 @@ class WrapOldPasswords extends Maintenance {
 
 			if ( $update ) {
 				$this->commitTransaction( $dbw, __METHOD__ );
-				$lbFactory->waitForReplication();
 
 				// Clear memcached so old passwords are wiped out
 				foreach ( $updateUsers as $user ) {
 					$user->clearSharedCache( 'refresh' );
 				}
 			}
-		} while ( $res->numRows() );
+
+			$this->output( "Last id processed: $minUserId; Actually updated: $count...\n" );
+			$delta = microtime( true ) - $start;
+			$this->output( sprintf(
+				"%4d passwords wrapped in %6.2fms (%6.2fms each)\n",
+				$res->numRows(),
+				$delta * 1000.0,
+				( $delta / $res->numRows() ) * 1000.0
+			) );
+		}
 
 		if ( $update ) {
 			$this->output( "$count users rows updated.\n" );
 		} else {
 			$this->output( "$count user rows found using old password formats. "
-					. "Run script again with --update to update these rows.\n" );
+				. "Run script again with --update to update these rows.\n" );
 		}
 	}
 }
 
+// @codeCoverageIgnoreStart
 $maintClass = WrapOldPasswords::class;
 require_once RUN_MAINTENANCE_IF_MAIN;
+// @codeCoverageIgnoreEnd

@@ -2,29 +2,19 @@
 /**
  * Creates a bot password for an existing user account.
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License along
- * with this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
- * http://www.gnu.org/copyleft/gpl.html
- *
+ * @license GPL-2.0-or-later
  * @file
  * @ingroup Maintenance
  * @author Alex Dean <wikimedia@mostlyalex.com>
  */
 
-require_once __DIR__ . '/Maintenance.php';
+use MediaWiki\Maintenance\Maintenance;
+use MediaWiki\User\BotPassword;
+use MediaWiki\User\User;
 
-use MediaWiki\MediaWikiServices;
+// @codeCoverageIgnoreStart
+require_once __DIR__ . '/Maintenance.php';
+// @codeCoverageIgnoreEnd
 
 class CreateBotPassword extends Maintenance {
 	/**
@@ -66,7 +56,7 @@ class CreateBotPassword extends Maintenance {
 		$username = $this->getArg( 0 );
 		$password = $this->getArg( 1 );
 		$appId = $this->getOption( 'appid' );
-		$grants = explode( ',', $this->getOption( 'grants' ) );
+		$grants = explode( ',', $this->getOption( 'grants', '' ) );
 
 		$errors = [];
 		if ( $username === null ) {
@@ -82,7 +72,7 @@ class CreateBotPassword extends Maintenance {
 			$this->fatalError( implode( "\n", $errors ) );
 		}
 
-		$services = MediaWikiServices::getInstance();
+		$services = $this->getServiceContainer();
 		$grantsInfo = $services->getGrantsInfo();
 		$invalidGrants = array_diff( $grants, $grantsInfo->getValidGrants() );
 		if ( count( $invalidGrants ) > 0 ) {
@@ -94,13 +84,13 @@ class CreateBotPassword extends Maintenance {
 
 		$passwordFactory = $services->getPasswordFactory();
 
-		$userId = User::idFromName( $username );
-		if ( $userId === null ) {
+		$userIdentity = $services->getUserIdentityLookup()->getUserIdentityByName( $username );
+		if ( !$userIdentity || !$userIdentity->isRegistered() ) {
 			$this->fatalError( "Cannot create bot password for non-existent user '$username'." );
 		}
 
 		if ( $password === null ) {
-			$password = BotPassword::generatePassword( $this->getConfig() );
+			$password = BotPassword::generatePassword();
 		} else {
 			$passwordLength = strlen( $password );
 			if ( $passwordLength < BotPassword::PASSWORD_MINLENGTH ) {
@@ -127,15 +117,13 @@ class CreateBotPassword extends Maintenance {
 			$this->output( "Success.\n" );
 			$this->output( "Log in using username:'{$username}@{$appId}' and password:'{$password}'.\n" );
 		} else {
-			$this->fatalError(
-				"Bot password creation failed. Does this appid already exist for the user perhaps?\n\nErrors:\n" .
-				print_r( $status->getErrors(), true )
-			);
+			$this->error( "Bot password creation failed. Does this appid already exist for the user perhaps?" );
+			$this->fatalError( $status );
 		}
 	}
 
 	public function showGrants() {
-		$permissions = MediaWikiServices::getInstance()->getGrantsInfo()->getValidGrants();
+		$permissions = $this->getServiceContainer()->getGrantsInfo()->getValidGrants();
 		sort( $permissions );
 
 		$this->output( str_pad( 'GRANT', self::SHOWGRANTS_COLUMN_WIDTH ) . " DESCRIPTION\n" );
@@ -148,5 +136,7 @@ class CreateBotPassword extends Maintenance {
 	}
 }
 
+// @codeCoverageIgnoreStart
 $maintClass = CreateBotPassword::class;
 require_once RUN_MAINTENANCE_IF_MAIN;
+// @codeCoverageIgnoreEnd

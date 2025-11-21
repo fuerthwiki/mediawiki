@@ -1,14 +1,11 @@
-'use strict';
+import { createApiClient } from 'wdio-mediawiki/Api.js';
+import Page from './Page.js';
 
-const MWBot = require( 'mwbot' );
-const Page = require( './Page' );
 const MAINPAGE_REQUESTS_MAX_RUNS = 10; // (arbitrary) safe-guard against endless execution
 
 function getJobCount() {
-	const bot = new MWBot( {
-		apiUrl: `${browser.config.baseUrl}/api.php`
-	} );
-	return bot.request( {
+	const api = createApiClient();
+	return api.request( {
 		action: 'query',
 		meta: 'siteinfo',
 		siprop: 'statistics'
@@ -16,27 +13,27 @@ function getJobCount() {
 }
 
 function log( message ) {
-	process.stdout.write( `RunJobs ${message}\n` );
+	process.stdout.write( `RunJobs ${ message }\n` );
 }
 
 function runThroughMainPageRequests( runCount = 1 ) {
 	const page = new Page();
-	log( `through requests to the main page (run ${runCount}).` );
+	log( `through requests to the main page (run ${ runCount }).` );
 
-	page.openTitle( '' );
-
-	return getJobCount().then( ( jobCount ) => {
-		if ( jobCount === 0 ) {
-			log( 'found no more queued jobs.' );
-			return;
-		}
-		log( `detected ${jobCount} more queued job(s).` );
-		if ( runCount >= MAINPAGE_REQUESTS_MAX_RUNS ) {
-			log( 'stopping requests to the main page due to reached limit.' );
-			return;
-		}
-		return runThroughMainPageRequests( ++runCount );
-	} );
+	return page.openTitle( '' ).then(
+		() => getJobCount().then( ( jobCount ) => {
+			if ( jobCount === 0 ) {
+				log( 'found no more queued jobs.' );
+				return;
+			}
+			log( `detected ${ jobCount } more queued job(s).` );
+			if ( runCount >= MAINPAGE_REQUESTS_MAX_RUNS ) {
+				log( 'stopping requests to the main page due to reached limit.' );
+				return;
+			}
+			return runThroughMainPageRequests( ++runCount );
+		} )
+	);
 }
 
 /**
@@ -61,10 +58,8 @@ function runThroughMainPageRequests( runCount = 1 ) {
 class RunJobs {
 
 	static run() {
-		browser.call( () => {
-			return runThroughMainPageRequests();
-		} );
+		browser.call( () => runThroughMainPageRequests() );
 	}
 }
 
-module.exports = RunJobs;
+export default RunJobs;

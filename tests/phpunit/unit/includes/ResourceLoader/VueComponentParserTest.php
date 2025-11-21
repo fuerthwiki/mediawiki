@@ -3,12 +3,15 @@
 namespace MediaWiki\Tests\Unit\ResourceLoader;
 
 use MediaWiki\ResourceLoader\VueComponentParser;
+use MediaWikiCoversValidator;
 
 /**
  * @group ResourceLoader
- * @covers VueComponentParser
+ * @covers \MediaWiki\ResourceLoader\VueComponentParser
  */
 class VueComponentParserTest extends \PHPUnit\Framework\TestCase {
+	use MediaWikiCoversValidator;
+
 	/**
 	 * @dataProvider provideTestParse
 	 */
@@ -343,6 +346,5 @@ class VueComponentParserTest extends \PHPUnit\Framework\TestCase {
 				'Template with self-closing tag (broken)'
 			],
 		];
-		// phpcs:enable
 	}
 }

@@ -1,15 +1,13 @@
 <?php
 /** Saraiki (Arabic script) (سرائیکی)
  *
- * To improve a translation please visit https://translatewiki.net
- *
  * @file
  * @ingroup Languages
  *
  * @author Sraiki
  */
 
-$fallback = 'ur, pnb';
+$fallback = 'skr';
 
 $rtl = true;
 
@@ -27,12 +25,14 @@ $digitTransformTable = [
 	'%' => '٪', # U+066a
 ];
 
+$numberingSystem = 'arab';
+
 $namespaceNames = [
 	NS_MEDIA            => 'میڈیا',
 	NS_SPECIAL          => 'خاص',
 	NS_TALK             => 'ڳالھ_مہاڑ',
 	NS_USER             => 'ورتݨ_آلا',
-	NS_USER_TALK        => 'ورتݨ_آلے_دی_ڳالھ_مہاڑ',
+	NS_USER_TALK        => 'ورتݨ_آلے_نال_ڳالھ_مہاڑ',
 	NS_PROJECT_TALK     => '$1_ڳالھ_مہاڑ',
 	NS_FILE             => 'فائل',
 	NS_FILE_TALK        => 'فائل_ڳالھ_مہاڑ',
@@ -46,4 +46,8 @@ $namespaceNames = [
 	NS_CATEGORY_TALK    => 'ونکی_ڳالھ_مہاڑ',
 ];
 
-$linkTrail = "/^([آابٻپتٹثجچڄحخدڈݙذرڑزژسشصضطظعغفقکگڳلمنݨوہھیےئأءۃڋڰںؤ]+)(.*)$/sDu";
+$namespaceAliases = [
+	'ورتݨ_آلے_دی_ڳالھ_مہاڑ' => NS_USER_TALK,
+];
+
+$linkTrail = "/^([آابٻپتٹثجڄچحخدڈݙذرڑزژسشصضطظعغفقکگڳلمنںݨوؤہھۃءیئے]+)(.*)$/sDu";

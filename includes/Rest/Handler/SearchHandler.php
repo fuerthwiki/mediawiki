@@ -2,27 +2,28 @@
 
 namespace MediaWiki\Rest\Handler;
 
-use Config;
 use InvalidArgumentException;
 use ISearchResultSet;
 use MediaWiki\Cache\CacheKeyHelper;
+use MediaWiki\Config\Config;
 use MediaWiki\MainConfigNames;
 use MediaWiki\Page\PageIdentity;
 use MediaWiki\Page\PageStore;
 use MediaWiki\Page\RedirectLookup;
 use MediaWiki\Permissions\PermissionManager;
 use MediaWiki\Rest\Handler;
+use MediaWiki\Rest\Handler\Helper\RestStatusTrait;
 use MediaWiki\Rest\LocalizedHttpException;
 use MediaWiki\Rest\Response;
 use MediaWiki\Search\Entity\SearchResultThumbnail;
 use MediaWiki\Search\SearchResultThumbnailProvider;
+use MediaWiki\Title\TitleFormatter;
 use SearchEngine;
 use SearchEngineConfig;
 use SearchEngineFactory;
 use SearchResult;
 use SearchSuggestion;
-use Status;
-use TitleFormatter;
+use StatusValue;
 use Wikimedia\Message\MessageValue;
 use Wikimedia\ParamValidator\ParamValidator;
 use Wikimedia\ParamValidator\TypeDef\IntegerDef;
@@ -31,27 +32,15 @@ use Wikimedia\ParamValidator\TypeDef\IntegerDef;
  * Handler class for Core REST API endpoint that handles basic search
  */
 class SearchHandler extends Handler {
+	use RestStatusTrait;
 
-	/** @var SearchEngineFactory */
-	private $searchEngineFactory;
-
-	/** @var SearchEngineConfig */
-	private $searchEngineConfig;
-
-	/** @var SearchResultThumbnailProvider */
-	private $searchResultThumbnailProvider;
-
-	/** @var PermissionManager */
-	private $permissionManager;
-
-	/** @var RedirectLookup */
-	private $redirectLookup;
-
-	/** @var PageStore */
-	private $pageStore;
-
-	/** @var TitleFormatter */
-	private $titleFormatter;
+	private SearchEngineFactory $searchEngineFactory;
+	private SearchEngineConfig $searchEngineConfig;
+	private SearchResultThumbnailProvider $searchResultThumbnailProvider;
+	private PermissionManager $permissionManager;
+	private RedirectLookup $redirectLookup;
+	private PageStore $pageStore;
+	private TitleFormatter $titleFormatter;
 
 	/**
 	 * Search page body and titles.
@@ -73,7 +62,7 @@ class SearchHandler extends Handler {
 	 */
 	private $mode = null;
 
-	/** Limit results to 50 pages per default */
+	/** Limit results to 50 pages by default */
 	private const LIMIT = 50;
 
 	/** Hard limit results to 100 pages */
@@ -90,16 +79,6 @@ class SearchHandler extends Handler {
 	 */
 	private $completionCacheExpiry;
 
-	/**
-	 * @param Config $config
-	 * @param SearchEngineFactory $searchEngineFactory
-	 * @param SearchEngineConfig $searchEngineConfig
-	 * @param SearchResultThumbnailProvider $searchResultThumbnailProvider
-	 * @param PermissionManager $permissionManager
-	 * @param RedirectLookup $redirectLookup
-	 * @param PageStore $pageStore
-	 * @param TitleFormatter $titleFormatter
-	 */
 	public function __construct(
 		Config $config,
 		SearchEngineFactory $searchEngineFactory,
@@ -145,27 +124,24 @@ class SearchHandler extends Handler {
 		return $searchEngine;
 	}
 
+	/** @inheritDoc */
 	public function needsWriteAccess() {
 		return false;
 	}
 
 	/**
 	 * Get SearchResults when results are either SearchResultSet or Status objects
-	 * @param ISearchResultSet|Status|null $results
+	 * @param ISearchResultSet|StatusValue|null $results
 	 * @return SearchResult[]
 	 * @throws LocalizedHttpException
 	 */
 	private function getSearchResultsOrThrow( $results ) {
 		if ( $results ) {
-			if ( $results instanceof Status ) {
+			if ( $results instanceof StatusValue ) {
 				$status = $results;
 				if ( !$status->isOK() ) {
-					list( $error ) = $status->splitByErrorType();
-					if ( $error->getErrors() ) { // Only throw for errors, suppress warnings (for now)
-						$errorMessages = $error->getMessage();
-						throw new LocalizedHttpException(
-							new MessageValue( "rest-search-error", [ $errorMessages->getKey() ] )
-						);
+					if ( $status->getMessages( 'error' ) ) { // Only throw for errors, suppress warnings (for now)
+						$this->throwExceptionForStatus( $status, 'rest-search-error', 500 );
 					}
 				}
 				$statusValue = $status->getValue();
@@ -252,12 +228,13 @@ class SearchHandler extends Handler {
 	 * @param SearchResult|SearchSuggestion $result
 	 *
 	 * @phpcs:ignore Generic.Files.LineLength
-	 * @phan-return (false|array{pageIdentity:PageIdentity,suggestion:?SearchSuggestion,result:?SearchResult,redirect:?PageIdentity}) $pageInfos
+	 * @phan-return (false|array{pageIdentity:PageIdentity,suggestion:?SearchSuggestion,result:?SearchResult,redirect:?PageIdentity,anchor:?string}) $pageInfos
 	 * @return bool|array Objects representing a given page:
 	 *   - pageIdentity: PageIdentity of page to return as the match
 	 *   - suggestion: SearchSuggestion or null if $searchResponse is SearchResults
 	 *   - result: SearchResult or null if $searchResponse is SearchSuggestions
 	 *   - redirect: PageIdentity|null depending on if the SearchResult|SearchSuggestion was a redirect
+	 * 	 - anchor: string|null if the SearchResult|SearchSuggestion was a redirect, this is the page anchor (if any)
 	 */
 	private function buildSinglePage( $title, $result ) {
 		$redirectTarget = $title->canExist() ? $this->redirectLookup->getRedirectTarget( $title ) : null;
@@ -265,9 +242,11 @@ class SearchHandler extends Handler {
 		// See T301346, T303352
 		if ( $redirectTarget && $redirectTarget->getNamespace() > -1 && !$redirectTarget->isExternal() ) {
 			$redirectSource = $title;
+			$anchor = $redirectTarget->getFragment();
 			$title = $this->pageStore->getPageForLink( $redirectTarget );
 		} else {
 			$redirectSource = null;
+			$anchor = null;
 		}
 		if ( !$title || !$this->getAuthority()->probablyCan( 'read', $title ) ) {
 			return false;
@@ -276,7 +255,8 @@ class SearchHandler extends Handler {
 			'pageIdentity' => $title,
 			'suggestion' => $result instanceof SearchSuggestion ? $result : null,
 			'result' => $result instanceof SearchResult ? $result : null,
-			'redirect' => $redirectSource
+			'redirect' => $redirectSource,
+			'anchor' => $anchor
 		];
 	}
 
@@ -285,12 +265,12 @@ class SearchHandler extends Handler {
 	 * @param array $pageInfos Page Info objects
 	 * @param array $thumbsAndDesc Associative array mapping pageId to array of description and thumbnail
 	 * @phpcs:ignore Generic.Files.LineLength
-	 * @phan-param array<int,array{pageIdentity:PageIdentity,suggestion:SearchSuggestion,result:SearchResult,redirect:?PageIdentity}> $pageInfos
+	 * @phan-param array<int,array{pageIdentity:PageIdentity,suggestion:SearchSuggestion,result:SearchResult,redirect:?PageIdentity,anchor:?string}> $pageInfos
 	 * @phan-param array<int,array{description:array,thumbnail:array}> $thumbsAndDesc
 	 *
 	 * @phpcs:ignore Generic.Files.LineLength
-	 * @phan-return array<int,array{id:int,key:string,title:string,excerpt:?string,matched_title:?string, description:?array, thumbnail:?array}> $pages
-	 * @return array[] of [ id, key, title, excerpt, matched_title ]
+	 * @phan-return array<int,array{id:int,key:string,title:string,excerpt:?string,matched_title:?string,anchor:?string, description:?array, thumbnail:?array}> $pages
+	 * @return array[] of [ id, key, title, excerpt, matched_title, anchor ]
 	 */
 	private function buildResultFromPageInfos( array $pageInfos, array $thumbsAndDesc ): array {
 		$pages = [];
@@ -299,7 +279,8 @@ class SearchHandler extends Handler {
 				'pageIdentity' => $page,
 				'suggestion' => $sugg,
 				'result' => $result,
-				'redirect' => $redirect
+				'redirect' => $redirect,
+				'anchor' => $anchor
 			] = $pageInfo;
 			$excerpt = $sugg ? $sugg->getText() : $result->getTextSnippet();
 			$id = ( $page instanceof PageIdentity && $page->canExist() ) ? $page->getId() : 0;
@@ -309,6 +290,7 @@ class SearchHandler extends Handler {
 				'title' => $this->titleFormatter->getPrefixedText( $page ),
 				'excerpt' => $excerpt ?: null,
 				'matched_title' => $redirect ? $this->titleFormatter->getPrefixedText( $redirect ) : null,
+				'anchor' => $anchor ?: null,
 				'description' => $id > 0 ? $thumbsAndDesc[$id]['description'] : null,
 				'thumbnail' => $id > 0 ? $thumbsAndDesc[$id]['thumbnail'] : null,
 			];
@@ -330,7 +312,6 @@ class SearchHandler extends Handler {
 
 		return [
 			'mimetype' => $thumbnail->getMimeType(),
-			'size' => $thumbnail->getSize(),
 			'width' => $thumbnail->getWidth(),
 			'height' => $thumbnail->getHeight(),
 			'duration' => $thumbnail->getDuration(),
@@ -424,12 +405,14 @@ class SearchHandler extends Handler {
 		return $response;
 	}
 
+	/** @inheritDoc */
 	public function getParamSettings() {
 		return [
 			'q' => [
 				self::PARAM_SOURCE => 'query',
 				ParamValidator::PARAM_TYPE => 'string',
 				ParamValidator::PARAM_REQUIRED => true,
+				Handler::PARAM_DESCRIPTION => new MessageValue( 'rest-param-desc-search-q' ),
 			],
 			'limit' => [
 				self::PARAM_SOURCE => 'query',
@@ -438,7 +421,12 @@ class SearchHandler extends Handler {
 				ParamValidator::PARAM_DEFAULT => self::LIMIT,
 				IntegerDef::PARAM_MIN => 1,
 				IntegerDef::PARAM_MAX => self::MAX_LIMIT,
+				Handler::PARAM_DESCRIPTION => new MessageValue( 'rest-param-desc-search-limit' ),
 			],
 		];
+	}
+
+	public function getResponseBodySchemaFileName( string $method ): ?string {
+		return 'includes/Rest/Handler/Schema/SearchResults.json';
 	}
 }

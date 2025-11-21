@@ -2,6 +2,9 @@
 
 namespace MediaWiki\Rest;
 
+use InvalidArgumentException;
+use Stringable;
+
 /**
  * A stream class which uses a string as the underlying storage. Surprisingly,
  * Guzzle does not appear to have one of these. BufferStream does not do what
@@ -13,7 +16,7 @@ namespace MediaWiki\Rest;
  * Seeking is supported, however seeking past the end of the string does not
  * fill with null bytes as in a real file, it throws an exception instead.
  */
-class StringStream implements CopyableStreamInterface {
+class StringStream implements Stringable, CopyableStreamInterface {
 
 	/** @var string */
 	private $contents;
@@ -32,6 +35,7 @@ class StringStream implements CopyableStreamInterface {
 		$this->contents = $contents;
 	}
 
+	/** @inheritDoc */
 	public function copyToStream( $stream ) {
 		fwrite( $stream, $this->getContents() );
 	}
@@ -43,26 +47,32 @@ class StringStream implements CopyableStreamInterface {
 	public function close() {
 	}
 
+	/** @inheritDoc */
 	public function detach() {
 		return null;
 	}
 
+	/** @inheritDoc */
 	public function getSize() {
 		return strlen( $this->contents );
 	}
 
+	/** @inheritDoc */
 	public function tell() {
 		return $this->offset;
 	}
 
+	/** @inheritDoc */
 	public function eof() {
 		return $this->offset >= strlen( $this->contents );
 	}
 
+	/** @inheritDoc */
 	public function isSeekable() {
 		return true;
 	}
 
+	/** @inheritDoc */
 	public function seek( $offset, $whence = SEEK_SET ) {
 		switch ( $whence ) {
 			case SEEK_SET:
@@ -78,24 +88,27 @@ class StringStream implements CopyableStreamInterface {
 				break;
 
 			default:
-				throw new \InvalidArgumentException( "Invalid value for \$whence" );
+				throw new InvalidArgumentException( "Invalid value for \$whence" );
 		}
 		if ( $this->offset > strlen( $this->contents ) ) {
-			throw new \InvalidArgumentException( "Cannot seek beyond the end of a StringStream" );
+			throw new InvalidArgumentException( "Cannot seek beyond the end of a StringStream" );
 		}
 		if ( $this->offset < 0 ) {
-			throw new \InvalidArgumentException( "Cannot seek before the start of a StringStream" );
+			throw new InvalidArgumentException( "Cannot seek before the start of a StringStream" );
 		}
 	}
 
+	/** @inheritDoc */
 	public function rewind() {
 		$this->offset = 0;
 	}
 
+	/** @inheritDoc */
 	public function isWritable() {
 		return true;
 	}
 
+	/** @inheritDoc */
 	public function write( $string ) {
 		if ( $this->offset === strlen( $this->contents ) ) {
 			$this->contents .= $string;
@@ -107,10 +120,12 @@ class StringStream implements CopyableStreamInterface {
 		return strlen( $string );
 	}
 
+	/** @inheritDoc */
 	public function isReadable() {
 		return true;
 	}
 
+	/** @inheritDoc */
 	public function read( $length ) {
 		if ( $this->offset === 0 && $length >= strlen( $this->contents ) ) {
 			$ret = $this->contents;
@@ -123,6 +138,7 @@ class StringStream implements CopyableStreamInterface {
 		return $ret;
 	}
 
+	/** @inheritDoc */
 	public function getContents() {
 		if ( $this->offset === 0 ) {
 			$ret = $this->contents;
@@ -135,6 +151,7 @@ class StringStream implements CopyableStreamInterface {
 		return $ret;
 	}
 
+	/** @inheritDoc */
 	public function getMetadata( $key = null ) {
 		return null;
 	}

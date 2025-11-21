@@ -1,7 +1,11 @@
 <?php
 /** Kashmiri (Devanagari script) (कॉशुर)
  *
- * To improve a translation please visit https://translatewiki.net
+ * Deprecated, preserved for backwards compatibility
+ * and for possible future reinstatement if
+ * the usage of this script becomes active.
+ * Since T314476, the primary script for
+ * Kasmiri is Perso-Arabic.
  *
  * @file
  * @ingroup Languages
@@ -41,3 +45,5 @@ $digitTransformTable = [
 	'8' => '८', # U+096E
 	'9' => '९', # U+096F
 ];
+
+$numberingSystem = 'deva';

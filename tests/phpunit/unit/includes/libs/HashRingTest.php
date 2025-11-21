@@ -1,10 +1,17 @@
 <?php
 
+namespace Wikimedia\Tests;
+
+use MediaWikiCoversValidator;
+use PHPUnit\Framework\TestCase;
+use Wikimedia\HashRing\HashRing;
+use Wikimedia\TestingAccessWrapper;
+
 /**
  * @group HashRing
- * @covers HashRing
+ * @covers \Wikimedia\HashRing\HashRing
  */
-class HashRingTest extends PHPUnit\Framework\TestCase {
+class HashRingTest extends TestCase {
 
 	use MediaWikiCoversValidator;
 
@@ -112,7 +119,7 @@ class HashRingTest extends PHPUnit\Framework\TestCase {
 	}
 
 	/**
-	 * @dataProvider providor_getHashLocationWeights
+	 * @dataProvider provideHashLocationWeights
 	 */
 	public function testHashRingRatios( $locations, $expectedHits ) {
 		$ring = new HashRing( $locations, 'whirlpool' );
@@ -124,7 +131,7 @@ class HashRingTest extends PHPUnit\Framework\TestCase {
 		$this->assertEquals( $expectedHits, $locationStats );
 	}
 
-	public static function providor_getHashLocationWeights() {
+	public static function provideHashLocationWeights() {
 		return [
 			[
 				[ 'big' => 10, 'medium' => 5, 'small' => 1 ],
@@ -134,7 +141,7 @@ class HashRingTest extends PHPUnit\Framework\TestCase {
 	}
 
 	/**
-	 * @dataProvider providor_getHashLocationWeights2
+	 * @dataProvider provideHashLocationWeights2
 	 */
 	public function testHashRingRatios2( $locations, $expected ) {
 		$ring = new HashRing( $locations, 'sha1' );
@@ -147,7 +154,7 @@ class HashRingTest extends PHPUnit\Framework\TestCase {
 		$this->assertEquals( $expected, $locationStats );
 	}
 
-	public static function providor_getHashLocationWeights2() {
+	public static function provideHashLocationWeights2() {
 		return [
 			[
 				[ 'big1' => 10, 'big2' => 10, 'big3' => 10, 'small1' => 1, 'small2' => 1 ],
@@ -212,7 +219,7 @@ class HashRingTest extends PHPUnit\Framework\TestCase {
 			'10.0.1.8:11211' => 100
 		];
 		$ring = new HashRing( $map, 'md5' );
-		$wrapper = \Wikimedia\TestingAccessWrapper::newFromObject( $ring );
+		$wrapper = TestingAccessWrapper::newFromObject( $ring );
 
 		$ketama_test = static function ( $count ) use ( $wrapper ) {
 			$baseRing = $wrapper->baseRing;

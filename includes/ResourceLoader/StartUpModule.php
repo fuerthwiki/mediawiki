@@ -1,26 +1,13 @@
 <?php
 /**
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License along
- * with this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
- * http://www.gnu.org/copyleft/gpl.html
- *
+ * @license GPL-2.0-or-later
  * @file
  * @author Trevor Parscal
  * @author Roan Kattouw
  */
 namespace MediaWiki\ResourceLoader;
 
+use DomainException;
 use Exception;
 use MediaWiki\MainConfigNames;
 use Wikimedia\RequestTimeout\TimeoutException;
@@ -28,15 +15,11 @@ use Wikimedia\RequestTimeout\TimeoutException;
 /**
  * Module for ResourceLoader initialization.
  *
- * See also <https://www.mediawiki.org/wiki/ResourceLoader/Features#Startup_Module>
+ * See also <https://www.mediawiki.org/wiki/ResourceLoader/Architecture#Startup_Module>
  *
  * The startup module, as being called only from ClientHtml, has
- * the ability to vary based extra query parameters, in addition to those
+ * the ability to vary based on extra query parameters, in addition to those
  * from Context:
- *
- * - target: Only register modules in the client intended for this target.
- *   Default: "desktop".
- *   See also: OutputPage::setTarget(), Module::getTargets().
  *
  * - safemode: Only register modules that have ORIGIN_CORE as their origin.
  *   This disables ORIGIN_USER modules and mw.loader.store. (T185303, T145498)
@@ -46,9 +29,15 @@ use Wikimedia\RequestTimeout\TimeoutException;
  * @internal
  */
 class StartUpModule extends Module {
-	protected $targets = [ 'desktop', 'mobile' ];
 
-	private $groupIds = [
+	/**
+	 * Cache version for client-side ResourceLoader module storage.
+	 * Like ResourceLoaderStorageVersion but not configurable.
+	 */
+	private const STORAGE_VERSION = '3';
+
+	/** @var int[] */
+	private array $groupIds = [
 		// These reserved numbers MUST start at 0 and not skip any. These are preset
 		// for forward compatibility so that they can be safely referenced by mediawiki.js,
 		// even when the code is cached and the order of registrations (and implicit
@@ -62,14 +51,14 @@ class StartUpModule extends Module {
 	 *
 	 * @param array $registryData
 	 * @param string $moduleName
-	 * @param string[] $handled Internal parameter for recursion. (Optional)
+	 * @param array<string,true> &$handled Internal parameter for recursion.
 	 * @return array
 	 * @throws CircularDependencyError
 	 */
 	protected static function getImplicitDependencies(
 		array $registryData,
 		string $moduleName,
-		array $handled = []
+		array &$handled
 	): array {
 		static $dependencyCache = [];
 
@@ -88,9 +77,9 @@ class StartUpModule extends Module {
 			$flat = $data['dependencies'];
 
 			// Prevent recursion
-			$handled[] = $moduleName;
+			$handled[$moduleName] = true;
 			foreach ( $data['dependencies'] as $dependency ) {
-				if ( in_array( $dependency, $handled, true ) ) {
+				if ( isset( $handled[$dependency] ) ) {
 					// If we encounter a circular dependency, then stop the optimiser and leave the
 					// original dependencies array unmodified. Circular dependencies are not
 					// supported in ResourceLoader. Awareness of them exists here so that we can
@@ -135,10 +124,11 @@ class StartUpModule extends Module {
 			$dependencies = $data['dependencies'];
 			try {
 				foreach ( $data['dependencies'] as $dependency ) {
-					$implicitDependencies = self::getImplicitDependencies( $registryData, $dependency );
+					$depCheck = [];
+					$implicitDependencies = self::getImplicitDependencies( $registryData, $dependency, $depCheck );
 					$dependencies = array_diff( $dependencies, $implicitDependencies );
 				}
-			} catch ( CircularDependencyError $err ) {
+			} catch ( CircularDependencyError ) {
 				// Leave unchanged
 				$dependencies = $data['dependencies'];
 			}
@@ -158,11 +148,8 @@ class StartUpModule extends Module {
 		$resourceLoader = $context->getResourceLoader();
 		// Future developers: Use WebRequest::getRawVal() instead getVal().
 		// The getVal() method performs slow Language+UTF logic. (f303bb9360)
-		$target = $context->getRequest()->getRawVal( 'target', 'desktop' );
 		$safemode = $context->getRequest()->getRawVal( 'safemode' ) === '1';
 		$skin = $context->getSkin();
-		// Allow disabling target filter, for use by SpecialJavaScriptTest.
-		$byPassTargetFilter = $this->getConfig()->get( MainConfigNames::EnableJavaScriptTest ) && $target === 'test';
 
 		$moduleNames = $resourceLoader->getModuleNames();
 
@@ -186,11 +173,9 @@ class StartUpModule extends Module {
 		$registryData = [];
 		foreach ( $moduleNames as $name ) {
 			$module = $resourceLoader->getModule( $name );
-			$moduleTargets = $module->getTargets();
 			$moduleSkins = $module->getSkins();
 			if (
-				( !$byPassTargetFilter && !in_array( $target, $moduleTargets ) )
-				|| ( $safemode && $module->getOrigin() > Module::ORIGIN_CORE_INDIVIDUAL )
+				( $safemode && $module->getOrigin() > Module::ORIGIN_CORE_INDIVIDUAL )
 				|| ( $moduleSkins !== null && !in_array( $skin, $moduleSkins ) )
 			) {
 				continue;
@@ -246,7 +231,6 @@ class StartUpModule extends Module {
 			$registryData[$name] = [
 				'version' => $versionHash,
 				'dependencies' => $module->getDependencies( $context ),
-				'es6' => $module->requiresES6(),
 				'group' => $this->getGroupId( $module->getGroup() ),
 				'source' => $module->getSource(),
 				'skip' => $skipFunction,
@@ -256,7 +240,12 @@ class StartUpModule extends Module {
 		self::compileUnresolvedDependencies( $registryData );
 
 		// Register sources
-		$out = ResourceLoader::makeLoaderSourcesScript( $context, $resourceLoader->getSources() );
+		$sources = $oldSources = $resourceLoader->getSources();
+		$this->getHookRunner()->onResourceLoaderModifyEmbeddedSourceUrls( $sources );
+		if ( array_keys( $sources ) !== array_keys( $oldSources ) ) {
+			throw new DomainException( 'ResourceLoaderModifyEmbeddedSourceUrls hook must not add or remove sources' );
+		}
+		$out = ResourceLoader::makeLoaderSourcesScript( $context, $sources );
 
 		// Figure out the different call signatures for mw.loader.register
 		$registrations = [];
@@ -264,10 +253,7 @@ class StartUpModule extends Module {
 			// Call mw.loader.register(name, version, dependencies, group, source, skip)
 			$registrations[] = [
 				$name,
-				// HACK: signify ES6 with a ! added at the end of the version
-				// This avoids having to add another register() parameter, and generating
-				// a bunch of nulls for ES6-only modules
-				$data['version'] . ( $data['es6'] ? '!' : '' ),
+				$data['version'],
 				$data['dependencies'],
 				$data['group'],
 				// Swap default (local) for null
@@ -286,7 +272,7 @@ class StartUpModule extends Module {
 		return $out;
 	}
 
-	private function getGroupId( $groupName ): ?int {
+	private function getGroupId( ?string $groupName ): ?int {
 		if ( $groupName === null ) {
 			return null;
 		}
@@ -300,8 +286,6 @@ class StartUpModule extends Module {
 
 	/**
 	 * Base modules implicitly available to all modules.
-	 *
-	 * @return array
 	 */
 	private function getBaseModules(): array {
 		return [ 'jquery', 'mediawiki.base' ];
@@ -341,6 +325,7 @@ class StartUpModule extends Module {
 	private function getStoreVary( Context $context ): string {
 		return implode( ':', [
 			$context->getSkin(),
+			self::STORAGE_VERSION,
 			$this->getConfig()->get( MainConfigNames::ResourceLoaderStorageVersion ),
 			$context->getLanguage(),
 		] );
@@ -348,9 +333,9 @@ class StartUpModule extends Module {
 
 	/**
 	 * @param Context $context
-	 * @return string JavaScript code
+	 * @return string|array JavaScript code
 	 */
-	public function getScript( Context $context ): string {
+	public function getScript( Context $context ) {
 		global $IP;
 		$conf = $this->getConfig();
 
@@ -358,9 +343,10 @@ class StartUpModule extends Module {
 			return '/* Requires only=scripts */';
 		}
 
+		$enableJsProfiler = $conf->get( MainConfigNames::ResourceLoaderEnableJSProfiler );
+
 		$startupCode = file_get_contents( "$IP/resources/src/startup/startup.js" );
 
-		// The files read here MUST be kept in sync with maintenance/jsduck/eg-iframe.html.
 		$mwLoaderCode = file_get_contents( "$IP/resources/src/startup/mediawiki.js" ) .
 			file_get_contents( "$IP/resources/src/startup/mediawiki.loader.js" ) .
 			file_get_contents( "$IP/resources/src/startup/mediawiki.requestIdleCallback.js" );
@@ -375,13 +361,11 @@ class StartUpModule extends Module {
 			'$VARS.reqBase' => $context->encodeJson( (object)$context->getReqBase() ),
 			'$VARS.baseModules' => $context->encodeJson( $this->getBaseModules() ),
 			'$VARS.maxQueryLength' => $context->encodeJson(
-				// In debug mode (except legacy debug mode), let the client fetch each module in
+				// In debug mode, let the client fetch each module in
 				// its own dedicated request (T85805).
 				// This is effectively the equivalent of ClientHtml::makeLoad,
 				// which does this for stylesheets.
-				( !$context->getDebug() || $context->getDebug() === $context::DEBUG_LEGACY ) ?
-					$this->getMaxQueryLength() :
-					0
+				!$context->getDebug() ? $this->getMaxQueryLength() : 0
 			),
 			'$VARS.storeEnabled' => $context->encodeJson(
 				$conf->get( MainConfigNames::ResourceLoaderStorageEnabled )
@@ -392,31 +376,36 @@ class StartUpModule extends Module {
 			'$VARS.storeVary' => $context->encodeJson( $this->getStoreVary( $context ) ),
 			'$VARS.groupUser' => $context->encodeJson( $this->getGroupId( self::GROUP_USER ) ),
 			'$VARS.groupPrivate' => $context->encodeJson( $this->getGroupId( self::GROUP_PRIVATE ) ),
-			// Only expose private mw.loader.isES6ForTest in test mode.
-			'$CODE.test( isES6Supported )' => $conf->get( MainConfigNames::EnableJavaScriptTest ) ?
-				'(mw.loader.isES6ForTest !== undefined ? mw.loader.isES6ForTest : isES6Supported)' :
-				'isES6Supported',
-			// Only expose private mw.redefineFallbacksForTest in test mode.
-			'$CODE.maybeRedefineFallbacksForTest();' => $conf->get( MainConfigNames::EnableJavaScriptTest ) ?
-				'mw.redefineFallbacksForTest = defineFallbacks;' :
-				'',
+			'$VARS.sourceMapLinks' => $context->encodeJson(
+				$conf->get( MainConfigNames::ResourceLoaderEnableSourceMapLinks )
+			),
+
+			// When profiling is enabled, insert the calls.
+			// When disabled (the default), insert nothing.
+			'$CODE.profileExecuteStart();' => $enableJsProfiler
+				? 'mw.loader.profiler.onExecuteStart( module );'
+				: '',
+			'$CODE.profileExecuteEnd();' => $enableJsProfiler
+				? 'mw.loader.profiler.onExecuteEnd( module );'
+				: '',
+			'$CODE.profileScriptStart();' => $enableJsProfiler
+				? 'mw.loader.profiler.onScriptStart( module );'
+				: '',
+			'$CODE.profileScriptEnd();' => $enableJsProfiler
+				? 'mw.loader.profiler.onScriptEnd( module );'
+				: '',
+
+			// Debug stubs
+			'$CODE.consoleLog();' => $context->getDebug()
+				? 'console.log.apply( console, arguments );'
+				: '',
+
+			// As a paranoia measure, create a window.QUnit placeholder that shadows any
+			// DOM global (e.g. for <h2 id="QUnit">), to avoid test code in prod (T356768).
+			'$CODE.undefineQUnit();' => !$conf->get( MainConfigNames::EnableJavaScriptTest )
+				? 'window.QUnit = undefined;'
+				: '',
 		];
-		$profilerStubs = [
-			'$CODE.profileExecuteStart();' => 'mw.loader.profiler.onExecuteStart( module );',
-			'$CODE.profileExecuteEnd();' => 'mw.loader.profiler.onExecuteEnd( module );',
-			'$CODE.profileScriptStart();' => 'mw.loader.profiler.onScriptStart( module );',
-			'$CODE.profileScriptEnd();' => 'mw.loader.profiler.onScriptEnd( module );',
-		];
-		$debugStubs = [
-			'$CODE.consoleLog();' => 'console.log.apply( console, arguments );',
-		];
-		// When profiling is enabled, insert the calls. When disabled (by default), insert nothing.
-		$mwLoaderPairs += $conf->get( MainConfigNames::ResourceLoaderEnableJSProfiler )
-			? $profilerStubs
-			: array_fill_keys( array_keys( $profilerStubs ), '' );
-		$mwLoaderPairs += $context->getDebug()
-			? $debugStubs
-			: array_fill_keys( array_keys( $debugStubs ), '' );
 		$mwLoaderCode = strtr( $mwLoaderCode, $mwLoaderPairs );
 
 		// Perform string replacements for startup.js
@@ -427,25 +416,27 @@ class StartUpModule extends Module {
 		];
 		$startupCode = strtr( $startupCode, $pairs );
 
-		return $startupCode;
+		return [
+			'plainScripts' => [
+				[
+					'virtualFilePath' => new FilePath(
+						'resources/src/startup/startup.js',
+						MW_INSTALL_PATH,
+						$conf->get( MainConfigNames::ResourceBasePath )
+					),
+					'content' => $startupCode,
+				],
+			],
+		];
 	}
 
-	/**
-	 * @return bool
-	 */
 	public function supportsURLLoading(): bool {
 		return false;
 	}
 
-	/**
-	 * @return bool
-	 */
 	public function enableModuleContentVersion(): bool {
 		// Enabling this means that ResourceLoader::getVersionHash will simply call getScript()
 		// and hash it to determine the version (as used by E-Tag HTTP response header).
 		return true;
 	}
 }
-
-/** @deprecated since 1.39 */
-class_alias( StartUpModule::class, 'ResourceLoaderStartUpModule' );

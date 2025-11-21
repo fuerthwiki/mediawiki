@@ -5,11 +5,19 @@ namespace MediaWiki\Tests\Rest;
 use MediaWiki\Rest\ConditionalHeaderUtil;
 use MediaWiki\Rest\RequestData;
 use MediaWiki\Rest\Response;
+use MediaWikiUnitTestCase;
+use PHPUnit\Framework\Assert;
 
 /**
  * @covers \MediaWiki\Rest\ConditionalHeaderUtil
  */
-class ConditionalHeaderUtilTest extends \MediaWikiUnitTestCase {
+class ConditionalHeaderUtilTest extends MediaWikiUnitTestCase {
+	private static function makeFail( string $fn ) {
+		return static function () use ( $fn ) {
+			Assert::fail( "$fn was not expected to be called" );
+		};
+	}
+
 	public static function provider() {
 		return [
 			'nothing' => [
@@ -18,6 +26,7 @@ class ConditionalHeaderUtilTest extends \MediaWikiUnitTestCase {
 				null,
 				null,
 				[],
+				null,
 				null,
 				[]
 			],
@@ -28,6 +37,7 @@ class ConditionalHeaderUtilTest extends \MediaWikiUnitTestCase {
 				null,
 				[ 'If-None-Match' => '"b"' ],
 				null,
+				null,
 				[ 'ETag' => [ '"a"' ] ]
 			],
 			'inm false' => [
@@ -36,6 +46,7 @@ class ConditionalHeaderUtilTest extends \MediaWikiUnitTestCase {
 				null,
 				null,
 				[ 'If-None-Match' => '"a"' ],
+				null,
 				304,
 				[ 'ETag' => [ '"a"' ] ]
 			],
@@ -46,6 +57,7 @@ class ConditionalHeaderUtilTest extends \MediaWikiUnitTestCase {
 				null,
 				[ 'If-Modified-Since' => 'Mon, 14 Oct 2019 00:00:00 GMT' ],
 				null,
+				null,
 				[ 'Last-Modified' => [ 'Mon, 14 Oct 2019 00:00:01 GMT' ] ]
 			],
 			'ims false' => [
@@ -54,6 +66,7 @@ class ConditionalHeaderUtilTest extends \MediaWikiUnitTestCase {
 				'Mon, 14 Oct 2019 00:00:00 GMT',
 				null,
 				[ 'If-Modified-Since' => 'Mon, 14 Oct 2019 00:00:00 GMT' ],
+				null,
 				304,
 				[ 'Last-Modified' => [ 'Mon, 14 Oct 2019 00:00:00 GMT' ] ]
 			],
@@ -64,6 +77,7 @@ class ConditionalHeaderUtilTest extends \MediaWikiUnitTestCase {
 				null,
 				[ 'If-Match' => '"a"' ],
 				null,
+				null,
 				[ 'ETag' => [ '"a"' ] ]
 			],
 			'im false' => [
@@ -72,8 +86,9 @@ class ConditionalHeaderUtilTest extends \MediaWikiUnitTestCase {
 				null,
 				null,
 				[ 'If-Match' => '"b"' ],
+				null,
 				412,
-				[ 'ETag' => [ '"a"' ] ]
+				[]
 			],
 			'ius true' => [
 				'GET',
@@ -81,6 +96,7 @@ class ConditionalHeaderUtilTest extends \MediaWikiUnitTestCase {
 				'Mon, 14 Oct 2019 00:00:00 GMT',
 				null,
 				[ 'If-Unmodified-Since' => 'Mon, 14 Oct 2019 00:00:00 GMT' ],
+				null,
 				null,
 				[ 'Last-Modified' => [ 'Mon, 14 Oct 2019 00:00:00 GMT' ] ]
 			],
@@ -90,8 +106,9 @@ class ConditionalHeaderUtilTest extends \MediaWikiUnitTestCase {
 				'Mon, 14 Oct 2019 00:00:01 GMT',
 				null,
 				[ 'If-Unmodified-Since' => 'Mon, 14 Oct 2019 00:00:00 GMT' ],
+				null,
 				412,
-				[ 'Last-Modified' => [ 'Mon, 14 Oct 2019 00:00:01 GMT' ] ]
+				[]
 			],
 			'im true, ius false' => [
 				'GET',
@@ -102,6 +119,7 @@ class ConditionalHeaderUtilTest extends \MediaWikiUnitTestCase {
 					'If-Match' => '"a"',
 					'If-Unmodified-Since' => 'Mon, 14 Oct 2019 00:00:00 GMT'
 				],
+				null,
 				null,
 				[
 					'Last-Modified' => [ 'Mon, 14 Oct 2019 00:00:01 GMT' ],
@@ -118,6 +136,7 @@ class ConditionalHeaderUtilTest extends \MediaWikiUnitTestCase {
 					'If-Modified-Since' => 'Mon, 14 Oct 2019 00:00:00 GMT'
 				],
 				null,
+				null,
 				[
 					'Last-Modified' => [ 'Mon, 14 Oct 2019 00:00:00 GMT' ],
 					'ETag' => [ '"a"' ]
@@ -132,6 +151,7 @@ class ConditionalHeaderUtilTest extends \MediaWikiUnitTestCase {
 					'If-Match' => '"a"',
 					'If-None-Match' => '"a"'
 				],
+				null,
 				304,
 				[ 'ETag' => [ '"a"' ] ]
 			],
@@ -144,6 +164,7 @@ class ConditionalHeaderUtilTest extends \MediaWikiUnitTestCase {
 					'If-Unmodified-Since' => 'Mon, 14 Oct 2019 00:00:00 GMT',
 					'If-None-Match' => '"a"'
 				],
+				null,
 				304,
 				[
 					'Last-Modified' => [ 'Mon, 14 Oct 2019 00:00:00 GMT' ],
@@ -157,7 +178,18 @@ class ConditionalHeaderUtilTest extends \MediaWikiUnitTestCase {
 				true,
 				[ 'If-Match' => '*' ],
 				null,
+				null,
 				[ 'ETag' => [ '"a"' ] ]
+			],
+			'im star true, no etag' => [
+				'GET',
+				null,
+				null,
+				true,
+				[ 'If-Match' => '*' ],
+				null,
+				null,
+				[]
 			],
 			'im star false' => [
 				'GET',
@@ -165,6 +197,7 @@ class ConditionalHeaderUtilTest extends \MediaWikiUnitTestCase {
 				null,
 				false,
 				[ 'If-Match' => '*' ],
+				null,
 				412,
 				[]
 			],
@@ -174,8 +207,9 @@ class ConditionalHeaderUtilTest extends \MediaWikiUnitTestCase {
 				null,
 				null,
 				[ 'If-None-Match' => '"a"' ],
+				null,
 				412,
-				[ 'ETag' => [ '"a"' ] ]
+				[]
 			],
 			'im multiple true' => [
 				'GET',
@@ -183,6 +217,7 @@ class ConditionalHeaderUtilTest extends \MediaWikiUnitTestCase {
 				null,
 				null,
 				[ 'If-Match' => '"b", "a"' ],
+				null,
 				null,
 				[ 'ETag' => [ '"a"' ] ]
 			],
@@ -192,8 +227,9 @@ class ConditionalHeaderUtilTest extends \MediaWikiUnitTestCase {
 				null,
 				null,
 				[ 'If-Match' => '"b", "c"' ],
+				null,
 				412,
-				[ 'ETag' => [ '"a"' ] ]
+				[]
 			],
 			// A strong ETag returned by the server may have been "weakened" by
 			// a proxy or middleware, e.g. when applying compression and setting
@@ -207,6 +243,7 @@ class ConditionalHeaderUtilTest extends \MediaWikiUnitTestCase {
 				null,
 				[ 'If-Match' => 'W/"a"' ],
 				null,
+				null,
 				[ 'ETag' => [ '"a"' ] ]
 			],
 			'If-Match strong vs weak' => [
@@ -215,8 +252,9 @@ class ConditionalHeaderUtilTest extends \MediaWikiUnitTestCase {
 				null,
 				null,
 				[ 'If-Match' => '"a"' ],
+				null,
 				412,
-				[ 'ETag' => [ 'W/"a"' ] ]
+				[]
 			],
 			'If-Match weak vs weak' => [
 				'GET',
@@ -224,25 +262,78 @@ class ConditionalHeaderUtilTest extends \MediaWikiUnitTestCase {
 				null,
 				null,
 				[ 'If-Match' => 'W/"a"' ],
+				null,
 				412,
-				[ 'ETag' => [ 'W/"a"' ] ]
+				[]
 			],
 			'ims with resource unknown' => [
 				'GET',
 				null,
 				null,
-				null,
+				false,
 				[ 'If-Modified-Since' => 'Mon, 14 Oct 2019 00:00:00 GMT' ],
+				null,
 				null,
 				[]
 			],
 			'ius with resource unknown' => [
 				'GET',
+				self::makeFail( 'getETag' ),
 				null,
-				null,
-				null,
+				false,
 				[ 'If-Unmodified-Since' => 'Mon, 14 Oct 2019 00:00:00 GMT' ],
+				null,
 				412,
+				[]
+			],
+			'If-None-Match wildcard GET request, resource has representation' => [
+				'GET',
+				null,
+				null,
+				true,
+				[ 'If-None-Match' => '*' ],
+				null,
+				304,
+				[]
+			],
+			'If-None-Match wildcard non-GET request, resource has representation' => [
+				'POST',
+				self::makeFail( 'getETag' ),
+				self::makeFail( 'getLastModified' ),
+				true,
+				[ 'If-None-Match' => '*' ],
+				null,
+				412,
+				[]
+			],
+			'inm true, 4xx response' => [
+				'GET',
+				'"a"',
+				null,
+				null,
+				[ 'If-None-Match' => '"b"' ],
+				404,
+				null,
+				[]
+			],
+			'inm true, 301 response' => [
+				'GET',
+				'"a"',
+				null,
+				null,
+				[ 'If-None-Match' => '"b"' ],
+				301,
+				null,
+				[]
+			],
+			'inm true, 307 response' => [
+				'GET',
+				'"a"',
+				null,
+				null,
+				[ 'If-None-Match' => '"b"' ],
+				307,
+				null,
 				[]
 			],
 		];
@@ -250,7 +341,7 @@ class ConditionalHeaderUtilTest extends \MediaWikiUnitTestCase {
 
 	/** @dataProvider provider */
 	public function testConditionalHeaderUtil( $method, $eTag, $lastModified, $hasRepresentation,
-		$requestHeaders, $expectedStatus, $expectedResponseHeaders
+		$requestHeaders, $statusOverride, $expectedStatus, $expectedResponseHeaders
 	) {
 		$util = new ConditionalHeaderUtil;
 		$util->setValidators( $eTag, $lastModified, $hasRepresentation );
@@ -261,8 +352,17 @@ class ConditionalHeaderUtilTest extends \MediaWikiUnitTestCase {
 		$status = $util->checkPreconditions( $request );
 		$this->assertSame( $expectedStatus, $status );
 
+		if ( $statusOverride !== null ) {
+			$status = $statusOverride;
+		}
+
 		$response = new Response;
-		$util->applyResponseHeaders( $response );
-		$this->assertSame( $expectedResponseHeaders, $response->getHeaders() );
+
+		if ( $status ) {
+			$response->setStatus( $status );
+
+			$util->applyResponseHeaders( $response );
+			$this->assertSame( $expectedResponseHeaders, $response->getHeaders() );
+		}
 	}
 }

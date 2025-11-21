@@ -3,28 +3,19 @@
  * Init the user_editcount database field based on the number of rows in the
  * revision table.
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License along
- * with this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
- * http://www.gnu.org/copyleft/gpl.html
- *
+ * @license GPL-2.0-or-later
  * @file
  * @ingroup Maintenance
  */
 
+// @codeCoverageIgnoreStart
 require_once __DIR__ . '/Maintenance.php';
+// @codeCoverageIgnoreEnd
 
-use MediaWiki\MediaWikiServices;
+use MediaWiki\Maintenance\Maintenance;
+use MediaWiki\WikiMap\WikiMap;
+use Wikimedia\Rdbms\IDatabase;
+use Wikimedia\Rdbms\RawSQLValue;
 
 class InitEditCount extends Maintenance {
 	public function __construct() {
@@ -38,7 +29,7 @@ class InitEditCount extends Maintenance {
 	}
 
 	public function execute() {
-		$dbw = $this->getDB( DB_PRIMARY );
+		$dbw = $this->getPrimaryDB();
 
 		// Autodetect mode...
 		if ( $this->hasOption( 'background' ) ) {
@@ -46,40 +37,40 @@ class InitEditCount extends Maintenance {
 		} elseif ( $this->hasOption( 'quick' ) ) {
 			$backgroundMode = false;
 		} else {
-			$lb = MediaWikiServices::getInstance()->getDBLoadBalancer();
+			$lb = $this->getServiceContainer()->getDBLoadBalancer();
 			$backgroundMode = $lb->hasReplicaServers();
 		}
-
-		$actorQuery = ActorMigration::newMigration()->getJoin( 'rev_user' );
 
 		if ( $backgroundMode ) {
 			$this->output( "Using replication-friendly background mode...\n" );
 
-			$dbr = $this->getDB( DB_REPLICA );
+			$dbr = $this->getReplicaDB();
 			$chunkSize = 100;
-			$lastUser = $dbr->selectField( 'user', 'MAX(user_id)', '', __METHOD__ );
+			$lastUser = $dbr->newSelectQueryBuilder()
+				->select( 'MAX(user_id)' )
+				->from( 'user' )
+				->caller( __METHOD__ )->fetchField();
 
 			$start = microtime( true );
 			$migrated = 0;
-			$lbFactory = MediaWikiServices::getInstance()->getDBLoadBalancerFactory();
 			for ( $min = 0; $min <= $lastUser; $min += $chunkSize ) {
 				$max = $min + $chunkSize;
 
-				$revUser = $actorQuery['fields']['rev_user'];
-				$result = $dbr->select(
-					[ 'user', 'rev' => [ 'revision' ] + $actorQuery['tables'] ],
-					[ 'user_id', 'user_editcount' => "COUNT($revUser)" ],
-					"user_id > $min AND user_id <= $max",
-					__METHOD__,
-					[ 'GROUP BY' => 'user_id' ],
-					[ 'rev' => [ 'LEFT JOIN', "user_id = $revUser" ] ] + $actorQuery['joins']
-				);
+				$result = $dbr->newSelectQueryBuilder()
+					->select( [ 'user_id', 'user_editcount' => "COUNT(actor_rev_user.actor_user)" ] )
+					->from( 'user' )
+					->join( 'actor', 'actor_rev_user', 'user_id = actor_rev_user.actor_user' )
+					->leftJoin( 'revision', 'rev', 'actor_rev_user.actor_id = rev.rev_actor' )
+					->where( $dbr->expr( 'user_id', '>', $min )->and( 'user_id', '<=', $max ) )
+					->groupBy( 'user_id' )
+					->caller( __METHOD__ )->fetchResultSet();
 
 				foreach ( $result as $row ) {
-					$dbw->update( 'user',
-						[ 'user_editcount' => $row->user_editcount ],
-						[ 'user_id' => $row->user_id ],
-						__METHOD__ );
+					$dbw->newUpdateQueryBuilder()
+						->update( 'user' )
+						->set( [ 'user_editcount' => $row->user_editcount ] )
+						->where( [ 'user_id' => $row->user_id ] )
+						->caller( __METHOD__ )->execute();
 					++$migrated;
 				}
 
@@ -92,26 +83,31 @@ class InitEditCount extends Maintenance {
 					$delta,
 					$rate ) );
 
-				$lbFactory->waitForReplication();
+				$this->waitForReplication();
 			}
 		} else {
 			$this->output( "Using single-query mode...\n" );
 
-			$user = $dbw->tableName( 'user' );
-			$subquery = $dbw->selectSQLText(
-				[ 'revision' ] + $actorQuery['tables'],
-				[ 'COUNT(*)' ],
-				[ 'user_id = ' . $actorQuery['fields']['rev_user'] ],
-				__METHOD__,
-				[],
-				$actorQuery['joins']
-			);
-			$dbw->query( "UPDATE $user SET user_editcount=($subquery)", __METHOD__ );
+			$subquery = $dbw->newSelectQueryBuilder()
+				->select( 'COUNT(*)' )
+				->from( 'revision' )
+				->join( 'actor', 'actor_rev_user', 'actor_rev_user.actor_id = rev_actor' )
+				->where( 'user_id = actor_rev_user.actor_user' )
+				->caller( __METHOD__ )->getSQL();
+
+			$dbw->newUpdateQueryBuilder()
+				->table( 'user' )
+				->set( [ 'user_editcount' => new RawSQLValue( "($subquery)" ) ] )
+				->where( IDatabase::ALL_ROWS )
+				->caller( __METHOD__ )
+				->execute();
 		}
 
 		$this->output( "Done!\n" );
 	}
 }
 
+// @codeCoverageIgnoreStart
 $maintClass = InitEditCount::class;
 require_once RUN_MAINTENANCE_IF_MAIN;
+// @codeCoverageIgnoreEnd

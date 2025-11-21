@@ -1,8 +1,6 @@
 <?php
 /** Japanese (日本語)
  *
- * To improve a translation please visit https://translatewiki.net
- *
  * @file
  * @ingroup Languages
  */
@@ -89,6 +87,7 @@ $specialPageAliases = [
 	'FileDuplicateSearch'       => [ '重複ファイル検索' ],
 	'Filepath'                  => [ 'パスの取得' ],
 	'Import'                    => [ 'データ取り込み', 'データー取り込み', 'インポート' ],
+	'Interwiki'                 => [ 'インターウィキ' ],
 	'Invalidateemail'           => [ 'メール無効化', 'メール無効' ],
 	'JavaScriptTest'            => [ 'JavaScriptテスト', 'JavaScript試験' ],
 	'LinkSearch'                => [ '外部リンク検索' ],
@@ -135,6 +134,7 @@ $specialPageAliases = [
 	'Recentchanges'             => [ '最近の更新', '最近更新したページ' ],
 	'Recentchangeslinked'       => [ '関連ページの更新状況', 'リンク先の更新状況' ],
 	'Redirect'                  => [ '転送', 'リダイレクト' ],
+	'Renameuser'                => [ '利用者名変更', '利用者名の変更' ],
 	'ResetTokens'               => [ 'トークンの再設定' ],
 	'Revisiondelete'            => [ '版指定削除', '特定版削除' ],
 	'Search'                    => [ '検索' ],
@@ -229,7 +229,7 @@ $magicWords = [
 	'img_width'                 => [ '1', '$1ピクセル', '$1px' ],
 	'index'                     => [ '1', '__インデックス__', '＿＿インデックス＿＿', '__INDEX__' ],
 	'int'                       => [ '0', 'インターフェース:', 'インタ:', 'インターフェース：', 'インタ：', 'インターフェイス:', 'インターフェイス：', 'INT:' ],
-	'language'                  => [ '0', '#言語:', '＃言語：', '#LANGUAGE:' ],
+	'language'                  => [ '0', '#言語', '＃言語：', '#LANGUAGE' ],
 	'lc'                        => [ '0', '小文字:', 'LC:' ],
 	'lcfirst'                   => [ '0', '先頭小文字:', 'LCFIRST:' ],
 	'localday'                  => [ '1', '地方時の日', '現地日', 'ローカルデイ', 'LOCALDAY' ],

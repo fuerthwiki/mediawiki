@@ -6,11 +6,10 @@ use MediaWiki\Page\PageIdentity;
 use MediaWiki\Page\PageIdentityValue;
 use MediaWiki\Revision\MutableRevisionRecord;
 use MediaWiki\Revision\RevisionRecord;
+use MediaWiki\Title\Title;
+use MediaWiki\Title\TitleValue;
 use MediaWikiIntegrationTestCase;
 use MockTitleTrait;
-use Title;
-use TitleValue;
-use Wikimedia\Assert\PreconditionException;
 
 /**
  * @covers \MediaWiki\Revision\MutableRevisionRecord
@@ -19,18 +18,17 @@ use Wikimedia\Assert\PreconditionException;
 class MutableRevisionRecordTest extends MediaWikiIntegrationTestCase {
 	use MockTitleTrait;
 
-	public function provideConstructor() {
+	public static function provideConstructor() {
 		$title = Title::makeTitle( NS_MAIN, 'Dummy' );
 		$title->resetArticleID( 17 );
 		yield 'local wiki, with title' => [ $title, PageIdentity::LOCAL ];
 		yield 'local wiki' => [
-			new PageIdentityValue( 17, NS_MAIN, 'Dummy', PageIdentity::LOCAL ),
+			PageIdentityValue::localIdentity( 17, NS_MAIN, 'Dummy' ),
 			PageIdentity::LOCAL,
 		];
 		yield 'foreign wiki' => [
 			new PageIdentityValue( 17, NS_MAIN, 'Dummy', 'acmewiki' ),
 			'acmewiki',
-			PreconditionException::class
 		];
 	}
 
@@ -38,27 +36,20 @@ class MutableRevisionRecordTest extends MediaWikiIntegrationTestCase {
 	 * @dataProvider provideConstructor
 	 *
 	 * @param PageIdentity $page
-	 * @param bool $wikiId
-	 * @param string|null $expectedException
+	 * @param string|false $wikiId
 	 */
 	public function testConstructorAndGetters(
 		PageIdentity $page,
-		$wikiId = RevisionRecord::LOCAL,
-		string $expectedException = null
+		$wikiId = RevisionRecord::LOCAL
 	) {
 		$rec = new MutableRevisionRecord( $page, $wikiId );
 
 		$this->assertTrue( $page->isSamePageAs( $rec->getPage() ), 'getPage' );
 		$this->assertSame( $wikiId, $rec->getWikiId(), 'getWikiId' );
 
-		if ( $expectedException ) {
-			$this->expectException( $expectedException );
-			$rec->getPageAsLinkTarget();
-		} else {
-			$this->assertTrue(
-				TitleValue::newFromPage( $page )->isSameLinkAs( $rec->getPageAsLinkTarget() ),
-				'getPageAsLinkTarget'
-			);
-		}
+		$this->assertTrue(
+			TitleValue::newFromPage( $page )->isSameLinkAs( $rec->getPageAsLinkTarget() ),
+			'getPageAsLinkTarget'
+		);
 	}
 }

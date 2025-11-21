@@ -1,20 +1,6 @@
 <?php
 /**
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License along
- * with this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
- * http://www.gnu.org/copyleft/gpl.html
- *
+ * @license GPL-2.0-or-later
  * @file
  */
 
@@ -61,10 +47,10 @@ class XhprofData {
 	 * @param array $config
 	 */
 	public function __construct( array $data, array $config = [] ) {
-		$this->config = array_merge( [
+		$this->config = $config + [
 			'include' => null,
 			'sort' => 'wt',
-		], $config );
+		];
 
 		$this->hieraData = $this->pruneData( $data );
 	}
@@ -73,7 +59,7 @@ class XhprofData {
 	 * Get raw data collected by xhprof.
 	 *
 	 * Each key in the returned array is an edge label for the call graph in
-	 * the form "caller==>callee". There is once special case edge labled
+	 * the form "caller==>callee". There is once special case edge labeled
 	 * simply "main()" which represents the global scope entry point of the
 	 * application.
 	 *
@@ -130,7 +116,7 @@ class XhprofData {
 
 		$keep = [];
 		foreach ( $data as $key => $stats ) {
-			list( $parent, $child ) = self::splitKey( $key );
+			[ $parent, $child ] = self::splitKey( $key );
 			if ( isset( $want[$parent] ) || isset( $want[$child] ) ) {
 				$keep[$key] = $stats;
 			}
@@ -165,7 +151,7 @@ class XhprofData {
 
 			$inclusive = [];
 			foreach ( $this->hieraData as $key => $stats ) {
-				list( $parent, $child ) = self::splitKey( $key );
+				[ , $child ] = self::splitKey( $key );
 				if ( !isset( $inclusive[$child] ) ) {
 					$inclusive[$child] = [
 						'ct' => 0,
@@ -256,13 +242,13 @@ class XhprofData {
 					// Initialize exclusive data with inclusive totals
 					$this->complete[$func][$stat]['exclusive'] = $value['total'];
 				}
-				// Add sapce for call tree information to be filled in later
+				// Add space for call tree information to be filled in later
 				$this->complete[$func]['calls'] = [];
 				$this->complete[$func]['subcalls'] = [];
 			}
 
 			foreach ( $this->hieraData as $key => $stats ) {
-				list( $parent, $child ) = self::splitKey( $key );
+				[ $parent, $child ] = self::splitKey( $key );
 				if ( $parent !== null ) {
 					// Track call tree information
 					$this->complete[$child]['calls'][$parent] = $stats;

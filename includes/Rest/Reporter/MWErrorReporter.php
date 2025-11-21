@@ -2,9 +2,9 @@
 
 namespace MediaWiki\Rest\Reporter;
 
+use MediaWiki\Exception\MWExceptionHandler;
 use MediaWiki\Rest\Handler;
 use MediaWiki\Rest\RequestInterface;
-use MWExceptionHandler;
 use Throwable;
 
 /**
@@ -16,10 +16,10 @@ class MWErrorReporter implements ErrorReporter {
 
 	/**
 	 * @param Throwable $error
-	 * @param Handler $handler
+	 * @param Handler|null $handler
 	 * @param RequestInterface $request
 	 */
-	public function reportError( Throwable $error, Handler $handler, RequestInterface $request ) {
+	public function reportError( Throwable $error, ?Handler $handler, RequestInterface $request ) {
 		MWExceptionHandler::rollbackPrimaryChangesAndLog(
 			$error,
 			MWExceptionHandler::CAUGHT_BY_ENTRYPOINT

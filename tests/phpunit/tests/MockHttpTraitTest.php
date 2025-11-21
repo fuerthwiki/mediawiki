@@ -4,7 +4,7 @@ use PHPUnit\Framework\AssertionFailedError;
 use Psr\Http\Message\ResponseInterface;
 
 /**
- * @covers MockHttpTrait
+ * @covers \MockHttpTrait
  * @group MediaWikiIntegrationTestCaseTest
  */
 class MockHttpTraitTest extends MediaWikiIntegrationTestCase {
@@ -17,7 +17,7 @@ class MockHttpTraitTest extends MediaWikiIntegrationTestCase {
 			$this->getServiceContainer()->getHttpRequestFactory()
 				->create( 'http://example.com' );
 			$pass = false;
-		} catch ( AssertionFailedError $ex ) {
+		} catch ( AssertionFailedError ) {
 			$pass = true;
 		}
 
@@ -28,38 +28,61 @@ class MockHttpTraitTest extends MediaWikiIntegrationTestCase {
 		try {
 			$this->makeMockHttpRequestFactory()->create( 'http://example.com' );
 			$pass = false;
-		} catch ( AssertionFailedError $ex ) {
+		} catch ( AssertionFailedError ) {
 			$pass = true;
 		}
 
 		$this->assertTrue( $pass, 'HTTP request prevented' );
 	}
 
-	public function provideFactoryRequestData() {
-		yield 'a request object' => [ $this->makeFakeHttpRequest( 'Hello World' ), 'Hello World' ];
+	public static function provideFactoryRequestData() {
+		yield 'a request object' => [ [ 'request-string' => 'Hello World' ], 'Hello World' ];
 
 		yield 'just a string' => [ 'Hello World', 'Hello World' ];
 
 		yield 'a closure returning a request' => [
-			function () {
-				return $this->makeFakeHttpRequest( 'Hello World' );
-			},
+			[
+				'request-closure' => 'Hello World',
+			],
 			'Hello World'
 		];
 
 		yield 'a list of requests' => [
 			[
-				$this->makeFakeHttpRequest( 'Hello World' ),
-				$this->makeFakeHttpRequest( 'Yadda Yadda' ),
+				'request-array' => [
+					'Hello World',
+					'Yadda Yadda',
+				]
 			],
 			'Hello World'
 		];
 	}
 
+	private function prepareFactoryRequest( $requestSpec ) {
+		if ( isset( $requestSpec['request-string'] ) ) {
+			return $this->makeFakeHttpRequest( $requestSpec['request-string'] );
+		}
+		if ( isset( $requestSpec['request-array'] ) ) {
+			$request = [];
+			foreach ( $requestSpec['request-array'] as $v ) {
+				$request[] = $this->makeFakeHttpRequest( $v );
+			}
+			return $request;
+		}
+		if ( isset( $requestSpec['request-closure'] ) ) {
+			$value = $requestSpec['request-closure'];
+			return function () use ( $value ) {
+				return $this->makeFakeHttpRequest( $value );
+			};
+		}
+		return $requestSpec;
+	}
+
 	/**
 	 * @dataProvider provideFactoryRequestData
 	 */
-	public function testInstallMockHttpEmulatesRequests( $request, $expected ) {
+	public function testInstallMockHttpEmulatesRequests( $requestSpec, $expected ) {
+		$request = $this->prepareFactoryRequest( $requestSpec );
 		$this->installMockHttp( $request );
 
 		$data = $this->getServiceContainer()->getHttpRequestFactory()
@@ -71,7 +94,8 @@ class MockHttpTraitTest extends MediaWikiIntegrationTestCase {
 	/**
 	 * @dataProvider provideFactoryRequestData
 	 */
-	public function testMakeMockHttpRequestFactoryEmulatesRequests( $request, $expected ) {
+	public function testMakeMockHttpRequestFactoryEmulatesRequests( $requestSpec, $expected ) {
+		$request = $this->prepareFactoryRequest( $requestSpec );
 		$data = $this->makeMockHttpRequestFactory( $request )
 			->get( 'http://example.com' );
 
@@ -95,7 +119,7 @@ class MockHttpTraitTest extends MediaWikiIntegrationTestCase {
 		$this->assertSame( 'Hello World', $client->getContent() );
 	}
 
-	public function provideMultiRequestData() {
+	public static function provideMultiRequestData() {
 		yield [
 			[
 				'a' => [ 'url' => 'http://a.example.com', ],
@@ -256,7 +280,7 @@ class MockHttpTraitTest extends MediaWikiIntegrationTestCase {
 		}
 	}
 
-	public function provideGuzzleClientData() {
+	public static function provideGuzzleClientData() {
 		yield [
 			'Hello Wörld',
 			new GuzzleHttp\Psr7\Response( 200, [], 'Hello Wörld' ),

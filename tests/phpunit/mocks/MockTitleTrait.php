@@ -3,8 +3,14 @@
 use MediaWiki\Page\PageIdentity;
 use MediaWiki\Page\PageIdentityValue;
 use MediaWiki\Page\PageStoreRecord;
+use MediaWiki\Title\Title;
+use MediaWiki\Title\TitleFactory;
 use PHPUnit\Framework\MockObject\MockObject;
 
+/**
+ * Creates semi-sane Title mocks for tests.
+ * @stable to use since 1.41
+ */
 trait MockTitleTrait {
 
 	/** @var int */
@@ -21,17 +27,18 @@ trait MockTitleTrait {
 	 *        - language: Language
 	 *        - contentModel: string
 	 *        - revision: int
+	 *        - validRedirect: bool
 	 *
-	 * @return Title|MockObject
+	 * @return Title&MockObject
 	 */
-	private function makeMockTitle( $text, array $props = [] ) {
+	private function makeMockTitle( string $text, array $props = [] ): Title&MockObject {
 		$ns = $props['namespace'] ?? 0;
 		if ( $ns < 0 ) {
 			$id = 0;
 		} else {
 			$id = $props['id'] ?? ++$this->pageIdCounter;
 		}
-		$nsName = $ns ? "ns$ns:" : '';
+		$nsName = $ns < 0 ? "Special:" : ( $ns ? "ns$ns:" : '' );
 
 		$preText = $text;
 		$text = preg_replace( '/^[\w ]*?:/', '', $text );
@@ -56,22 +63,25 @@ trait MockTitleTrait {
 		$title->method( 'inNamespace' )->willReturnCallback( static function ( $namespace ) use ( $ns ) {
 			return $namespace === $ns;
 		} );
+		$title->method( 'isSpecialPage' )->willReturn( $ns === NS_SPECIAL );
 		$title->method( 'getFragment' )->willReturn( $props['fragment'] ?? '' );
 		$title->method( 'hasFragment' )->willReturn( !empty( $props['fragment'] ) );
 		$title->method( 'getInterwiki' )->willReturn( $props['interwiki'] ?? '' );
 		$title->method( 'exists' )->willReturn( $id > 0 );
 		$title->method( 'isRedirect' )->willReturn( $props['redirect'] ?? false );
+		$title->method( 'isValidRedirectTarget' )->willReturn( $props['validRedirect'] ?? true );
 		$title->method( 'getTouched' )->willReturn( $id ? '20200101223344' : false );
 
 		// TODO getPageLanguage should return a Language object, 'qqx' is a string
 		$title->method( 'getPageLanguage' )->willReturn( $props['language'] ?? 'qqx' );
-		$title->method( 'getContentModel' )
-			->willReturn( $props['contentModel'] ?? CONTENT_MODEL_WIKITEXT );
-		$title->method( 'getRestrictions' )->willReturn( [] );
-		$title->method( 'getTitleProtection' )->willReturn( false );
+		$contentModel = $props['contentModel'] ?? CONTENT_MODEL_WIKITEXT;
+		$title->method( 'getContentModel' )->willReturn( $contentModel );
+		$title->method( 'hasContentModel' )->willReturnCallback(
+			static fn ( $id ) => $id === $contentModel );
 		$title->method( 'canExist' )
 			->willReturn( $ns >= 0 && empty( $props['interwiki'] ) && $text !== '' );
 		$title->method( 'getWikiId' )->willReturn( Title::LOCAL );
+		$title->method( 'getLinkURL' )->willReturn( "/wiki/" . str_replace( ' ', '_', $preText ) );
 		if ( isset( $props['revision'] ) ) {
 			$title->method( 'getLatestRevId' )->willReturn( $props['revision'] );
 		} else {
@@ -91,11 +101,10 @@ trait MockTitleTrait {
 		$title->method( '__toString' )->willReturn( "MockTitle:{$preText}" );
 
 		$title->method( 'toPageIdentity' )->willReturnCallback( static function () use ( $title ) {
-			return new PageIdentityValue(
+			return PageIdentityValue::localIdentity(
 				$title->getId(),
 				$title->getNamespace(),
-				$title->getDBkey(),
-				PageIdentity::LOCAL
+				$title->getDBkey()
 			);
 		} );
 
@@ -117,5 +126,13 @@ trait MockTitleTrait {
 		} );
 
 		return $title;
+	}
+
+	private function makeMockTitleFactory(): TitleFactory {
+		$factory = $this->createNoOpMock( TitleFactory::class, [ 'newFromText' ] );
+		$factory->method( 'newFromText' )->willReturnCallback(
+			fn ( $text ) => $this->makeMockTitle( $text )
+		);
+		return $factory;
 	}
 }

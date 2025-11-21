@@ -1,21 +1,21 @@
 <?php
 
-namespace MediaWiki\ParamValidator\TypeDef;
+namespace MediaWiki\Tests\ParamValidator\TypeDef;
 
-use ApiResult;
+use MediaWiki\Api\ApiResult;
 use MediaWiki\HookContainer\HookContainer;
+use MediaWiki\ParamValidator\TypeDef\NamespaceDef;
 use MediaWiki\Tests\Unit\DummyServicesTrait;
 use Wikimedia\Message\DataMessageValue;
 use Wikimedia\ParamValidator\ParamValidator;
 use Wikimedia\ParamValidator\SimpleCallbacks;
 use Wikimedia\ParamValidator\TypeDef\EnumDef;
-use Wikimedia\ParamValidator\TypeDef\TypeDefTestCase;
 use Wikimedia\ParamValidator\ValidationException;
 
 /**
- * @covers MediaWiki\ParamValidator\TypeDef\NamespaceDef
+ * @covers \MediaWiki\ParamValidator\TypeDef\NamespaceDef
  */
-class NamespaceDefTest extends TypeDefTestCase {
+class NamespaceDefTest extends TypeDefUnitTestCase {
 	use DummyServicesTrait;
 
 	private function getNamespaceInfo() {
@@ -45,7 +45,7 @@ class NamespaceDefTest extends TypeDefTestCase {
 		return $namespaces;
 	}
 
-	public function provideValidate() {
+	public static function provideValidate() {
 		$settings = [
 			ParamValidator::PARAM_TYPE => 'namespace',
 		];
@@ -73,23 +73,31 @@ class NamespaceDefTest extends TypeDefTestCase {
 		];
 	}
 
-	public function provideGetEnumValues() {
+	/** @dataProvider provideGetEnumValues */
+	public function testGetEnumValues( array $settings, $expect, array $options = [] ) {
+		if ( is_array( $expect ) ) {
+			$expect = $this->getNamespaces( $expect );
+		}
+		parent::testGetEnumValues( $settings, $expect, $options );
+	}
+
+	public static function provideGetEnumValues() {
 		return [
 			'Basic test' => [
 				[ ParamValidator::PARAM_TYPE => 'namespace' ],
-				$this->getNamespaces(),
+				[],
 			],
 			'Extra namespaces' => [
 				[
 					ParamValidator::PARAM_TYPE => 'namespace',
 					NamespaceDef::PARAM_EXTRA_NAMESPACES => [ NS_SPECIAL, NS_MEDIA ]
 				],
-				$this->getNamespaces( [ NS_SPECIAL, NS_MEDIA ] ),
+				[ NS_SPECIAL, NS_MEDIA ],
 			],
 		];
 	}
 
-	public function provideNormalizeSettings() {
+	public static function provideNormalizeSettings() {
 		return [
 			'Basic test' => [ [], [] ],
 			'Add PARAM_ALL' => [
@@ -107,7 +115,7 @@ class NamespaceDefTest extends TypeDefTestCase {
 		];
 	}
 
-	public function provideCheckSettings() {
+	public static function provideCheckSettings() {
 		$keys = [ 'Y', EnumDef::PARAM_DEPRECATED_VALUES, NamespaceDef::PARAM_EXTRA_NAMESPACES ];
 		return [
 			'Basic test' => [
@@ -250,14 +258,14 @@ class NamespaceDefTest extends TypeDefTestCase {
 		];
 	}
 
-	public function provideStringifyValue() {
+	public static function provideStringifyValue() {
 		return [
 			'Basic test' => [ 123, '123' ],
 			'Array' => [ [ 1, 2, 3 ], '1|2|3' ],
 		];
 	}
 
-	public function provideGetInfo() {
+	public static function provideGetInfo() {
 		yield 'Basic test' => [
 			[],
 			[ 'type' => 'namespace' ],

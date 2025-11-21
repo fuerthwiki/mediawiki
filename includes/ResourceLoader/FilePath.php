@@ -1,20 +1,6 @@
 <?php
 /**
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License along
- * with this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
- * http://www.gnu.org/copyleft/gpl.html
- *
+ * @license GPL-2.0-or-later
  * @file
  */
 
@@ -33,13 +19,13 @@ use RuntimeException;
  */
 class FilePath {
 	/** @var string|null Local base path */
-	protected $localBasePath;
+	protected ?string $localBasePath;
 
 	/** @var string|null Remote base path */
-	protected $remoteBasePath;
+	protected ?string $remoteBasePath;
 
 	/** @var string Path to the file */
-	protected $path;
+	protected string $path;
 
 	/**
 	 * @param string $path Relative path to the file, no leading slash.
@@ -47,7 +33,7 @@ class FilePath {
 	 * @param string|null $remoteBasePath Base path to prepend when generating a remote path.
 	 *   Should not have a trailing slash unless at web document root.
 	 */
-	public function __construct( $path, $localBasePath = null, $remoteBasePath = null ) {
+	public function __construct( string $path, ?string $localBasePath = null, ?string $remoteBasePath = null ) {
 		$this->path = $path;
 		$this->localBasePath = $localBasePath;
 		$this->remoteBasePath = $remoteBasePath;
@@ -58,7 +44,7 @@ class FilePath {
 	 * @throws RuntimeException If the base path was not provided. You must either provide the base
 	 *   path in the constructor, or use getPath() instead and add the base path from a FileModule.
 	 */
-	public function getLocalPath() {
+	public function getLocalPath(): string {
 		if ( $this->localBasePath === null ) {
 			throw new RuntimeException( 'Base path was not provided' );
 		}
@@ -70,7 +56,7 @@ class FilePath {
 	 * @throws RuntimeException If the base path was not provided. You must either provide the base
 	 *   path in the constructor, or use getPath() instead and add the base path from a FileModule.
 	 */
-	public function getRemotePath() {
+	public function getRemotePath(): string {
 		if ( $this->remoteBasePath === null ) {
 			throw new RuntimeException( 'Base path was not provided' );
 		}
@@ -82,21 +68,30 @@ class FilePath {
 		return "{$this->remoteBasePath}/{$this->path}";
 	}
 
-	/** @return string|null */
-	public function getLocalBasePath() {
+	public function getLocalBasePath(): ?string {
 		return $this->localBasePath;
 	}
 
-	/** @return string|null */
-	public function getRemoteBasePath() {
+	public function getRemoteBasePath(): ?string {
 		return $this->remoteBasePath;
 	}
 
-	/** @return string */
-	public function getPath() {
+	public function getPath(): string {
 		return $this->path;
 	}
-}
 
-/** @deprecated since 1.39 */
-class_alias( FilePath::class, 'ResourceLoaderFilePath' );
+	/**
+	 * Set the base path if it has not already been set.
+	 *
+	 * @param string $localBasePath
+	 * @param string $remoteBasePath
+	 */
+	public function initBasePaths( string $localBasePath, string $remoteBasePath ) {
+		if ( $this->localBasePath === null ) {
+			$this->localBasePath = $localBasePath;
+		}
+		if ( $this->remoteBasePath === null ) {
+			$this->remoteBasePath = $remoteBasePath;
+		}
+	}
+}

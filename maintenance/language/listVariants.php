@@ -5,27 +5,18 @@
  * Copyright © 2014 MediaWiki developers
  * https://www.mediawiki.org/
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License along
- * with this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
- * http://www.gnu.org/copyleft/gpl.html
- *
+ * @license GPL-2.0-or-later
  * @file
  * @ingroup Maintenance
  */
-use MediaWiki\MediaWikiServices;
 
+use MediaWiki\Json\FormatJson;
+use MediaWiki\Language\LanguageConverter;
+use MediaWiki\Maintenance\Maintenance;
+
+// @codeCoverageIgnoreStart
 require_once dirname( __DIR__ ) . '/Maintenance.php';
+// @codeCoverageIgnoreEnd
 
 /**
  * @since 1.24
@@ -40,13 +31,17 @@ class ListVariants extends Maintenance {
 	}
 
 	public function execute() {
+		$services = $this->getServiceContainer();
+		$languageFactory = $services->getLanguageFactory();
+		$languageConverterFactory = $services->getLanguageConverterFactory();
 		$variantLangs = [];
 		$variants = [];
 		foreach ( LanguageConverter::$languagesWithVariants as $langCode ) {
-			$lang = MediaWikiServices::getInstance()->getLanguageFactory()->getLanguage( $langCode );
-			if ( $lang->hasVariants() ) {
-				$variants += array_fill_keys( $lang->getVariants(), true );
-				$variantLangs[$langCode] = $lang->getVariants();
+			$lang = $languageFactory->getLanguage( $langCode );
+			$langConv = $languageConverterFactory->getLanguageConverter( $lang );
+			if ( $langConv->hasVariants() ) {
+				$variants += array_fill_keys( $langConv->getVariants(), true );
+				$variantLangs[$langCode] = $langConv->getVariants();
 			}
 		}
 		$variants = array_keys( $variants );
@@ -71,5 +66,7 @@ class ListVariants extends Maintenance {
 	}
 }
 
+// @codeCoverageIgnoreStart
 $maintClass = ListVariants::class;
 require_once RUN_MAINTENANCE_IF_MAIN;
+// @codeCoverageIgnoreEnd

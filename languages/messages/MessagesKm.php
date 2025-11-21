@@ -1,8 +1,6 @@
 <?php
 /** Khmer (ភាសាខ្មែរ)
  *
- * To improve a translation please visit https://translatewiki.net
- *
  * @file
  * @ingroup Languages
  *
@@ -77,6 +75,8 @@ $separatorTransformTable = [
 	'.' => ','
 ];
 
+$numberingSystem = 'khmr';
+
 $datePreferences = [
 	'default',
 	'km',
@@ -117,6 +117,7 @@ $specialPageAliases = [
 	'FileDuplicateSearch'       => [ 'ស្វែងរកឯកសារដូចគ្នាបេះបិទ' ],
 	'Filepath'                  => [ 'ផ្លូវនៃឯកសារ' ],
 	'Import'                    => [ 'នាំចូល' ],
+	'Interwiki'                 => [ 'អន្តរវិគី' ],
 	'Invalidateemail'           => [ 'អ៊ីមែលមិនត្រឹមត្រូវ' ],
 	'LinkSearch'                => [ 'ស្វែងរកតំណភ្ជាប់' ],
 	'Listadmins'                => [ 'បញ្ជីអ្នកអភិបាល' ],
@@ -155,6 +156,7 @@ $specialPageAliases = [
 	'Randomredirect'            => [ 'ការបញ្ជូនបន្តដោយចៃដន្យ' ],
 	'Recentchanges'             => [ 'បំលាស់ប្ដូរថ្មីៗ' ],
 	'Recentchangeslinked'       => [ 'បំលាស់ប្ដូរទាក់ទិន' ],
+	'Renameuser'                => [ 'ប្ដូរឈ្មោះអ្នកប្រើប្រាស់' ],
 	'Revisiondelete'            => [ 'កំណែបានលុបចោល' ],
 	'Search'                    => [ 'ស្វែងរក' ],
 	'Shortpages'                => [ 'ទំព័រខ្លីៗ' ],
@@ -221,7 +223,7 @@ $magicWords = [
 	'img_top'                   => [ '1', 'ផ្នែកលើ', 'ផ្នែកខាងលើ', 'top' ],
 	'img_width'                 => [ '1', '$1ភីកសែល', '$1ភស', '$1px' ],
 	'index'                     => [ '1', '__លិបិក្រម__', '__INDEX__' ],
-	'language'                  => [ '0', '#ភាសា:', '#LANGUAGE:' ],
+	'language'                  => [ '0', '#ភាសា', '#LANGUAGE' ],
 	'localhour'                 => [ '1', 'ម៉ោងតំបន់', 'LOCALHOUR' ],
 	'localtime'                 => [ '1', 'ពេលវេលាក្នុងតំបន់', 'LOCALTIME' ],
 	'localyear'                 => [ '1', 'LOCALDAYNAME', 'LOCALYEAR' ],

@@ -1,7 +1,5 @@
 <?php
-/** Mon (ဘာသာ မန်)
- * To improve a translation please visit https://translatewiki.net
- *
+/** Mon (ဘာသာမန်)
  * @file
  * @ingroup Languages
  *
@@ -23,6 +21,8 @@ $digitTransformTable = [
 	'8' => '၈',
 	'9' => '၉',
 ];
+
+$numberingSystem = 'mymr';
 
 $namespaceNames = [
 	NS_MEDIA            => 'မဳဒဳယာ',

@@ -1,7 +1,5 @@
 <?php
-/** كوردي (عەرەبی) (كوردي (عەرەبی))
- *
- * To improve a translation please visit https://translatewiki.net
+/** Northern Kurdish, Arabic script (کوردیی باکووری, عەرەبی)
  *
  * @file
  * @ingroup Languages
@@ -35,3 +33,5 @@ $separatorTransformTable = [
 	'.' => '٫', # U+066B
 	',' => '٬', # U+066C
 ];
+
+$numberingSystem = 'arab';

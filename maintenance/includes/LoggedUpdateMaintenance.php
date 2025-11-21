@@ -1,22 +1,10 @@
 <?php
 /**
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License along
- * with this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
- * http://www.gnu.org/copyleft/gpl.html
- *
+ * @license GPL-2.0-or-later
  * @file
  */
+
+namespace MediaWiki\Maintenance;
 
 /**
  * Class for scripts that perform database maintenance and want to log the
@@ -30,12 +18,17 @@ abstract class LoggedUpdateMaintenance extends Maintenance {
 		$this->setBatchSize( 200 );
 	}
 
+	/** @inheritDoc */
 	public function execute() {
-		$db = $this->getDB( DB_PRIMARY );
+		$db = $this->getPrimaryDB();
 		$key = $this->getUpdateKey();
+		$queryBuilder = $db->newSelectQueryBuilder()
+			->select( '1' )
+			->from( 'updatelog' )
+			->where( [ 'ul_key' => $key ] );
 
 		if ( !$this->hasOption( 'force' )
-			&& $db->selectRow( 'updatelog', '1', [ 'ul_key' => $key ], __METHOD__ )
+			&& $queryBuilder->caller( __METHOD__ )->fetchRow()
 		) {
 			$this->output( "..." . $this->updateSkippedMessage() . "\n" );
 
@@ -46,7 +39,11 @@ abstract class LoggedUpdateMaintenance extends Maintenance {
 			return false;
 		}
 
-		$db->insert( 'updatelog', [ 'ul_key' => $key ], __METHOD__, [ 'IGNORE' ] );
+		$db->newInsertQueryBuilder()
+			->insertInto( 'updatelog' )
+			->ignore()
+			->row( [ 'ul_key' => $key ] )
+			->caller( __METHOD__ )->execute();
 
 		return true;
 	}
@@ -56,7 +53,7 @@ abstract class LoggedUpdateMaintenance extends Maintenance {
 	 * @param bool $forced
 	 */
 	public function setForce( $forced = true ) {
-		$this->mOptions['force'] = $forced;
+		$this->setOption( 'force', $forced );
 	}
 
 	/**
@@ -82,3 +79,6 @@ abstract class LoggedUpdateMaintenance extends Maintenance {
 	 */
 	abstract protected function getUpdateKey();
 }
+
+/** @deprecated class alias since 1.43 */
+class_alias( LoggedUpdateMaintenance::class, 'LoggedUpdateMaintenance' );

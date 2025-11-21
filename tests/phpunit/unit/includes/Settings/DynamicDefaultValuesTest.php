@@ -6,12 +6,12 @@ use LogicException;
 use MediaWiki\Settings\Config\ArrayConfigBuilder;
 use MediaWiki\Settings\Config\ConfigSchemaAggregator;
 use MediaWiki\Settings\DynamicDefaultValues;
-use PHPUnit\Framework\TestCase;
+use MediaWikiUnitTestCase;
 
 /**
- * @covers \MediaWiki\Settings\DynamicDefauoltValuesTest
+ * @covers \MediaWiki\Settings\DynamicDefaultValues
  */
-class DynamicDefaultValuesTest extends TestCase {
+class DynamicDefaultValuesTest extends MediaWikiUnitTestCase {
 
 	private const DEFAULT_VALUE = 'this is the default value';
 
@@ -46,7 +46,7 @@ class DynamicDefaultValuesTest extends TestCase {
 		yield 'static method callback (string)' => [
 			[
 				'Dynamic' => [
-					'dynamicDefault' => [ 'callback' => self::class . '::getDefaultTestValue' ]
+					'dynamicDefault' => [ 'callback' => [ self::class, 'getDefaultTestValue' ] ]
 				],
 			],
 			[],
@@ -109,7 +109,7 @@ class DynamicDefaultValuesTest extends TestCase {
 			[
 				'Dynamic' => [
 					'default' => false,
-					'dynamicDefault' => [ 'callback' => self::class . '::getDefaultTestValue' ]
+					'dynamicDefault' => [ 'callback' => [ self::class, 'getDefaultTestValue' ] ]
 				],
 			],
 			[ 'Dynamic' => null ],
@@ -120,7 +120,7 @@ class DynamicDefaultValuesTest extends TestCase {
 			[
 				'Dynamic' => [
 					'default' => 1,
-					'dynamicDefault' => [ 'callback' => self::class . '::getDefaultTestValue' ]
+					'dynamicDefault' => [ 'callback' => [ self::class, 'getDefaultTestValue' ] ]
 				],
 			],
 			[ 'Dynamic' => 1 ],

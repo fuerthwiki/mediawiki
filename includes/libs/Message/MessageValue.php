@@ -2,7 +2,10 @@
 
 namespace Wikimedia\Message;
 
-use Stringable;
+use Wikimedia\Assert\Assert;
+use Wikimedia\JsonCodec\Hint;
+use Wikimedia\JsonCodec\JsonCodecable;
+use Wikimedia\JsonCodec\JsonCodecableTrait;
 
 /**
  * Value object representing a message for i18n.
@@ -11,46 +14,61 @@ use Stringable;
  * to a string in a particular language using formatters obtained from an
  * IMessageFormatterFactory.
  *
- * MessageValues are pure value objects and are safely newable.
+ * MessageValues are pure value objects and are newable and (de)serializable.
  *
  * @newable
  */
-class MessageValue {
-	/** @var string */
-	private $key;
+class MessageValue implements MessageSpecifier, JsonCodecable {
+	use JsonCodecableTrait;
 
-	/** @var MessageParam[] */
-	private $params;
+	private readonly string $key;
+
+	/** @var list<MessageParam> */
+	private array $params = [];
 
 	/**
 	 * @stable to call
 	 *
 	 * @param string $key
-	 * @param (MessageParam|MessageValue|string|int|float)[] $params Values that are not instances
+	 * @param (MessageParam|MessageSpecifier|string|int|float)[] $params Values that are not instances
 	 *  of MessageParam are wrapped using ParamType::TEXT.
 	 */
-	public function __construct( $key, $params = [] ) {
+	public function __construct( string $key, array $params = [] ) {
 		$this->key = $key;
-		$this->params = [];
 		$this->params( ...$params );
+		Assert::invariant( array_is_list( $this->params ), "should be list" );
 	}
 
 	/**
 	 * Static constructor for easier chaining of `->params()` methods
 	 * @param string $key
-	 * @param (MessageParam|MessageValue|string|int|float)[] $params
+	 * @param (MessageParam|MessageSpecifier|string|int|float)[] $params
 	 * @return MessageValue
 	 */
-	public static function new( $key, $params = [] ) {
+	public static function new( string $key, array $params = [] ): MessageValue {
 		return new MessageValue( $key, $params );
 	}
 
 	/**
-	 * Get the message key
+	 * Convert from any MessageSpecifier to a MessageValue.
 	 *
-	 * @return string
+	 * When the given object is an instance of MessageValue, the same object is returned.
+	 *
+	 * @since 1.43
+	 * @param MessageSpecifier $spec
+	 * @return MessageValue
 	 */
-	public function getKey() {
+	public static function newFromSpecifier( MessageSpecifier $spec ): MessageValue {
+		if ( $spec instanceof MessageValue ) {
+			return $spec;
+		}
+		return new MessageValue( $spec->getKey(), $spec->getParams() );
+	}
+
+	/**
+	 * Get the message key
+	 */
+	public function getKey(): string {
 		return $this->key;
 	}
 
@@ -59,17 +77,17 @@ class MessageValue {
 	 *
 	 * @return MessageParam[]
 	 */
-	public function getParams() {
+	public function getParams(): array {
 		return $this->params;
 	}
 
 	/**
 	 * Chainable mutator which adds text parameters and MessageParam parameters
 	 *
-	 * @param MessageParam|MessageValue|string|int|float ...$values
+	 * @param MessageParam|MessageSpecifier|string|int|float ...$values
 	 * @return $this
 	 */
-	public function params( ...$values ) {
+	public function params( ...$values ): MessageValue {
 		foreach ( $values as $value ) {
 			if ( $value instanceof MessageParam ) {
 				$this->params[] = $value;
@@ -83,11 +101,15 @@ class MessageValue {
 	/**
 	 * Chainable mutator which adds text parameters with a common type
 	 *
-	 * @param string $type One of the ParamType constants
-	 * @param MessageValue|string|int|float ...$values Scalar values
+	 * @param string|ParamType $type One of the ParamType constants
+	 * @param MessageSpecifier|string|int|float ...$values Scalar values
 	 * @return $this
 	 */
-	public function textParamsOfType( $type, ...$values ) {
+	public function textParamsOfType( string|ParamType $type, ...$values ): MessageValue {
+		if ( is_string( $type ) ) {
+			wfDeprecated( __METHOD__ . ' with string type', '1.45' );
+			$type = ParamType::from( $type );
+		}
 		foreach ( $values as $value ) {
 			$this->params[] = new ScalarParam( $type, $value );
 		}
@@ -95,27 +117,18 @@ class MessageValue {
 	}
 
 	/**
-	 * Chainable mutator which adds object parameters
-	 *
-	 * @param Stringable ...$values stringable object values
-	 * @return $this
-	 */
-	public function objectParams( ...$values ) {
-		foreach ( $values as $value ) {
-			$this->params[] = new ScalarParam( ParamType::OBJECT, $value );
-		}
-		return $this;
-	}
-
-	/**
 	 * Chainable mutator which adds list parameters with a common type
 	 *
-	 * @param string $listType One of the ListType constants
-	 * @param (MessageParam|MessageValue|string|int|float)[] ...$values Each value
+	 * @param string|ListType $listType One of the ListType constants
+	 * @param (MessageParam|MessageSpecifier|string|int|float)[] ...$values Each value
 	 *  is an array of items suitable to pass as $params to ListParam::__construct()
 	 * @return $this
 	 */
-	public function listParamsOfType( $listType, ...$values ) {
+	public function listParamsOfType( string|ListType $listType, ...$values ): MessageValue {
+		if ( is_string( $listType ) ) {
+			wfDeprecated( __METHOD__ . ' with string listType', '1.45' );
+			$listType = ListType::from( $listType );
+		}
 		foreach ( $values as $value ) {
 			$this->params[] = new ListParam( $listType, $value );
 		}
@@ -125,10 +138,10 @@ class MessageValue {
 	/**
 	 * Chainable mutator which adds parameters of type text (ParamType::TEXT).
 	 *
-	 * @param MessageValue|string|int|float ...$values
+	 * @param MessageSpecifier|string|int|float ...$values
 	 * @return $this
 	 */
-	public function textParams( ...$values ) {
+	public function textParams( ...$values ): MessageValue {
 		return $this->textParamsOfType( ParamType::TEXT, ...$values );
 	}
 
@@ -138,7 +151,7 @@ class MessageValue {
 	 * @param int|float ...$values
 	 * @return $this
 	 */
-	public function numParams( ...$values ) {
+	public function numParams( ...$values ): MessageValue {
 		return $this->textParamsOfType( ParamType::NUM, ...$values );
 	}
 
@@ -152,7 +165,7 @@ class MessageValue {
 	 * @param int|float ...$values
 	 * @return $this
 	 */
-	public function longDurationParams( ...$values ) {
+	public function longDurationParams( ...$values ): MessageValue {
 		return $this->textParamsOfType( ParamType::DURATION_LONG, ...$values );
 	}
 
@@ -166,7 +179,7 @@ class MessageValue {
 	 * @param int|float ...$values
 	 * @return $this
 	 */
-	public function shortDurationParams( ...$values ) {
+	public function shortDurationParams( ...$values ): MessageValue {
 		return $this->textParamsOfType( ParamType::DURATION_SHORT, ...$values );
 	}
 
@@ -177,7 +190,7 @@ class MessageValue {
 	 *  or "infinity"
 	 * @return $this
 	 */
-	public function expiryParams( ...$values ) {
+	public function expiryParams( ...$values ): MessageValue {
 		return $this->textParamsOfType( ParamType::EXPIRY, ...$values );
 	}
 
@@ -188,7 +201,7 @@ class MessageValue {
 	 * @param string ...$values Timestamp as accepted by the Wikimedia\Timestamp library.
 	 * @return $this
 	 */
-	public function dateTimeParams( ...$values ) {
+	public function dateTimeParams( ...$values ): MessageValue {
 		return $this->textParamsOfType( ParamType::DATETIME, ...$values );
 	}
 
@@ -199,7 +212,7 @@ class MessageValue {
 	 * @param string ...$values Timestamp as accepted by the Wikimedia\Timestamp library.
 	 * @return $this
 	 */
-	public function dateParams( ...$values ) {
+	public function dateParams( ...$values ): MessageValue {
 		return $this->textParamsOfType( ParamType::DATE, ...$values );
 	}
 
@@ -210,7 +223,7 @@ class MessageValue {
 	 * @param string ...$values Timestamp as accepted by the Wikimedia\Timestamp library.
 	 * @return $this
 	 */
-	public function timeParams( ...$values ) {
+	public function timeParams( ...$values ): MessageValue {
 		return $this->textParamsOfType( ParamType::TIME, ...$values );
 	}
 
@@ -221,7 +234,7 @@ class MessageValue {
 	 * @param string ...$values User Groups
 	 * @return $this
 	 */
-	public function userGroupParams( ...$values ) {
+	public function userGroupParams( ...$values ): MessageValue {
 		return $this->textParamsOfType( ParamType::GROUP, ...$values );
 	}
 
@@ -231,7 +244,7 @@ class MessageValue {
 	 * @param int ...$values
 	 * @return $this
 	 */
-	public function sizeParams( ...$values ) {
+	public function sizeParams( ...$values ): MessageValue {
 		return $this->textParamsOfType( ParamType::SIZE, ...$values );
 	}
 
@@ -242,7 +255,7 @@ class MessageValue {
 	 * @param int|float ...$values
 	 * @return $this
 	 */
-	public function bitrateParams( ...$values ) {
+	public function bitrateParams( ...$values ): MessageValue {
 		return $this->textParamsOfType( ParamType::BITRATE, ...$values );
 	}
 
@@ -256,7 +269,7 @@ class MessageValue {
 	 * @param string ...$values
 	 * @return $this
 	 */
-	public function rawParams( ...$values ) {
+	public function rawParams( ...$values ): MessageValue {
 		return $this->textParamsOfType( ParamType::RAW, ...$values );
 	}
 
@@ -270,7 +283,7 @@ class MessageValue {
 	 * @param string ...$values
 	 * @return $this
 	 */
-	public function plaintextParams( ...$values ) {
+	public function plaintextParams( ...$values ): MessageValue {
 		return $this->textParamsOfType( ParamType::PLAINTEXT, ...$values );
 	}
 
@@ -280,11 +293,11 @@ class MessageValue {
 	 * The list parameters thus created are formatted as a comma-separated list,
 	 * or some local equivalent.
 	 *
-	 * @param (MessageParam|MessageValue|string|int|float)[] ...$values Each value
+	 * @param (MessageParam|MessageSpecifier|string|int|float)[] ...$values Each value
 	 *  is an array of items suitable to pass as $params to ListParam::__construct()
 	 * @return $this
 	 */
-	public function commaListParams( ...$values ) {
+	public function commaListParams( ...$values ): MessageValue {
 		return $this->listParamsOfType( ListType::COMMA, ...$values );
 	}
 
@@ -294,11 +307,11 @@ class MessageValue {
 	 * The list parameters thus created are formatted as a semicolon-separated
 	 * list, or some local equivalent.
 	 *
-	 * @param (MessageParam|MessageValue|string|int|float)[] ...$values Each value
+	 * @param (MessageParam|MessageSpecifier|string|int|float)[] ...$values Each value
 	 *  is an array of items suitable to pass as $params to ListParam::__construct()
 	 * @return $this
 	 */
-	public function semicolonListParams( ...$values ) {
+	public function semicolonListParams( ...$values ): MessageValue {
 		return $this->listParamsOfType( ListType::SEMICOLON, ...$values );
 	}
 
@@ -308,11 +321,11 @@ class MessageValue {
 	 * The list parameters thus created are formatted as a pipe ("|") -separated
 	 * list, or some local equivalent.
 	 *
-	 * @param (MessageParam|MessageValue|string|int|float)[] ...$values Each value
+	 * @param (MessageParam|MessageSpecifier|string|int|float)[] ...$values Each value
 	 *  is an array of items suitable to pass as $params to ListParam::__construct()
 	 * @return $this
 	 */
-	public function pipeListParams( ...$values ) {
+	public function pipeListParams( ...$values ): MessageValue {
 		return $this->listParamsOfType( ListType::PIPE, ...$values );
 	}
 
@@ -326,7 +339,7 @@ class MessageValue {
 	 * @param (MessageParam|string)[] ...$values
 	 * @return $this
 	 */
-	public function textListParams( ...$values ) {
+	public function textListParams( ...$values ): MessageValue {
 		return $this->listParamsOfType( ListType::AND, ...$values );
 	}
 
@@ -335,12 +348,72 @@ class MessageValue {
 	 *
 	 * @return string
 	 */
-	public function dump() {
+	public function dump(): string {
 		$contents = '';
 		foreach ( $this->params as $param ) {
 			$contents .= $param->dump();
 		}
 		return '<message key="' . htmlspecialchars( $this->key ) . '">' .
 			$contents . '</message>';
+	}
+
+	public function isSameAs( MessageValue $mv ): bool {
+		return $this->key === $mv->key &&
+			count( $this->params ) === count( $mv->params ) &&
+			array_all(
+				$this->params,
+				static fn ( $v, $k ) => $v->isSameAs( $mv->params[$k] )
+			);
+	}
+
+	public function toJsonArray(): array {
+		// WARNING: When changing how this class is serialized, follow the instructions
+		// at <https://www.mediawiki.org/wiki/Manual:Parser_cache/Serialization_compatibility>!
+		return [
+			'key' => $this->key,
+			'params' => array_map(
+				/**
+				 * Serialize trivial parameters as scalar values to minimize the footprint. Full
+				 * round-trip compatibility is guaranteed via the constructor and {@see params}.
+				 */
+				static fn ( $p ) => (
+					$p->getType() === ParamType::TEXT &&
+					is_scalar( $p->getValue() )
+				) ? $p->getValue() : $p,
+				$this->params
+			),
+		];
+	}
+
+	/** @inheritDoc */
+	public static function jsonClassHintFor( string $keyName ) {
+		// Reduce serialization overhead by eliminating the type information
+		// when 'params' consists of MessageParam instances
+		if ( $keyName === 'params' ) {
+			return Hint::build(
+				MessageParam::class, Hint::INHERITED,
+				Hint::LIST, Hint::USE_SQUARE
+			);
+		}
+		return null;
+	}
+
+	public static function newFromJsonArray( array $json ): MessageValue {
+		// WARNING: When changing how this class is serialized, follow the instructions
+		// at <https://www.mediawiki.org/wiki/Manual:Parser_cache/Serialization_compatibility>!
+		// Support use of [MessageValue::class, Hint::INHERITED] for
+		// DataMessageValue as well:
+		if ( isset( $json['code'] ) ) {
+			return DataMessageValue::newFromJsonArray( $json );
+		}
+		return new self( $json['key'], $json['params'] );
+	}
+
+	/**
+	 * If you are serializing a MessageValue (or a DataMessageValue), use
+	 * this JsonCodec hint to suppress unnecessary type information.
+	 */
+	public static function hint(): Hint {
+		return Hint::build( self::class, Hint::INHERITED );
 	}
 }

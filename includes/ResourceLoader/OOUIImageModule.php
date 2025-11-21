@@ -1,26 +1,12 @@
 <?php
 /**
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License along
- * with this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
- * http://www.gnu.org/copyleft/gpl.html
- *
+ * @license GPL-2.0-or-later
  * @file
  */
 
 namespace MediaWiki\ResourceLoader;
 
-use Exception;
+use LogicException;
 
 /**
  * Loads the module definition from JSON files in the format that OOUI uses, converting it to the
@@ -65,7 +51,7 @@ class OOUIImageModule extends ImageModule {
 						if ( !isset( $definition[$key] ) ) {
 							$definition[$key] = $value;
 						} elseif ( $definition[$key] !== $value ) {
-							throw new Exception(
+							throw new LogicException(
 								"Mismatched OOUI theme images definition: " .
 									"key '$key' of theme '$theme' for module '$module' " .
 									"does not match other themes"
@@ -77,7 +63,7 @@ class OOUIImageModule extends ImageModule {
 		}
 
 		// Extra selectors to allow using the same icons for old-style MediaWiki UI code
-		if ( substr( $module, 0, 5 ) === 'icons' ) {
+		if ( str_starts_with( $module, 'icons' ) ) {
 			$definition['selectorWithoutVariant'] = '.oo-ui-icon-{name}, .mw-ui-icon-{name}:before';
 			$definition['selectorWithVariant'] = '.oo-ui-image-{variant}.oo-ui-icon-{name}, ' .
 				'.mw-ui-icon-{name}-{variant}:before';
@@ -102,9 +88,6 @@ class OOUIImageModule extends ImageModule {
 		// Find the path to the JSON file which contains the actual image definitions for this theme
 		if ( $module ) {
 			$dataPath = $this->getThemeImagesPath( $theme, $module );
-			if ( !$dataPath ) {
-				return [];
-			}
 		} else {
 			// Backwards-compatibility for things that probably shouldn't have used this class...
 			$dataPath =
@@ -157,6 +140,3 @@ class OOUIImageModule extends ImageModule {
 		return $data;
 	}
 }
-
-/** @deprecated since 1.39 */
-class_alias( OOUIImageModule::class, 'ResourceLoaderOOUIImageModule' );

@@ -3,6 +3,7 @@
 namespace MediaWiki\Tests\Unit\Settings\Source\Format;
 
 use MediaWiki\Settings\Source\Format\JsonFormat;
+use MediaWikiCoversValidator;
 use PHPUnit\Framework\TestCase;
 use UnexpectedValueException;
 
@@ -10,6 +11,8 @@ use UnexpectedValueException;
  * @covers \MediaWiki\Settings\Source\Format\JsonFormat
  */
 class JsonFormatTest extends TestCase {
+	use MediaWikiCoversValidator;
+
 	public function testDecode() {
 		$format = new JsonFormat();
 
@@ -26,7 +29,7 @@ class JsonFormatTest extends TestCase {
 		$format->decode( '{ bad }' );
 	}
 
-	public function provideSupportsFileExtension() {
+	public static function provideSupportsFileExtension() {
 		yield 'Supported' => [ 'json', true ];
 		yield 'Supported, uppercase' => [ 'JSON', true ];
 		yield 'Unsupported' => [ 'txt', false ];

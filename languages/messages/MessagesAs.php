@@ -1,8 +1,6 @@
 <?php
 /** Assamese (অসমীয়া)
  *
- * To improve a translation please visit https://translatewiki.net
- *
  * @file
  * @ingroup Languages
  */
@@ -81,6 +79,7 @@ $specialPageAliases = [
 	'FileDuplicateSearch'       => [ 'প্ৰতিলিপি_সনিবিষ্ট_নথি_অনুসন্ধান' ],
 	'Filepath'                  => [ 'ফাইলৰ_পথ' ],
 	'Import'                    => [ 'আমদানি' ],
+	'Interwiki'                 => [ 'আন্তঃৱিকি' ],
 	'Invalidateemail'           => [ 'অবৈধ_ই-মেইল' ],
 	'JavaScriptTest'            => [ 'জাভাস্ক্ৰীপ্ত_পৰীক্ষা' ],
 	'LinkSearch'                => [ 'সংযোগ_সন্ধান' ],
@@ -113,6 +112,7 @@ $specialPageAliases = [
 	'Randomredirect'            => [ 'আকস্মিক_পুনৰ্নিৰ্দেশনা' ],
 	'Recentchanges'             => [ 'শেহতীয়া_সালসলনি' ],
 	'Recentchangeslinked'       => [ 'সম্পৰ্কিত_সালসলনিসমূহ' ],
+	'Renameuser'                => [ 'সদস্য_পুনৰ্নামকৰণ' ],
 	'Revisiondelete'            => [ 'সংস্কৰণ_বিলোপ' ],
 	'Search'                    => [ 'সন্ধান' ],
 	'Shortpages'                => [ 'চমু_পৃষ্ঠা' ],
@@ -166,3 +166,5 @@ $digitTransformTable = [
 ];
 
 $digitGroupingPattern = "#,##,##0.###";
+
+$numberingSystem = 'beng';

@@ -1,32 +1,16 @@
 <?php
 /**
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License along
- * with this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
- * http://www.gnu.org/copyleft/gpl.html
- *
+ * @license GPL-2.0-or-later
  * @file
- *
- * @author Ostrzyciel
  */
 
 namespace MediaWiki\Storage;
 
-use BagOStuff;
-use FormatJson;
 use MediaWiki\Config\ServiceOptions;
+use MediaWiki\Json\FormatJson;
 use MediaWiki\MainConfigNames;
-use Wikimedia\Rdbms\ILoadBalancer;
+use Wikimedia\ObjectCache\BagOStuff;
+use Wikimedia\Rdbms\IConnectionProvider;
 
 /**
  * Class allowing easy storage and retrieval of EditResults associated with revisions.
@@ -36,9 +20,9 @@ use Wikimedia\Rdbms\ILoadBalancer;
  * asked to retrieve an EditResult for an edit and the requested key is not present in the
  * main stash, the class will attempt to retrieve the EditResult from revert tags.
  *
- * @since 1.36
- *
  * @internal Used by RevertedTagUpdateManager
+ * @since 1.36
+ * @author Ostrzyciel
  */
 class EditResultCache {
 
@@ -51,8 +35,8 @@ class EditResultCache {
 	/** @var BagOStuff */
 	private $mainObjectStash;
 
-	/** @var ILoadBalancer */
-	private $loadBalancer;
+	/** @var IConnectionProvider */
+	private $dbProvider;
 
 	/** @var ServiceOptions */
 	private $options;
@@ -60,18 +44,18 @@ class EditResultCache {
 	/**
 	 * @param BagOStuff $mainObjectStash Main object stash, see
 	 *  MediaWikiServices::getMainObjectStash()
-	 * @param ILoadBalancer $loadBalancer
+	 * @param IConnectionProvider $dbProvider
 	 * @param ServiceOptions $options
 	 */
 	public function __construct(
 		BagOStuff $mainObjectStash,
-		ILoadBalancer $loadBalancer,
+		IConnectionProvider $dbProvider,
 		ServiceOptions $options
 	) {
 		$options->assertRequiredOptions( self::CONSTRUCTOR_OPTIONS );
 
 		$this->mainObjectStash = $mainObjectStash;
-		$this->loadBalancer = $loadBalancer;
+		$this->dbProvider = $dbProvider;
 		$this->options = $options;
 	}
 
@@ -88,7 +72,8 @@ class EditResultCache {
 			$this->makeKey( $revisionId ),
 			FormatJson::encode( $editResult ),
 			// Patrol flags are not stored for longer than $wgRCMaxAge
-			$this->options->get( MainConfigNames::RCMaxAge )
+			$this->options->get( MainConfigNames::RCMaxAge ),
+			BagOStuff::WRITE_BACKGROUND
 		);
 	}
 
@@ -107,21 +92,15 @@ class EditResultCache {
 
 		// not found in stash, try change tags
 		if ( !$result ) {
-			$dbr = $this->loadBalancer->getConnectionRef( DB_REPLICA );
-			$result = $dbr->selectField(
-				[ 'change_tag', 'change_tag_def' ],
-				'ct_params',
-				[
+			$result = $this->dbProvider->getReplicaDatabase()->newSelectQueryBuilder()
+				->select( 'ct_params' )
+				->from( 'change_tag' )
+				->join( 'change_tag_def', null, 'ctd_id = ct_tag_id' )
+				->where( [
 					'ct_rev_id' => $revisionId,
-					'ctd_id = ct_tag_id',
-					'ctd_name' => [
-						'mw-rollback',
-						'mw-undo',
-						'mw-manual-revert'
-					]
-				],
-				__METHOD__
-			);
+					'ctd_name' => [ 'mw-rollback', 'mw-undo', 'mw-manual-revert' ]
+				] )
+				->caller( __METHOD__ )->fetchField();
 		}
 
 		if ( !$result ) {

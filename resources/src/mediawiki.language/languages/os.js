@@ -3,10 +3,9 @@
  * @author Santhosh Thottingal
  */
 
-mw.language.convertGrammar = function ( word, form ) {
-	var grammarForms = mw.language.getData( 'os', 'grammarForms' ),
-		// Ending for allative case
-		endAllative = 'мæ',
+mw.language.convertGrammarMapping.os = function ( word, form ) {
+	// Ending for allative case
+	let endAllative = 'мæ',
 		// Variable for 'j' beetwen vowels
 		jot = '',
 		// Variable for "-" for not Ossetic words
@@ -14,9 +13,6 @@ mw.language.convertGrammar = function ( word, form ) {
 		// Variable for ending
 		ending = '';
 
-	if ( grammarForms && grammarForms[ form ] ) {
-		return grammarForms[ form ][ word ];
-	}
 	// Checking if the $word is in plural form
 	if ( /тæ$/i.test( word ) ) {
 		word = word.slice( 0, -1 );

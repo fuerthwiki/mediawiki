@@ -2,21 +2,7 @@
 /**
  * Convenience class for generating iterators from iterators.
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License along
- * with this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
- * http://www.gnu.org/copyleft/gpl.html
- *
+ * @license GPL-2.0-or-later
  * @file
  */
 
@@ -33,10 +19,11 @@ class MappedIterator extends FilterIterator {
 	/** @var array */
 	protected $cache = [];
 
-	protected $rewound = false; // boolean; whether rewind() has been called
+	/** @var bool whether rewind() has been called */
+	protected $rewound = false;
 
 	/**
-	 * Build an new iterator from a base iterator by having the former wrap the
+	 * Build a new iterator from a base iterator by having the former wrap the
 	 * later, returning the result of "value" callback for each current() invocation.
 	 * The callback takes the result of current() on the base iterator as an argument.
 	 * The keys of the base iterator are reused verbatim.
@@ -76,8 +63,10 @@ class MappedIterator extends FilterIterator {
 	}
 
 	public function accept(): bool {
-		$value = call_user_func( $this->vCallback, $this->getInnerIterator()->current() );
-		$ok = ( $this->aCallback ) ? call_user_func( $this->aCallback, $value ) : true;
+		$inner = $this->getInnerIterator();
+		'@phan-var Iterator $inner';
+		$value = ( $this->vCallback )( $inner->current() );
+		$ok = ( $this->aCallback ) ? ( $this->aCallback )( $value ) : true;
 		if ( $ok ) {
 			$this->cache['current'] = $value;
 		}
@@ -85,6 +74,7 @@ class MappedIterator extends FilterIterator {
 		return $ok;
 	}
 
+	/** @inheritDoc */
 	#[\ReturnTypeWillChange]
 	public function key() {
 		$this->init();
@@ -98,6 +88,7 @@ class MappedIterator extends FilterIterator {
 		return parent::valid();
 	}
 
+	/** @inheritDoc */
 	#[\ReturnTypeWillChange]
 	public function current() {
 		$this->init();

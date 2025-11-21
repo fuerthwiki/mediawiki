@@ -7,24 +7,12 @@
 /**
  * Base code for benchmark scripts.
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License along
- * with this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
- * http://www.gnu.org/copyleft/gpl.html
- *
+ * @license GPL-2.0-or-later
  * @file
  * @ingroup Benchmark
  */
+
+namespace MediaWiki\Maintenance;
 
 use Wikimedia\RunningStat;
 
@@ -38,6 +26,7 @@ require_once __DIR__ . '/../Maintenance.php';
  * @ingroup Benchmark
  */
 abstract class Benchmarker extends Maintenance {
+	/** @var int */
 	protected $defaultCount = 100;
 
 	public function __construct() {
@@ -51,8 +40,10 @@ abstract class Benchmarker extends Maintenance {
 		$count = $this->getOption( 'count', $this->defaultCount );
 		$verbose = $this->hasOption( 'verbose' );
 
-		// Normalise
 		$normBenchs = [];
+		$shortNames = [];
+
+		// Normalise
 		foreach ( $benchs as $key => $bench ) {
 			// Shortcut for simple functions
 			if ( is_callable( $bench ) ) {
@@ -79,19 +70,24 @@ abstract class Benchmarker extends Maintenance {
 					// @phan-suppress-next-line PhanTypePossiblyInvalidDimOffset False positive
 					$name = strval( $bench['function'] );
 				}
-				$name = sprintf( "%s(%s)",
-					$name,
-					implode(
-						', ',
-						array_map(
-							static function ( $a ) {
-								return var_export( $a, true );
-							},
-							// @phan-suppress-next-line PhanTypePossiblyInvalidDimOffset False positive
-							$bench['args']
-						)
+				$argsText = implode(
+					', ',
+					array_map(
+						static function ( $a ) {
+							return var_export( $a, true );
+						},
+						// @phan-suppress-next-line PhanTypePossiblyInvalidDimOffset False positive
+						$bench['args']
 					)
 				);
+				$index = $shortNames[$name] = ( $shortNames[$name] ?? 0 ) + 1;
+				$shorten = strlen( $argsText ) > 80 || str_contains( $argsText, "\n" );
+				if ( !$shorten ) {
+					$name = "$name($argsText)";
+				}
+				if ( $shorten || $index > 1 ) {
+					$name = "$name@$index";
+				}
 			}
 
 			$normBenchs[$name] = $bench;
@@ -100,7 +96,7 @@ abstract class Benchmarker extends Maintenance {
 		foreach ( $normBenchs as $name => $bench ) {
 			// Optional setup called outside time measure
 			if ( isset( $bench['setup'] ) ) {
-				call_user_func( $bench['setup'] );
+				$bench['setup']();
 			}
 
 			// Run benchmarks
@@ -112,7 +108,7 @@ abstract class Benchmarker extends Maintenance {
 				}
 				$t = microtime( true );
 				// @phan-suppress-next-line PhanTypePossiblyInvalidDimOffset False positive
-				call_user_func_array( $bench['function'], $bench['args'] );
+				$bench['function']( ...$bench['args'] );
 				$t = ( microtime( true ) - $t ) * 1000;
 				if ( $verbose ) {
 					$this->verboseRun( $i );
@@ -149,7 +145,7 @@ abstract class Benchmarker extends Maintenance {
 		);
 	}
 
-	public function addResult( $res ) {
+	public function addResult( array $res ) {
 		$ret = sprintf( "%s\n  %' 6s: %d\n",
 			$res['name'],
 			'count',
@@ -179,7 +175,7 @@ abstract class Benchmarker extends Maintenance {
 		$this->output( "$ret\n" );
 	}
 
-	protected function verboseRun( $iteration ) {
+	protected function verboseRun( int $iteration ) {
 		$this->output( sprintf( "#%3d - memory: %-10s - peak: %-10s\n",
 			$iteration,
 			$this->formatSize( memory_get_usage( true ) ),
@@ -218,9 +214,12 @@ abstract class Benchmarker extends Maintenance {
 	protected function loadFile( $file ) {
 		$content = file_get_contents( $file );
 		// Detect GZIP compression header
-		if ( substr( $content, 0, 2 ) === "\037\213" ) {
+		if ( str_starts_with( $content, "\037\213" ) ) {
 			$content = gzdecode( $content );
 		}
 		return $content;
 	}
 }
+
+/** @deprecated class alias since 1.43 */
+class_alias( Benchmarker::class, 'Benchmarker' );

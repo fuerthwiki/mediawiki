@@ -2,26 +2,19 @@
 /**
  * Reset user email.
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License along
- * with this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
- * http://www.gnu.org/copyleft/gpl.html
- *
+ * @license GPL-2.0-or-later
  * @file
  * @ingroup Maintenance
  */
 
+// @codeCoverageIgnoreStart
 require_once __DIR__ . '/Maintenance.php';
+// @codeCoverageIgnoreEnd
+
+use MediaWiki\Maintenance\Maintenance;
+use MediaWiki\Parser\Sanitizer;
+use MediaWiki\Password\PasswordFactory;
+use MediaWiki\User\User;
 
 /**
  * Maintenance script that resets user email.
@@ -39,6 +32,7 @@ class ResetUserEmail extends Maintenance {
 		$this->addArg( 'email', 'Email to assign' );
 
 		$this->addOption( 'no-reset-password', 'Don\'t reset the user\'s password' );
+		$this->addOption( 'email-password', 'Send a temporary password to the user\'s new email address' );
 	}
 
 	public function execute() {
@@ -71,13 +65,25 @@ class ResetUserEmail extends Maintenance {
 				'retype' => $password,
 			] );
 			if ( !$status->isGood() ) {
-				$this->error( "Password couldn't be reset because:\n"
-					. $status->getMessage( false, false, 'en' )->text() );
+				$this->error( "Password couldn't be reset because:" );
+				$this->error( $status );
+			}
+		}
+
+		if ( $this->hasOption( 'email-password' ) ) {
+			$passReset = $this->getServiceContainer()->getPasswordReset();
+			$sysUser = User::newSystemUser( 'Maintenance script', [ 'steal' => true ] );
+			$status = $passReset->execute( $sysUser, $user->getName(), $email );
+			if ( !$status->isGood() ) {
+				$this->error( "Email couldn't be sent because:" );
+				$this->error( $status );
 			}
 		}
 		$this->output( "Done!\n" );
 	}
 }
 
+// @codeCoverageIgnoreStart
 $maintClass = ResetUserEmail::class;
 require_once RUN_MAINTENANCE_IF_MAIN;
+// @codeCoverageIgnoreEnd

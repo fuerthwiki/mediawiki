@@ -1,12 +1,11 @@
 <?php
 /** Crimean Tatar (Latin script) (qırımtatarca (Latin))
  *
- * To improve a translation please visit https://translatewiki.net
- *
  * @file
  * @ingroup Languages
  */
 
+$fallback = 'tr';
 $fallback8bitEncoding = 'windows-1254';
 
 $namespaceNames = [

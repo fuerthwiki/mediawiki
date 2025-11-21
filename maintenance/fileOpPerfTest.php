@@ -2,28 +2,17 @@
 /**
  * Test for fileop performance.
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License along
- * with this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
- * http://www.gnu.org/copyleft/gpl.html
- *
+ * @license GPL-2.0-or-later
  * @file
  * @ingroup Maintenance
  */
 
-use MediaWiki\MediaWikiServices;
+use MediaWiki\Maintenance\Maintenance;
+use Wikimedia\FileBackend\FileBackend;
 
+// @codeCoverageIgnoreStart
 require_once __DIR__ . '/Maintenance.php';
+// @codeCoverageIgnoreEnd
 
 /**
  * Maintenance script to test fileop performance.
@@ -43,7 +32,7 @@ class FileOpPerfTest extends Maintenance {
 	}
 
 	public function execute() {
-		$backendGroup = MediaWikiServices::getInstance()->getFileBackendGroup();
+		$backendGroup = $this->getServiceContainer()->getFileBackendGroup();
 		$backend = $backendGroup->get( $this->getOption( 'b1' ) );
 		$this->doPerfTest( $backend );
 
@@ -69,6 +58,7 @@ class FileOpPerfTest extends Maintenance {
 			return;
 		}
 
+		// phpcs:ignore Generic.CodeAnalysis.AssignmentInCondition.FoundInWhileCondition
 		while ( ( $file = readdir( $dir ) ) !== false ) {
 			if ( $file[0] != '.' ) {
 				$this->output( "Using '$dirname/$file' in operations.\n" );
@@ -99,49 +89,51 @@ class FileOpPerfTest extends Maintenance {
 		$start = microtime( true );
 		$status = $backend->$method( $ops1, $opts );
 		$e = ( microtime( true ) - $start ) * 1000;
-		if ( $status->getErrorsArray() ) {
-			print_r( $status->getErrorsArray() );
+		if ( !$status->isGood() ) {
+			$this->error( $status );
 			return;
 		}
 		$this->output( $backend->getName() . ": Stored " . count( $ops1 ) . " files in $e ms.\n" );
 
 		$start = microtime( true );
-		$backend->$method( $ops2, $opts );
+		$status = $backend->$method( $ops2, $opts );
 		$e = ( microtime( true ) - $start ) * 1000;
-		if ( $status->getErrorsArray() ) {
-			print_r( $status->getErrorsArray() );
+		if ( !$status->isGood() ) {
+			$this->error( $status );
 			return;
 		}
 		$this->output( $backend->getName() . ": Copied " . count( $ops2 ) . " files in $e ms.\n" );
 
 		$start = microtime( true );
-		$backend->$method( $ops3, $opts );
+		$status = $backend->$method( $ops3, $opts );
 		$e = ( microtime( true ) - $start ) * 1000;
-		if ( $status->getErrorsArray() ) {
-			print_r( $status->getErrorsArray() );
+		if ( !$status->isGood() ) {
+			$this->error( $status );
 			return;
 		}
 		$this->output( $backend->getName() . ": Moved " . count( $ops3 ) . " files in $e ms.\n" );
 
 		$start = microtime( true );
-		$backend->$method( $ops4, $opts );
+		$status = $backend->$method( $ops4, $opts );
 		$e = ( microtime( true ) - $start ) * 1000;
-		if ( $status->getErrorsArray() ) {
-			print_r( $status->getErrorsArray() );
+		if ( !$status->isGood() ) {
+			$this->error( $status );
 			return;
 		}
 		$this->output( $backend->getName() . ": Deleted " . count( $ops4 ) . " files in $e ms.\n" );
 
 		$start = microtime( true );
-		$backend->$method( $ops5, $opts );
+		$status = $backend->$method( $ops5, $opts );
 		$e = ( microtime( true ) - $start ) * 1000;
-		if ( $status->getErrorsArray() ) {
-			print_r( $status->getErrorsArray() );
+		if ( !$status->isGood() ) {
+			$this->error( $status );
 			return;
 		}
 		$this->output( $backend->getName() . ": Deleted " . count( $ops5 ) . " files in $e ms.\n" );
 	}
 }
 
+// @codeCoverageIgnoreStart
 $maintClass = FileOpPerfTest::class;
 require_once RUN_MAINTENANCE_IF_MAIN;
+// @codeCoverageIgnoreEnd

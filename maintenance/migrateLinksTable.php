@@ -1,8 +1,11 @@
 <?php
 
-use MediaWiki\MediaWikiServices;
-
+// @codeCoverageIgnoreStart
 require_once __DIR__ . '/Maintenance.php';
+// @codeCoverageIgnoreEnd
+
+use MediaWiki\Maintenance\LoggedUpdateMaintenance;
+use MediaWiki\Title\TitleValue;
 
 /**
  * Maintenance script that populates normalization column in links tables.
@@ -11,6 +14,11 @@ require_once __DIR__ . '/Maintenance.php';
  * @since 1.39
  */
 class MigrateLinksTable extends LoggedUpdateMaintenance {
+	/** @var int */
+	private $totalUpdated = 0;
+	/** @var int */
+	private $lastProgress = 0;
+
 	public function __construct() {
 		parent::__construct();
 		$this->addDescription(
@@ -18,7 +26,7 @@ class MigrateLinksTable extends LoggedUpdateMaintenance {
 		);
 		$this->addOption(
 			'table',
-			'Table name. Like templatelinks.',
+			'Table name. Like pagelinks.',
 			true,
 			true
 		);
@@ -31,10 +39,12 @@ class MigrateLinksTable extends LoggedUpdateMaintenance {
 		$this->setBatchSize( 1000 );
 	}
 
+	/** @inheritDoc */
 	protected function getUpdateKey() {
 		return __CLASS__ . $this->getOption( 'table', '' );
 	}
 
+	/** @inheritDoc */
 	protected function doDBUpdates() {
 		$dbw = $this->getDB( DB_PRIMARY );
 		$mapping = \MediaWiki\Linker\LinksMigration::$mapping;
@@ -77,31 +87,31 @@ class MigrateLinksTable extends LoggedUpdateMaintenance {
 			// Given the indexes and the structure of links tables,
 			// we need to split the update into batches of pages.
 			// Otherwise the queries will take a really long time in production and cause read-only.
-			$updated += $this->handlePageBatch( $pageId, $mapping, $table );
+			$this->handlePageBatch( $pageId, $mapping, $table );
 			$pageId += $this->getBatchSize();
 		}
 
-		$this->output( "Completed normalization of $table, $updated rows updated.\n" );
+		$this->output( "Completed normalization of $table, {$this->totalUpdated} rows updated.\n" );
 
 		return true;
 	}
 
-	private function handlePageBatch( $lowPageId, $mapping, $table ) {
+	private function handlePageBatch( int $lowPageId, array $mapping, string $table ) {
 		$batchSize = $this->getBatchSize();
 		$targetColumn = $mapping[$table]['target_id'];
 		$pageIdColumn = $mapping[$table]['page_id'];
-		// BETWEEN is inclusive, let's subtract one.
+		// range is inclusive, let's subtract one.
 		$highPageId = $lowPageId + $batchSize - 1;
-		$dbw = $this->getDB( DB_PRIMARY );
-		$updated = 0;
+		$dbw = $this->getPrimaryDB();
 
 		while ( true ) {
 			$res = $dbw->newSelectQueryBuilder()
 				->select( [ $mapping[$table]['ns'], $mapping[$table]['title'] ] )
 				->from( $table )
 				->where( [
-					$targetColumn => null,
-					"$pageIdColumn BETWEEN $lowPageId AND $highPageId"
+					$targetColumn => [ null, 0 ],
+					$dbw->expr( $pageIdColumn, '>=', $lowPageId ),
+					$dbw->expr( $pageIdColumn, '<=', $highPageId ),
 				] )
 				->limit( 1 )
 				->caller( __METHOD__ )
@@ -113,30 +123,50 @@ class MigrateLinksTable extends LoggedUpdateMaintenance {
 			$ns = $row[$mapping[$table]['ns']];
 			$titleString = $row[$mapping[$table]['title']];
 			$title = new TitleValue( (int)$ns, $titleString );
-			$this->output( "Starting backfill of $ns:$titleString " .
-				"title on pages between $lowPageId and $highPageId\n" );
-			$id = MediaWikiServices::getInstance()->getLinkTargetLookup()->acquireLinkTargetId( $title, $dbw );
-			$conds = [
-				$targetColumn => null,
-				$mapping[$table]['ns'] => $ns,
-				$mapping[$table]['title'] => $titleString,
-				"$pageIdColumn BETWEEN $lowPageId AND $highPageId"
-			];
-			$dbw->update( $table, [ $targetColumn => $id ], $conds, __METHOD__ );
-			$updatedInThisBatch = $dbw->affectedRows();
-			$updated += $updatedInThisBatch;
-			$this->output( "Updated $updatedInThisBatch rows\n" );
+			$id = $this->getServiceContainer()->getLinkTargetLookup()->acquireLinkTargetId( $title, $dbw );
+			$dbw->newUpdateQueryBuilder()
+				->update( $table )
+				->set( [ $targetColumn => $id ] )
+				->where( [
+					$targetColumn => [ null, 0 ],
+					$mapping[$table]['ns'] => $ns,
+					$mapping[$table]['title'] => $titleString,
+					$dbw->expr( $pageIdColumn, '>=', $lowPageId ),
+					$dbw->expr( $pageIdColumn, '<=', $highPageId ),
+				] )
+				->caller( __METHOD__ )->execute();
+			$this->updateProgress( $dbw->affectedRows(), $lowPageId, $highPageId, $ns, $titleString );
+		}
+	}
+
+	/**
+	 * Update the total progress metric. If enough progress has been made,
+	 * report to the user and do a replication wait.
+	 *
+	 * @param int $updatedInThisBatch
+	 * @param int $lowPageId
+	 * @param int $highPageId
+	 * @param int $ns
+	 * @param string $titleString
+	 */
+	private function updateProgress( $updatedInThisBatch, $lowPageId, $highPageId, $ns, $titleString ) {
+		$this->totalUpdated += $updatedInThisBatch;
+		if ( $this->totalUpdated >= $this->lastProgress + $this->getBatchSize() ) {
+			$this->lastProgress = $this->totalUpdated;
+			$this->output( "Updated {$this->totalUpdated} rows, " .
+				"at page_id $lowPageId-$highPageId title $ns:$titleString\n" );
+			$this->waitForReplication();
 			// Sleep between batches for replication to catch up
-			MediaWikiServices::getInstance()->getDBLoadBalancerFactory()->waitForReplication();
 			$sleep = (int)$this->getOption( 'sleep', 0 );
 			if ( $sleep > 0 ) {
 				sleep( $sleep );
 			}
 		}
-		return $updated;
 	}
 
 }
 
+// @codeCoverageIgnoreStart
 $maintClass = MigrateLinksTable::class;
 require_once RUN_MAINTENANCE_IF_MAIN;
+// @codeCoverageIgnoreEnd

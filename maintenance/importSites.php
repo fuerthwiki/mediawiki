@@ -1,6 +1,11 @@
 <?php
 
+// @codeCoverageIgnoreStart
 require_once __DIR__ . '/Maintenance.php';
+// @codeCoverageIgnoreEnd
+
+use MediaWiki\Maintenance\Maintenance;
+use MediaWiki\Site\SiteImporter;
 
 /**
  * Maintenance script for importing site definitions from XML into the sites table.
@@ -28,9 +33,9 @@ class ImportSites extends Maintenance {
 	public function execute() {
 		$file = $this->getArg( 0 );
 
-		$siteStore = \MediaWiki\MediaWikiServices::getInstance()->getSiteStore();
+		$siteStore = $this->getServiceContainer()->getSiteStore();
 		$importer = new SiteImporter( $siteStore );
-		$importer->setExceptionCallback( [ $this, 'reportException' ] );
+		$importer->setExceptionCallback( $this->reportException( ... ) );
 
 		$importer->importFromFile( $file );
 
@@ -39,14 +44,14 @@ class ImportSites extends Maintenance {
 
 	/**
 	 * Outputs a message via the output() method.
-	 *
-	 * @param Exception $ex
 	 */
-	public function reportException( Exception $ex ) {
+	private function reportException( Exception $ex ) {
 		$msg = $ex->getMessage();
 		$this->output( "$msg\n" );
 	}
 }
 
+// @codeCoverageIgnoreStart
 $maintClass = ImportSites::class;
 require_once RUN_MAINTENANCE_IF_MAIN;
+// @codeCoverageIgnoreEnd

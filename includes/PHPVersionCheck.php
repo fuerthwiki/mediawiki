@@ -1,25 +1,12 @@
 <?php
 /**
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License along
- * with this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
- * http://www.gnu.org/copyleft/gpl.html
- *
+ * @license GPL-2.0-or-later
  * @file
  */
 
 // phpcs:disable Generic.Arrays.DisallowLongArraySyntax,PSR2.Classes.PropertyDeclaration,MediaWiki.Usage.DirUsage
 // phpcs:disable Squiz.Scope.MemberVarScope.Missing,Squiz.Scope.MethodScope.Missing
+// phpcs:disable MediaWiki.Usage.StaticClosure.StaticClosure
 /**
  * Check PHP Version, as well as for composer dependencies in entry points,
  * and display something vaguely comprehensible in the event of a totally
@@ -33,7 +20,7 @@
  */
 class PHPVersionCheck {
 	/** @var string The number of the MediaWiki version used. If you're updating MW_VERSION in Defines.php, you must also update this value. */
-	var $mwVersion = '1.40';
+	var $mwVersion = '1.46';
 
 	/** @var string[] A mapping of PHP functions to PHP extensions. */
 	var $functionsExtensionsMapping = array(
@@ -78,7 +65,9 @@ class PHPVersionCheck {
 	 * Displays an error, if the installed PHP version does not meet the minimum requirement.
 	 */
 	function checkRequiredPHPVersion() {
-		$minimumVersion = '7.4.3';
+		// This value should match the PHP version specified in composer.json,
+		// .phan/config.php, and ScopeStructureTest.php
+		$minimumVersion = '8.1.0';
 
 		/**
 		 * This is a list of known-bad ranges of PHP versions. Syntax is like SemVer – either:
@@ -104,7 +93,7 @@ class PHPVersionCheck {
 		if ( count( $knownBad ) ) {
 			$versionString .= ' (and not ' . implode( ', ', array_values( $knownBad ) ) . ')';
 
-			foreach ( $knownBad as $task => $range ) {
+			foreach ( $knownBad as $range ) {
 				// As we don't have composer at this point, we have to do our own version range checking.
 				if ( strpos( $range, '-' ) ) {
 					$passes = $passes && !(
@@ -131,8 +120,8 @@ class PHPVersionCheck {
 			$web['longHtml'] = <<<HTML
 		<p>
 			Please consider <a href="https://www.php.net/downloads.php">upgrading your copy of PHP</a>.
-			PHP versions less than v7.3.0 are no longer supported by the PHP Group and will not receive
-			security or bugfix updates.
+			PHP versions less than v8.1.0 are no longer <a href="https://www.php.net/supported-versions.php">supported</a>
+			by the PHP Group and will not receive security or bugfix updates.
 		</p>
 		<p>
 			If for some reason you are unable to upgrade your PHP version, you will need to
@@ -155,22 +144,22 @@ HTML;
 	 */
 	function checkVendorExistence() {
 		if ( !file_exists( dirname( __FILE__ ) . '/../vendor/autoload.php' ) ) {
-			$cliText = "Error: You are missing some external dependencies. \n"
-				. "MediaWiki also has some external dependencies that need to be installed\n"
-				. "via composer or from a separate git repo. Please see\n"
+			$cliText = "Error: You are missing some dependencies. \n"
+				. "MediaWiki has dependencies that need to be installed via Composer\n"
+				. "or from a separate repository. Please see\n"
 				. "https://www.mediawiki.org/wiki/Download_from_Git#Fetch_external_libraries\n"
-				. "for help on installing the required components.";
+				. "for help with installing them.";
 
 			$web = array();
-			$web['intro'] = "Installing some external dependencies (e.g. via composer) is required.";
-			$web['longTitle'] = 'External dependencies';
+			$web['intro'] = "Installing some dependencies is required.";
+			$web['longTitle'] = 'Dependencies';
 			// phpcs:disable Generic.Files.LineLength
 			$web['longHtml'] = <<<HTML
 		<p>
-		MediaWiki also has some external dependencies that need to be installed via
-		composer or from a separate git repo. Please see the
+		MediaWiki has dependencies that need to be installed via Composer
+		or from a separate repository. Please see the
 		<a href="https://www.mediawiki.org/wiki/Download_from_Git#Fetch_external_libraries">instructions
-		for installing libraries</a> on mediawiki.org for help on installing the required components.
+		for installing external libraries</a> on MediaWiki.org.
 		</p>
 HTML;
 			// phpcs:enable Generic.Files.LineLength
@@ -186,32 +175,46 @@ HTML;
 		$missingExtensions = array();
 		foreach ( $this->functionsExtensionsMapping as $function => $extension ) {
 			if ( !function_exists( $function ) ) {
-				$missingExtensions[] = $extension;
+				$missingExtensions[] = array( $extension );
 			}
+		}
+
+		// Special case: either of those is required, but only on 32-bit systems (T391169)
+		if ( PHP_INT_SIZE < 8 && !extension_loaded( 'gmp' ) && !extension_loaded( 'bcmath' ) ) {
+			$missingExtensions[] = array( 'bcmath', 'gmp' );
 		}
 
 		if ( $missingExtensions ) {
 			$missingExtText = '';
 			$missingExtHtml = '';
 			$baseUrl = 'https://www.php.net';
-			foreach ( $missingExtensions as $ext ) {
-				$missingExtText .= " * $ext <$baseUrl/$ext>\n";
-				$missingExtHtml .= "<li><b>$ext</b> "
-					. "(<a href=\"$baseUrl/$ext\">more information</a>)</li>";
+			foreach ( $missingExtensions as $extNames ) {
+				$plaintextLinks = array();
+				$htmlLinks = array();
+				foreach ( $extNames as $ext ) {
+					$plaintextLinks[] = "$ext <$baseUrl/$ext>";
+					$htmlLinks[] = "<b>$ext</b> (<a href=\"$baseUrl/$ext\">more information</a>)";
+				}
+
+				$missingExtText .= ' * ' . implode( ' or ', $plaintextLinks ) . "\n";
+				$missingExtHtml .= "<li>" . implode( ' or ', $htmlLinks ) . "</li>";
 			}
 
-			$cliText = "Error: Missing one or more required components of PHP.\n"
-				. "You are missing a required extension to PHP that MediaWiki needs.\n"
-				. "Please install:\n" . $missingExtText;
+			$cliText = "Error: Missing one or more required PHP extensions. Please see\n"
+				. "https://www.mediawiki.org/wiki/Manual:Installation_requirements#PHP\n"
+				. "for help with installing them.\n"
+				. "Please install or enable:\n" . $missingExtText;
 
 			$web = array();
 			$web['intro'] = "Installing some PHP extensions is required.";
-			$web['longTitle'] = 'Required components';
+			$web['longTitle'] = 'Required PHP extensions';
 			$web['longHtml'] = <<<HTML
 		<p>
-		You are missing a required extension to PHP that MediaWiki
-		requires to run. Please install:
+		You are missing one or more extensions to PHP that MediaWiki requires to run. Please see the
+		<a href="https://www.mediawiki.org/wiki/Manual:Installation_requirements#PHP">PHP
+		installation requirements</a> on MediaWiki.org.
 		</p>
+		<p>Please install or enable:</p>
 		<ul>
 		$missingExtHtml
 		</ul>
@@ -229,8 +232,7 @@ HTML;
 
 		header( "$protocol 500 MediaWiki configuration Error" );
 		// Don't cache error pages! They cause no end of trouble...
-		header( 'Cache-control: none' );
-		header( 'Pragma: no-cache' );
+		header( 'Cache-Control: no-cache' );
 	}
 
 	/**

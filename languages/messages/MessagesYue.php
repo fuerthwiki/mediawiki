@@ -1,8 +1,6 @@
 <?php
 /** Cantonese (粵語)
  *
- * To improve a translation please visit https://translatewiki.net
- *
  * @file
  * @ingroup Languages
  *
@@ -22,6 +20,8 @@
  * @author Xiaomingyan
  * @author Yfdyh000
  */
+
+$fallback = 'yue-hant, yue-hans';
 
 $namespaceNames = [
 	NS_MEDIA            => '媒體',
@@ -123,6 +123,7 @@ $specialPageAliases = [
 	'FileDuplicateSearch'       => [ '搵重複文件' ],
 	'Filepath'                  => [ '檔案路徑' ],
 	'Import'                    => [ '匯入' ],
+	'Interwiki'                 => [ '其他維基連接' ],
 	'Invalidateemail'           => [ '錯電郵' ],
 	'LinkSearch'                => [ '搵連結' ],
 	'Listadmins'                => [ '管理員列表' ],

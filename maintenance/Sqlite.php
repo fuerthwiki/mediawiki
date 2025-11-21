@@ -2,21 +2,7 @@
 /**
  * Helper class for sqlite-specific scripts
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License along
- * with this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
- * http://www.gnu.org/copyleft/gpl.html
- *
+ * @license GPL-2.0-or-later
  * @file
  * @ingroup Maintenance
  */
@@ -44,12 +30,11 @@ class Sqlite {
 	 * SQLite-compatible during processing.
 	 * Will throw exceptions on SQL errors
 	 * @param array|string $files
-	 * @throws MWException
 	 * @return true|string True if no error or error string in case of errors
 	 */
 	public static function checkSqlSyntax( $files ) {
 		if ( !self::isPresent() ) {
-			throw new MWException( "Can't check SQL syntax: SQLite not found" );
+			throw new RuntimeException( "Can't check SQL syntax: SQLite not found" );
 		}
 		if ( !is_array( $files ) ) {
 			$files = [ $files ];
@@ -74,7 +59,7 @@ class Sqlite {
 
 			$tables = $db->query( "SELECT name FROM sqlite_master WHERE type='table'", __METHOD__ );
 			foreach ( $tables as $table ) {
-				if ( strpos( $table->name, 'sqlite_' ) === 0 ) {
+				if ( str_starts_with( $table->name, 'sqlite_' ) ) {
 					continue;
 				}
 

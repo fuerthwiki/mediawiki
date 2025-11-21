@@ -2,28 +2,18 @@
 /**
  * Check images to see if they exist, are readable, etc.
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License along
- * with this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
- * http://www.gnu.org/copyleft/gpl.html
- *
+ * @license GPL-2.0-or-later
  * @file
  * @ingroup Maintenance
  */
 
-use MediaWiki\MediaWikiServices;
+use MediaWiki\FileRepo\File\FileSelectQueryBuilder;
+use MediaWiki\Maintenance\Maintenance;
+use Wikimedia\Rdbms\SelectQueryBuilder;
 
+// @codeCoverageIgnoreStart
 require_once __DIR__ . '/Maintenance.php';
+// @codeCoverageIgnoreEnd
 
 /**
  * Maintenance script to check images to see if they exist, are readable, etc.
@@ -40,21 +30,18 @@ class CheckImages extends Maintenance {
 
 	public function execute() {
 		$start = '';
-		$dbr = $this->getDB( DB_REPLICA );
+		$dbr = $this->getReplicaDB();
 
 		$numImages = 0;
 		$numGood = 0;
 
-		$repo = MediaWikiServices::getInstance()->getRepoGroup()->getLocalRepo();
-		$fileQuery = LocalFile::getQueryInfo();
+		$repo = $this->getServiceContainer()->getRepoGroup()->getLocalRepo();
 		do {
-			$res = $dbr->newSelectQueryBuilder()
-				->select( $fileQuery['fields'] )
-				->tables( $fileQuery['tables'] )
-				->where( 'img_name > ' . $dbr->addQuotes( $start ) )
-				->joinConds( $fileQuery['joins'] )
-				->caller( __METHOD__ )
+			$res = FileSelectQueryBuilder::newForFile( $dbr )
+				->where( $dbr->expr( 'img_name', '>', $start ) )
 				->limit( $this->getBatchSize() )
+				->orderBy( 'img_name', SelectQueryBuilder::SORT_ASC )
+				->caller( __METHOD__ )
 				->fetchResultSet();
 			foreach ( $res as $row ) {
 				$numImages++;
@@ -90,5 +77,7 @@ class CheckImages extends Maintenance {
 	}
 }
 
+// @codeCoverageIgnoreStart
 $maintClass = CheckImages::class;
 require_once RUN_MAINTENANCE_IF_MAIN;
+// @codeCoverageIgnoreEnd

@@ -1,32 +1,23 @@
 <?php
 /**
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License along
- * with this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
- * http://www.gnu.org/copyleft/gpl.html
- *
+ * @license GPL-2.0-or-later
  * @file
  * @author Ori Livneh <ori@wikimedia.org>
  */
 
-class TimingTest extends PHPUnit\Framework\TestCase {
+namespace Wikimedia\Tests;
+
+use MediaWikiCoversValidator;
+use PHPUnit\Framework\TestCase;
+use Wikimedia\Timing\Timing;
+
+/**
+ * @covers \Wikimedia\Timing\Timing
+ */
+class TimingTest extends TestCase {
 
 	use MediaWikiCoversValidator;
 
-	/**
-	 * @covers Timing::clearMarks
-	 * @covers Timing::getEntries
-	 */
 	public function testClearMarks() {
 		$timing = new Timing;
 		$this->assertCount( 1, $timing->getEntries() );
@@ -43,10 +34,6 @@ class TimingTest extends PHPUnit\Framework\TestCase {
 		$this->assertCount( 1, $timing->getEntries() );
 	}
 
-	/**
-	 * @covers Timing::mark
-	 * @covers Timing::getEntryByName
-	 */
 	public function testMark() {
 		$timing = new Timing;
 		$timing->mark( 'a' );
@@ -63,9 +50,6 @@ class TimingTest extends PHPUnit\Framework\TestCase {
 		$this->assertGreaterThan( $entry['startTime'], $newEntry['startTime'] );
 	}
 
-	/**
-	 * @covers Timing::measure
-	 */
 	public function testMeasure() {
 		$timing = new Timing;
 
@@ -85,9 +69,6 @@ class TimingTest extends PHPUnit\Framework\TestCase {
 		$this->assertEquals( $b['startTime'] - $a['startTime'], $entry['duration'] );
 	}
 
-	/**
-	 * @covers Timing::getEntriesByType
-	 */
 	public function testGetEntriesByType() {
 		$timing = new Timing;
 

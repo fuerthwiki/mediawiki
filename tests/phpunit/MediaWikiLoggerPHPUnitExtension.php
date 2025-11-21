@@ -86,7 +86,7 @@ class MediaWikiLoggerPHPUnitExtension implements
 	}
 
 	private function augmentTestWithLogs( string $test ) {
-		if ( $this->spi ) {
+		if ( $this->spi && getenv( 'PHPUNIT_LOGS' ) !== '0' ) {
 			$logs = $this->spi->getLogs();
 			$formatted = $this->formatLogs( $logs );
 			self::$testsCollection[$test] = $formatted;
@@ -133,7 +133,7 @@ class MediaWikiLoggerPHPUnitExtension implements
 		return implode( "\n", $message );
 	}
 
-	private function log( $message ) {
+	private function log( string $message ) {
 		$spi = $this->originalSpi ?: LoggerFactory::getProvider();
 		$logger = $spi->getLogger( 'PHPUnit' );
 		$logger->debug( $message );

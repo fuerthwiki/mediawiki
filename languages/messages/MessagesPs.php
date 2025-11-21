@@ -1,8 +1,6 @@
 <?php
 /** Pashto (پښتو)
  *
- * To improve a translation please visit https://translatewiki.net
- *
  * @file
  * @ingroup Languages
  *
@@ -30,6 +28,21 @@ $separatorTransformTable = [
 	',' => '٬', # U+066C
 ];
 
+$numberingSystem = 'arabext';
+
+// Use Gregorian calendar, where appropriate, override ps browser locale
+$jsDateFormats = [
+	'mdy date' => [ 'options' => [ 'calendar' => 'gregory' ] ],
+	'mdy both' => [ 'options' => [ 'calendar' => 'gregory' ] ],
+	'mdy pretty' => [ 'options' => [ 'calendar' => 'gregory' ] ],
+	'dmy date' => [ 'options' => [ 'calendar' => 'gregory' ] ],
+	'dmy both' => [ 'options' => [ 'calendar' => 'gregory' ] ],
+	'dmy pretty' => [ 'options' => [ 'calendar' => 'gregory' ] ],
+	'ymd date' => [ 'options' => [ 'calendar' => 'gregory' ] ],
+	'ymd both' => [ 'options' => [ 'calendar' => 'gregory' ] ],
+	'ymd pretty' => [ 'options' => [ 'calendar' => 'gregory' ] ],
+];
+
 $namespaceNames = [
 	NS_MEDIA            => 'رسنۍ',
 	NS_SPECIAL          => 'ځانگړی',
@@ -39,8 +52,8 @@ $namespaceNames = [
 	NS_PROJECT_TALK     => 'د_$1_خبرې_اترې',
 	NS_FILE             => 'دوتنه',
 	NS_FILE_TALK        => 'د_دوتنې_خبرې_اترې',
-	NS_MEDIAWIKI        => 'ميډياويکي',
-	NS_MEDIAWIKI_TALK   => 'د_ميډياويکي_خبرې_اترې',
+	NS_MEDIAWIKI        => 'مېډياويکي',
+	NS_MEDIAWIKI_TALK   => 'د_مېډياويکي_خبرې_اترې',
 	NS_TEMPLATE         => 'کينډۍ',
 	NS_TEMPLATE_TALK    => 'د_کينډۍ_خبرې_اترې',
 	NS_HELP             => 'لارښود',
@@ -55,6 +68,8 @@ $namespaceAliases = [
 	'د_کارونکي_خبرې_اترې' => NS_USER_TALK,
 	'انځور' => NS_FILE,
 	'د_انځور_خبرې_اترې' => NS_FILE_TALK,
+	'ميډياويکي' => NS_MEDIAWIKI,
+	'د_ميډياويکي_خبرې_اترې' => NS_MEDIAWIKI_TALK,
 ];
 
 /** @phpcs-require-sorted-array */
@@ -89,6 +104,7 @@ $specialPageAliases = [
 	'Protectedtitles'           => [ 'ژغورلي_سرليکونه' ],
 	'Randompage'                => [ 'ناټاکلی،_ناټاکلی_مخ' ],
 	'Recentchanges'             => [ 'اوسني_بدلونونه' ],
+	'Renameuser'                => [ 'دکارونکي_نوم_بدلون' ],
 	'Search'                    => [ 'پلټنه' ],
 	'Shortpages'                => [ 'لنډ_مخونه' ],
 	'Specialpages'              => [ 'ځانګړي_مخونه' ],
@@ -137,7 +153,7 @@ $magicWords = [
 	'img_right'                 => [ '1', 'ښي', 'right' ],
 	'img_thumbnail'             => [ '1', 'بټنوک', 'thumb', 'thumbnail' ],
 	'index'                     => [ '1', '__ليکلړ__', '__INDEX__' ],
-	'language'                  => [ '0', '#ژبه:', '#LANGUAGE:' ],
+	'language'                  => [ '0', '#ژبه', '#LANGUAGE' ],
 	'localday'                  => [ '1', 'سيمه_يزه_ورځ', 'LOCALDAY' ],
 	'localday2'                 => [ '1', 'سيمه_يزه_ورځ۲', 'LOCALDAY2' ],
 	'localdayname'              => [ '1', 'دسيمه_يزې_ورځ_نوم', 'LOCALDAYNAME' ],
@@ -164,6 +180,7 @@ $magicWords = [
 	'pagesize'                  => [ '1', 'مخکچه', 'PAGESIZE' ],
 	'plural'                    => [ '0', 'جمع:', 'PLURAL:' ],
 	'protectionlevel'           => [ '1', 'ژغورکچه', 'PROTECTIONLEVEL' ],
+	'redirect'                  => [ '0', '#مخګرځ', '#REDIRECT' ],
 	'server'                    => [ '0', 'پالنګر', 'SERVER' ],
 	'servername'                => [ '0', 'دپالنګر_نوم', 'SERVERNAME' ],
 	'sitename'                  => [ '1', 'دوېبځي_نوم', 'SITENAME' ],

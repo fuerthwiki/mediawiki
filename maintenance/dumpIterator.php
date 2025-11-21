@@ -7,31 +7,23 @@
  * Copyright © 2011 Platonides
  * https://www.mediawiki.org/
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License along
- * with this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
- * http://www.gnu.org/copyleft/gpl.html
- *
+ * @license GPL-2.0-or-later
  * @file
  * @ingroup Maintenance
  */
 
+use MediaWiki\Content\ContentHandler;
 use MediaWiki\MainConfigNames;
-use MediaWiki\MediaWikiServices;
+use MediaWiki\Maintenance\Maintenance;
+use MediaWiki\Permissions\UltimateAuthority;
 use MediaWiki\Revision\SlotRecord;
 use MediaWiki\Settings\SettingsBuilder;
+use MediaWiki\Title\Title;
+use MediaWiki\User\User;
 
+// @codeCoverageIgnoreStart
 require_once __DIR__ . '/Maintenance.php';
+// @codeCoverageIgnoreEnd
 
 /**
  * Base class for iterating over a dump.
@@ -63,7 +55,7 @@ abstract class DumpIterator extends Maintenance {
 
 		if ( $this->hasOption( 'file' ) ) {
 			$file = $this->getOption( 'file' );
-			$revision = new WikiRevision( $this->getConfig() );
+			$revision = new WikiRevision();
 			$text = file_get_contents( $file );
 			$title = Title::newFromText( rawurldecode( basename( $file, '.txt' ) ) );
 			$revision->setTitle( $title );
@@ -85,12 +77,14 @@ abstract class DumpIterator extends Maintenance {
 				. "Use - and provide it on stdin on the meantime." );
 		}
 
-		$importer = MediaWikiServices::getInstance()
+		$user = User::newSystemUser( User::MAINTENANCE_SCRIPT_USER, [ 'steal' => true ] );
+
+		$importer = $this->getServiceContainer()
 			->getWikiImporterFactory()
-			->getWikiImporter( $source );
+			->getWikiImporter( $source, new UltimateAuthority( $user ) );
 
 		$importer->setRevisionCallback(
-			[ $this, 'handleRevision' ] );
+			$this->handleRevision( ... ) );
 		$importer->setNoticeCallback( static function ( $msg, $params ) {
 			echo wfMessage( $msg, $params )->text() . "\n";
 		} );
@@ -113,12 +107,13 @@ abstract class DumpIterator extends Maintenance {
 		$this->error( "Memory peak usage of " . memory_get_peak_usage() . " bytes\n" );
 	}
 
-	public function finalSetup( SettingsBuilder $settingsBuilder = null ) {
+	public function finalSetup( SettingsBuilder $settingsBuilder ) {
 		parent::finalSetup( $settingsBuilder );
 
 		if ( $this->getDbType() == Maintenance::DB_NONE ) {
 			// TODO: Allow hooks to be registered via SettingsBuilder as well!
 			//       This matches the idea of unifying SettingsBuilder with ExtensionRegistry.
+			// phpcs:disable MediaWiki.Usage.DeprecatedGlobalVariables.Deprecated$wgHooks
 			global $wgHooks;
 			$wgHooks['InterwikiLoadPrefix'][] = 'DumpIterator::disableInterwikis';
 
@@ -129,7 +124,7 @@ abstract class DumpIterator extends Maintenance {
 		}
 	}
 
-	public static function disableInterwikis( $prefix, &$data ) {
+	public static function disableInterwikis( string $prefix, array &$data ): bool {
 		# Title::newFromText will check on each namespaced article if it's an interwiki.
 		# We always answer that it is not.
 
@@ -177,8 +172,6 @@ abstract class DumpIterator extends Maintenance {
 
 	/**
 	 * Core function which does whatever the maintenance script is designed to do
-	 *
-	 * @param WikiRevision $rev
 	 */
 	abstract public function processRevision( WikiRevision $rev );
 }
@@ -196,13 +189,11 @@ class SearchDump extends DumpIterator {
 		$this->addOption( 'regex', 'Searching regex', true, true );
 	}
 
+	/** @inheritDoc */
 	public function getDbType() {
 		return Maintenance::DB_NONE;
 	}
 
-	/**
-	 * @param WikiRevision $rev
-	 */
 	public function processRevision( WikiRevision $rev ) {
 		if ( preg_match( $this->getOption( 'regex' ), $rev->getContent()->getTextForSearchIndex() ) ) {
 			$this->output( $rev->getTitle() . " matches at edit from " . $rev->getTimestamp() . "\n" );
@@ -210,5 +201,7 @@ class SearchDump extends DumpIterator {
 	}
 }
 
+// @codeCoverageIgnoreStart
 $maintClass = SearchDump::class;
 require_once RUN_MAINTENANCE_IF_MAIN;
+// @codeCoverageIgnoreEnd

@@ -1,13 +1,13 @@
-'use strict';
-
-const Page = require( './Page' );
+import Page from './Page.js';
 
 class BlankPage extends Page {
-	get heading() { return $( '#firstHeading' ); }
+	get heading() {
+		return $( '#firstHeading' );
+	}
 
 	async open() {
 		await super.openTitle( 'Special:BlankPage', { uselang: 'en' } );
 	}
 }
 
-module.exports = new BlankPage();
+export default new BlankPage();

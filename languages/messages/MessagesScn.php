@@ -1,8 +1,6 @@
 <?php
 /** Sicilian (sicilianu)
  *
- * To improve a translation please visit https://translatewiki.net
- *
  * @file
  * @ingroup Languages
  *
@@ -46,7 +44,9 @@ $namespaceAliases = [
 	'Discussioni_mmàggini' => NS_FILE_TALK,
 	'Discussioni_Template' => NS_TEMPLATE_TALK,
 	'Discussioni_Aiutu' => NS_HELP_TALK,
+	'Categoria' => NS_CATEGORY,
 	'Discussioni_Catigurìa' => NS_CATEGORY_TALK,
+	'Speciale' => NS_SPECIAL,
 ];
 
 /** @phpcs-require-sorted-array */
@@ -120,6 +120,7 @@ $specialPageAliases = [
 	'Randomredirect'            => [ 'RedirectCasuale' ],
 	'Recentchanges'             => [ 'UltimeModifiche' ],
 	'Recentchangeslinked'       => [ 'ModificheCorrelate' ],
+	'Renameuser'                => [ 'RinominaUtente' ],
 	'Revisiondelete'            => [ 'CancellaRevisione' ],
 	'Search'                    => [ 'Arriscedi', 'Cerca', 'Trova' ],
 	'Shortpages'                => [ 'PaginePiùCorte' ],

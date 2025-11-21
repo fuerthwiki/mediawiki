@@ -2,19 +2,16 @@
 	"@metadata": {
 		"authors": [
 			"Kwisha",
+			"Ngangaesther",
+			"Pwangai",
 			"Stephenwanjau"
 		]
 	},
-	"underline-always": "Mahinda mothe",
-	"underline-never": "Ona hanini",
-	"editfont-monospace": "Mandeko wa Monospaced",
-	"editfont-sansserif": "Mwandeko wa Sans-serif",
-	"editfont-serif": "Mwandeko wa Serif",
-	"sunday": "Kiumia",
-	"monday": "Wakeri",
-	"tuesday": "Wagatatu",
-	"wednesday": "Wakana",
-	"thursday": "Wagatano",
-	"action-delete": "Futa",
+	"skin-view-view": "Thoma",
+	"cactions": "Makiria",
+	"nstab-image": "Failo",
+	"nstab-help": "Handu ha uteithio",
+	"move": "Thie",
+	"movereason": "Gitumi:",
 	"skin-action-delete": "Futa"
 }

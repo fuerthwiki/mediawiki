@@ -2,13 +2,12 @@
 
 namespace MediaWiki\Settings\Config;
 
-use Config;
-use GlobalVarConfig;
+use MediaWiki\Config\Config;
+use MediaWiki\Config\GlobalVarConfig;
 use function array_key_exists;
 
 class GlobalConfigBuilder extends ConfigBuilderBase {
 
-	/** @var string */
 	public const DEFAULT_PREFIX = 'wg';
 
 	/** @var string */
@@ -30,11 +29,13 @@ class GlobalConfigBuilder extends ConfigBuilderBase {
 		return isset( $GLOBALS[$var] ) || array_key_exists( $var, $GLOBALS );
 	}
 
+	/** @inheritDoc */
 	public function get( string $key ) {
 		$var = $this->getVarName( $key );
 		return $GLOBALS[ $var ] ?? null;
 	}
 
+	/** @inheritDoc */
 	protected function update( string $key, $value ) {
 		$var = $this->getVarName( $key );
 		$GLOBALS[ $var ] = $value;

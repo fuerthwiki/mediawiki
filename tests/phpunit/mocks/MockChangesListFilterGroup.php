@@ -1,21 +1,24 @@
 <?php
 
-use Wikimedia\Rdbms\IDatabase;
+use MediaWiki\Html\FormOptions;
+use MediaWiki\RecentChanges\ChangesListFilterGroup;
 
 class MockChangesListFilterGroup extends ChangesListFilterGroup {
+	/** @inheritDoc */
 	public function createFilter( array $filterDefinition ) {
 		return new MockChangesListFilter( $filterDefinition );
 	}
 
+	/** @inheritDoc */
 	public function registerFilter( MockChangesListFilter $filter ) {
 		$this->filters[$filter->getName()] = $filter;
 	}
 
-	public function modifyQuery( IDatabase $dbr, ChangesListSpecialPage $specialPage,
-		&$tables, &$fields, &$conds, &$query_options, &$join_conds, FormOptions $opts,
-		$isStructuredFiltersEnabled ) {
+	/** @inheritDoc */
+	public function addOptions( FormOptions $opts, $allowDefaults, $isStructuredFiltersEnabled ) {
 	}
 
-	public function addOptions( FormOptions $opts, $allowDefaults, $isStructuredFiltersEnabled ) {
+	/** @inheritDoc */
+	public function setDefault( $defaultValue ) {
 	}
 }

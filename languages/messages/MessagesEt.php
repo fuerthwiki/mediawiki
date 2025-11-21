@@ -1,8 +1,6 @@
 <?php
 /** Estonian (eesti)
  *
- * To improve a translation please visit https://translatewiki.net
- *
  * @file
  * @ingroup Languages
  */
@@ -63,6 +61,7 @@ $specialPageAliases = [
 	'FileDuplicateSearch'       => [ 'Faili_duplikaatide_otsimine', 'Otsi_faili_duplikaate' ],
 	'Filepath'                  => [ 'Failitee' ],
 	'Import'                    => [ 'Lehekülgede_import' ],
+	'Interwiki'                 => [ 'Interviki' ],
 	'Invalidateemail'           => [ 'E-posti_kinnituse_tühistamine', 'Tühista_e-posti_kinnitus' ],
 	'JavaScriptTest'            => [ 'JavaScripti_katsetamine' ],
 	'LinkSearch'                => [ 'Välislinkide_otsimine', 'Otsi_välislinke' ],
@@ -107,6 +106,7 @@ $specialPageAliases = [
 	'Recentchanges'             => [ 'Viimased_muudatused' ],
 	'Recentchangeslinked'       => [ 'Seotud_muudatused' ],
 	'Redirect'                  => [ 'Ümbersuunamine' ],
+	'Renameuser'                => [ 'Kasutaja_ümbernimetamine' ],
 	'ResetTokens'               => [ 'Lubade_lähtestamine' ],
 	'Revisiondelete'            => [ 'Muudatuse_kustutamine', 'Kustuta_muudatus' ],
 	'Search'                    => [ 'Otsimine', 'Otsi' ],
@@ -194,8 +194,8 @@ $magicWords = [
 	'img_right'                 => [ '1', 'paremal', 'right' ],
 	'img_thumbnail'             => [ '1', 'pisi', 'pisipilt', 'thumb', 'thumbnail' ],
 	'img_upright'               => [ '1', 'püsti', 'püsti=$1', 'upright', 'upright=$1', 'upright $1' ],
-	'index'                     => [ '1', 'INDEKSIGA', '__INDEX__' ],
-	'language'                  => [ '0', '#KEEL:', '#LANGUAGE:' ],
+	'index'                     => [ '1', '__INDEKSIGA__', '__INDEX__' ],
+	'language'                  => [ '0', '#KEEL', '#LANGUAGE' ],
 	'lc'                        => [ '0', 'VT:', 'LC:' ],
 	'lcfirst'                   => [ '0', 'ESIVT:', 'LCFIRST:' ],
 	'localday'                  => [ '1', 'KOHALIKKUUPÄEV', 'LOCALDAY' ],
@@ -220,7 +220,7 @@ $magicWords = [
 	'newsectionlink'            => [ '1', '__UUEALAOSALINK__', '__NEWSECTIONLINK__' ],
 	'noeditsection'             => [ '0', '__ALAOSALINGITA__', '__NOEDITSECTION__' ],
 	'nogallery'                 => [ '0', '__GALERIITA__', '__NOGALLERY__' ],
-	'noindex'                   => [ '1', 'INDEKSITA', '__NOINDEX__' ],
+	'noindex'                   => [ '1', '__INDEKSITA__', '__NOINDEX__' ],
 	'nonewsectionlink'          => [ '1', '__UUEALAOSALINGITA__', '__NONEWSECTIONLINK__' ],
 	'notoc'                     => [ '0', '__SISUKORRATA__', '__NOTOC__' ],
 	'ns'                        => [ '0', 'NR:', 'NS:' ],
@@ -293,4 +293,10 @@ $dateFormats = [
 	'et roman time' => 'H:i',
 	'et roman date' => 'j. xrm Y',
 	'et roman both' => 'j. xrm Y, "kell" H:i',
+];
+
+$jsDateFormats = [
+	// Browsers don't support roman numerals
+	'et roman date' => [ 'alias' => 'et numeric date' ],
+	'et roman both' => [ 'alias' => 'et numeric both' ],
 ];

@@ -2,21 +2,7 @@
 /**
  * Prints the birthdate and age of a wiki install.
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License along
- * with this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
- * http://www.gnu.org/copyleft/gpl.html
- *
+ * @license GPL-2.0-or-later
  * @file
  * @ingroup Maintenance
  * @author Derick Alangi
@@ -24,9 +10,12 @@
  * @since 1.39
  */
 
-use MediaWiki\MediaWikiServices;
+use MediaWiki\Maintenance\Maintenance;
+use MediaWiki\Utils\MWTimestamp;
 
+// @codeCoverageIgnoreStart
 require_once __DIR__ . '/Maintenance.php';
+// @codeCoverageIgnoreEnd
 
 /**
  * @ingroup Maintenance
@@ -44,13 +33,13 @@ class WikiBirthday extends Maintenance {
 	 */
 	private function computeAge( string $wikiCreatedAt ) {
 		return date_diff(
-			date_create(),
+			date_create( MWTimestamp::now() ),
 			date_create( $wikiCreatedAt )
 		);
 	}
 
 	public function execute() {
-		$dbr = $this->getDB( DB_REPLICA );
+		$dbr = $this->getReplicaDB();
 
 		$revId = $dbr->newSelectQueryBuilder()
 			->table( 'revision' )
@@ -64,7 +53,7 @@ class WikiBirthday extends Maintenance {
 			->caller( __METHOD__ )
 			->fetchField();
 
-		if ( $archiveRevId && $archiveRevId < $revId ) {
+		if ( $archiveRevId && ( $archiveRevId < $revId || !$revId ) ) {
 			$timestamp = $dbr->newSelectQueryBuilder()
 				->table( 'archive' )
 				->field( 'ar_timestamp' )
@@ -80,7 +69,7 @@ class WikiBirthday extends Maintenance {
 				->fetchField();
 		}
 
-		$birthDay = MediaWikiServices::getInstance()->getContentLanguage()
+		$birthDay = $this->getServiceContainer()->getContentLanguage()
 			->getHumanTimestamp( MWTimestamp::getInstance( $timestamp ) );
 
 		$text = "Wiki was created on: " . $birthDay . " <age: " .
@@ -92,5 +81,7 @@ class WikiBirthday extends Maintenance {
 	}
 }
 
+// @codeCoverageIgnoreStart
 $maintClass = WikiBirthday::class;
 require_once RUN_MAINTENANCE_IF_MAIN;
+// @codeCoverageIgnoreEnd

@@ -1,8 +1,6 @@
 <?php
 /** Avaric (авар)
  *
- * To improve a translation please visit https://translatewiki.net
- *
  * @file
  * @ingroup Languages
  */
@@ -64,6 +62,7 @@ $specialPageAliases = [
 	'FileDuplicateSearch'       => [ 'Релъарал_файлал_хъирщи' ],
 	'Filepath'                  => [ 'Файлалде_нух' ],
 	'Import'                    => [ 'Импорт' ],
+	'Interwiki'                 => [ 'Интервики' ],
 	'Invalidateemail'           => [ 'Адрес_битІухъ_гьаби_нахъ_чІвазе' ],
 	'JavaScriptTest'            => [ 'JavaScript_хІалбихьи' ],
 	'LinkSearch'                => [ 'Ссылкаби_хъирщи' ],
@@ -104,6 +103,7 @@ $specialPageAliases = [
 	'Randomredirect'            => [ 'Цебе_ккараб_цоги_бакІалде_руссинаби' ],
 	'Recentchanges'             => [ 'ЦІиял_хиса-басиял' ],
 	'Recentchangeslinked'       => [ 'Хурхинарурал_хиса-басиял' ],
+	'Renameuser'                => [ 'Переименовать_участника' ],
 	'Revisiondelete'            => [ 'Хиса-баси_нахъе_бацІцІи' ],
 	'Search'                    => [ 'Хъирщи' ],
 	'Shortpages'                => [ 'Къокъал_гьумерал' ],

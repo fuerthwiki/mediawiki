@@ -1,8 +1,6 @@
 <?php
 /** Gagauz (Gagauz)
  *
- * To improve a translation please visit https://translatewiki.net
- *
  * @file
  * @ingroup Languages
  */
@@ -57,6 +55,7 @@ $specialPageAliases = [
 	'CreateAccount'             => [ 'EsapYarat', 'EsapAç' ],
 	'Deadendpages'              => [ 'BaalantısızYazılar', 'BaalantısızSayfalar', 'BaalantısızYapraklar' ],
 	'DoubleRedirects'           => [ 'İkiKeräYönnendirmäler', 'İkiKeräYönnendirmeler' ],
+	'Interwiki'                 => [ 'İnterviki' ],
 	'Listadmins'                => [ 'İzmetliListası' ],
 	'Listbots'                  => [ 'BotListası' ],
 	'Listfiles'                 => [ 'DosyeListası', 'PätretListası' ],

@@ -4,32 +4,22 @@
  * Show the cached statistics.
  * Give out the same output as [[Special:Statistics]]
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License along
- * with this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
- * http://www.gnu.org/copyleft/gpl.html
- *
+ * @license GPL-2.0-or-later
  * @file
  * @ingroup Maintenance
  * @author Antoine Musso <hashar at free dot fr>
  * Based on initSiteStats.php by:
- * @author Brion Vibber
+ * @author Brooke Vibber
  * @author Rob Church <robchur@gmail.com>
  *
  * @license GPL-2.0-or-later
  */
 
+use MediaWiki\Maintenance\Maintenance;
+
+// @codeCoverageIgnoreStart
 require_once __DIR__ . '/Maintenance.php';
+// @codeCoverageIgnoreEnd
 
 /**
  * Maintenance script to show the cached statistics.
@@ -53,8 +43,11 @@ class ShowSiteStats extends Maintenance {
 		];
 
 		// Get cached stats from a replica DB
-		$dbr = $this->getDB( DB_REPLICA );
-		$stats = $dbr->selectRow( 'site_stats', '*', '', __METHOD__ );
+		$dbr = $this->getReplicaDB();
+		$stats = $dbr->newSelectQueryBuilder()
+			->select( '*' )
+			->from( 'site_stats' )
+			->caller( __METHOD__ )->fetchRow();
 
 		// Get maximum size for each column
 		$max_length_value = $max_length_desc = 0;
@@ -74,5 +67,7 @@ class ShowSiteStats extends Maintenance {
 	}
 }
 
+// @codeCoverageIgnoreStart
 $maintClass = ShowSiteStats::class;
 require_once RUN_MAINTENANCE_IF_MAIN;
+// @codeCoverageIgnoreEnd

@@ -1,8 +1,6 @@
 <?php
 /** Northern Thai (ᨣᩤᩴᨾᩮᩬᩥᨦ)
  *
- * To improve a translation please visit https://translatewiki.net
- *
  * @file
  * @ingroup Languages
  *
@@ -40,6 +38,8 @@ $digitTransformTable = [
 	'8' => '᪈', # U+1A88
 	'9' => '᪉', # U+1A89
 ];
+
+$numberingSystem = 'lana';
 
 $datePreferences = [
 	'default',

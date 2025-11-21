@@ -1,39 +1,42 @@
-var MarkSeenButtonWidget = require( './MarkSeenButtonWidget.js' ),
-	WatchlistTopSectionWidget;
+const MarkSeenButtonWidget = require( './MarkSeenButtonWidget.js' );
 /**
- * Top section (between page title and filters) on Special:Watchlist
+ * Top section (between page title and filters) on Special:Watchlist.
  *
  * @class mw.rcfilters.ui.WatchlistTopSectionWidget
+ * @ignore
  * @extends OO.ui.Widget
  *
- * @constructor
  * @param {mw.rcfilters.Controller} controller
  * @param {mw.rcfilters.dm.ChangesListViewModel} changesListModel
  * @param {mw.rcfilters.ui.SavedLinksListWidget} savedLinksListWidget
  * @param {jQuery} $watchlistDetails Content of the 'details' section that includes watched pages count
  * @param {Object} [config] Configuration object
  */
-WatchlistTopSectionWidget = function MwRcfiltersUiWatchlistTopSectionWidget(
+const WatchlistTopSectionWidget = function MwRcfiltersUiWatchlistTopSectionWidget(
 	controller, changesListModel, savedLinksListWidget, $watchlistDetails, config
 ) {
-	var editWatchlistButton,
-		markSeenButton,
-		$topTable,
-		$bottomTable,
-		$separator;
 	config = config || {};
 
 	// Parent
-	WatchlistTopSectionWidget.parent.call( this, config );
+	WatchlistTopSectionWidget.super.call( this, config );
+	const $editWatchListButtonIcon = $( '<span>' ).append(
+		new OO.ui.IconWidget( { icon: 'edit', classes: [ 'mw-rcfilters-ui-watchlistTopSectionWidget-editWatchlistButtonIcon' ] } ).$element,
+		mw.message( 'rcfilters-watchlist-edit-watchlist-button' ).escaped()
+	);
+	const $editSettingsIcon = $( '<span>' ).append(
+		new OO.ui.IconWidget( { icon: 'settings', classes: [ 'mw-rcfilters-ui-watchlistTopSectionWidget-editWatchlistButtonIcon' ] } ).$element,
+		mw.message( 'rcfilters-watchlist-edit-watchlist-preferences-button' ).escaped()
+	);
+	const $editWatchlistButtonLink = $( '<a>' ).attr( 'href',
+		require( '../config.json' ).StructuredChangeFiltersEditWatchlistUrl )
+		.attr( 'class', 'cdx-docs-link' ).html( $editWatchListButtonIcon );
 
-	editWatchlistButton = new OO.ui.ButtonWidget( {
-		label: mw.msg( 'rcfilters-watchlist-edit-watchlist-button' ),
-		icon: 'edit',
-		href: require( '../config.json' ).StructuredChangeFiltersEditWatchlistUrl
-	} );
-	markSeenButton = new MarkSeenButtonWidget( controller, changesListModel );
+	const $editWatchlistSettingsButtonLink = $( '<a>' ).attr( 'href',
+		mw.util.getUrl( 'Special:Preferences#mw-prefsection-watchlist' ) )
+		.attr( 'class', 'cdx-docs-link' ).html( $editSettingsIcon );
 
-	$topTable = $( '<div>' )
+	const markSeenButton = new MarkSeenButtonWidget( controller, changesListModel );
+	const $topTable = $( '<div>' )
 		.addClass( 'mw-rcfilters-ui-table' )
 		.append(
 			$( '<div>' )
@@ -47,12 +50,30 @@ WatchlistTopSectionWidget = function MwRcfiltersUiWatchlistTopSectionWidget(
 				.append(
 					$( '<div>' )
 						.addClass( 'mw-rcfilters-ui-cell' )
-						.addClass( 'mw-rcfilters-ui-watchlistTopSectionWidget-editWatchlistButton' )
-						.append( editWatchlistButton.$element )
+						.addClass( 'mw-rcfilters-ui-watchlistTopSectionWidget-buttonsSection' )
+						.append(
+							// eslint-disable-next-line mediawiki/class-doc
+							$( '<div>' )
+								.addClass(
+									// Do not add class in vector-2022 because it is redundant
+									mw.config.get( 'skin' ) !== 'vector-2022' && mw.config.get( 'skin' ) !== 'minerva' ?
+										'mw-rcfilters-ui-watchlistTopSectionWidget-editWatchlistButton' : undefined
+								)
+								.append(
+									// Do not append edit watchlist button in vector-2022 because it is redundant
+									mw.config.get( 'skin' ) !== 'vector-2022' && mw.config.get( 'skin' ) !== 'minerva' ?
+										$editWatchlistButtonLink : undefined
+								)
+						)
+						.append(
+							$( '<div>' )
+								.addClass( 'mw-rcfilters-ui-watchlistTopSectionWidget-editWatchlistButton' )
+								.append( $editWatchlistSettingsButtonLink )
+						)
 				)
 		);
 
-	$bottomTable = $( '<div>' )
+	const $bottomTable = $( '<div>' )
 		.addClass( 'mw-rcfilters-ui-table' )
 		.addClass( 'mw-rcfilters-ui-watchlistTopSectionWidget-savedLinksTable' )
 		.append(
@@ -71,7 +92,7 @@ WatchlistTopSectionWidget = function MwRcfiltersUiWatchlistTopSectionWidget(
 				)
 		);
 
-	$separator = $( '<div>' )
+	const $separator = $( '<div>' )
 		.addClass( 'mw-rcfilters-ui-watchlistTopSectionWidget-separator' );
 
 	this.$element

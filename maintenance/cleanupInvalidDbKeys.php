@@ -2,28 +2,24 @@
 /**
  * Cleans up invalid titles in various tables.
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License along
- * with this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
- * http://www.gnu.org/copyleft/gpl.html
- *
+ * @license GPL-2.0-or-later
  * @file
  * @ingroup Maintenance
  */
 
+// @codeCoverageIgnoreStart
 require_once __DIR__ . '/Maintenance.php';
+// @codeCoverageIgnoreEnd
 
-use MediaWiki\MediaWikiServices;
+use MediaWiki\Deferred\LinksUpdate\CategoryLinksTable;
+use MediaWiki\Deferred\LinksUpdate\ImageLinksTable;
+use MediaWiki\Deferred\LinksUpdate\PageLinksTable;
+use MediaWiki\Deferred\LinksUpdate\TemplateLinksTable;
+use MediaWiki\Maintenance\Maintenance;
+use MediaWiki\Title\Title;
+use MediaWiki\WikiMap\WikiMap;
+use Wikimedia\Rdbms\IExpression;
+use Wikimedia\Rdbms\LikeValue;
 
 /**
  * Maintenance script that cleans up invalid titles in various tables.
@@ -47,9 +43,11 @@ class CleanupInvalidDbKeys extends Maintenance {
 		// but also usernames or other things like that, so we leave them alone
 
 		// Links tables
-		[ 'pagelinks', 'pl', 'idField' => 'pl_from' ],
-		[ 'templatelinks', 'tl', 'idField' => 'tl_from' ],
-		[ 'categorylinks', 'cl', 'idField' => 'cl_from', 'nsField' => 14, 'titleField' => 'cl_to' ],
+		[ 'pagelinks', 'pl', 'idField' => 'pl_from', 'virtualDomain' => PageLinksTable::VIRTUAL_DOMAIN ],
+		[ 'templatelinks', 'tl', 'idField' => 'tl_from', 'virtualDomain' => TemplateLinksTable::VIRTUAL_DOMAIN ],
+		[ 'categorylinks', 'cl', 'idField' => 'cl_from', 'virtualDomain' => CategoryLinksTable::VIRTUAL_DOMAIN ],
+		[ 'imagelinks', 'il', 'idField' => 'il_from', 'nsField' => 6, 'titleField' => 'il_to',
+			'virtualDomain' => ImageLinksTable::VIRTUAL_DOMAIN ],
 	];
 
 	public function __construct() {
@@ -124,7 +122,7 @@ TEXT
 	 * @param array $tableParams A child array of self::$tables
 	 */
 	protected function cleanupTable( $tableParams ) {
-		list( $table, $prefix ) = $tableParams;
+		[ $table, $prefix ] = $tableParams;
 		$idField = $tableParams['idField'] ?? "{$prefix}_id";
 		$nsField = $tableParams['nsField'] ?? "{$prefix}_namespace";
 		$titleField = $tableParams['titleField'] ?? "{$prefix}_title";
@@ -136,18 +134,34 @@ TEXT
 		// modified after selecting and before deleting/updating, but working on
 		// the hypothesis that invalid rows will be old and in all likelihood
 		// unreferenced, we should be fine to do it like this.
-		$dbr = $this->getDB( DB_REPLICA, 'vslow' );
-		$linksMigration = MediaWikiServices::getInstance()->getLinksMigration();
+		if ( isset( $tableParams['virtualDomain'] ) ) {
+			$dbr = $this->getServiceContainer()->getConnectionProvider()->getReplicaDatabase(
+				$tableParams['virtualDomain'],
+				'vslow'
+			);
+		} else {
+			$dbr = $this->getDB( DB_REPLICA, 'vslow' );
+		}
+
+		$linksMigration = $this->getServiceContainer()->getLinksMigration();
 		$joinConds = [];
 		$tables = [ $table ];
 		if ( isset( $linksMigration::$mapping[$table] ) ) {
-			list( $nsField,$titleField ) = $linksMigration->getTitleFields( $table );
+			[ $nsField, $titleField ] = $linksMigration->getTitleFields( $table );
 			$joinConds = $linksMigration->getQueryInfo( $table )['joins'];
 			$tables = $linksMigration->getQueryInfo( $table )['tables'];
 		}
 
 		// Find all TitleValue-invalid titles.
 		$percent = $dbr->anyString();
+		// The REGEXP operator is not cross-DBMS, so we have to use lots of LIKEs
+		$likeExpr = $dbr
+			->expr( $titleField, IExpression::LIKE, new LikeValue( $percent, ' ', $percent ) )
+			->or( $titleField, IExpression::LIKE, new LikeValue( $percent, "\r", $percent ) )
+			->or( $titleField, IExpression::LIKE, new LikeValue( $percent, "\n", $percent ) )
+			->or( $titleField, IExpression::LIKE, new LikeValue( $percent, "\t", $percent ) )
+			->or( $titleField, IExpression::LIKE, new LikeValue( '_', $percent ) )
+			->or( $titleField, IExpression::LIKE, new LikeValue( $percent, '_' ) );
 		$res = $dbr->newSelectQueryBuilder()
 			->select( [
 				'id' => $idField,
@@ -155,15 +169,7 @@ TEXT
 				'title' => $titleField,
 			] )
 			->tables( $tables )
-			// The REGEXP operator is not cross-DBMS, so we have to use lots of LIKEs
-			->where( $dbr->makeList( [
-				$titleField . $dbr->buildLike( $percent, ' ', $percent ),
-				$titleField . $dbr->buildLike( $percent, "\r", $percent ),
-				$titleField . $dbr->buildLike( $percent, "\n", $percent ),
-				$titleField . $dbr->buildLike( $percent, "\t", $percent ),
-				$titleField . $dbr->buildLike( '_', $percent ),
-				$titleField . $dbr->buildLike( $percent, '_' ),
-			], LIST_OR ) )
+			->where( $likeExpr )
 			->joinConds( $joinConds )
 			->limit( $this->getBatchSize() )
 			->caller( __METHOD__ )
@@ -203,11 +209,17 @@ TEXT
 			return;
 		}
 
-		$services = MediaWikiServices::getInstance();
-		$lbFactory = $services->getDBLoadBalancerFactory();
+		$services = $this->getServiceContainer();
 
 		// Fix the bad data, using different logic for the various tables
-		$dbw = $this->getDB( DB_PRIMARY );
+		if ( isset( $tableParams['virtualDomain'] ) ) {
+			$dbw = $this->getServiceContainer()->getConnectionProvider()->getPrimaryDatabase(
+				$tableParams['virtualDomain']
+			);
+		} else {
+			$dbw = $this->getPrimaryDB();
+		}
+
 		switch ( $table ) {
 			case 'page':
 			case 'redirect':
@@ -237,13 +249,15 @@ TEXT
 					$this->writeToReport(
 						"$idField={$row->id}: updating '{$row->title}' to '$newTitle'\n" );
 
-					$dbw->update( $table,
-						[ $titleField => $newTitle ],
-						[ $idField => $row->id ],
-						__METHOD__ );
+					$dbw->newUpdateQueryBuilder()
+						->update( $table )
+						->set( [ $titleField => $newTitle ] )
+						->where( [ $idField => $row->id ] )
+						->caller( __METHOD__ )
+						->execute();
 					$affectedRowCount += $dbw->affectedRows();
 				}
-				$lbFactory->waitForReplication();
+				$this->waitForReplication();
 				$this->outputStatus( "Updated $affectedRowCount rows on $table.\n" );
 
 				break;
@@ -255,8 +269,11 @@ TEXT
 				// nothing can be categorised in them, and they can't have been changed
 				// recently, so we can just remove these rows.
 				$this->outputStatus( "Deleting invalid $table rows...\n" );
-				$dbw->delete( $table, [ $idField => $ids ], __METHOD__ );
-				$lbFactory->waitForReplication();
+				$dbw->newDeleteQueryBuilder()
+					->deleteFrom( $table )
+					->where( [ $idField => $ids ] )
+					->caller( __METHOD__ )->execute();
+				$this->waitForReplication();
 				$this->outputStatus( 'Deleted ' . $dbw->affectedRows() . " rows from $table.\n" );
 				break;
 
@@ -267,23 +284,25 @@ TEXT
 				$this->outputStatus( "Deleting invalid $table rows...\n" );
 				$affectedRowCount = 0;
 				foreach ( $res as $row ) {
-					$dbw->delete( $table,
-						[ $nsField => $row->ns, $titleField => $row->title ],
-						__METHOD__ );
+					$dbw->newDeleteQueryBuilder()
+						->deleteFrom( $table )
+						->where( [ $nsField => $row->ns, $titleField => $row->title ] )
+						->caller( __METHOD__ )->execute();
 					$affectedRowCount += $dbw->affectedRows();
 				}
-				$lbFactory->waitForReplication();
+				$this->waitForReplication();
 				$this->outputStatus( "Deleted $affectedRowCount rows from $table.\n" );
 				break;
 
 			case 'pagelinks':
 			case 'templatelinks':
 			case 'categorylinks':
+			case 'imagelinks':
 				// Update links tables for each page where these bogus links are supposedly
 				// located. If the invalid rows don't go away after these jobs go through,
 				// they're probably being added by a buggy hook.
 				$this->outputStatus( "Queueing link update jobs for the pages in $idField...\n" );
-				$linksMigration = MediaWikiServices::getInstance()->getLinksMigration();
+				$linksMigration = $this->getServiceContainer()->getLinksMigration();
 				$wikiPageFactory = $services->getWikiPageFactory();
 				foreach ( $res as $row ) {
 					$wp = $wikiPageFactory->newFromID( $row->id );
@@ -299,12 +318,13 @@ TEXT
 							$conds = [ $nsField => $row->ns, $titleField => $row->title ];
 						}
 						// This link entry points to a nonexistent page, so just get rid of it
-						$dbw->delete( $table,
-							array_merge( [ $idField => $row->id ], $conds ),
-							__METHOD__ );
+						$dbw->newDeleteQueryBuilder()
+							->deleteFrom( $table )
+							->where( array_merge( [ $idField => $row->id ], $conds ) )
+							->caller( __METHOD__ )->execute();
 					}
 				}
-				$lbFactory->waitForReplication();
+				$this->waitForReplication();
 				$this->outputStatus( "Link update jobs have been added to the job queue.\n" );
 				break;
 		}
@@ -324,5 +344,7 @@ TEXT
 	}
 }
 
+// @codeCoverageIgnoreStart
 $maintClass = CleanupInvalidDbKeys::class;
 require_once RUN_MAINTENANCE_IF_MAIN;
+// @codeCoverageIgnoreEnd

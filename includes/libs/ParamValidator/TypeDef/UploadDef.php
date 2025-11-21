@@ -33,6 +33,7 @@ use Wikimedia\ParamValidator\Util\UploadedFile;
  */
 class UploadDef extends TypeDef {
 
+	/** @inheritDoc */
 	public function getValue( $name, array $settings, array $options ) {
 		$ret = $this->callbacks->getUploadedFile( $name, $options );
 
@@ -70,6 +71,7 @@ class UploadDef extends TypeDef {
 		return ini_get( 'upload_max_filesize' );
 	}
 
+	/** @inheritDoc */
 	public function validate( $name, $value, array $settings, array $options ) {
 		static $codemap = [
 			-42 => 'notupload', // Local from getValue()
@@ -83,7 +85,7 @@ class UploadDef extends TypeDef {
 
 		if ( !$value instanceof UploadedFileInterface ) {
 			// Err?
-			$type = is_object( $value ) ? get_class( $value ) : gettype( $value );
+			$type = get_debug_type( $value );
 			throw new InvalidArgumentException( "\$value must be UploadedFileInterface, got $type" );
 		}
 
@@ -114,7 +116,8 @@ class UploadDef extends TypeDef {
 		} else {
 			$constant = '';
 			foreach ( get_defined_constants() as $c => $v ) {
-				if ( $v === $err && substr( $c, 0, 11 ) === 'UPLOAD_ERR_' ) {
+				// @phan-suppress-next-line PhanTypeComparisonFromArray
+				if ( $v === $err && str_starts_with( $c, 'UPLOAD_ERR_' ) ) {
 					$constant = " ($c?)";
 				}
 			}
@@ -122,6 +125,7 @@ class UploadDef extends TypeDef {
 		}
 	}
 
+	/** @inheritDoc */
 	public function checkSettings( string $name, $settings, array $options, array $ret ): array {
 		$ret = parent::checkSettings( $name, $settings, $options, $ret );
 
@@ -140,11 +144,13 @@ class UploadDef extends TypeDef {
 		return $ret;
 	}
 
+	/** @inheritDoc */
 	public function stringifyValue( $name, $value, array $settings, array $options ) {
 		// Not going to happen.
 		return null;
 	}
 
+	/** @inheritDoc */
 	public function getHelpInfo( $name, array $settings, array $options ) {
 		$info = parent::getHelpInfo( $name, $settings, $options );
 

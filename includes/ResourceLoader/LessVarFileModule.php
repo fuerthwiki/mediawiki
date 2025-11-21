@@ -1,20 +1,6 @@
 <?php
 /**
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License along
- * with this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
- * http://www.gnu.org/copyleft/gpl.html
- *
+ * @license GPL-2.0-or-later
  * @file
  */
 namespace MediaWiki\ResourceLoader;
@@ -31,6 +17,7 @@ use Wikimedia\Minify\CSSMin;
  * @since 1.32
  */
 class LessVarFileModule extends FileModule {
+	/** @var array */
 	protected $lessVariables = [];
 
 	/**
@@ -107,7 +94,7 @@ class LessVarFileModule extends FileModule {
 		return str_replace( "'", "\'", CSSMin::serializeStringValue( $msg ) );
 	}
 
-	// phpcs:enable MediaWiki.Commenting.DocComment.SpacingDocTag, Squiz.WhiteSpace.FunctionSpacing.Before
+	// phpcs:enable
 
 	/**
 	 * Get language-specific LESS variables for this module.
@@ -133,6 +120,3 @@ class LessVarFileModule extends FileModule {
 		return $vars;
 	}
 }
-
-/** @deprecated since 1.39 */
-class_alias( LessVarFileModule::class, 'ResourceLoaderLessVarFileModule' );

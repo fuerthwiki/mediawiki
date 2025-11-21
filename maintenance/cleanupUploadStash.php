@@ -5,30 +5,19 @@
  *
  * Copyright © 2011, Wikimedia Foundation
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License along
- * with this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
- * http://www.gnu.org/copyleft/gpl.html
- *
+ * @license GPL-2.0-or-later
  * @file
  * @author Ian Baker <ibaker@wikimedia.org>
  * @ingroup Maintenance
  */
 
+use MediaWiki\FileRepo\FileRepo;
 use MediaWiki\MainConfigNames;
-use MediaWiki\MediaWikiServices;
+use MediaWiki\Maintenance\Maintenance;
 
+// @codeCoverageIgnoreStart
 require_once __DIR__ . '/Maintenance.php';
+// @codeCoverageIgnoreEnd
 
 /**
  * Maintenance script to remove old or broken uploads from temporary uploaded
@@ -45,7 +34,7 @@ class CleanupUploadStash extends Maintenance {
 	}
 
 	public function execute() {
-		$repo = MediaWikiServices::getInstance()->getRepoGroup()->getLocalRepo();
+		$repo = $this->getServiceContainer()->getRepoGroup()->getLocalRepo();
 		$tempRepo = $repo->getTempRepo();
 
 		$dbr = $repo->getReplicaDB();
@@ -57,7 +46,7 @@ class CleanupUploadStash extends Maintenance {
 		$res = $dbr->newSelectQueryBuilder()
 			->select( 'us_key' )
 			->from( 'uploadstash' )
-			->where( 'us_timestamp < ' . $dbr->addQuotes( $dbr->timestamp( $cutoff ) ) )
+			->where( $dbr->expr( 'us_timestamp', '<', $dbr->timestamp( $cutoff ) ) )
 			->caller( __METHOD__ )
 			->fetchResultSet();
 
@@ -68,7 +57,7 @@ class CleanupUploadStash extends Maintenance {
 			// finish the read before starting writes.
 			$keys = [];
 			foreach ( $res as $row ) {
-				array_push( $keys, $row->us_key );
+				$keys[] = $row->us_key;
 			}
 
 			$this->output( 'Removing ' . count( $keys ) . " file(s)...\n" );
@@ -76,8 +65,6 @@ class CleanupUploadStash extends Maintenance {
 			// UploadStash's own methods means it's less likely to fall accidentally
 			// out-of-date someday
 			$stash = new UploadStash( $repo );
-
-			$lbFactory = MediaWikiServices::getInstance()->getDBLoadBalancerFactory();
 
 			$i = 0;
 			foreach ( $keys as $key ) {
@@ -90,7 +77,7 @@ class CleanupUploadStash extends Maintenance {
 					$this->output( "Failed removing stashed upload with key: $key ($type)\n" );
 				}
 				if ( $i % 100 == 0 ) {
-					$lbFactory->waitForReplication();
+					$this->waitForReplication();
 					$this->output( "$i\n" );
 				}
 			}
@@ -130,8 +117,8 @@ class CleanupUploadStash extends Maintenance {
 			$this->fatalError( "Could not get file listing." );
 		}
 		$this->output( "Deleting orphaned temp files...\n" );
-		if ( strpos( $dir, '/local-temp' ) === false ) {
-			$this->fatalError( "Temp repo is not using the temp container." );
+		if ( !str_contains( $dir, '/local-temp' ) ) {
+			$this->output( "Temp repo might be misconfigured. It points to directory: '$dir' \n" );
 		}
 
 		$i = 0;
@@ -157,10 +144,12 @@ class CleanupUploadStash extends Maintenance {
 	protected function doOperations( FileRepo $tempRepo, array $ops ) {
 		$status = $tempRepo->getBackend()->doQuickOperations( $ops );
 		if ( !$status->isOK() ) {
-			$this->error( print_r( Status::wrap( $status )->getErrorsArray(), true ) );
+			$this->error( $status );
 		}
 	}
 }
 
+// @codeCoverageIgnoreStart
 $maintClass = CleanupUploadStash::class;
 require_once RUN_MAINTENANCE_IF_MAIN;
+// @codeCoverageIgnoreEnd

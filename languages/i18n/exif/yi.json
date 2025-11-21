@@ -3,6 +3,8 @@
 		"authors": [
 			"Chaim Shel",
 			"Har-wradim",
+			"Pacha Tchernof",
+			"Shvermer",
 			"Yidel",
 			"פוילישער"
 		]
@@ -131,7 +133,7 @@
 	"exif-locationdestcode": "קאד פֿון געוויזענער לאקאציע",
 	"exif-contact": "קאנטאקט אינפארמאציע",
 	"exif-writer": "שרײַבער",
-	"exif-languagecode": "שפראַך",
+	"exif-languagecode": "שפּראַך",
 	"exif-iimversion": "IIM ווערסיע",
 	"exif-iimcategory": "קאַטעגאָריע",
 	"exif-iimsupplementalcategory": "אונטער־קאטעגאריעס",
@@ -153,7 +155,7 @@
 	"exif-licenseurl": "URL פֿאר קאפירעכט ליצענץ",
 	"exif-morepermissionsurl": "אלטערנאטיווע ליצענצירן אינפארמאציע",
 	"exif-pngfilecomment": "PNG טעקע הערה",
-	"exif-disclaimer": "נאכגעבעניש",
+	"exif-disclaimer": "קלארשטעלונג",
 	"exif-contentwarning": "אינהאלט ווארענונג",
 	"exif-giffilecomment": "GIF טעקע הערה",
 	"exif-intellectualgenre": "ארט  איינהייט",
@@ -193,7 +195,7 @@
 	"exif-meteringmode-1": "דורכשניט",
 	"exif-meteringmode-5": "מוסטער",
 	"exif-meteringmode-6": "טיילווײַז",
-	"exif-meteringmode-255": "אנדער",
+	"exif-meteringmode-255": "אַנדער",
 	"exif-lightsource-0": "אומבאַוויסט",
 	"exif-lightsource-1": "טאָגליכט",
 	"exif-lightsource-2": "פֿלוארעסצירנד",

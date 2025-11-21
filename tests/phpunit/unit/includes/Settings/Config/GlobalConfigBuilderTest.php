@@ -5,6 +5,7 @@ namespace MediaWiki\Tests\Unit\Settings\Config;
 use MediaWiki\Settings\Config\ConfigBuilder;
 use MediaWiki\Settings\Config\GlobalConfigBuilder;
 use MediaWiki\Settings\Config\MergeStrategy;
+use MediaWikiCoversValidator;
 use PHPUnit\Framework\TestCase;
 
 /**
@@ -12,19 +13,20 @@ use PHPUnit\Framework\TestCase;
  */
 class GlobalConfigBuilderTest extends TestCase {
 	use ConfigSinkTestTrait;
+	use MediaWikiCoversValidator;
 
 	protected function getConfigSink(): ConfigBuilder {
 		return new GlobalConfigBuilder( 'GlobalConfigBuilderTestPrefix_' );
 	}
 
-	protected function assertKeyHasValue( string $key, $value ) {
+	protected function assertKeyHasValue( string $key, mixed $value ): void {
 		$this->assertEquals( $value, $GLOBALS['GlobalConfigBuilderTestPrefix_' . $key] );
 	}
 
 	public function testBuild() {
 		$builder = new GlobalConfigBuilder();
 		$builder
-			->set( 'foo',  'bar' )
+			->set( 'foo', 'bar' )
 			->set( 'baz', 'quu' );
 		$this->assertSame( 'bar', $builder->build()->get( 'foo' ) );
 		$this->assertSame( 'quu', $builder->build()->get( 'baz' ) );
@@ -33,7 +35,7 @@ class GlobalConfigBuilderTest extends TestCase {
 	public function testPrefix() {
 		$builder = new GlobalConfigBuilder( 'prefix_' );
 		$builder
-			->set( 'foo',  'bar' )
+			->set( 'foo', 'bar' )
 			->set( 'baz', 'quu' );
 		$this->assertSame( 'bar', $builder->build()->get( 'foo' ) );
 		$this->assertSame( 'bar', $GLOBALS['prefix_foo'] );

@@ -2,25 +2,12 @@
 /**
  * Copyright (C) 2012 Tamas Imrei <tamas.imrei@gmail.com> https://virtualtee.blogspot.com/
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License along
- * with this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
- * http://www.gnu.org/copyleft/gpl.html
- *
+ * @license GPL-2.0-or-later
  * @file
  * @ingroup Maintenance
- * @phan-file-suppress PhanInvalidCommentForDeclarationType False negative about `@var`
  */
+
+namespace MediaWiki\Maintenance;
 
 /**
  * Doxygen filter to show correct member variable types in documentation.
@@ -65,18 +52,18 @@ class MWDoxygenFilter {
 				$output .= $token;
 				continue;
 			}
-			list( $id, $content ) = $token;
+			[ $id, $content ] = $token;
 			switch ( $id ) {
 				case T_DOC_COMMENT:
 					// Escape slashes so that references to namespaces are not
 					// wrongly interpreted as a Doxygen "\command".
 					$content = addcslashes( $content, '\\' );
 					// Look for instances of "@var SomeType".
-					if ( preg_match( '#@var\s+\S+#s', $content ) ) {
+					if ( preg_match( '#@var\s+\S+#', $content ) ) {
 						$buffer = [ 'raw' => $content, 'desc' => null, 'type' => null, 'name' => null ];
 						$buffer['desc'] = preg_replace_callback(
 							// Strip "@var SomeType" part, but remember the type and optional name
-							'#@var\s+(\S+)(\s+)?(\S+)?#s',
+							'#@var\s+(\S+)(\s+)?(\S+)?#',
 							static function ( $matches ) use ( &$buffer ) {
 								$buffer['type'] = $matches[1];
 								$buffer['name'] = $matches[3] ?? null;
@@ -140,3 +127,6 @@ class MWDoxygenFilter {
 		return $output;
 	}
 }
+
+/** @deprecated class alias since 1.43 */
+class_alias( MWDoxygenFilter::class, 'MWDoxygenFilter' );

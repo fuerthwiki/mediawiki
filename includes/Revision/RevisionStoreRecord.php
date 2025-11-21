@@ -2,32 +2,20 @@
 /**
  * A RevisionRecord representing an existing revision persisted in the revision table.
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License along
- * with this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
- * http://www.gnu.org/copyleft/gpl.html
- *
+ * @license GPL-2.0-or-later
  * @file
  */
 
 namespace MediaWiki\Revision;
 
-use CommentStoreComment;
 use InvalidArgumentException;
+use MediaWiki\CommentStore\CommentStoreComment;
 use MediaWiki\Page\PageIdentity;
+use MediaWiki\Page\ProperPageIdentity;
 use MediaWiki\Permissions\Authority;
 use MediaWiki\User\UserIdentity;
-use MWTimestamp;
+use MediaWiki\Utils\MWTimestamp;
+use Wikimedia\Assert\Assert;
 
 /**
  * A RevisionRecord representing an existing revision persisted in the revision table.
@@ -66,12 +54,27 @@ class RevisionStoreRecord extends RevisionRecord {
 		$this->mPageId = intval( $row->rev_page );
 		$this->mComment = $comment;
 
+		Assert::parameter(
+			$page->exists(),
+			'$page',
+			'must represent an existing page'
+		);
+		Assert::parameter(
+			$page->getId( $wikiId ) === $this->mPageId,
+			'$page',
+			'must match the rev_page field in $row'
+		);
+		Assert::postcondition(
+			parent::getPage() instanceof ProperPageIdentity,
+			'The parent constructor should have ensured that we have a ProperPageIdentity now.'
+		);
+
 		// Don't use MWTimestamp::convert, instead let any detailed exception from MWTimestamp
 		// bubble up (T254210)
 		$timestamp = ( new MWTimestamp( $row->rev_timestamp ) )->getTimestamp( TS_MW );
 
 		$this->mUser = $user;
-		$this->mMinorEdit = boolval( $row->rev_minor_edit );
+		$this->mMinorEdit = (bool)$row->rev_minor_edit;
 		$this->mTimestamp = $timestamp;
 		$this->mDeleted = intval( $row->rev_deleted );
 
@@ -80,7 +83,6 @@ class RevisionStoreRecord extends RevisionRecord {
 		// allows rev_parent_id to be NULL.
 		$this->mParentId = isset( $row->rev_parent_id ) ? intval( $row->rev_parent_id ) : null;
 		$this->mSize = isset( $row->rev_len ) ? intval( $row->rev_len ) : null;
-		$this->mSha1 = !empty( $row->rev_sha1 ) ? $row->rev_sha1 : null;
 
 		// NOTE: we must not call $this->mTitle->getLatestRevID() here, since the state of
 		// page_latest may be in limbo during revision creation. In that case, calling
@@ -98,6 +100,18 @@ class RevisionStoreRecord extends RevisionRecord {
 				' but actually belongs to ' . $this->getArticleId( $this->mPage )
 			);
 		}
+	}
+
+	/**
+	 * Returns the page this revision belongs to.
+	 *
+	 * @return ProperPageIdentity (before 1.44, this was returning a PageIdentity)
+	 */
+	public function getPage(): ProperPageIdentity {
+		// Override to narrow the return type.
+		// We checked in the constructor that the page is a proper page.
+		// @phan-suppress-next-line PhanTypeMismatchReturnSuperType
+		return parent::getPage();
 	}
 
 	/**
@@ -125,6 +139,7 @@ class RevisionStoreRecord extends RevisionRecord {
 		return parent::isDeleted( $field );
 	}
 
+	/** @inheritDoc */
 	public function userCan( $field, Authority $performer ) {
 		if ( $this->isCurrent() && $field === self::DELETED_TEXT ) {
 			// Current revisions of pages cannot have the content hidden. Skipping this
@@ -152,9 +167,7 @@ class RevisionStoreRecord extends RevisionRecord {
 	public function getSize() {
 		// If length is null, calculate and remember it (potentially SLOW!).
 		// This is for compatibility with old database rows that don't have the field set.
-		if ( $this->mSize === null ) {
-			$this->mSize = $this->mSlots->computeSize();
-		}
+		$this->mSize ??= $this->mSlots->computeSize();
 
 		return $this->mSize;
 	}
@@ -164,13 +177,7 @@ class RevisionStoreRecord extends RevisionRecord {
 	 * @return string The revision hash, never null. May be computed on the fly.
 	 */
 	public function getSha1() {
-		// If hash is null, calculate it and remember (potentially SLOW!)
-		// This is for compatibility with old database rows that don't have the field set.
-		if ( $this->mSha1 === null ) {
-			$this->mSha1 = $this->mSlots->computeSha1();
-		}
-
-		return $this->mSha1;
+		return $this->mSlots->computeSha1();
 	}
 
 	/**
@@ -179,7 +186,7 @@ class RevisionStoreRecord extends RevisionRecord {
 	 *
 	 * @return UserIdentity The identity of the revision author, null if access is forbidden.
 	 */
-	public function getUser( $audience = self::FOR_PUBLIC, Authority $performer = null ) {
+	public function getUser( $audience = self::FOR_PUBLIC, ?Authority $performer = null ) {
 		// overwritten just to add a guarantee to the contract
 		return parent::getUser( $audience, $performer );
 	}
@@ -190,7 +197,7 @@ class RevisionStoreRecord extends RevisionRecord {
 	 *
 	 * @return CommentStoreComment The revision comment, null if access is forbidden.
 	 */
-	public function getComment( $audience = self::FOR_PUBLIC, Authority $performer = null ) {
+	public function getComment( $audience = self::FOR_PUBLIC, ?Authority $performer = null ) {
 		// overwritten just to add a guarantee to the contract
 		return parent::getComment( $audience, $performer );
 	}

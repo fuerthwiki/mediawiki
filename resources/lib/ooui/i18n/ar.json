@@ -12,6 +12,7 @@
 			"NEHAOUA",
 			"OsamaK",
 			"SaldırganSincap",
+			"XIDME",
 			"ترجمان05",
 			"ديفيد",
 			"زكريا",
@@ -20,6 +21,7 @@
 			"مشعل الحربي"
 		]
 	},
+	"ooui-copytextlayout-copy": "نسخ",
 	"ooui-outline-control-move-down": "انقل العنصر للأسفل",
 	"ooui-outline-control-move-up": "انقل العنصر للأعلى",
 	"ooui-outline-control-remove": "أزل العنصر",
@@ -28,7 +30,7 @@
 	"ooui-toolgroup-collapse": "أقل",
 	"ooui-item-remove": "إزالة",
 	"ooui-dialog-message-accept": "موافق",
-	"ooui-dialog-message-reject": "ألغ",
+	"ooui-dialog-message-reject": "إلغاء",
 	"ooui-dialog-process-error": "حدث خطأ",
 	"ooui-dialog-process-dismiss": "أغلق",
 	"ooui-dialog-process-retry": "حاول مرة أخرى",
@@ -36,7 +38,6 @@
 	"ooui-combobox-button-label": "خيارات التبديل",
 	"ooui-selectfile-button-select": "اختر ملفا",
 	"ooui-selectfile-button-select-multiple": "اختر الملفات",
-	"ooui-selectfile-not-supported": "اختيار الملفات غير مدعوم",
 	"ooui-selectfile-placeholder": "لم يتم اختيار أي ملف",
 	"ooui-selectfile-dragdrop-placeholder": "اترك الملف هنا",
 	"ooui-selectfile-dragdrop-placeholder-multiple": "أسقط الملفات هنا",

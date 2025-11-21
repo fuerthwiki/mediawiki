@@ -1,8 +1,6 @@
 <?php
 /** Esperanto (Esperanto)
  *
- * To improve a translation please visit https://translatewiki.net
- *
  * @file
  * @ingroup Languages
  */
@@ -79,6 +77,7 @@ $specialPageAliases = [
 	'FileDuplicateSearch'       => [ 'Serĉi_pri_duoblaj_dosieroj' ],
 	'Filepath'                  => [ 'Pado_de_dosiero', 'Dosiero-pado' ],
 	'Import'                    => [ 'Enporti', 'Importi' ],
+	'Interwiki'                 => [ 'Intervikia_ligilo' ],
 	'Invalidateemail'           => [ 'Malvalidigi_retpoŝton' ],
 	'LinkSearch'                => [ 'Serĉi_ligilon' ],
 	'Listadmins'                => [ 'Listigi_administrantojn' ],
@@ -117,6 +116,7 @@ $specialPageAliases = [
 	'Randomredirect'            => [ 'Hazarda_alidirektilo', 'Hazarda_alidirekto' ],
 	'Recentchanges'             => [ 'Lastaj_ŝanĝoj' ],
 	'Recentchangeslinked'       => [ 'Rilataj_ŝanĝoj' ],
+	'Renameuser'                => [ 'Alinomigi_uzanton' ],
 	'Revisiondelete'            => [ 'Forigi_revizion' ],
 	'Search'                    => [ 'Serĉi' ],
 	'Shortpages'                => [ 'Mallongaj_paĝoj' ],
@@ -203,7 +203,7 @@ $magicWords = [
 	'img_width'                 => [ '1', '$1ra', '$1px' ],
 	'index'                     => [ '1', '__INDEKSU__', '__INDEKSI__', '__INDEX__' ],
 	'int'                       => [ '0', 'ENE:', 'INT:' ],
-	'language'                  => [ '0', '#LINGVO:', '#LANGUAGE:' ],
+	'language'                  => [ '0', '#LINGVO', '#LANGUAGE' ],
 	'lc'                        => [ '0', 'MALMAJUSKLE:', 'MINUSKLE:', 'LC:' ],
 	'lcfirst'                   => [ '0', 'MALMAJUSKLEUNUA:', 'MINUSKLEUNUA:', 'MMU:', 'LCFIRST:' ],
 	'localday'                  => [ '1', 'LOKATAGO', 'LOCALDAY' ],

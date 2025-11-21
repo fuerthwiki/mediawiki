@@ -1,39 +1,31 @@
 <?php
 /**
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License along
- * with this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
- * http://www.gnu.org/copyleft/gpl.html
- *
+ * @license GPL-2.0-or-later
  * @file
  */
 
+namespace Wikimedia\Tests;
+
+use LogicException;
+use MediaWikiCoversValidator;
+use Monolog\Test\TestCase;
+use XhprofData;
+
 /**
  * @copyright © 2014 Wikimedia Foundation and contributors
- * @since 1.25
+ * @covers \XhprofData
  */
-class XhprofDataTest extends PHPUnit\Framework\TestCase {
+class XhprofDataTest extends TestCase {
 	use MediaWikiCoversValidator;
 
 	/**
-	 * @covers XhprofData::splitKey
 	 * @dataProvider provideSplitKey
 	 */
 	public function testSplitKey( $key, $expect ) {
 		$this->assertSame( $expect, XhprofData::splitKey( $key ) );
 	}
 
-	public function provideSplitKey() {
+	public static function provideSplitKey() {
 		return [
 			[ 'main()', [ null, 'main()' ] ],
 			[ 'foo==>bar', [ 'foo', 'bar' ] ],
@@ -44,9 +36,6 @@ class XhprofDataTest extends PHPUnit\Framework\TestCase {
 		];
 	}
 
-	/**
-	 * @covers XhprofData::pruneData
-	 */
 	public function testInclude() {
 		$xhprofData = $this->getXhprofDataFixture( [
 			'include' => [ 'main()' ],
@@ -63,8 +52,6 @@ class XhprofDataTest extends PHPUnit\Framework\TestCase {
 	 * Xhprof::getInclusiveMetrics(). This acts as a guard against unexpected
 	 * structural changes to the returned data in lieu of using a more heavy
 	 * weight typed response object.
-	 *
-	 * @covers XhprofData::getInclusiveMetrics
 	 */
 	public function testInclusiveMetricsStructure() {
 		$metricStruct = [
@@ -105,8 +92,6 @@ class XhprofDataTest extends PHPUnit\Framework\TestCase {
 	 * Xhprof::getCompleteMetrics(). This acts as a guard against unexpected
 	 * structural changes to the returned data in lieu of using a more heavy
 	 * weight typed response object.
-	 *
-	 * @covers XhprofData::getCompleteMetrics
 	 */
 	public function testCompleteMetricsStructure() {
 		$metricStruct = [
@@ -148,10 +133,6 @@ class XhprofDataTest extends PHPUnit\Framework\TestCase {
 		}
 	}
 
-	/**
-	 * @covers XhprofData::getCallers
-	 * @covers XhprofData::getCallees
-	 */
 	public function testEdges() {
 		$xhprofData = $this->getXhprofDataFixture();
 		$this->assertSame( [], $xhprofData->getCallers( 'main()' ) );
@@ -164,16 +145,13 @@ class XhprofDataTest extends PHPUnit\Framework\TestCase {
 		$this->assertSame( [], $xhprofData->getCallees( 'strlen' ) );
 	}
 
-	/**
-	 * @covers XhprofData::getCriticalPath
-	 */
 	public function testCriticalPath() {
 		$xhprofData = $this->getXhprofDataFixture();
 		$path = $xhprofData->getCriticalPath();
 
 		$last = null;
 		foreach ( $path as $key => $value ) {
-			list( $func, $call ) = XhprofData::splitKey( $key );
+			[ $func, $call ] = XhprofData::splitKey( $key );
 			$this->assertSame( $last, $func );
 			$last = $call;
 		}
@@ -265,7 +243,7 @@ class XhprofDataTest extends PHPUnit\Framework\TestCase {
 	 */
 	protected function assertArrayStructure( $struct, $actual, $label = '' ) {
 		$this->assertIsArray( $actual, $label );
-		$this->assertCount( count( $struct ), $actual, $label );
+		$this->assertSameSize( $struct, $actual, $label );
 		foreach ( $struct as $key => $type ) {
 			$this->assertArrayHasKey( $key, $actual );
 			switch ( $type ) {

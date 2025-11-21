@@ -2,28 +2,15 @@
 /**
  * Service for constructing RevisionRecord objects.
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License along
- * with this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
- * http://www.gnu.org/copyleft/gpl.html
- *
+ * @license GPL-2.0-or-later
  * @file
  */
 
 namespace MediaWiki\Revision;
 
-use IDBAccessObject;
 use MediaWiki\Page\PageIdentity;
+use Wikimedia\Rdbms\IDBAccessObject;
+use Wikimedia\Rdbms\IReadableDatabase;
 
 /**
  * Service for constructing RevisionRecord objects.
@@ -34,7 +21,7 @@ use MediaWiki\Page\PageIdentity;
  * @note This was written to act as a drop-in replacement for the corresponding
  *       static methods in the old Revision class (which was later removed in 1.37).
  */
-interface RevisionFactory extends IDBAccessObject {
+interface RevisionFactory {
 
 	/**
 	 * Constructs a RevisionRecord given a database row and content slots.
@@ -51,8 +38,8 @@ interface RevisionFactory extends IDBAccessObject {
 	 */
 	public function newRevisionFromRow(
 		$row,
-		$queryFlags = self::READ_NORMAL,
-		PageIdentity $page = null
+		$queryFlags = IDBAccessObject::READ_NORMAL,
+		?PageIdentity $page = null
 	);
 
 	/**
@@ -77,8 +64,8 @@ interface RevisionFactory extends IDBAccessObject {
 	 */
 	public function newRevisionFromArchiveRow(
 		$row,
-		$queryFlags = self::READ_NORMAL,
-		PageIdentity $page = null,
+		$queryFlags = IDBAccessObject::READ_NORMAL,
+		?PageIdentity $page = null,
 		array $overrides = []
 	);
 
@@ -87,6 +74,7 @@ interface RevisionFactory extends IDBAccessObject {
 	 * a new RevisionArchiveRecord object.
 	 *
 	 * @since 1.37, since 1.31 on RevisionStore
+	 * @deprecated since 1.41 use RevisionStore::newArchiveSelectQueryBuilder() instead.
 	 *
 	 * @return array[] With three keys:
 	 *   - tables: (string[]) to include in the `$table` to `IDatabase->select()` or `SelectQueryBuilder::tables`
@@ -106,6 +94,7 @@ interface RevisionFactory extends IDBAccessObject {
 	 * self::getRevisionRowCacheKey should be updated.
 	 *
 	 * @since 1.37, since 1.31 on RevisionStore
+	 * @deprecated since 1.41 use RevisionStore::newSelectQueryBuilder() instead.
 	 *
 	 * @param array $options Any combination of the following strings
 	 *  - 'page': Join with the page table, and select fields to identify the page
@@ -118,6 +107,28 @@ interface RevisionFactory extends IDBAccessObject {
 	 * @phan-return array{tables:string[],fields:string[],joins:array}
 	 */
 	public function getQueryInfo( $options = [] );
+
+	/**
+	 * Return a SelectQueryBuilder to allow querying revision store
+	 *
+	 * @since 1.41
+	 *
+	 * @param IReadableDatabase $dbr A db object to do the query on.
+	 *
+	 * @return RevisionSelectQueryBuilder
+	 */
+	public function newSelectQueryBuilder( IReadableDatabase $dbr ): RevisionSelectQueryBuilder;
+
+	/**
+	 * Return a SelectQueryBuilder to allow querying archive table
+	 *
+	 * @since 1.41
+	 *
+	 * @param IReadableDatabase $dbr A db object to do the query on.
+	 *
+	 * @return ArchiveSelectQueryBuilder
+	 */
+	public function newArchiveSelectQueryBuilder( IReadableDatabase $dbr ): ArchiveSelectQueryBuilder;
 
 	/**
 	 * Determine whether the parameter is a row containing all the fields

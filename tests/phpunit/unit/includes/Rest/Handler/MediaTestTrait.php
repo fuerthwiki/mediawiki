@@ -2,19 +2,17 @@
 
 namespace MediaWiki\Tests\Rest\Handler;
 
-use LocalFile;
-use LocalRepo;
+use MediaWiki\FileRepo\File\LocalFile;
+use MediaWiki\FileRepo\LocalRepo;
+use MediaWiki\FileRepo\RepoGroup;
 use MediaWiki\Page\PageReference;
 use MediaWiki\User\UserIdentityValue;
 use MockTitleTrait;
 use PHPUnit\Framework\MockObject\MockObject;
-use RepoGroup;
 use ThumbnailImage;
 
 /**
  * A trait providing utility functions for mocking media-related objects.
- *
- * @package MediaWiki\Tests\Rest\Handler
  */
 trait MediaTestTrait {
 
@@ -122,7 +120,7 @@ trait MediaTestTrait {
 				? $this->makeMockTitle( $title->getDBkey(), [ 'namespace' => $title->getNamespace() ] )
 				: $this->makeMockTitle( 'File:' . $title, [ 'namespace' => NS_FILE ] );
 
-			if ( !in_array( $title->getDBkey(), $existingFileDBKeys ) || $title->getNamespace() !== NS_FILE ) {
+			if ( !in_array( $title->getDBkey(), $existingFileDBKeys ) || !$title->inNamespace( NS_FILE ) ) {
 				return $this->makeMissingMockFile( $title );
 			} else {
 				return $this->makeMockFile( $title );

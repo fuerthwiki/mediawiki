@@ -3,7 +3,7 @@
 namespace Wikimedia\WRStats;
 
 /**
- * A factory for WRStats readers and writers.
+ * The main entry point to WRStats, for creating readers and writers.
  *
  * Readers and writers should generally be used for a batch and then discarded.
  * Factory objects can be retained indefinitely.
@@ -17,9 +17,6 @@ class WRStatsFactory {
 	/** @var float|int|null */
 	private $now;
 
-	/**
-	 * @param StatsStore $store
-	 */
 	public function __construct( StatsStore $store ) {
 		$this->store = $store;
 	}
@@ -79,7 +76,7 @@ class WRStatsFactory {
 	/**
 	 * Create a rate limiter.
 	 *
-	 * @param LimitCondition[] $conditions An array in which the key is the
+	 * @param array<string,LimitCondition> $conditions An array in which the key is the
 	 *   condition name, and the value is a LimitCondition describing the limit.
 	 * @param string|string[] $prefix A string or array of strings to prefix
 	 *   before storage keys.

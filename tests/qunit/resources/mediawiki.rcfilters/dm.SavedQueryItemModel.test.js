@@ -1,6 +1,7 @@
 /* eslint-disable camelcase */
 ( function () {
-	var itemData = {
+	const rcfilters = require( 'mediawiki.rcfilters.filters.ui' );
+	const itemData = {
 		params: {
 			param1: '1',
 			param2: 'foo|bar',
@@ -14,10 +15,8 @@
 
 	QUnit.module( 'mediawiki.rcfilters - SavedQueryItemModel' );
 
-	QUnit.test( 'Initializing and getters', function ( assert ) {
-		var model;
-
-		model = new mw.rcfilters.dm.SavedQueryItemModel(
+	QUnit.test( 'Initializing and getters', ( assert ) => {
+		const model = new rcfilters.dm.SavedQueryItemModel(
 			'randomID',
 			'Some label',
 			$.extend( true, {}, itemData )
@@ -41,53 +40,48 @@
 			'Item data is retained'
 		);
 
-		assert.strictEqual(
+		assert.false(
 			model.isDefault(),
-			false,
 			'Item default state is retained.'
 		);
 	} );
 
-	QUnit.test( 'Default', function ( assert ) {
-		var model;
+	QUnit.test( 'Default', ( assert ) => {
+		let model;
 
-		model = new mw.rcfilters.dm.SavedQueryItemModel(
+		model = new rcfilters.dm.SavedQueryItemModel(
 			'randomID',
 			'Some label',
 			$.extend( true, {}, itemData )
 		);
 
-		assert.strictEqual(
+		assert.false(
 			model.isDefault(),
-			false,
 			'Default state represented when item initialized with default:false.'
 		);
 
 		model.toggleDefault( true );
-		assert.strictEqual(
+		assert.true(
 			model.isDefault(),
-			true,
 			'Default state toggles to true successfully'
 		);
 
 		model.toggleDefault( false );
-		assert.strictEqual(
+		assert.false(
 			model.isDefault(),
-			false,
 			'Default state toggles to false successfully'
 		);
 
 		// Reset
-		model = new mw.rcfilters.dm.SavedQueryItemModel(
+		model = new rcfilters.dm.SavedQueryItemModel(
 			'randomID',
 			'Some label',
 			$.extend( true, {}, itemData ),
 			{ default: true }
 		);
 
-		assert.strictEqual(
+		assert.true(
 			model.isDefault(),
-			true,
 			'Default state represented when item initialized with default:true.'
 		);
 	} );

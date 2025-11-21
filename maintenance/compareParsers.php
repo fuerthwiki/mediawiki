@@ -9,26 +9,20 @@
  * Copyright © 2011 Platonides
  * https://www.mediawiki.org/
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License along
- * with this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
- * http://www.gnu.org/copyleft/gpl.html
- *
+ * @license GPL-2.0-or-later
  * @file
  * @ingroup Maintenance
  */
 
+use MediaWiki\Content\WikitextContent;
+use MediaWiki\Parser\ParserOptions;
+use MediaWiki\User\User;
+use Wikimedia\Diff\Diff;
+use Wikimedia\Diff\UnifiedDiffFormatter;
+
+// @codeCoverageIgnoreStart
 require_once __DIR__ . '/dumpIterator.php';
+// @codeCoverageIgnoreEnd
 
 /**
  * Maintenance script to take page text out of an XML dump file and render
@@ -38,6 +32,7 @@ require_once __DIR__ . '/dumpIterator.php';
  */
 class CompareParsers extends DumpIterator {
 
+	/** @var int */
 	private $count = 0;
 	/** @var string|false */
 	private $saveFailed = false;
@@ -114,7 +109,7 @@ class CompareParsers extends DumpIterator {
 		}
 	}
 
-	private function stripParameters( $text ) {
+	private function stripParameters( string $text ): string {
 		if ( !$this->stripParametersEnabled ) {
 			return $text;
 		}
@@ -124,7 +119,6 @@ class CompareParsers extends DumpIterator {
 
 	/**
 	 * Callback function for each revision, parse with both parsers and compare
-	 * @param WikiRevision $rev
 	 */
 	public function processRevision( WikiRevision $rev ) {
 		$title = $rev->getTitle();
@@ -183,7 +177,7 @@ class CompareParsers extends DumpIterator {
 		}
 	}
 
-	private static function checkParserLocally( $parserName ) {
+	private static function checkParserLocally( string $parserName ) {
 		/* Look for the parser in a file appropriately named in the current folder */
 		if ( !class_exists( $parserName ) && file_exists( "$parserName.php" ) ) {
 			global $wgAutoloadClasses;
@@ -192,5 +186,7 @@ class CompareParsers extends DumpIterator {
 	}
 }
 
+// @codeCoverageIgnoreStart
 $maintClass = CompareParsers::class;
 require_once RUN_MAINTENANCE_IF_MAIN;
+// @codeCoverageIgnoreEnd

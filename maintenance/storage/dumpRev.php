@@ -2,29 +2,17 @@
 /**
  * Get the text of a revision, resolving external storage if needed.
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License along
- * with this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
- * http://www.gnu.org/copyleft/gpl.html
- *
+ * @license GPL-2.0-or-later
  * @file
  * @ingroup Maintenance ExternalStorage
  */
 
-use MediaWiki\MediaWikiServices;
+use MediaWiki\Maintenance\Maintenance;
 use MediaWiki\Revision\SlotRecord;
 
+// @codeCoverageIgnoreStart
 require_once __DIR__ . '/../Maintenance.php';
+// @codeCoverageIgnoreEnd
 
 /**
  * Maintenance script that gets the text of a revision,
@@ -41,7 +29,7 @@ class DumpRev extends Maintenance {
 	public function execute() {
 		$id = (int)$this->getArg( 0 );
 
-		$lookup = MediaWikiServices::getInstance()->getRevisionLookup();
+		$lookup = $this->getServiceContainer()->getRevisionLookup();
 		$rev = $lookup->getRevisionById( $id );
 		if ( !$rev ) {
 			$this->fatalError( "Row not found" );
@@ -52,7 +40,7 @@ class DumpRev extends Maintenance {
 			$this->fatalError( "Text not found" );
 		}
 
-		$blobStore = MediaWikiServices::getInstance()->getBlobStore();
+		$blobStore = $this->getServiceContainer()->getBlobStore();
 		$slot = $rev->getSlot( SlotRecord::MAIN );
 		$text = $blobStore->getBlob( $slot->getAddress() );
 
@@ -61,5 +49,7 @@ class DumpRev extends Maintenance {
 	}
 }
 
+// @codeCoverageIgnoreStart
 $maintClass = DumpRev::class;
 require_once RUN_MAINTENANCE_IF_MAIN;
+// @codeCoverageIgnoreEnd

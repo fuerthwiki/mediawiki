@@ -2,27 +2,18 @@
 /**
  * (C) 2019 Kunal Mehta <legoktm@debian.org>
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License along
- * with this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
- * http://www.gnu.org/copyleft/gpl.html
- *
+ * @license GPL-2.0-or-later
  * @file
  */
 
 use MediaWiki\MainConfigNames;
+use MediaWiki\Maintenance\Maintenance;
+use MediaWiki\Registration\ExtensionDependencyError;
+use MediaWiki\Registration\ExtensionRegistry;
 
+// @codeCoverageIgnoreStart
 require_once __DIR__ . '/Maintenance.php';
+// @codeCoverageIgnoreEnd
 
 /**
  * Checks dependencies for extensions, mostly without loading them
@@ -31,6 +22,7 @@ require_once __DIR__ . '/Maintenance.php';
  */
 class CheckDependencies extends Maintenance {
 
+	/** @var bool */
 	private $checkDev;
 
 	public function __construct() {
@@ -80,7 +72,7 @@ class CheckDependencies extends Maintenance {
 		}
 	}
 
-	private function loadThing( &$dependencies, $name, $extensions, $skins ) {
+	private function loadThing( array &$dependencies, string $name, array $extensions, array $skins ) {
 		$extDir = $this->getConfig()->get( MainConfigNames::ExtensionDirectory );
 		$styleDir = $this->getConfig()->get( MainConfigNames::StyleDirectory );
 		$queue = [];
@@ -128,12 +120,13 @@ class CheckDependencies extends Maintenance {
 			} elseif ( $e->missingExtensions || $e->missingSkins ) {
 				// There's an extension missing in the dependency tree,
 				// so add those to the dependency list and try again
-				return $this->loadThing(
+				$this->loadThing(
 					$dependencies,
 					$name,
 					array_merge( $extensions, $e->missingExtensions ),
 					array_merge( $skins, $e->missingSkins )
 				);
+				return;
 			} else {
 				// missing-phpExtension
 				// missing-ability
@@ -147,8 +140,8 @@ class CheckDependencies extends Maintenance {
 		$this->addToDependencies( $dependencies, $extensions, $skins, $name );
 	}
 
-	private function addToDependencies( &$dependencies, $extensions, $skins,
-		$why = null, $status = null, $message = null
+	private function addToDependencies( array &$dependencies, array $extensions, array $skins,
+		?string $why = null, ?string $status = null, ?string $message = null
 	) {
 		$mainRegistry = ExtensionRegistry::getInstance();
 		$iter = [ 'extensions' => $extensions, 'skins' => $skins ];
@@ -179,7 +172,7 @@ class CheckDependencies extends Maintenance {
 		}
 	}
 
-	private function formatForHumans( $dependencies ) {
+	private function formatForHumans( array $dependencies ): string {
 		$text = '';
 		foreach ( $dependencies as $type => $things ) {
 			$text .= ucfirst( $type ) . "\n" . str_repeat( '=', strlen( $type ) ) . "\n";
@@ -201,5 +194,7 @@ class CheckDependencies extends Maintenance {
 	}
 }
 
+// @codeCoverageIgnoreStart
 $maintClass = CheckDependencies::class;
 require_once RUN_MAINTENANCE_IF_MAIN;
+// @codeCoverageIgnoreEnd

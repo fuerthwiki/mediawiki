@@ -5,21 +5,7 @@
  *
  * This is used when the database schema is modified and we need to apply patches.
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License along
- * with this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
- * http://www.gnu.org/copyleft/gpl.html
- *
+ * @license GPL-2.0-or-later
  * @file
  * @todo document
  * @ingroup Maintenance
@@ -27,9 +13,18 @@
 
 // NO_AUTOLOAD -- due to hashbang above
 
+// @codeCoverageIgnoreStart
 require_once __DIR__ . '/Maintenance.php';
+// @codeCoverageIgnoreEnd
 
-use MediaWiki\MediaWikiServices;
+use MediaWiki\Context\RequestContext;
+use MediaWiki\Installer\DatabaseInstaller;
+use MediaWiki\Installer\DatabaseUpdater;
+use MediaWiki\Installer\Installer;
+use MediaWiki\Maintenance\LoggedUpdateMaintenance;
+use MediaWiki\Maintenance\Maintenance;
+use MediaWiki\Settings\SettingsBuilder;
+use MediaWiki\WikiMap\WikiMap;
 use Wikimedia\Rdbms\DatabaseSqlite;
 
 /**
@@ -41,8 +36,9 @@ class UpdateMediaWiki extends Maintenance {
 	public function __construct() {
 		parent::__construct();
 		$this->addDescription( 'MediaWiki database updater' );
-		$this->addOption( 'skip-compat-checks', 'Skips compatibility checks, mostly for developers' );
 		$this->addOption( 'quick', 'Skip 5 second countdown before starting' );
+		$this->addOption( 'initial',
+			'Do initial updates required after manual installation using tables-generated.sql' );
 		$this->addOption( 'doshared', 'Also update shared tables' );
 		$this->addOption( 'noschema', 'Only do the updates that are not done during schema updates' );
 		$this->addOption(
@@ -63,26 +59,20 @@ class UpdateMediaWiki extends Maintenance {
 		);
 	}
 
+	/** @inheritDoc */
 	public function getDbType() {
 		return Maintenance::DB_ADMIN;
 	}
 
-	private function compatChecks() {
-		$minimumPcreVersion = Installer::MINIMUM_PCRE_VERSION;
-
-		$pcreVersion = explode( ' ', PCRE_VERSION, 2 )[0];
-		if ( version_compare( $pcreVersion, $minimumPcreVersion, '<' ) ) {
-			$this->fatalError(
-				"PCRE $minimumPcreVersion or later is required.\n" .
-				"Your PHP binary is linked with PCRE $pcreVersion.\n\n" .
-				"More information:\n" .
-				"https://www.mediawiki.org/wiki/Manual:Errors_and_symptoms/PCRE\n\n" .
-				"ABORTING.\n" );
-		}
+	public function setup() {
+		global $wgMessagesDirs;
+		// T206765: We need to load the installer i18n files as some errors come from installer/updater code
+		// T310378: We have to ensure we do this before execute()
+		$wgMessagesDirs['MediaWikiInstaller'] = dirname( __DIR__ ) . '/includes/Installer/i18n';
 	}
 
 	public function execute() {
-		global $wgLang, $wgAllowSchemaUpdates, $wgMessagesDirs;
+		global $wgLang, $wgAllowSchemaUpdates;
 
 		if ( !$wgAllowSchemaUpdates
 			&& !( $this->hasOption( 'force' )
@@ -97,7 +87,7 @@ class UpdateMediaWiki extends Maintenance {
 		}
 
 		$this->fileHandle = null;
-		if ( substr( $this->getOption( 'schema', '' ), 0, 2 ) === "--" ) {
+		if ( str_starts_with( $this->getOption( 'schema', '' ), '--' ) ) {
 			$this->fatalError( "The --schema option requires a file as an argument.\n" );
 		} elseif ( $this->hasOption( 'schema' ) ) {
 			$file = $this->getOption( 'schema' );
@@ -113,10 +103,7 @@ class UpdateMediaWiki extends Maintenance {
 			$this->validateSettings();
 		}
 
-		// T206765: We need to load the installer i18n files as some of errors come installer/updater code
-		$wgMessagesDirs['MediawikiInstaller'] = dirname( __DIR__ ) . '/includes/installer/i18n';
-
-		$lang = MediaWikiServices::getInstance()->getLanguageFactory()->getLanguage( 'en' );
+		$lang = $this->getServiceContainer()->getLanguageFactory()->getLanguage( 'en' );
 		// Set global language to ensure localised errors are in English (T22633)
 		RequestContext::getMain()->setLanguage( $lang );
 
@@ -127,17 +114,10 @@ class UpdateMediaWiki extends Maintenance {
 
 		$this->output( 'MediaWiki ' . MW_VERSION . " Updater\n\n" );
 
-		MediaWikiServices::getInstance()->getDBLoadBalancerFactory()->waitForReplication();
-
-		if ( !$this->hasOption( 'skip-compat-checks' ) ) {
-			$this->compatChecks();
-		} else {
-			$this->output( "Skipping compatibility checks, proceed at your own risk (Ctrl+C to abort)\n" );
-			$this->countDown( 5 );
-		}
+		$this->waitForReplication();
 
 		// Check external dependencies are up to date
-		if ( !$this->hasOption( 'skip-external-dependencies' ) ) {
+		if ( !$this->hasOption( 'skip-external-dependencies' ) && !getenv( 'MW_SKIP_EXTERNAL_DEPENDENCIES' ) ) {
 			$composerLockUpToDate = $this->runChild( CheckComposerLockUpToDate::class );
 			$composerLockUpToDate->execute();
 		} else {
@@ -148,16 +128,15 @@ class UpdateMediaWiki extends Maintenance {
 
 		# Attempt to connect to the database as a privileged user
 		# This will vomit up an error if there are permissions problems
-		$db = $this->getDB( DB_PRIMARY );
+		$db = $this->getPrimaryDB();
 
 		# Check to see whether the database server meets the minimum requirements
 		/** @var DatabaseInstaller $dbInstallerClass */
 		$dbInstallerClass = Installer::getDBInstallerClass( $db->getType() );
-		$status = $dbInstallerClass::meetsMinimumRequirement( $db->getServerVersion() );
+		$status = $dbInstallerClass::meetsMinimumRequirement( $db );
 		if ( !$status->isOK() ) {
 			// This might output some wikitext like <strong> but it should be comprehensible
-			$text = $status->getWikiText();
-			$this->fatalError( $text );
+			$this->fatalError( $status );
 		}
 
 		$dbDomain = WikiMap::getCurrentWikiDbDomain()->getId();
@@ -186,16 +165,19 @@ class UpdateMediaWiki extends Maintenance {
 			}
 			$updates[] = 'stats';
 		}
+		if ( $this->hasOption( 'initial' ) ) {
+			$updates[] = 'initial';
+		}
 
 		$updater = DatabaseUpdater::newForDB( $db, $shared, $this );
 
-		// Avoid upgrading from versions older than 1.34
-		// Using an implicit marker (change_tag_def table didn't exist until 1.32 and tag_summary was dropped in 1.33)
+		// Avoid upgrading from versions older than 1.35
+		// Using an implicit marker (rev_actor was introduced in 1.34)
 		// TODO: Use an explicit marker
 		// See T259771
-		if ( !$updater->tableExists( 'change_tag_def' ) || $updater->tableExists( 'tag_summary' ) ) {
+		if ( !$updater->tableExists( 'linktarget' ) ) {
 			$this->fatalError(
-				"Can not upgrade from versions older than 1.34, please upgrade to that version or later first."
+				"Can not upgrade from versions older than 1.38, please upgrade to that version or later first."
 			);
 		}
 
@@ -242,8 +224,6 @@ class UpdateMediaWiki extends Maintenance {
 	}
 
 	/**
-	 * @throws FatalError
-	 * @throws MWException
 	 * @suppress PhanPluginDuplicateConditionalNullCoalescing
 	 */
 	public function validateParamsAndArgs() {
@@ -268,7 +248,7 @@ class UpdateMediaWiki extends Maintenance {
 		parent::validateParamsAndArgs();
 	}
 
-	private function formatWarnings( array $warnings ) {
+	private function formatWarnings( array $warnings ): string {
 		$text = '';
 		foreach ( $warnings as $warning ) {
 			$warning = wordwrap( $warning, 75, "\n  " );
@@ -278,24 +258,28 @@ class UpdateMediaWiki extends Maintenance {
 	}
 
 	private function validateSettings() {
-		global $wgSettings;
+		$settings = SettingsBuilder::getInstance();
 
 		$warnings = [];
-		if ( $wgSettings->getWarnings() ) {
-			$warnings = $wgSettings->getWarnings();
+		if ( $settings->getWarnings() ) {
+			$warnings = $settings->getWarnings();
 		}
 
-		$status = $wgSettings->validate();
-		if ( !$status->isOk() ) {
-			foreach ( $status->getErrorsByType( 'error' ) as $msg ) {
-				$msg = wfMessage( $msg['message'], ...$msg['params'] );
-				$warnings[] = $msg->text();
+		$status = $settings->validate();
+		if ( !$status->isOK() ) {
+			foreach ( $status->getMessages( 'error' ) as $msg ) {
+				$warnings[] = wfMessage( $msg )->text();
 			}
 		}
 
-		$deprecations = $wgSettings->detectDeprecatedConfig();
+		$deprecations = $settings->detectDeprecatedConfig();
 		foreach ( $deprecations as $key => $msg ) {
 			$warnings[] = "$key is deprecated: $msg";
+		}
+
+		$obsolete = $settings->detectObsoleteConfig();
+		foreach ( $obsolete as $key => $msg ) {
+			$warnings[] = "$key is obsolete: $msg";
 		}
 
 		if ( $warnings ) {
@@ -308,5 +292,7 @@ class UpdateMediaWiki extends Maintenance {
 	}
 }
 
+// @codeCoverageIgnoreStart
 $maintClass = UpdateMediaWiki::class;
 require_once RUN_MAINTENANCE_IF_MAIN;
+// @codeCoverageIgnoreEnd

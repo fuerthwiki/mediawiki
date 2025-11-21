@@ -2,31 +2,19 @@
 /**
  * Performs some operations specific to SQLite database backend.
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License along
- * with this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
- * http://www.gnu.org/copyleft/gpl.html
- *
+ * @license GPL-2.0-or-later
  * @file
  * @ingroup Maintenance
  */
 
-use MediaWiki\MediaWikiServices;
-
+use MediaWiki\Maintenance\Maintenance;
 use Wikimedia\AtEase\AtEase;
-use Wikimedia\Rdbms\DatabaseSqlite;
+use Wikimedia\Rdbms\DBConnRef;
+use Wikimedia\Rdbms\IMaintainableDatabase;
 
+// @codeCoverageIgnoreStart
 require_once __DIR__ . '/Maintenance.php';
+// @codeCoverageIgnoreEnd
 
 /**
  * Maintenance script that performs some operations specific to SQLite database backend.
@@ -50,13 +38,12 @@ class SqliteMaintenance extends Maintenance {
 		// Should work even if we use a non-SQLite database
 		if ( $this->hasOption( 'check-syntax' ) ) {
 			$this->checkSyntax();
-
 			return;
 		}
 
-		$lb = MediaWikiServices::getInstance()->getDBLoadBalancer();
-		$dbw = $lb->getConnectionRef( DB_PRIMARY );
-		if ( !( $dbw instanceof DatabaseSqlite ) ) {
+		$lb = $this->getServiceContainer()->getDBLoadBalancer();
+		$dbw = $lb->getMaintenanceConnectionRef( DB_PRIMARY );
+		if ( $dbw->getType() !== 'sqlite' ) {
 			$this->error( "This maintenance script requires a SQLite database.\n" );
 
 			return;
@@ -75,8 +62,9 @@ class SqliteMaintenance extends Maintenance {
 		}
 	}
 
-	private function vacuum( DatabaseSqlite $dbw ) {
-		$prevSize = filesize( $dbw->getDbFilePath() );
+	private function vacuum( DBConnRef $dbw ) {
+		// Call non-standard DatabaseSqlite::getDbFilePath method
+		$prevSize = filesize( $dbw->__call( 'getDbFilePath', [] ) );
 		if ( $prevSize == 0 ) {
 			$this->fatalError( "Can't vacuum an empty database.\n" );
 		}
@@ -92,7 +80,7 @@ class SqliteMaintenance extends Maintenance {
 		}
 	}
 
-	private function integrityCheck( DatabaseSqlite $dbw ) {
+	private function integrityCheck( IMaintainableDatabase $dbw ) {
 		$this->output( "Performing database integrity checks:\n" );
 		$res = $dbw->query( 'PRAGMA integrity_check', __METHOD__ );
 
@@ -107,10 +95,10 @@ class SqliteMaintenance extends Maintenance {
 		}
 	}
 
-	private function backup( DatabaseSqlite $dbw, $fileName ) {
+	private function backup( DBConnRef $dbw, string $fileName ) {
 		$this->output( "Backing up database:\n   Locking..." );
 		$dbw->query( 'BEGIN IMMEDIATE TRANSACTION', __METHOD__ );
-		$ourFile = $dbw->getDbFilePath();
+		$ourFile = $dbw->__call( 'getDbFilePath', [] );
 		$this->output( "   Copying database file $ourFile to $fileName..." );
 		AtEase::suppressWarnings();
 		if ( !copy( $ourFile, $fileName ) ) {
@@ -137,5 +125,7 @@ class SqliteMaintenance extends Maintenance {
 	}
 }
 
+// @codeCoverageIgnoreStart
 $maintClass = SqliteMaintenance::class;
 require_once RUN_MAINTENANCE_IF_MAIN;
+// @codeCoverageIgnoreEnd

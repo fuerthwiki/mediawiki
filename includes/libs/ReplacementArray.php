@@ -1,28 +1,16 @@
 <?php
 /**
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License along
- * with this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
- * http://www.gnu.org/copyleft/gpl.html
- *
+ * @license GPL-2.0-or-later
  * @file
  */
+
+namespace Wikimedia;
 
 /**
  * Wrapper around strtr() that holds replacements
  */
 class ReplacementArray {
-	private $data;
+	private array $data;
 
 	/**
 	 * Create an object with the specified replacement array
@@ -42,7 +30,6 @@ class ReplacementArray {
 
 	/**
 	 * Set the whole replacement array at once
-	 * @param array $data
 	 */
 	public function setArray( array $data ) {
 		$this->data = $data;
@@ -71,9 +58,6 @@ class ReplacementArray {
 		$this->data = $data + $this->data;
 	}
 
-	/**
-	 * @param ReplacementArray $other
-	 */
 	public function merge( ReplacementArray $other ) {
 		$this->data = $other->data + $this->data;
 	}
@@ -102,3 +86,8 @@ class ReplacementArray {
 		return strtr( $subject, $this->data );
 	}
 }
+
+/** @deprecated class alias since 1.43 */
+class_alias( ReplacementArray::class, 'ReplacementArray' );
+/** @deprecated class alias since 1.45 */
+class_alias( ReplacementArray::class, 'MediaWiki\\Language\\ReplacementArray' );

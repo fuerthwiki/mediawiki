@@ -1,8 +1,6 @@
 <?php
 /** Kazakh (Arabic script) (قازاقشا (تٴوتە))
  *
- * To improve a translation please visit https://translatewiki.net
- *
  * @file
  * @ingroup Languages
  *
@@ -34,6 +32,8 @@ $separatorTransformTable = [
 	'.' => '٫', # U+066B
 	',' => '٬', # U+066C
 ];
+
+$numberingSystem = 'arabext';
 
 $fallback8bitEncoding = 'windows-1256';
 
@@ -123,30 +123,29 @@ $datePreferenceMigrationMap = [
 ];
 
 $dateFormats = [
-#   Please be cautious not to delete the invisible RLM from the beginning of the strings.
-	'mdy time' => '‏H:i',
-	'mdy date' => '‏xg j، Y "ج."',
-	'mdy both' => '‏H:i، xg j، Y "ج."',
+	'mdy time' => 'H:i',
+	'mdy date' => 'xg j، Y "ج."',
+	'mdy both' => 'H:i، xg j، Y "ج."',
 
-	'dmy time' => '‏H:i',
-	'dmy date' => '‏j F، Y "ج."',
-	'dmy both' => '‏H:i، j F، Y "ج."',
+	'dmy time' => 'H:i',
+	'dmy date' => 'j F، Y "ج."',
+	'dmy both' => 'H:i، j F، Y "ج."',
 
-	'ymd time' => '‏H:i',
-	'ymd date' => '‏Y "ج." xg j',
-	'ymd both' => '‏H:i، Y "ج." xg j',
+	'ymd time' => 'H:i',
+	'ymd date' => 'Y "ج." xg j',
+	'ymd both' => 'H:i، Y "ج." xg j',
 
 	'yyyy-mm-dd time' => 'xnH:xni:xns',
 	'yyyy-mm-dd date' => 'xnY-xnm-xnd',
 	'yyyy-mm-dd both' => 'xnH:xni:xns, xnY-xnm-xnd',
 
-	'persian time' => '‏H:i',
-	'persian date' => '‏xij xiF xiY',
-	'persian both' => '‏xij xiF xiY، H:i',
+	'persian time' => 'H:i',
+	'persian date' => 'xij xiF xiY',
+	'persian both' => 'xij xiF xiY، H:i',
 
-	'hebrew time' => '‏H:i',
-	'hebrew date' => '‏xjj xjF xjY',
-	'hebrew both' => '‏H:i، xjj xjF xjY',
+	'hebrew time' => 'H:i',
+	'hebrew date' => 'xjj xjF xjY',
+	'hebrew both' => 'H:i، xjj xjF xjY',
 
 	'ISO 8601 time' => 'xnH:xni:xns',
 	'ISO 8601 date' => 'xnY-xnm-xnd',
@@ -217,7 +216,7 @@ $magicWords = [
 	'img_upright'               => [ '1', 'تىكتى', 'تىكتىك=$1', 'تىكتىك $1', 'тікті', 'тіктік=$1', 'тіктік $1', 'upright', 'upright=$1', 'upright $1' ],
 	'img_width'                 => [ '1', '$1 نۇكتە', '$1 нүкте', '$1px' ],
 	'int'                       => [ '0', 'ىشكى:', 'ІШКІ:', 'INT:' ],
-	'language'                  => [ '0', '#تىل:', '#ТІЛ:', '#LANGUAGE:' ],
+	'language'                  => [ '0', '#تىل', '#ТІЛ', '#LANGUAGE' ],
 	'lc'                        => [ '0', 'كا:', 'كىشىارىپپەن:', 'КӘ:', 'КІШІӘРІППЕН:', 'LC:' ],
 	'lcfirst'                   => [ '0', 'كا1:', 'كىشىارىپپەن1:', 'КӘ1:', 'КІШІӘРІППЕН1:', 'LCFIRST:' ],
 	'localday'                  => [ '1', 'جەرگىلىكتىكۇن', 'ЖЕРГІЛІКТІКҮН', 'LOCALDAY' ],

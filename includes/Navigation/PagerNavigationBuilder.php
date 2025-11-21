@@ -2,13 +2,16 @@
 
 namespace MediaWiki\Navigation;
 
-use Html;
+use MediaWiki\Html\Html;
+use MediaWiki\Language\RawMessage;
+use MediaWiki\Message\Message;
 use MediaWiki\Page\PageReference;
-use Message;
+use MediaWiki\Title\Title;
 use MessageLocalizer;
-use RawMessage;
 use RuntimeException;
-use Title;
+use Wikimedia\Message\ListType;
+use Wikimedia\Message\MessageParam;
+use Wikimedia\Message\MessageSpecifier;
 
 /**
  * Build the navigation for a pager, with links to prev/next page, links to change limits, and
@@ -20,33 +23,33 @@ class PagerNavigationBuilder {
 	/** @var MessageLocalizer */
 	private $messageLocalizer;
 
-	/** @var PageReference */
+	/** @var PageReference|null */
 	protected $page;
-	/** @var array<string,string> */
+	/** @var array<string,string|int|null> */
 	protected $linkQuery = [];
 
-	/** @var array<string,string>|null */
+	/** @var array<string,string|int|null>|null */
 	private $prevLinkQuery = null;
 	/** @var string */
 	private $prevMsg = 'prevn';
 	/** @var string|null */
 	private $prevTooltipMsg = null;
 
-	/** @var array<string,string>|null */
+	/** @var array<string,string|int|null>|null */
 	private $nextLinkQuery = null;
 	/** @var string */
 	private $nextMsg = 'nextn';
 	/** @var string|null */
 	private $nextTooltipMsg = null;
 
-	/** @var array<string,string>|null */
+	/** @var array<string,string|int|null>|null */
 	private $firstLinkQuery = null;
 	/** @var string|null */
 	private $firstMsg = null;
 	/** @var string|null */
 	private $firstTooltipMsg = null;
 
-	/** @var array<string,string>|null */
+	/** @var array<string,string|int|null>|null */
 	private $lastLinkQuery = null;
 	/** @var string|null */
 	private $lastMsg = null;
@@ -62,17 +65,6 @@ class PagerNavigationBuilder {
 	/** @var string|null */
 	private $limitTooltipMsg = null;
 
-	/** @var string Additional HTML to display after the pager links */
-	private $extra = '';
-
-	/** @var callable|null $callback Function to call instead of makeLink().
-	 *   See IndexPager::makeLink() for the expected signature.
-	 */
-	private $makeLinkCallback = null;
-
-	/**
-	 * @param MessageLocalizer $messageLocalizer
-	 */
 	public function __construct( MessageLocalizer $messageLocalizer ) {
 		$this->messageLocalizer = $messageLocalizer;
 	}
@@ -87,7 +79,7 @@ class PagerNavigationBuilder {
 	}
 
 	/**
-	 * @param array<string,string> $linkQuery
+	 * @param array<string,string|int|null> $linkQuery
 	 * @return $this
 	 */
 	public function setLinkQuery( array $linkQuery ): PagerNavigationBuilder {
@@ -96,7 +88,7 @@ class PagerNavigationBuilder {
 	}
 
 	/**
-	 * @param array<string,string>|null $prevLinkQuery
+	 * @param array<string,string|int|null>|null $prevLinkQuery
 	 * @return $this
 	 */
 	public function setPrevLinkQuery( ?array $prevLinkQuery ): PagerNavigationBuilder {
@@ -123,7 +115,7 @@ class PagerNavigationBuilder {
 	}
 
 	/**
-	 * @param array<string,string>|null $nextLinkQuery
+	 * @param array<string,string|int|null>|null $nextLinkQuery
 	 * @return $this
 	 */
 	public function setNextLinkQuery( ?array $nextLinkQuery ): PagerNavigationBuilder {
@@ -150,7 +142,7 @@ class PagerNavigationBuilder {
 	}
 
 	/**
-	 * @param array<string,string>|null $firstLinkQuery
+	 * @param array<string,string|int|null>|null $firstLinkQuery
 	 * @return $this
 	 */
 	public function setFirstLinkQuery( ?array $firstLinkQuery ): PagerNavigationBuilder {
@@ -177,7 +169,7 @@ class PagerNavigationBuilder {
 	}
 
 	/**
-	 * @param array<string,string>|null $lastLinkQuery
+	 * @param array<string,string|int|null>|null $lastLinkQuery
 	 * @return $this
 	 */
 	public function setLastLinkQuery( ?array $lastLinkQuery ): PagerNavigationBuilder {
@@ -240,28 +232,11 @@ class PagerNavigationBuilder {
 	}
 
 	/**
-	 * @param string $extra Additional HTML to display after the pager links
-	 * @return $this
-	 */
-	public function setExtra( string $extra ): PagerNavigationBuilder {
-		$this->extra = $extra;
-		return $this;
-	}
-
-	/**
-	 * @deprecated since 1.39
-	 * @param callable|null $callback Function to call instead of makeLink().
-	 *   See IndexPager::makeLink() for the expected signature.
-	 * @return $this
-	 */
-	public function setMakeLinkCallback( ?callable $callback ): PagerNavigationBuilder {
-		$this->makeLinkCallback = $callback;
-		return $this;
-	}
-
-	/**
-	 * @param mixed $key
-	 * @param mixed ...$params
+	 * @param string|string[]|MessageSpecifier $key Message key, or array of keys,
+	 *   or a MessageSpecifier.
+	 * @phpcs:ignore Generic.Files.LineLength
+	 * @param MessageParam|MessageSpecifier|string|int|float|list<MessageParam|MessageSpecifier|string|int|float> ...$params
+	 *   See Message::params()
 	 * @return Message
 	 */
 	private function msg( $key, ...$params ): Message {
@@ -282,13 +257,8 @@ class PagerNavigationBuilder {
 	protected function makeLink(
 		?array $query, ?string $class, string $text, ?string $tooltip, ?string $rel = null
 	): string {
-		if ( $this->makeLinkCallback ) {
-			$type = substr( $class, strlen( 'mw-' ), -strlen( 'link' ) );
-			return ( $this->makeLinkCallback )( $text, $query, $type );
-		}
-
 		if ( $query !== null ) {
-			$title = Title::castFromPageReference( $this->page );
+			$title = Title::newFromPageReference( $this->page );
 			return Html::element(
 				'a',
 				[
@@ -315,10 +285,10 @@ class PagerNavigationBuilder {
 	 * @return string HTML
 	 */
 	public function getHtml(): string {
-		if ( !isset( $this->page ) ) {
+		if ( !$this->page ) {
 			throw new RuntimeException( 'page must be set' );
 		}
-		if ( isset( $this->firstMsg ) !== isset( $this->lastMsg ) ) {
+		if ( (bool)$this->firstMsg !== (bool)$this->lastMsg ) {
 			throw new RuntimeException( 'firstMsg and lastMsg must be both set or both unset' );
 		}
 
@@ -366,19 +336,14 @@ class PagerNavigationBuilder {
 				Message::listParam( [
 					Message::rawParam( $firstLink ),
 					Message::rawParam( $lastLink )
-				], 'pipe' )
+				], ListType::PIPE )
 			)->escaped() . ' ';
 		}
 		$html .= $this->msg( 'viewprevnext' )->params(
 			Message::rawParam( $prevLink ),
 			Message::rawParam( $nextLink ),
-			Message::listParam( array_map( static function ( $limitLink ) {
-				return Message::rawParam( $limitLink );
-			}, $limitLinks ), 'pipe' )
+			Message::listParam( array_map( Message::rawParam( ... ), $limitLinks ), ListType::PIPE )
 		)->escaped();
-		if ( $this->extra ) {
-			$html .= ' ' . $this->msg( 'parentheses' )->rawParams( $this->extra )->escaped();
-		}
 
 		return Html::rawElement( 'div', [ 'class' => 'mw-pager-navigation-bar' ], $html );
 	}
