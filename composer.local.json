@@ -1,0 +1,8 @@
+{
+    "require": {
+        "mediawiki/semantic-media-wiki": "^4.2.0",
+        "mediawiki/semantic-result-formats": "~4.2",
+        "mediawiki/semantic-scribunto": "~2.3",
+        "mediawiki/maps": "~10.2"
+    }
+}

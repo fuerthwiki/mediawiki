@@ -134,3 +134,99 @@
 	path = vendor
 	url = https://gerrit.wikimedia.org/r/mediawiki/vendor
 	branch = REL1_39
+[submodule "Medik"]
+	url = https://github.com/wikiskripta/Medik.git
+	path = skins/Medik
+[submodule "AdminLinks"]
+	url = https://github.com/wikimedia/mediawiki-extensions-AdminLinks.git
+	path = extensions/AdminLinks
+[submodule "AuthorProtect"]
+	url = https://gerrit.wikimedia.org/r/mediawiki/extensions/AuthorProtect
+	path = extensions/AuthorProtect
+[submodule "CollapsibleSections"]
+	url = https://gerrit.wikimedia.org/r/mediawiki/extensions/CollapsibleSections
+	path = extensions/CollapsibleSections
+[submodule "Echo"]
+	url = https://gerrit.wikimedia.org/r/mediawiki/extensions/Echo
+	path = extensions/Echo
+[submodule "ExternalData"]
+	url = https://gerrit.wikimedia.org/r/mediawiki/extensions/ExternalData
+	path = extensions/ExternalData
+[submodule "LabeledSectionTransclusion"]
+	url = https://gerrit.wikimedia.org/r/mediawiki/extensions/LabeledSectionTransclusion
+	path = extensions/LabeledSectionTransclusion
+[submodule "SemanticMediaWiki"]
+	url = https://github.com/SemanticMediaWiki/SemanticMediaWiki.git
+	path = extensions/SemanticMediaWiki
+[submodule "SemanticExtraSpecialProperties"]
+	url = https://github.com/SemanticMediaWiki/SemanticExtraSpecialProperties.git
+	path = extensions/SemanticExtraSpecialProperties
+[submodule "SemanticResultFormats"]
+	url = https://github.com/SemanticMediaWiki/SemanticResultFormats.git
+	path = extensions/SemanticResultFormats
+[submodule "SemanticScribunto"]
+	url = https://github.com/SemanticMediaWiki/SemanticScribunto.git
+	path = extensions/SemanticScribunto
+[submodule "MatomoAnalytics"]
+	url = https://github.com/fuerthwiki/MatomoAnalytics.git
+	path = extensions/MatomoAnalytics
+[submodule "PageForms"]
+	url = https://gerrit.wikimedia.org/r/mediawiki/extensions/PageForms
+	path = extensions/PageForms
+[submodule "Maps"]
+	url = https://github.com/ProfessionalWiki/Maps.git
+	path = extensions/Maps
+[submodule "Mermaid"]
+	url = https://github.com/SemanticMediaWiki/Mermaid.git
+	path = extensions/Mermaid
+[submodule "Tabs"]
+	url = https://gerrit.wikimedia.org/r/mediawiki/extensions/Tabs
+	path = extensions/Tabs
+[submodule "3DAlloy"]
+	url = https://github.com/dolfinus/3DAlloy.git
+	path = extensions/3DAlloy
+[submodule "TimedMediaHandler"]
+	url = https://gerrit.wikimedia.org/r/mediawiki/extensions/TimedMediaHandler
+	path = extensions/TimedMediaHandler
+[submodule "MobileFrontend"]
+	url = https://gerrit.wikimedia.org/r/mediawiki/extensions/MobileFrontend
+	path = extensions/MobileFrontend
+[submodule "MobileShareButton"]
+	url = https://github.com/fuerthwiki/MobileShareButton.git
+	path = extensions/MobileShareButton
+[submodule "MobileSpecialPages"]
+	url = https://github.com/fuerthwiki/MobileSpecialPages.git
+	path = extensions/MobileSpecialPages
+[submodule "MobileTabsPlugin"]
+	url = https://github.com/fuerthwiki/MobileTabsPlugin.git
+	path = extensions/MobileTabsPlugin
+[submodule "Popups"]
+	url = https://gerrit.wikimedia.org/r/mediawiki/extensions/Popups
+	path = extensions/Popups
+[submodule "ProofreadPage"]
+	url = https://gerrit.wikimedia.org/r/mediawiki/extensions/ProofreadPage
+	path = extensions/ProofreadPage
+[submodule "Widgets"]
+	url = https://gerrit.wikimedia.org/r/mediawiki/extensions/Widgets
+	path = extensions/Widgets
+[submodule "RevisionSlider"]
+	url = https://gerrit.wikimedia.org/r/mediawiki/extensions/RevisionSlider
+	path = extensions/RevisionSlider
+[submodule "RottenLinks"]
+	url = https://github.com/miraheze/RottenLinks.git
+	path = extensions/RottenLinks
+[submodule "TemplateStyles"]
+	url = https://gerrit.wikimedia.org/r/mediawiki/extensions/TemplateStyles
+	path = extensions/TemplateStyles
+[submodule "Elastica"]
+	url = https://gerrit.wikimedia.org/r/mediawiki/extensions/Elastica
+	path = extensions/Elastica
+[submodule "CirrusSearch"]
+	url = https://gerrit.wikimedia.org/r/mediawiki/extensions/CirrusSearch
+	path = extensions/CirrusSearch
+[submodule "Lockdown"]
+	url = https://gerrit.wikimedia.org/r/mediawiki/extensions/Lockdown
+	path = extensions/Lockdown
+[submodule "CookieWarning"]
+	url = https://gerrit.wikimedia.org/r/mediawiki/extensions/CookieWarning
+	path = extensions/CookieWarning
